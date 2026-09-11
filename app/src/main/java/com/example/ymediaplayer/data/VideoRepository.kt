@@ -3,6 +3,7 @@ package com.example.ymediaplayer.data
 import android.content.ContentUris
 import android.content.Context
 import android.net.Uri
+import android.os.Build
 import android.provider.MediaStore
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -14,7 +15,9 @@ data class VideoItem(
     val duration: Long,
     val size: Long,
     val bucketId: String,
-    val bucketName: String
+    val bucketName: String,
+    val relativePath: String = "",   // e.g. "DCIM/Camera/"
+    val dateAdded: Long = 0L         // epoch seconds
 )
 
 data class VideoFolder(
@@ -28,16 +31,20 @@ class VideoRepository(private val context: Context) {
     suspend fun getFoldersWithVideos(): List<VideoFolder> = withContext(Dispatchers.IO) {
         val videos = mutableListOf<VideoItem>()
 
-        val projection = arrayOf(
-            MediaStore.Video.Media._ID,
-            MediaStore.Video.Media.DISPLAY_NAME,
-            MediaStore.Video.Media.DURATION,
-            MediaStore.Video.Media.SIZE,
-            MediaStore.Video.Media.BUCKET_ID,
-            MediaStore.Video.Media.BUCKET_DISPLAY_NAME
-        )
+        val projection = buildList {
+            add(MediaStore.Video.Media._ID)
+            add(MediaStore.Video.Media.DISPLAY_NAME)
+            add(MediaStore.Video.Media.DURATION)
+            add(MediaStore.Video.Media.SIZE)
+            add(MediaStore.Video.Media.BUCKET_ID)
+            add(MediaStore.Video.Media.BUCKET_DISPLAY_NAME)
+            add(MediaStore.Video.Media.DATE_ADDED)
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                add(MediaStore.Video.Media.RELATIVE_PATH)
+            }
+        }.toTypedArray()
 
-        val sortOrder = "${MediaStore.Video.Media.DATE_ADDED} DESC"
+        val sortOrder = "${MediaStore.Video.Media.DATE_ADDED} DESC, ${MediaStore.Video.Media._ID} DESC"
 
         context.contentResolver.query(
             MediaStore.Video.Media.EXTERNAL_CONTENT_URI,
@@ -52,6 +59,9 @@ class VideoRepository(private val context: Context) {
             val sizeColumn = cursor.getColumnIndexOrThrow(MediaStore.Video.Media.SIZE)
             val bucketIdColumn = cursor.getColumnIndexOrThrow(MediaStore.Video.Media.BUCKET_ID)
             val bucketNameColumn = cursor.getColumnIndexOrThrow(MediaStore.Video.Media.BUCKET_DISPLAY_NAME)
+            val dateAddedColumn = cursor.getColumnIndexOrThrow(MediaStore.Video.Media.DATE_ADDED)
+            val relativePathColumn = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q)
+                cursor.getColumnIndex(MediaStore.Video.Media.RELATIVE_PATH) else -1
 
             while (cursor.moveToNext()) {
                 val id = cursor.getLong(idColumn)
@@ -60,7 +70,10 @@ class VideoRepository(private val context: Context) {
                 val size = cursor.getLong(sizeColumn)
                 val bucketId = cursor.getString(bucketIdColumn) ?: "0"
                 val bucketName = cursor.getString(bucketNameColumn) ?: "Unknown Folder"
-                
+                val dateAdded = cursor.getLong(dateAddedColumn)
+                val relativePath = if (relativePathColumn >= 0)
+                    cursor.getString(relativePathColumn) ?: "" else ""
+
                 val contentUri: Uri = ContentUris.withAppendedId(
                     MediaStore.Video.Media.EXTERNAL_CONTENT_URI,
                     id
@@ -74,13 +87,15 @@ class VideoRepository(private val context: Context) {
                         duration = duration,
                         size = size,
                         bucketId = bucketId,
-                        bucketName = bucketName
+                        bucketName = bucketName,
+                        relativePath = relativePath,
+                        dateAdded = dateAdded
                     )
                 )
             }
         }
 
-        // Group by folder
+        // Group by folder bucket ID
         val folders = videos.groupBy { it.bucketId }
             .map { (bucketId, videoList) ->
                 VideoFolder(
@@ -94,3 +109,4 @@ class VideoRepository(private val context: Context) {
         folders
     }
 }
+

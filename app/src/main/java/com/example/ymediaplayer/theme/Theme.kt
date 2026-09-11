@@ -23,35 +23,30 @@ private val LightColorScheme = lightColorScheme(primary = Purple40, secondary = 
  */
 @Composable
 fun YMediaPlayerTheme(
-  themeMode: ThemeMode = ThemeMode.SYSTEM,
-  dynamicColor: Boolean = true,
+  themeMode: ThemeMode = ThemeMode.DARK_GREY,
+  colorTheme: com.example.ymediaplayer.ui.PlayerTheme = com.example.ymediaplayer.ui.PlayerTheme.CYBER,
   content: @Composable () -> Unit,
 ) {
-  val darkTheme = when (themeMode) {
-    ThemeMode.SYSTEM -> isSystemInDarkTheme()
-    ThemeMode.DARK -> true
-    ThemeMode.LIGHT -> false
+  val baseAppColors = when (themeMode) {
+    ThemeMode.DARK_GREY -> DarkGreyAppColors
+    ThemeMode.SOLID_BLACK -> SolidBlackAppColors
+    ThemeMode.MILK_WHITE -> MilkWhiteAppColors
+    ThemeMode.LESS_WHITE -> LessWhiteAppColors
   }
-
-  val colorScheme = when {
-    dynamicColor && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S -> {
-      val context = LocalContext.current
-      if (darkTheme) dynamicDarkColorScheme(context) else dynamicLightColorScheme(context)
-    }
-    darkTheme -> DarkColorScheme
-    else -> LightColorScheme
-  }
-
-  val baseAppColors = if (darkTheme) DarkAppColors else LightAppColors
+  val isDark = baseAppColors.isDark
   
-  // Inject dynamic accent color if enabled
-  val appColors = if (dynamicColor && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-    baseAppColors.copy(
-        accentBlue = colorScheme.primary,
-        onAccent = colorScheme.onPrimary
-    )
+  // Apply selected color theme to app accents & ambient gradient blobs
+  val appColors = baseAppColors.copy(
+      accentBlue = colorTheme.primaryAccent,
+      onAccent = androidx.compose.ui.graphics.Color.White,
+      gradientBlob1 = if (isDark) colorTheme.secondaryAccent.copy(alpha = 0.12f) else colorTheme.secondaryAccent.copy(alpha = 0.18f),
+      gradientBlob2 = if (isDark) colorTheme.primaryAccent.copy(alpha = 0.10f) else colorTheme.primaryAccent.copy(alpha = 0.14f)
+  )
+
+  val colorScheme = if (isDark) {
+    DarkColorScheme.copy(primary = colorTheme.primaryAccent, secondary = colorTheme.secondaryAccent)
   } else {
-    baseAppColors
+    LightColorScheme.copy(primary = colorTheme.primaryAccent, secondary = colorTheme.secondaryAccent)
   }
 
   CompositionLocalProvider(LocalAppColors provides appColors) {

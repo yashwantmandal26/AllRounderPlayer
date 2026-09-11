@@ -37,40 +37,142 @@ import com.example.ymediaplayer.ui.VideoPlayerScreen
 import java.net.URLDecoder
 import java.net.URLEncoder
 
+import android.content.Intent
+import android.net.Uri
+import android.provider.Settings
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.PermMedia
+import androidx.compose.material3.*
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import com.example.ymediaplayer.theme.LocalAppColors
+
 class MainActivity : ComponentActivity() {
+
+    companion object {
+        const val EXTRA_OPEN_VIDEO_URL = "EXTRA_OPEN_VIDEO_URL"
+        val openMusicTrigger = mutableStateOf(false)
+        val openVideoUrl = mutableStateOf<String?>(null)
+    }
+
+    private var videoPermissionGranted by mutableStateOf(false)
+    private var audioPermissionGranted by mutableStateOf(false)
+    private var hasPromptedPermissions by mutableStateOf(false)
+
+    private val requiredPermissions: Array<String>
+        get() = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            arrayOf(
+                Manifest.permission.READ_MEDIA_VIDEO,
+                Manifest.permission.READ_MEDIA_AUDIO,
+                Manifest.permission.POST_NOTIFICATIONS
+            )
+        } else {
+            arrayOf(Manifest.permission.READ_EXTERNAL_STORAGE)
+        }
 
     private val permissionResultLauncher = registerForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions()
-    ) { permissions ->
-        if (permissions.all { it.value }) {
-            setContent { AppRoot { MainApp() } }
+    ) { _ ->
+        updatePermissionState()
+    }
+
+    private fun updatePermissionState() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            videoPermissionGranted = ContextCompat.checkSelfPermission(
+                this, Manifest.permission.READ_MEDIA_VIDEO
+            ) == PackageManager.PERMISSION_GRANTED
+            audioPermissionGranted = ContextCompat.checkSelfPermission(
+                this, Manifest.permission.READ_MEDIA_AUDIO
+            ) == PackageManager.PERMISSION_GRANTED
+        } else {
+            val storageGranted = ContextCompat.checkSelfPermission(
+                this, Manifest.permission.READ_EXTERNAL_STORAGE
+            ) == PackageManager.PERMISSION_GRANTED
+            videoPermissionGranted = storageGranted
+            audioPermissionGranted = storageGranted
+        }
+    }
+
+    private fun requestPermissions() {
+        hasPromptedPermissions = true
+        permissionResultLauncher.launch(requiredPermissions)
+    }
+
+    private fun openAppSettings() {
+        val intent = Intent(
+            Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
+            Uri.fromParts("package", packageName, null)
+        )
+        startActivity(intent)
+    }
+
+    override fun onResume() {
+        super.onResume()
+        updatePermissionState()
+        // Ensure app screens follow the phone's native brightness
+        val lp = window.attributes
+        if (lp.screenBrightness != WindowManager.LayoutParams.BRIGHTNESS_OVERRIDE_NONE) {
+            lp.screenBrightness = WindowManager.LayoutParams.BRIGHTNESS_OVERRIDE_NONE
+            window.attributes = lp
+        }
+    }
+
+    override fun onNewIntent(intent: android.content.Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        if (intent.getBooleanExtra(com.example.ymediaplayer.service.MusicService.EXTRA_OPEN_MUSIC_PLAYER, false)) {
+            openMusicTrigger.value = true
+        }
+        val videoUrlExtra = intent.getStringExtra(EXTRA_OPEN_VIDEO_URL)
+        if (!videoUrlExtra.isNullOrEmpty()) {
+            openVideoUrl.value = videoUrlExtra
         }
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         
-        // Keep screen on
-        window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
-        enableEdgeToEdge()
-
-        val permissions = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            arrayOf(Manifest.permission.READ_MEDIA_VIDEO, Manifest.permission.READ_MEDIA_AUDIO)
-        } else {
-            arrayOf(Manifest.permission.READ_EXTERNAL_STORAGE)
+        if (intent?.getBooleanExtra(com.example.ymediaplayer.service.MusicService.EXTRA_OPEN_MUSIC_PLAYER, false) == true) {
+            openMusicTrigger.value = true
+        }
+        val videoUrlExtra = intent?.getStringExtra(EXTRA_OPEN_VIDEO_URL)
+        if (!videoUrlExtra.isNullOrEmpty()) {
+            openVideoUrl.value = videoUrlExtra
         }
 
-        if (permissions.all { ContextCompat.checkSelfPermission(this, it) == PackageManager.PERMISSION_GRANTED }) {
-            setContent { AppRoot { MainApp() } }
-        } else {
-            // Show a simple loading or permission prompt, then request it
-            setContent {
-                AppRoot {
-                    Surface(modifier = Modifier.fillMaxSize()) {
+        // Keep screen on & follow system phone brightness for all app screens
+        window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+        val initialLp = window.attributes
+        initialLp.screenBrightness = WindowManager.LayoutParams.BRIGHTNESS_OVERRIDE_NONE
+        window.attributes = initialLp
+        enableEdgeToEdge()
+
+        updatePermissionState()
+
+        setContent {
+            AppRoot {
+                if (videoPermissionGranted) {
+                    MainApp()
+                } else {
+                    if (!hasPromptedPermissions) {
                         LaunchedEffect(Unit) {
-                            permissionResultLauncher.launch(permissions)
+                            requestPermissions()
                         }
                     }
+                    PermissionFallbackScreen(
+                        onRequestPermissions = { requestPermissions() },
+                        onOpenSettings = { openAppSettings() }
+                    )
                 }
             }
         }
@@ -85,7 +187,10 @@ class MainActivity : ComponentActivity() {
 fun AppRoot(content: @Composable () -> Unit) {
     val themeController = rememberThemeController()
     CompositionLocalProvider(LocalThemeController provides themeController) {
-        YMediaPlayerTheme(themeMode = themeController.mode) {
+        YMediaPlayerTheme(
+            themeMode = themeController.mode,
+            colorTheme = themeController.colorTheme
+        ) {
             content()
         }
     }
@@ -99,13 +204,44 @@ fun MainApp() {
     val insetsController = window?.let { WindowCompat.getInsetsController(it, it.decorView) }
     val appColors = com.example.ymediaplayer.theme.LocalAppColors.current
 
+    LaunchedEffect(MainActivity.openMusicTrigger.value) {
+        if (MainActivity.openMusicTrigger.value) {
+            while (backStack.size > 1) {
+                backStack.removeLastOrNull()
+            }
+        }
+    }
+
+    LaunchedEffect(MainActivity.openVideoUrl.value) {
+        val target = MainActivity.openVideoUrl.value
+        if (!target.isNullOrEmpty()) {
+            val encoded = URLEncoder.encode(target, "UTF-8")
+            val currentTop = backStack.lastOrNull()
+            if (currentTop is VideoPlayer && currentTop.videoUri == encoded) {
+                // Already viewing this video
+            } else {
+                while (backStack.size > 1) {
+                    backStack.removeLastOrNull()
+                }
+                backStack.add(VideoPlayer(encoded))
+            }
+            MainActivity.openVideoUrl.value = null
+        }
+    }
+
     NavDisplay(
             backStack = backStack,
-            onBack = { backStack.removeLastOrNull() },
+            onBack = { if (backStack.size > 1) backStack.removeLastOrNull() },
             entryProvider = entryProvider {
                 entry<FolderList> {
                     LaunchedEffect(Unit) {
                         insetsController?.show(WindowInsetsCompat.Type.systemBars())
+                        val act = context as? ComponentActivity
+                        val lp = act?.window?.attributes
+                        if (lp != null && lp.screenBrightness != WindowManager.LayoutParams.BRIGHTNESS_OVERRIDE_NONE) {
+                            lp.screenBrightness = WindowManager.LayoutParams.BRIGHTNESS_OVERRIDE_NONE
+                            act.window?.attributes = lp
+                        }
                     }
                     Surface(
                         modifier = Modifier.fillMaxSize(),
@@ -125,11 +261,17 @@ fun MainApp() {
                 entry<FolderDetail> { navKey ->
                     LaunchedEffect(Unit) {
                         insetsController?.show(WindowInsetsCompat.Type.systemBars())
+                        val act = context as? ComponentActivity
+                        val lp = act?.window?.attributes
+                        if (lp != null && lp.screenBrightness != WindowManager.LayoutParams.BRIGHTNESS_OVERRIDE_NONE) {
+                            lp.screenBrightness = WindowManager.LayoutParams.BRIGHTNESS_OVERRIDE_NONE
+                            act.window?.attributes = lp
+                        }
                     }
                     FolderDetailScreen(
                         folderId = navKey.folderId,
                         folderName = navKey.folderName,
-                        onBack = { backStack.removeLastOrNull() },
+                        onBack = { if (backStack.size > 1) backStack.removeLastOrNull() },
                         onVideoClick = { uri ->
                             val encodedUri = URLEncoder.encode(uri, "UTF-8")
                             backStack.add(VideoPlayer(encodedUri))
@@ -137,10 +279,6 @@ fun MainApp() {
                     )
                 }
                 entry<VideoPlayer> { navKey ->
-                    LaunchedEffect(Unit) {
-                        insetsController?.systemBarsBehavior = WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
-                        insetsController?.hide(WindowInsetsCompat.Type.systemBars())
-                    }
                     val decodedUri = URLDecoder.decode(navKey.videoUri, "UTF-8")
                     Surface(
                         modifier = Modifier.fillMaxSize(),
@@ -148,10 +286,104 @@ fun MainApp() {
                     ) {
                         VideoPlayerScreen(
                             videoUrl = decodedUri,
-                            onBack = { backStack.removeLastOrNull() }
+                            onBack = { if (backStack.size > 1) backStack.removeLastOrNull() }
                         )
                     }
                 }
             }
         )
+}
+
+@Composable
+fun PermissionFallbackScreen(
+    onRequestPermissions: () -> Unit,
+    onOpenSettings: () -> Unit
+) {
+    val appColors = LocalAppColors.current
+    Surface(
+        modifier = Modifier.fillMaxSize(),
+        color = appColors.baseBackground
+    ) {
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(24.dp),
+            contentAlignment = Alignment.Center
+        ) {
+            Column(
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.Center,
+                modifier = Modifier
+                    .clip(RoundedCornerShape(24.dp))
+                    .background(appColors.glassBg)
+                    .border(1.dp, appColors.glassBorder, RoundedCornerShape(24.dp))
+                    .padding(32.dp)
+            ) {
+                Box(
+                    modifier = Modifier
+                        .size(72.dp)
+                        .clip(CircleShape)
+                        .background(appColors.accentBlue.copy(alpha = 0.15f)),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        imageVector = Icons.Rounded.PermMedia,
+                        contentDescription = "Permission Required",
+                        tint = appColors.accentBlue,
+                        modifier = Modifier.size(36.dp)
+                    )
+                }
+
+                Spacer(Modifier.height(20.dp))
+
+                Text(
+                    text = "Permission Required",
+                    fontSize = 20.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = appColors.textPrimary,
+                    textAlign = TextAlign.Center
+                )
+
+                Spacer(Modifier.height(10.dp))
+
+                Text(
+                    text = "YMedia Player needs access to your media files to display and play videos and audio stored on your device.",
+                    fontSize = 14.sp,
+                    color = appColors.textSecondary,
+                    textAlign = TextAlign.Center,
+                    lineHeight = 20.sp
+                )
+
+                Spacer(Modifier.height(28.dp))
+
+                Button(
+                    onClick = onRequestPermissions,
+                    colors = ButtonDefaults.buttonColors(containerColor = appColors.accentBlue),
+                    shape = RoundedCornerShape(14.dp),
+                    modifier = Modifier.fillMaxWidth().height(48.dp)
+                ) {
+                    Text(
+                        "Grant Permission",
+                        color = appColors.onAccent,
+                        fontWeight = FontWeight.SemiBold
+                    )
+                }
+
+                Spacer(Modifier.height(12.dp))
+
+                OutlinedButton(
+                    onClick = onOpenSettings,
+                    colors = ButtonDefaults.outlinedButtonColors(contentColor = appColors.accentBlue),
+                    border = BorderStroke(1.dp, appColors.accentBlue.copy(alpha = 0.6f)),
+                    shape = RoundedCornerShape(14.dp),
+                    modifier = Modifier.fillMaxWidth().height(48.dp)
+                ) {
+                    Text(
+                        "Open Settings",
+                        fontWeight = FontWeight.SemiBold
+                    )
+                }
+            }
+        }
+    }
 }

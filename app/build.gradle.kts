@@ -32,6 +32,10 @@ android {
       shaders = false
     }
 
+    testOptions {
+        unitTests.isReturnDefaultValues = true
+    }
+
     packaging {
       resources {
         excludes += "/META-INF/{AL2.0,LGPL2.1}"
@@ -65,6 +69,7 @@ dependencies {
   // Media3 (ExoPlayer)
   implementation("androidx.media3:media3-exoplayer:1.4.1")
   implementation("androidx.media3:media3-ui:1.4.1")
+  implementation("androidx.media3:media3-session:1.4.1")
   
   // Coil for seek preview images
   implementation("io.coil-kt.coil3:coil-compose:3.0.0")
@@ -80,6 +85,7 @@ dependencies {
   // Local tests: jUnit, coroutines, Android runner
   testImplementation(libs.junit)
   testImplementation(libs.kotlinx.coroutines.test)
+  testImplementation("org.mockito:mockito-core:5.11.0")
 
   // Instrumented tests: jUnit rules and runners
   androidTestImplementation(libs.androidx.test.core)

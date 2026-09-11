@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <!-- Dark navy background to match the YMedia Player icon -->
-    <color name="ic_launcher_background">#1A1B2E</color>
+    <!-- Deep midnight blue background to match the new YMedia Player icon -->
+    <color name="ic_launcher_background">#060F2B</color>
 </resources>

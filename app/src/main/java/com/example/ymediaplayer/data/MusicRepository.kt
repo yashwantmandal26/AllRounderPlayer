@@ -32,6 +32,7 @@ class MusicRepository(private val context: Context) {
         val projection = arrayOf(
             MediaStore.Audio.Media._ID,
             MediaStore.Audio.Media.TITLE,
+            MediaStore.Audio.Media.DISPLAY_NAME,
             MediaStore.Audio.Media.ARTIST,
             MediaStore.Audio.Media.ALBUM,
             MediaStore.Audio.Media.ALBUM_ID,
@@ -40,7 +41,7 @@ class MusicRepository(private val context: Context) {
         )
 
         val sortOrder = "${MediaStore.Audio.Media.TITLE} ASC"
-        val selection = "${MediaStore.Audio.Media.IS_MUSIC} != 0"
+        val selection = "(${MediaStore.Audio.Media.IS_MUSIC} != 0 OR ${MediaStore.Audio.Media.MIME_TYPE} LIKE 'audio/%' OR ${MediaStore.Audio.Media.DATA} LIKE '%.mp3' OR ${MediaStore.Audio.Media.DATA} LIKE '%.m4a' OR ${MediaStore.Audio.Media.DATA} LIKE '%.flac' OR ${MediaStore.Audio.Media.DATA} LIKE '%.wav' OR ${MediaStore.Audio.Media.DATA} LIKE '%.ogg' OR ${MediaStore.Audio.Media.DATA} LIKE '%.opus' OR ${MediaStore.Audio.Media.DATA} LIKE '%.aac' OR ${MediaStore.Audio.Media.DATA} LIKE '%.wma') AND ${MediaStore.Audio.Media.DURATION} > 1000"
 
         context.contentResolver.query(
             MediaStore.Audio.Media.EXTERNAL_CONTENT_URI,
@@ -50,17 +51,24 @@ class MusicRepository(private val context: Context) {
             sortOrder
         )?.use { cursor ->
             val idColumn = cursor.getColumnIndexOrThrow(MediaStore.Audio.Media._ID)
-            val titleColumn = cursor.getColumnIndexOrThrow(MediaStore.Audio.Media.TITLE)
-            val artistColumn = cursor.getColumnIndexOrThrow(MediaStore.Audio.Media.ARTIST)
-            val albumColumn = cursor.getColumnIndexOrThrow(MediaStore.Audio.Media.ALBUM)
+            val titleColumn = cursor.getColumnIndex(MediaStore.Audio.Media.TITLE)
+            val displayNameColumn = cursor.getColumnIndex(MediaStore.Audio.Media.DISPLAY_NAME)
+            val artistColumn = cursor.getColumnIndex(MediaStore.Audio.Media.ARTIST)
+            val albumColumn = cursor.getColumnIndex(MediaStore.Audio.Media.ALBUM)
             val albumIdColumn = cursor.getColumnIndexOrThrow(MediaStore.Audio.Media.ALBUM_ID)
             val durationColumn = cursor.getColumnIndexOrThrow(MediaStore.Audio.Media.DURATION)
             val sizeColumn = cursor.getColumnIndexOrThrow(MediaStore.Audio.Media.SIZE)
 
             while (cursor.moveToNext()) {
                 val id = cursor.getLong(idColumn)
-                val title = cursor.getString(titleColumn) ?: "Unknown Title"
-                val artist = cursor.getString(artistColumn) ?: "Unknown Artist"
+                val rawTitle = if (titleColumn >= 0) cursor.getString(titleColumn) else null
+                val rawDisplayName = if (displayNameColumn >= 0) cursor.getString(displayNameColumn) else null
+                val title = when {
+                    !rawTitle.isNullOrBlank() -> rawTitle
+                    !rawDisplayName.isNullOrBlank() -> rawDisplayName.substringBeforeLast(".")
+                    else -> "Unknown Track"
+                }
+                val artist = (if (artistColumn >= 0) cursor.getString(artistColumn) else null)?.takeIf { it != "<unknown>" && it.isNotBlank() } ?: "Unknown Artist"
                 val album = cursor.getString(albumColumn) ?: "Unknown Album"
                 val albumId = cursor.getLong(albumIdColumn)
                 val duration = cursor.getLong(durationColumn)
