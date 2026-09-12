@@ -90,8 +90,10 @@ import com.example.ymediaplayer.theme.LocalAppColors
 import com.example.ymediaplayer.theme.LocalThemeController
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
+import java.util.concurrent.ConcurrentSkipListMap
 import java.text.SimpleDateFormat
 import java.util.Locale
 import kotlin.math.abs
@@ -281,25 +283,66 @@ fun VideoPlayerScreen(
     var speedHoldDisplaySpeed by remember { mutableFloatStateOf(1.5f) }
     var preHoldSpeed by remember { mutableFloatStateOf(1.0f) }
 
-    // ─── Seek Thumbnail Preview State ─────────────────────────────────────────
+    // ─── Seek Thumbnail Preview State (High-Performance Instant Peek) ─────────
     var seekThumbnail by remember { mutableStateOf<android.graphics.Bitmap?>(null) }
     var seekThumbnailPositionMs by remember { mutableLongStateOf(0L) }
-    var isThumbnailLoading by remember { mutableStateOf(false) }
-    val frameCache = remember(currentUrl) { android.util.LruCache<Long, android.graphics.Bitmap>(80) }
-    val thumbnailRetriever = remember(currentUrl) {
-        android.media.MediaMetadataRetriever().apply {
+    val frameCache = remember(currentUrl) { ConcurrentSkipListMap<Long, android.graphics.Bitmap>() }
+    var thumbnailRetriever by remember { mutableStateOf<android.media.MediaMetadataRetriever?>(null) }
+    LaunchedEffect(currentUrl) {
+        withContext(Dispatchers.IO) {
+            val r = android.media.MediaMetadataRetriever()
             try {
                 if (currentUrl.startsWith("content://")) {
-                    setDataSource(context, android.net.Uri.parse(currentUrl))
+                    r.setDataSource(context, android.net.Uri.parse(currentUrl))
                 } else {
-                    setDataSource(currentUrl)
+                    r.setDataSource(currentUrl)
                 }
-            } catch (_: Exception) {}
+                thumbnailRetriever = r
+            } catch (_: Exception) {
+                try { r.release() } catch (_: Exception) {}
+            }
         }
     }
     DisposableEffect(currentUrl) {
         onDispose {
-            try { thumbnailRetriever.release() } catch (_: Exception) {}
+            try { thumbnailRetriever?.release() } catch (_: Exception) {}
+            thumbnailRetriever = null
+            frameCache.clear()
+        }
+    }
+
+    // Background keyframe pre-caching across video timeline for instant peek previews
+    LaunchedEffect(thumbnailRetriever, duration) {
+        val retriever = thumbnailRetriever ?: return@LaunchedEffect
+        if (duration <= 0L) return@LaunchedEffect
+        withContext(Dispatchers.IO) {
+            val intervalMs = when {
+                duration > 3600_000L -> 15_000L
+                duration > 600_000L -> 8_000L
+                duration > 120_000L -> 4_000L
+                else -> 2_000L
+            }
+            var pos = 0L
+            while (pos <= duration && isActive) {
+                if (!frameCache.containsKey(pos)) {
+                    try {
+                        val bmp = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O_MR1) {
+                            retriever.getScaledFrameAtTime(
+                                pos * 1000L,
+                                android.media.MediaMetadataRetriever.OPTION_CLOSEST_SYNC,
+                                160, 90
+                            ) ?: retriever.getFrameAtTime(pos * 1000L, android.media.MediaMetadataRetriever.OPTION_CLOSEST_SYNC)
+                        } else {
+                            retriever.getFrameAtTime(pos * 1000L, android.media.MediaMetadataRetriever.OPTION_CLOSEST_SYNC)
+                        }
+                        if (bmp != null) {
+                            frameCache[pos] = bmp
+                        }
+                    } catch (_: Exception) {}
+                }
+                pos += intervalMs
+                delay(12L) // Gentle yield to prevent CPU contention
+            }
         }
     }
     var audioSubInitialTab by remember { mutableIntStateOf(0) }
@@ -342,6 +385,45 @@ fun VideoPlayerScreen(
     var activeGestureMode by remember { mutableStateOf(PlayerGestureMode.NONE) }
     var doubleTapSeekSeconds by remember { mutableIntStateOf(0) }
     var doubleTapIsForward by remember { mutableStateOf(true) }
+
+    // Instant Peek Preview updater (Runs for both Portrait and Fullscreen Landscape)
+    LaunchedEffect(scrubPosition, isDraggingSeek) {
+        if (!isDraggingSeek) {
+            seekThumbnail = null
+            return@LaunchedEffect
+        }
+        val targetMs = scrubPosition.toLong()
+
+        // 1. Immediately show nearest cached keyframe (INSTANT 0ms response!)
+        val nearest = frameCache.floorEntry(targetMs)?.value
+            ?: frameCache.ceilingEntry(targetMs)?.value
+        if (nearest != null) {
+            seekThumbnail = nearest
+        }
+
+        // 2. Refine exact frame if not in cache
+        val bucket = (targetMs / 2000L) * 2000L
+        if (!frameCache.containsKey(bucket)) {
+            withContext(Dispatchers.IO) {
+                try {
+                    val retriever = thumbnailRetriever ?: return@withContext
+                    val bmp = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O_MR1) {
+                        retriever.getScaledFrameAtTime(
+                            targetMs * 1000L,
+                            android.media.MediaMetadataRetriever.OPTION_CLOSEST_SYNC,
+                            160, 90
+                        ) ?: retriever.getFrameAtTime(targetMs * 1000L, android.media.MediaMetadataRetriever.OPTION_CLOSEST_SYNC)
+                    } else {
+                        retriever.getFrameAtTime(targetMs * 1000L, android.media.MediaMetadataRetriever.OPTION_CLOSEST_SYNC)
+                    }
+                    if (bmp != null) {
+                        frameCache[bucket] = bmp
+                        seekThumbnail = bmp
+                    }
+                } catch (_: Exception) {}
+            }
+        }
+    }
 
     // Center Seek HUD
     var centerSeekText by remember { mutableStateOf<String?>(null) }
@@ -447,33 +529,37 @@ fun VideoPlayerScreen(
     }
 
     // ─── Video Ratio & Orientation Detection ──────────────────────────────────
-    // Extract video dimensions immediately via retriever & ExoPlayer listener
-    val initialDimensions = remember(currentUrl) {
-        try {
-            val r = android.media.MediaMetadataRetriever()
-            if (currentUrl.startsWith("content://")) {
-                r.setDataSource(context, android.net.Uri.parse(currentUrl))
-            } else {
-                r.setDataSource(currentUrl)
-            }
-            val wStr = r.extractMetadata(android.media.MediaMetadataRetriever.METADATA_KEY_VIDEO_WIDTH)
-            val hStr = r.extractMetadata(android.media.MediaMetadataRetriever.METADATA_KEY_VIDEO_HEIGHT)
-            val rotStr = r.extractMetadata(android.media.MediaMetadataRetriever.METADATA_KEY_VIDEO_ROTATION)
-            val rawW = wStr?.toIntOrNull() ?: 0
-            val rawH = hStr?.toIntOrNull() ?: 0
-            val rot = rotStr?.toIntOrNull() ?: 0
-            r.release()
-            val effectiveW = if (rot == 90 || rot == 270) rawH else rawW
-            val effectiveH = if (rot == 90 || rot == 270) rawW else rawH
-            Pair(effectiveW, effectiveH)
-        } catch (_: Exception) {
-            Pair(0, 0)
-        }
-    }
-    var videoWidth by remember(currentUrl) { mutableIntStateOf(initialDimensions.first) }
-    var videoHeight by remember(currentUrl) { mutableIntStateOf(initialDimensions.second) }
+    var videoWidth by remember(currentUrl) { mutableIntStateOf(0) }
+    var videoHeight by remember(currentUrl) { mutableIntStateOf(0) }
     val isVerticalVideo = remember(videoWidth, videoHeight) {
         videoHeight > 0 && videoWidth > 0 && videoHeight > videoWidth
+    }
+
+    // Extract video dimensions asynchronously via retriever off main thread
+    LaunchedEffect(currentUrl) {
+        withContext(Dispatchers.IO) {
+            try {
+                val r = android.media.MediaMetadataRetriever()
+                if (currentUrl.startsWith("content://")) {
+                    r.setDataSource(context, android.net.Uri.parse(currentUrl))
+                } else {
+                    r.setDataSource(currentUrl)
+                }
+                val wStr = r.extractMetadata(android.media.MediaMetadataRetriever.METADATA_KEY_VIDEO_WIDTH)
+                val hStr = r.extractMetadata(android.media.MediaMetadataRetriever.METADATA_KEY_VIDEO_HEIGHT)
+                val rotStr = r.extractMetadata(android.media.MediaMetadataRetriever.METADATA_KEY_VIDEO_ROTATION)
+                val rawW = wStr?.toIntOrNull() ?: 0
+                val rawH = hStr?.toIntOrNull() ?: 0
+                val rot = rotStr?.toIntOrNull() ?: 0
+                r.release()
+                val effectiveW = if (rot == 90 || rot == 270) rawH else rawW
+                val effectiveH = if (rot == 90 || rot == 270) rawW else rawH
+                if (effectiveW > 0 && effectiveH > 0) {
+                    videoWidth = effectiveW
+                    videoHeight = effectiveH
+                }
+            } catch (_: Exception) {}
+        }
     }
 
     // Also update from ExoPlayer decoded video size
@@ -504,20 +590,27 @@ fun VideoPlayerScreen(
 
     val orientationEventListener = remember(context, activity) {
         object : android.view.OrientationEventListener(context, android.hardware.SensorManager.SENSOR_DELAY_NORMAL) {
+            private var lastAutoRotateCheckTime = 0L
+            private var cachedAutoRotateEnabled = true
+
             override fun onOrientationChanged(orientation: Int) {
                 if (orientation == ORIENTATION_UNKNOWN) return
                 if (System.currentTimeMillis() < manualOrientationOverrideTime) return
 
-                // Check if device auto-rotate is enabled from phone system settings
-                val isAutoRotateEnabled = try {
-                    android.provider.Settings.System.getInt(
-                        context.contentResolver,
-                        android.provider.Settings.System.ACCELEROMETER_ROTATION,
-                        0
-                    ) == 1
-                } catch (_: Exception) { false }
+                // Check device auto-rotate setting throttled to once every 2 seconds instead of every sensor tick
+                val now = System.currentTimeMillis()
+                if (now - lastAutoRotateCheckTime > 2000L) {
+                    cachedAutoRotateEnabled = try {
+                        android.provider.Settings.System.getInt(
+                            context.contentResolver,
+                            android.provider.Settings.System.ACCELEROMETER_ROTATION,
+                            0
+                        ) == 1
+                    } catch (_: Exception) { false }
+                    lastAutoRotateCheckTime = now
+                }
 
-                if (!isAutoRotateEnabled) return
+                if (!cachedAutoRotateEnabled) return
 
                 val isLandscapeSensor = (orientation in 65..115) || (orientation in 245..295)
                 val isPortraitSensor = (orientation in 335..360) || (orientation in 0..25) || (orientation in 155..205)
@@ -807,15 +900,9 @@ fun VideoPlayerScreen(
         }
     }
 
-    // Live update notification progress
-    LaunchedEffect(currentPosition, isPlaying, duration, videoTitle) {
-        if (duration <= 0L && currentPosition <= 0L) return@LaunchedEffect
-
-        val progressPercent = if (duration > 0L) {
-            ((currentPosition.toFloat() / duration.toFloat()) * 100).toInt().coerceIn(0, 100)
-        } else 0
-
-        val contentIntent = PendingIntent.getActivity(
+    // Pre-create and cache notification PendingIntents
+    val contentIntent = remember(context, currentUrl) {
+        PendingIntent.getActivity(
             context,
             2001,
             Intent(context, MainActivity::class.java).apply {
@@ -824,47 +911,68 @@ fun VideoPlayerScreen(
             },
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
-
-        val rewindIntent = PendingIntent.getBroadcast(
+    }
+    val rewindIntent = remember(context) {
+        PendingIntent.getBroadcast(
             context, 101,
             Intent(ACTION_VIDEO_REWIND).setPackage(context.packageName),
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
-        val playPauseIntent = PendingIntent.getBroadcast(
+    }
+    val playPauseIntent = remember(context) {
+        PendingIntent.getBroadcast(
             context, 102,
             Intent(ACTION_VIDEO_PLAY_PAUSE).setPackage(context.packageName),
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
-        val forwardIntent = PendingIntent.getBroadcast(
+    }
+    val forwardIntent = remember(context) {
+        PendingIntent.getBroadcast(
             context, 103,
             Intent(ACTION_VIDEO_FORWARD).setPackage(context.packageName),
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
+    }
 
-        val title = videoTitle.ifEmpty { "Video Playing" }
-        val timeText = "${formatTime(currentPosition)} / ${formatTime(duration)}"
+    // Live update notification progress (Throttled to 1s intervals instead of 200ms)
+    LaunchedEffect(isPlaying, duration, videoTitle, currentUrl) {
+        while (true) {
+            val curPos = exoPlayer.currentPosition
+            val curDur = duration.takeIf { it > 0L } ?: exoPlayer.duration.coerceAtLeast(0L)
+            if (curDur > 0L || curPos > 0L) {
+                val progressPercent = if (curDur > 0L) {
+                    ((curPos.toFloat() / curDur.toFloat()) * 100).toInt().coerceIn(0, 100)
+                } else 0
 
-        val notification = NotificationCompat.Builder(context, VIDEO_NOTIFICATION_CHANNEL_ID)
-            .setSmallIcon(android.R.drawable.ic_media_play)
-            .setContentTitle(title)
-            .setContentText("$timeText  ($progressPercent%)")
-            .setSubText(if (isPlaying) "Playing" else "Paused")
-            .setContentIntent(contentIntent)
-            .setOngoing(isPlaying)
-            .setOnlyAlertOnce(true)
-            .setProgress(100, progressPercent, false)
-            .addAction(android.R.drawable.ic_media_rew, "-10s", rewindIntent)
-            .addAction(
-                if (isPlaying) android.R.drawable.ic_media_pause else android.R.drawable.ic_media_play,
-                if (isPlaying) "Pause" else "Play",
-                playPauseIntent
-            )
-            .addAction(android.R.drawable.ic_media_ff, "+10s", forwardIntent)
-            .build()
+                val title = videoTitle.ifEmpty { "Video Playing" }
+                val timeText = "${formatTime(curPos)} / ${formatTime(curDur)}"
 
-        try {
-            notificationManager.notify(VIDEO_NOTIFICATION_ID, notification)
-        } catch (_: Exception) {}
+                val notification = NotificationCompat.Builder(context, VIDEO_NOTIFICATION_CHANNEL_ID)
+                    .setSmallIcon(android.R.drawable.ic_media_play)
+                    .setContentTitle(title)
+                    .setContentText("$timeText  ($progressPercent%)")
+                    .setSubText(if (isPlaying) "Playing" else "Paused")
+                    .setContentIntent(contentIntent)
+                    .setOngoing(isPlaying)
+                    .setOnlyAlertOnce(true)
+                    .setProgress(100, progressPercent, false)
+                    .addAction(android.R.drawable.ic_media_rew, "-10s", rewindIntent)
+                    .addAction(
+                        if (isPlaying) android.R.drawable.ic_media_pause else android.R.drawable.ic_media_play,
+                        if (isPlaying) "Pause" else "Play",
+                        playPauseIntent
+                    )
+                    .addAction(android.R.drawable.ic_media_ff, "+10s", forwardIntent)
+                    .build()
+
+                try {
+                    notificationManager.notify(VIDEO_NOTIFICATION_ID, notification)
+                } catch (_: Exception) {}
+            }
+
+            if (!isPlaying) break // update once when paused, don't loop
+            delay(1000L) // 1 second update interval
+        }
     }
 
     // ─── Lifecycle Handling ───────────────────────────────────────────────────
@@ -1589,38 +1697,6 @@ fun VideoPlayerScreen(
                                 .padding(start = 14.dp, end = 14.dp, bottom = 8.dp),
                             horizontalAlignment = Alignment.CenterHorizontally
                         ) {
-                            // ─── Seek Thumbnail Preview (Floating Directly Above Progress Bar) ───
-                            LaunchedEffect(scrubPosition, isDraggingSeek) {
-                                if (isDraggingSeek) {
-                                    val targetMs = scrubPosition.toLong()
-                                    val bucket = targetMs / 1000L
-                                    val cached = frameCache.get(bucket)
-                                    if (cached != null) {
-                                        seekThumbnail = cached
-                                    } else {
-                                        val bmp = withContext(Dispatchers.IO) {
-                                            try {
-                                                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O_MR1) {
-                                                    thumbnailRetriever.getScaledFrameAtTime(
-                                                        targetMs * 1000L,
-                                                        android.media.MediaMetadataRetriever.OPTION_CLOSEST_SYNC,
-                                                        240, 135
-                                                    ) ?: thumbnailRetriever.getFrameAtTime(targetMs * 1000L, android.media.MediaMetadataRetriever.OPTION_CLOSEST_SYNC)
-                                                } else {
-                                                    thumbnailRetriever.getFrameAtTime(targetMs * 1000L, android.media.MediaMetadataRetriever.OPTION_CLOSEST_SYNC)
-                                                }
-                                            } catch (_: Exception) { null }
-                                        }
-                                        if (bmp != null) {
-                                            frameCache.put(bucket, bmp)
-                                            seekThumbnail = bmp
-                                        }
-                                    }
-                                } else {
-                                    seekThumbnail = null
-                                }
-                            }
-
                             val isSeekingNow = isDraggingSeek
                             val previewTimeMs = scrubPosition.toLong()
                             AnimatedVisibility(
@@ -1743,190 +1819,392 @@ fun VideoPlayerScreen(
 
                             Spacer(Modifier.height(6.dp))
 
-                            // ─── Bottom Media Controls Bar (100% Symmetrical) ───
-                            Box(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(horizontal = 4.dp, vertical = 2.dp)
-                            ) {
-                                // Left Group: Lock & Mute
-                                Row(
-                                    modifier = Modifier.align(Alignment.CenterStart),
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                            // ─── Bottom Media Controls Bar (Adaptive Layout) ───
+                            if (isLandscape) {
+                                // Landscape: Wide single-row Box layout (100% Symmetrical)
+                                Box(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(horizontal = 4.dp, vertical = 2.dp)
                                 ) {
-                                    IconButton(
-                                        onClick = { isLocked = true },
-                                        modifier = Modifier
-                                            .size(42.dp)
-                                            .clip(CircleShape)
-                                            .background(Brush.verticalGradient(listOf(Color(0xFF252636), Color(0xFF11121C))))
-                                            .border(1.2.dp, Brush.verticalGradient(listOf(primaryAccent.copy(0.6f), primaryAccent.copy(0.2f))), CircleShape)
+                                    // Left Group: Lock & Mute
+                                    Row(
+                                        modifier = Modifier.align(Alignment.CenterStart),
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(10.dp)
                                     ) {
-                                        Icon(
-                                            Icons.Rounded.LockOpen,
-                                            contentDescription = "Lock controls",
-                                            tint = primaryAccent,
-                                            modifier = Modifier.size(22.dp)
-                                        )
+                                        IconButton(
+                                            onClick = { isLocked = true },
+                                            modifier = Modifier
+                                                .size(42.dp)
+                                                .clip(CircleShape)
+                                                .background(Brush.verticalGradient(listOf(Color(0xFF252636), Color(0xFF11121C))))
+                                                .border(1.2.dp, Brush.verticalGradient(listOf(primaryAccent.copy(0.6f), primaryAccent.copy(0.2f))), CircleShape)
+                                        ) {
+                                            Icon(
+                                                Icons.Rounded.LockOpen,
+                                                contentDescription = "Lock controls",
+                                                tint = primaryAccent,
+                                                modifier = Modifier.size(22.dp)
+                                            )
+                                        }
+
+                                        IconButton(
+                                            onClick = toggleMute,
+                                            modifier = Modifier
+                                                .size(42.dp)
+                                                .clip(CircleShape)
+                                                .background(Brush.verticalGradient(listOf(Color(0xFF252636), Color(0xFF11121C))))
+                                                .border(1.2.dp, Brush.verticalGradient(listOf(primaryAccent.copy(0.6f), primaryAccent.copy(0.2f))), CircleShape)
+                                        ) {
+                                            Icon(
+                                                if (isMuted || volumePct == 0f) Icons.AutoMirrored.Rounded.VolumeOff else Icons.AutoMirrored.Rounded.VolumeUp,
+                                                contentDescription = "Mute toggle",
+                                                tint = if (isMuted) Color(0xFFFF5252) else primaryAccent,
+                                                modifier = Modifier.size(22.dp)
+                                            )
+                                        }
                                     }
 
-                                    IconButton(
-                                        onClick = toggleMute,
-                                        modifier = Modifier
-                                            .size(42.dp)
-                                            .clip(CircleShape)
-                                            .background(Brush.verticalGradient(listOf(Color(0xFF252636), Color(0xFF11121C))))
-                                            .border(1.2.dp, Brush.verticalGradient(listOf(primaryAccent.copy(0.6f), primaryAccent.copy(0.2f))), CircleShape)
+                                    // Center Media Group: [10s Back] [Prev] [Play/Pause (64dp)] [Next] [10s Forward]
+                                    // Strictly pinned to exact screen center
+                                    Row(
+                                        modifier = Modifier.align(Alignment.Center),
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(16.dp)
                                     ) {
-                                        Icon(
-                                            if (isMuted || volumePct == 0f) Icons.AutoMirrored.Rounded.VolumeOff else Icons.AutoMirrored.Rounded.VolumeUp,
-                                            contentDescription = "Mute toggle",
-                                            tint = if (isMuted) Color(0xFFFF5252) else primaryAccent,
-                                            modifier = Modifier.size(22.dp)
-                                        )
-                                    }
-                                }
+                                        IconButton(
+                                            onClick = { seekBy(-10000L) },
+                                            modifier = Modifier
+                                                .size(42.dp)
+                                                .clip(CircleShape)
+                                                .background(Brush.verticalGradient(listOf(Color(0xFF252636), Color(0xFF11121C))))
+                                                .border(1.2.dp, Brush.verticalGradient(listOf(primaryAccent.copy(0.6f), primaryAccent.copy(0.2f))), CircleShape)
+                                        ) {
+                                            Icon(
+                                                Icons.Rounded.Replay10,
+                                                contentDescription = "-10 seconds",
+                                                tint = primaryAccent,
+                                                modifier = Modifier.size(24.dp)
+                                            )
+                                        }
 
-                                // Center Media Group: [10s Back] [Prev] [Play/Pause (64dp)] [Next] [10s Forward]
-                                // Strictly pinned to exact screen center
-                                Row(
-                                    modifier = Modifier.align(Alignment.Center),
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.spacedBy(16.dp)
-                                ) {
-                                    IconButton(
-                                        onClick = { seekBy(-10000L) },
-                                        modifier = Modifier
-                                            .size(42.dp)
-                                            .clip(CircleShape)
-                                            .background(Brush.verticalGradient(listOf(Color(0xFF252636), Color(0xFF11121C))))
-                                            .border(1.2.dp, Brush.verticalGradient(listOf(primaryAccent.copy(0.6f), primaryAccent.copy(0.2f))), CircleShape)
+                                        IconButton(
+                                            onClick = playPreviousVideo,
+                                            enabled = currentVideoIndex > 0,
+                                            modifier = Modifier
+                                                .size(42.dp)
+                                                .clip(CircleShape)
+                                                .background(Brush.verticalGradient(listOf(Color(0xFF252636), Color(0xFF11121C))))
+                                                .border(1.2.dp, Brush.verticalGradient(listOf(primaryAccent.copy(0.6f), primaryAccent.copy(0.2f))), CircleShape)
+                                        ) {
+                                            Icon(
+                                                Icons.Rounded.SkipPrevious,
+                                                contentDescription = "Previous video",
+                                                tint = if (currentVideoIndex > 0) primaryAccent else primaryAccent.copy(alpha = 0.35f),
+                                                modifier = Modifier.size(26.dp)
+                                            )
+                                        }
+
+                                        // Center Play/Pause button with theme-colored radiant gradient & white icon
+                                        Box(
+                                            modifier = Modifier
+                                                .size(64.dp)
+                                                .clip(CircleShape)
+                                                .background(Brush.radialGradient(listOf(primaryAccent, primaryAccent.copy(alpha = 0.85f))))
+                                                .border(2.dp, Color.White, CircleShape)
+                                                .clickable {
+                                                    if (isPlaying) exoPlayer.pause() else exoPlayer.play()
+                                                },
+                                            contentAlignment = Alignment.Center
+                                        ) {
+                                            Icon(
+                                                imageVector = if (isPlaying) Icons.Rounded.Pause else Icons.Rounded.PlayArrow,
+                                                contentDescription = "Play/Pause",
+                                                tint = Color.White,
+                                                modifier = Modifier.size(38.dp)
+                                            )
+                                        }
+
+                                        IconButton(
+                                            onClick = playNextVideo,
+                                            enabled = currentVideoIndex >= 0 && currentVideoIndex < playlistVideos.size - 1,
+                                            modifier = Modifier
+                                                .size(42.dp)
+                                                .clip(CircleShape)
+                                                .background(Brush.verticalGradient(listOf(Color(0xFF252636), Color(0xFF11121C))))
+                                                .border(1.2.dp, Brush.verticalGradient(listOf(primaryAccent.copy(0.6f), primaryAccent.copy(0.2f))), CircleShape)
+                                        ) {
+                                            Icon(
+                                                Icons.Rounded.SkipNext,
+                                                contentDescription = "Next video",
+                                                tint = if (currentVideoIndex >= 0 && currentVideoIndex < playlistVideos.size - 1)
+                                                    primaryAccent else primaryAccent.copy(alpha = 0.35f),
+                                                modifier = Modifier.size(26.dp)
+                                            )
+                                        }
+
+                                        IconButton(
+                                            onClick = { seekBy(10000L) },
+                                            modifier = Modifier
+                                                .size(42.dp)
+                                                .clip(CircleShape)
+                                                .background(Brush.verticalGradient(listOf(Color(0xFF252636), Color(0xFF11121C))))
+                                                .border(1.2.dp, Brush.verticalGradient(listOf(primaryAccent.copy(0.6f), primaryAccent.copy(0.2f))), CircleShape)
+                                        ) {
+                                            Icon(
+                                                Icons.Rounded.Forward10,
+                                                contentDescription = "+10 seconds",
+                                                tint = primaryAccent,
+                                                modifier = Modifier.size(24.dp)
+                                            )
+                                        }
+                                    }
+
+                                    // Right Group: Aspect Ratio & Fullscreen Exit
+                                    Row(
+                                        modifier = Modifier.align(Alignment.CenterEnd),
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(10.dp)
                                     ) {
-                                        Icon(
-                                            Icons.Rounded.Replay10,
-                                            contentDescription = "-10 seconds",
-                                            tint = primaryAccent,
-                                            modifier = Modifier.size(24.dp)
-                                        )
-                                    }
+                                        IconButton(
+                                            onClick = cycleResizeMode,
+                                            modifier = Modifier
+                                                .size(42.dp)
+                                                .clip(CircleShape)
+                                                .background(Brush.verticalGradient(listOf(Color(0xFF252636), Color(0xFF11121C))))
+                                                .border(1.2.dp, Brush.verticalGradient(listOf(primaryAccent.copy(0.6f), primaryAccent.copy(0.2f))), CircleShape)
+                                        ) {
+                                            Icon(
+                                                Icons.Rounded.FitScreen,
+                                                contentDescription = "Aspect ratio",
+                                                tint = primaryAccent,
+                                                modifier = Modifier.size(22.dp)
+                                            )
+                                        }
 
-                                    IconButton(
-                                        onClick = playPreviousVideo,
-                                        enabled = currentVideoIndex > 0,
-                                        modifier = Modifier
-                                            .size(42.dp)
-                                            .clip(CircleShape)
-                                            .background(Brush.verticalGradient(listOf(Color(0xFF252636), Color(0xFF11121C))))
-                                            .border(1.2.dp, Brush.verticalGradient(listOf(primaryAccent.copy(0.6f), primaryAccent.copy(0.2f))), CircleShape)
-                                    ) {
-                                        Icon(
-                                            Icons.Rounded.SkipPrevious,
-                                            contentDescription = "Previous video",
-                                            tint = if (currentVideoIndex > 0) primaryAccent else primaryAccent.copy(alpha = 0.35f),
-                                            modifier = Modifier.size(26.dp)
-                                        )
-                                    }
-
-                                    // Center Play/Pause button with theme-colored radiant gradient & white icon
-                                    Box(
-                                        modifier = Modifier
-                                            .size(64.dp)
-                                            .clip(CircleShape)
-                                            .background(Brush.radialGradient(listOf(primaryAccent, primaryAccent.copy(alpha = 0.85f))))
-                                            .border(2.dp, Color.White, CircleShape)
-                                            .clickable {
-                                                if (isPlaying) exoPlayer.pause() else exoPlayer.play()
+                                        IconButton(
+                                            onClick = {
+                                                manualOrientationOverrideTime = System.currentTimeMillis() + 3000L
+                                                currentOrientationSetting = if (isLandscape) 0 else 1
+                                                activity?.requestedOrientation = if (isLandscape) {
+                                                    ActivityInfo.SCREEN_ORIENTATION_SENSOR_PORTRAIT
+                                                } else {
+                                                    ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
+                                                }
                                             },
-                                        contentAlignment = Alignment.Center
-                                    ) {
-                                        Icon(
-                                            imageVector = if (isPlaying) Icons.Rounded.Pause else Icons.Rounded.PlayArrow,
-                                            contentDescription = "Play/Pause",
-                                            tint = Color.White,
-                                            modifier = Modifier.size(38.dp)
-                                        )
-                                    }
-
-                                    IconButton(
-                                        onClick = playNextVideo,
-                                        enabled = currentVideoIndex >= 0 && currentVideoIndex < playlistVideos.size - 1,
-                                        modifier = Modifier
-                                            .size(42.dp)
-                                            .clip(CircleShape)
-                                            .background(Brush.verticalGradient(listOf(Color(0xFF252636), Color(0xFF11121C))))
-                                            .border(1.2.dp, Brush.verticalGradient(listOf(primaryAccent.copy(0.6f), primaryAccent.copy(0.2f))), CircleShape)
-                                    ) {
-                                        Icon(
-                                            Icons.Rounded.SkipNext,
-                                            contentDescription = "Next video",
-                                            tint = if (currentVideoIndex >= 0 && currentVideoIndex < playlistVideos.size - 1)
-                                                primaryAccent else primaryAccent.copy(alpha = 0.35f),
-                                            modifier = Modifier.size(26.dp)
-                                        )
-                                    }
-
-                                    IconButton(
-                                        onClick = { seekBy(10000L) },
-                                        modifier = Modifier
-                                            .size(42.dp)
-                                            .clip(CircleShape)
-                                            .background(Brush.verticalGradient(listOf(Color(0xFF252636), Color(0xFF11121C))))
-                                            .border(1.2.dp, Brush.verticalGradient(listOf(primaryAccent.copy(0.6f), primaryAccent.copy(0.2f))), CircleShape)
-                                    ) {
-                                        Icon(
-                                            Icons.Rounded.Forward10,
-                                            contentDescription = "+10 seconds",
-                                            tint = primaryAccent,
-                                            modifier = Modifier.size(24.dp)
-                                        )
+                                            modifier = Modifier
+                                                .size(42.dp)
+                                                .clip(CircleShape)
+                                                .background(Brush.verticalGradient(listOf(Color(0xFF252636), Color(0xFF11121C))))
+                                                .border(1.2.dp, Brush.verticalGradient(listOf(primaryAccent.copy(0.6f), primaryAccent.copy(0.2f))), CircleShape)
+                                        ) {
+                                            Icon(
+                                                Icons.Rounded.ScreenRotation,
+                                                contentDescription = "Rotate Screen",
+                                                tint = primaryAccent,
+                                                modifier = Modifier.size(22.dp)
+                                            )
+                                        }
                                     }
                                 }
-
-                                // Right Group: Aspect Ratio & Fullscreen Exit
-                                Row(
-                                    modifier = Modifier.align(Alignment.CenterEnd),
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                            } else {
+                                // Portrait / Vertical Video: 2-tier ergonomic layout (zero button overlap)
+                                Column(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(horizontal = 2.dp, vertical = 2.dp),
+                                    horizontalAlignment = Alignment.CenterHorizontally
                                 ) {
-                                    IconButton(
-                                        onClick = cycleResizeMode,
+                                    // Row 1: Utility Controls (Lock & Mute on left, FitScreen & Rotate on right)
+                                    Row(
                                         modifier = Modifier
-                                            .size(42.dp)
-                                            .clip(CircleShape)
-                                            .background(Brush.verticalGradient(listOf(Color(0xFF252636), Color(0xFF11121C))))
-                                            .border(1.2.dp, Brush.verticalGradient(listOf(primaryAccent.copy(0.6f), primaryAccent.copy(0.2f))), CircleShape)
+                                            .fillMaxWidth()
+                                            .padding(horizontal = 6.dp),
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.SpaceBetween
                                     ) {
-                                        Icon(
-                                            Icons.Rounded.FitScreen,
-                                            contentDescription = "Aspect ratio",
-                                            tint = primaryAccent,
-                                            modifier = Modifier.size(22.dp)
-                                        )
+                                        // Left Group: Lock & Mute
+                                        Row(
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            horizontalArrangement = Arrangement.spacedBy(10.dp)
+                                        ) {
+                                            IconButton(
+                                                onClick = { isLocked = true },
+                                                modifier = Modifier
+                                                    .size(40.dp)
+                                                    .clip(CircleShape)
+                                                    .background(Brush.verticalGradient(listOf(Color(0xFF252636), Color(0xFF11121C))))
+                                                    .border(1.2.dp, Brush.verticalGradient(listOf(primaryAccent.copy(0.6f), primaryAccent.copy(0.2f))), CircleShape)
+                                            ) {
+                                                Icon(
+                                                    Icons.Rounded.LockOpen,
+                                                    contentDescription = "Lock controls",
+                                                    tint = primaryAccent,
+                                                    modifier = Modifier.size(20.dp)
+                                                )
+                                            }
+
+                                            IconButton(
+                                                onClick = toggleMute,
+                                                modifier = Modifier
+                                                    .size(40.dp)
+                                                    .clip(CircleShape)
+                                                    .background(Brush.verticalGradient(listOf(Color(0xFF252636), Color(0xFF11121C))))
+                                                    .border(1.2.dp, Brush.verticalGradient(listOf(primaryAccent.copy(0.6f), primaryAccent.copy(0.2f))), CircleShape)
+                                            ) {
+                                                Icon(
+                                                    if (isMuted || volumePct == 0f) Icons.AutoMirrored.Rounded.VolumeOff else Icons.AutoMirrored.Rounded.VolumeUp,
+                                                    contentDescription = "Mute toggle",
+                                                    tint = if (isMuted) Color(0xFFFF5252) else primaryAccent,
+                                                    modifier = Modifier.size(20.dp)
+                                                )
+                                            }
+                                        }
+
+                                        // Right Group: Aspect Ratio & Rotate
+                                        Row(
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            horizontalArrangement = Arrangement.spacedBy(10.dp)
+                                        ) {
+                                            IconButton(
+                                                onClick = cycleResizeMode,
+                                                modifier = Modifier
+                                                    .size(40.dp)
+                                                    .clip(CircleShape)
+                                                    .background(Brush.verticalGradient(listOf(Color(0xFF252636), Color(0xFF11121C))))
+                                                    .border(1.2.dp, Brush.verticalGradient(listOf(primaryAccent.copy(0.6f), primaryAccent.copy(0.2f))), CircleShape)
+                                            ) {
+                                                Icon(
+                                                    Icons.Rounded.FitScreen,
+                                                    contentDescription = "Aspect ratio",
+                                                    tint = primaryAccent,
+                                                    modifier = Modifier.size(20.dp)
+                                                )
+                                            }
+
+                                            IconButton(
+                                                onClick = {
+                                                    manualOrientationOverrideTime = System.currentTimeMillis() + 3000L
+                                                    currentOrientationSetting = if (isLandscape) 0 else 1
+                                                    activity?.requestedOrientation = if (isLandscape) {
+                                                        ActivityInfo.SCREEN_ORIENTATION_SENSOR_PORTRAIT
+                                                    } else {
+                                                        ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
+                                                    }
+                                                },
+                                                modifier = Modifier
+                                                    .size(40.dp)
+                                                    .clip(CircleShape)
+                                                    .background(Brush.verticalGradient(listOf(Color(0xFF252636), Color(0xFF11121C))))
+                                                    .border(1.2.dp, Brush.verticalGradient(listOf(primaryAccent.copy(0.6f), primaryAccent.copy(0.2f))), CircleShape)
+                                            ) {
+                                                Icon(
+                                                    Icons.Rounded.ScreenRotation,
+                                                    contentDescription = "Rotate Screen",
+                                                    tint = primaryAccent,
+                                                    modifier = Modifier.size(20.dp)
+                                                )
+                                            }
+                                        }
                                     }
 
-                                    IconButton(
-                                        onClick = {
-                                            manualOrientationOverrideTime = System.currentTimeMillis() + 3000L
-                                            currentOrientationSetting = if (isLandscape) 0 else 1
-                                            activity?.requestedOrientation = if (isLandscape) {
-                                                ActivityInfo.SCREEN_ORIENTATION_SENSOR_PORTRAIT
-                                            } else {
-                                                ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
-                                            }
-                                        },
+                                    Spacer(Modifier.height(8.dp))
+
+                                    // Row 2: Primary Media Playback Controls (10s Back, Prev, Play/Pause, Next, 10s Forward)
+                                    Row(
                                         modifier = Modifier
-                                            .size(42.dp)
-                                            .clip(CircleShape)
-                                            .background(Brush.verticalGradient(listOf(Color(0xFF252636), Color(0xFF11121C))))
-                                            .border(1.2.dp, Brush.verticalGradient(listOf(primaryAccent.copy(0.6f), primaryAccent.copy(0.2f))), CircleShape)
+                                            .fillMaxWidth()
+                                            .padding(horizontal = 4.dp),
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.SpaceEvenly
                                     ) {
-                                        Icon(
-                                            Icons.Rounded.ScreenRotation,
-                                            contentDescription = "Rotate Screen",
-                                            tint = primaryAccent,
-                                            modifier = Modifier.size(22.dp)
-                                        )
+                                        IconButton(
+                                            onClick = { seekBy(-10000L) },
+                                            modifier = Modifier
+                                                .size(42.dp)
+                                                .clip(CircleShape)
+                                                .background(Brush.verticalGradient(listOf(Color(0xFF252636), Color(0xFF11121C))))
+                                                .border(1.2.dp, Brush.verticalGradient(listOf(primaryAccent.copy(0.6f), primaryAccent.copy(0.2f))), CircleShape)
+                                        ) {
+                                            Icon(
+                                                Icons.Rounded.Replay10,
+                                                contentDescription = "-10 seconds",
+                                                tint = primaryAccent,
+                                                modifier = Modifier.size(24.dp)
+                                            )
+                                        }
+
+                                        IconButton(
+                                            onClick = playPreviousVideo,
+                                            enabled = currentVideoIndex > 0,
+                                            modifier = Modifier
+                                                .size(42.dp)
+                                                .clip(CircleShape)
+                                                .background(Brush.verticalGradient(listOf(Color(0xFF252636), Color(0xFF11121C))))
+                                                .border(1.2.dp, Brush.verticalGradient(listOf(primaryAccent.copy(0.6f), primaryAccent.copy(0.2f))), CircleShape)
+                                        ) {
+                                            Icon(
+                                                Icons.Rounded.SkipPrevious,
+                                                contentDescription = "Previous video",
+                                                tint = if (currentVideoIndex > 0) primaryAccent else primaryAccent.copy(alpha = 0.35f),
+                                                modifier = Modifier.size(26.dp)
+                                            )
+                                        }
+
+                                        // Center Play/Pause button with theme-colored radiant gradient & white icon
+                                        Box(
+                                            modifier = Modifier
+                                                .size(58.dp)
+                                                .clip(CircleShape)
+                                                .background(Brush.radialGradient(listOf(primaryAccent, primaryAccent.copy(alpha = 0.85f))))
+                                                .border(2.dp, Color.White, CircleShape)
+                                                .clickable {
+                                                    if (isPlaying) exoPlayer.pause() else exoPlayer.play()
+                                                },
+                                            contentAlignment = Alignment.Center
+                                        ) {
+                                            Icon(
+                                                imageVector = if (isPlaying) Icons.Rounded.Pause else Icons.Rounded.PlayArrow,
+                                                contentDescription = "Play/Pause",
+                                                tint = Color.White,
+                                                modifier = Modifier.size(36.dp)
+                                            )
+                                        }
+
+                                        IconButton(
+                                            onClick = playNextVideo,
+                                            enabled = currentVideoIndex >= 0 && currentVideoIndex < playlistVideos.size - 1,
+                                            modifier = Modifier
+                                                .size(42.dp)
+                                                .clip(CircleShape)
+                                                .background(Brush.verticalGradient(listOf(Color(0xFF252636), Color(0xFF11121C))))
+                                                .border(1.2.dp, Brush.verticalGradient(listOf(primaryAccent.copy(0.6f), primaryAccent.copy(0.2f))), CircleShape)
+                                        ) {
+                                            Icon(
+                                                Icons.Rounded.SkipNext,
+                                                contentDescription = "Next video",
+                                                tint = if (currentVideoIndex >= 0 && currentVideoIndex < playlistVideos.size - 1)
+                                                    primaryAccent else primaryAccent.copy(alpha = 0.35f),
+                                                modifier = Modifier.size(26.dp)
+                                            )
+                                        }
+
+                                        IconButton(
+                                            onClick = { seekBy(10000L) },
+                                            modifier = Modifier
+                                                .size(42.dp)
+                                                .clip(CircleShape)
+                                                .background(Brush.verticalGradient(listOf(Color(0xFF252636), Color(0xFF11121C))))
+                                                .border(1.2.dp, Brush.verticalGradient(listOf(primaryAccent.copy(0.6f), primaryAccent.copy(0.2f))), CircleShape)
+                                        ) {
+                                            Icon(
+                                                Icons.Rounded.Forward10,
+                                                contentDescription = "+10 seconds",
+                                                tint = primaryAccent,
+                                                modifier = Modifier.size(24.dp)
+                                            )
+                                        }
                                     }
                                 }
                             }

@@ -33,6 +33,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
@@ -149,7 +150,7 @@ fun FolderListScreen(
 
     // Background animation
     val infiniteTransition = rememberInfiniteTransition(label = "bg")
-    val gradientOffset by infiniteTransition.animateFloat(
+    val gradientOffset = infiniteTransition.animateFloat(
         initialValue = 0f, targetValue = 1000f,
         animationSpec = infiniteRepeatable(tween(20000, easing = LinearEasing), RepeatMode.Reverse),
         label = "bg_offset"
@@ -289,7 +290,7 @@ fun FolderListScreen(
 
     // ─── Main Layout ────────────────────────────────────────────────────────
     Box(modifier = Modifier.fillMaxSize()) {
-        CanvasBg(gradientOffset)
+        CanvasBg(offsetProvider = { gradientOffset.value })
 
         Scaffold(
             containerColor = Color.Transparent,
@@ -1047,7 +1048,7 @@ fun FolderListScreen(
                     Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                         Box(modifier = Modifier.size(52.dp).clip(RoundedCornerShape(10.dp)).background(c.glassBg)) {
                             AsyncImage(
-                                model = ImageRequest.Builder(context).data(video.uri).decoderFactory(VideoFrameDecoder.Factory()).build(),
+                                model = remember(video.uri) { buildVideoThumbnailRequest(context, video.uri, video.duration) },
                                 contentDescription = null, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize()
                             )
                         }
@@ -1297,7 +1298,7 @@ fun FolderListScreen(
 // BACKGROUND
 // ═══════════════════════════════════════════════════════════════════════════════
 @Composable
-internal fun CanvasBg(offset: Float) {
+internal fun CanvasBg(offsetProvider: () -> Float) {
     val c = LocalAppColors.current
     if (c.isDark) {
         Box(
@@ -1312,30 +1313,24 @@ internal fun CanvasBg(offset: Float) {
                         )
                     )
                 )
-        ) {
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .background(
-                        Brush.radialGradient(
+                .drawBehind {
+                    val offset = offsetProvider()
+                    drawRect(
+                        brush = Brush.radialGradient(
                             colors = listOf(Color(0xFF383B4C).copy(alpha = 0.25f), Color.Transparent),
                             center = Offset(offset, offset * 0.8f),
                             radius = 1000f
                         )
                     )
-            )
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .background(
-                        Brush.radialGradient(
+                    drawRect(
+                        brush = Brush.radialGradient(
                             colors = listOf(c.accentBlue.copy(alpha = 0.15f), Color.Transparent),
                             center = Offset(1000f - offset, 1800f - offset),
                             radius = 1200f
                         )
                     )
-            )
-        }
+                }
+        )
     } else {
         Box(
             modifier = Modifier
@@ -1474,7 +1469,7 @@ private fun ContinueWatchingCard(video: VideoItem, appPreferences: AppPreference
             .bounceClick(onClick = onClick)
     ) {
         AsyncImage(
-            model = ImageRequest.Builder(context).data(video.uri).decoderFactory(VideoFrameDecoder.Factory()).build(),
+            model = remember(video.uri) { buildVideoThumbnailRequest(context, video.uri, video.duration) },
             contentDescription = null, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize()
         )
         // Top right percentage badge
@@ -1555,7 +1550,7 @@ private fun RecentlyAddedVideoCard(video: VideoItem, appPreferences: AppPreferen
             .bounceClick(onClick = onClick)
     ) {
         AsyncImage(
-            model = ImageRequest.Builder(context).data(video.uri).decoderFactory(VideoFrameDecoder.Factory()).build(),
+            model = remember(video.uri) { buildVideoThumbnailRequest(context, video.uri, video.duration) },
             contentDescription = null, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize()
         )
         Box(modifier = Modifier.align(Alignment.BottomCenter).fillMaxWidth().height(44.dp)
@@ -1604,18 +1599,6 @@ fun FolderItem(
     val context = LocalContext.current
     val firstVideo = folder.videos.firstOrNull()
 
-    // ─── Theme-aware animation ─────────────────────────────────────────────────
-    val themeAnim = rememberInfiniteTransition(label = "themeGlow")
-    val themePulse by themeAnim.animateFloat(
-        initialValue = 0.35f, targetValue = 0.85f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(1600, easing = FastOutSlowInEasing),
-            repeatMode = RepeatMode.Reverse
-        ),
-        label = "pulse"
-    )
-    val themeGlowColor = c.accentBlue.copy(alpha = themePulse * 0.45f)
-    val themeGlowElevation = (4 + (themePulse * 6)).dp
     val totalFolderSize = remember(folder.videos) { folder.videos.sumOf { it.size } }
     val relativePath = folder.videos.firstOrNull()?.relativePath?.trim('/') ?: ""
     val pathLabel = if (relativePath.contains('/')) {
@@ -1657,7 +1640,7 @@ fun FolderItem(
                 brush = if (isPinned) Brush.verticalGradient(listOf(c.accentBlue, c.accentBlue.copy(0.6f)))
                 else if (isHistory) Brush.verticalGradient(listOf(c.accentBlue.copy(0.6f), c.glassBorder))
                 else Brush.verticalGradient(listOf(
-                    themeGlowColor.copy(alpha = themePulse * 0.6f),
+                    c.accentBlue.copy(alpha = 0.28f),
                     c.cardBorderHighlight,
                     c.glassBorder,
                     c.cardBorderShadow
@@ -1701,7 +1684,7 @@ fun FolderItem(
                     )
                 } else if (firstVideo != null && !isHistory) {
                     AsyncImage(
-                        model = ImageRequest.Builder(context).data(firstVideo.uri).decoderFactory(VideoFrameDecoder.Factory()).build(),
+                        model = remember(firstVideo.uri) { buildVideoThumbnailRequest(context, firstVideo.uri, firstVideo.duration) },
                         contentDescription = null, contentScale = ContentScale.Crop,
                         modifier = Modifier.fillMaxSize().clip(RoundedCornerShape(14.dp))
                     )
@@ -1789,14 +1772,14 @@ fun FolderGridItem(
                     Column(modifier = Modifier.weight(1f).fillMaxHeight(), verticalArrangement = Arrangement.spacedBy(2.dp)) {
                         previewVideos.getOrNull(0)?.let { video ->
                             AsyncImage(
-                                model = ImageRequest.Builder(context).data(video.uri).decoderFactory(VideoFrameDecoder.Factory()).build(),
+                                model = remember(video.uri) { buildVideoThumbnailRequest(context, video.uri, video.duration) },
                                 contentDescription = null, contentScale = ContentScale.Crop,
                                 modifier = Modifier.weight(1f).fillMaxWidth()
                             )
                         }
                         previewVideos.getOrNull(2)?.let { video ->
                             AsyncImage(
-                                model = ImageRequest.Builder(context).data(video.uri).decoderFactory(VideoFrameDecoder.Factory()).build(),
+                                model = remember(video.uri) { buildVideoThumbnailRequest(context, video.uri, video.duration) },
                                 contentDescription = null, contentScale = ContentScale.Crop,
                                 modifier = Modifier.weight(1f).fillMaxWidth()
                             )
@@ -1806,14 +1789,14 @@ fun FolderGridItem(
                     Column(modifier = Modifier.weight(1f).fillMaxHeight(), verticalArrangement = Arrangement.spacedBy(2.dp)) {
                         previewVideos.getOrNull(1)?.let { video ->
                             AsyncImage(
-                                model = ImageRequest.Builder(context).data(video.uri).decoderFactory(VideoFrameDecoder.Factory()).build(),
+                                model = remember(video.uri) { buildVideoThumbnailRequest(context, video.uri, video.duration) },
                                 contentDescription = null, contentScale = ContentScale.Crop,
                                 modifier = Modifier.weight(1f).fillMaxWidth()
                             )
                         }
                         previewVideos.getOrNull(3)?.let { video ->
                             AsyncImage(
-                                model = ImageRequest.Builder(context).data(video.uri).decoderFactory(VideoFrameDecoder.Factory()).build(),
+                                model = remember(video.uri) { buildVideoThumbnailRequest(context, video.uri, video.duration) },
                                 contentDescription = null, contentScale = ContentScale.Crop,
                                 modifier = Modifier.weight(1f).fillMaxWidth()
                             )
@@ -1965,7 +1948,7 @@ fun VideoListItem(
                     .border(1.2.dp, Color.White.copy(alpha = 0.25f), RoundedCornerShape(12.dp))
             ) {
                 AsyncImage(
-                    model = ImageRequest.Builder(context).data(video.uri).decoderFactory(VideoFrameDecoder.Factory()).build(),
+                    model = remember(video.uri) { buildVideoThumbnailRequest(context, video.uri, video.duration) },
                     contentDescription = null, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize()
                 )
                 Box(

@@ -87,8 +87,9 @@ internal fun formatSize(bytes: Long): String {
  * Builds an ImageRequest for video thumbnails that extracts a frame past timestamp 0
  * (e.g. 1 second or 10% of duration) to avoid blank white or black intro frames.
  */
+internal val sharedVideoFrameDecoderFactory = VideoFrameDecoder.Factory()
+
 internal fun buildVideoThumbnailRequest(context: Context, uri: Uri, durationMs: Long = 0L): ImageRequest {
-    // If video duration is available and > 2s, seek to 1 second or 10% of duration
     val frameMicros = when {
         durationMs > 3000L -> 1_000_000L // 1 second in
         durationMs > 1000L -> (durationMs * 1000L) / 4 // 25% in
@@ -96,8 +97,8 @@ internal fun buildVideoThumbnailRequest(context: Context, uri: Uri, durationMs: 
     }
     return ImageRequest.Builder(context)
         .data(uri)
-        .decoderFactory(VideoFrameDecoder.Factory())
         .videoFrameMicros(frameMicros)
+        .size(360, 240)
         .build()
 }
 

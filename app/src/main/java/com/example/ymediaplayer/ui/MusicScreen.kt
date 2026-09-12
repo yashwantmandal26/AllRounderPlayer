@@ -284,13 +284,14 @@ fun MusicScreen(
         }
     }
 
-    // Periodic position update
+    // Periodic position update (throttled when paused)
     LaunchedEffect(mediaController) {
         while (true) {
+            val playing = mediaController?.isPlaying == true
+            isPlaying = playing
             currentPosition = mediaController?.currentPosition ?: 0L
             duration = (mediaController?.duration ?: 0L).coerceAtLeast(0L)
-            isPlaying = mediaController?.isPlaying == true
-            delay(200)
+            delay(if (playing) 250L else 1000L)
         }
     }
 

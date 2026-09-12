@@ -6,22 +6,34 @@ import android.content.SharedPreferences
 class AppPreferences(private val prefs: SharedPreferences) {
     constructor(context: Context) : this(context.getSharedPreferences("ymedia_prefs", Context.MODE_PRIVATE))
 
+    companion object {
+        private val progressCache = java.util.concurrent.ConcurrentHashMap<String, Long>()
+        private val completedCache = java.util.concurrent.ConcurrentHashMap<String, Boolean>()
+    }
+
     // History: Map of Video URI to Last Played Position (in milliseconds)
     fun saveVideoProgress(uri: String, position: Long) {
+        progressCache[uri] = position
         prefs.edit().putLong("progress_$uri", position).apply()
         recordPlayedUri(uri)
     }
 
     fun isCompleted(uri: String): Boolean {
-        return prefs.getBoolean("completed_$uri", false)
+        return completedCache.getOrPut(uri) {
+            prefs.getBoolean("completed_$uri", false)
+        }
     }
 
     fun markCompleted(uri: String, completed: Boolean) {
+        completedCache[uri] = completed
+        if (completed) progressCache[uri] = 0L
         prefs.edit().putBoolean("completed_$uri", completed).apply()
     }
 
     fun recordPlayback(uri: String, position: Long, duration: Long) {
         val isDone = duration > 0L && position >= (duration - 3000L)
+        completedCache[uri] = isDone
+        if (isDone) progressCache[uri] = 0L else progressCache[uri] = position
         prefs.edit()
             .putLong("progress_$uri", position)
             .putLong("duration_$uri", duration)
@@ -47,7 +59,9 @@ class AppPreferences(private val prefs: SharedPreferences) {
 
     fun getVideoProgress(uri: String): Long {
         if (isCompleted(uri)) return 0L
-        return prefs.getLong("progress_$uri", 0L)
+        return progressCache.getOrPut(uri) {
+            prefs.getLong("progress_$uri", 0L)
+        }
     }
 
     fun getVideoDuration(uri: String): Long {
@@ -255,14 +269,32 @@ fun List<VideoItem>.sortVideosWithOrder(order: SortOrder): List<VideoItem> {
 
 fun List<VideoFolder>.sortFoldersWithOrder(order: SortOrder): List<VideoFolder> {
     return when (order) {
-        SortOrder.DATE -> sortedByDescending { folder -> folder.videos.maxOfOrNull { it.dateAdded.takeIf { d -> d > 0 } ?: it.id } ?: 0L }
-        SortOrder.DATE_ASC -> sortedBy { folder -> folder.videos.minOfOrNull { it.dateAdded.takeIf { d -> d > 0 } ?: it.id } ?: Long.MAX_VALUE }
+        SortOrder.DATE -> {
+            val dateMap = associateWith { folder -> folder.videos.maxOfOrNull { it.dateAdded.takeIf { d -> d > 0 } ?: it.id } ?: 0L }
+            sortedByDescending { dateMap[it] ?: 0L }
+        }
+        SortOrder.DATE_ASC -> {
+            val dateMap = associateWith { folder -> folder.videos.minOfOrNull { it.dateAdded.takeIf { d -> d > 0 } ?: it.id } ?: Long.MAX_VALUE }
+            sortedBy { dateMap[it] ?: Long.MAX_VALUE }
+        }
         SortOrder.NAME -> sortedBy { it.name.lowercase() }
         SortOrder.NAME_DESC -> sortedByDescending { it.name.lowercase() }
-        SortOrder.SIZE -> sortedByDescending { folder -> folder.videos.sumOf { it.size } }
-        SortOrder.SIZE_ASC -> sortedBy { folder -> folder.videos.sumOf { it.size } }
-        SortOrder.DURATION -> sortedByDescending { folder -> folder.videos.sumOf { it.duration } }
-        SortOrder.DURATION_ASC -> sortedBy { folder -> folder.videos.sumOf { it.duration } }
+        SortOrder.SIZE -> {
+            val sizeMap = associateWith { folder -> folder.videos.sumOf { it.size } }
+            sortedByDescending { sizeMap[it] ?: 0L }
+        }
+        SortOrder.SIZE_ASC -> {
+            val sizeMap = associateWith { folder -> folder.videos.sumOf { it.size } }
+            sortedBy { sizeMap[it] ?: 0L }
+        }
+        SortOrder.DURATION -> {
+            val durMap = associateWith { folder -> folder.videos.sumOf { it.duration } }
+            sortedByDescending { durMap[it] ?: 0L }
+        }
+        SortOrder.DURATION_ASC -> {
+            val durMap = associateWith { folder -> folder.videos.sumOf { it.duration } }
+            sortedBy { durMap[it] ?: 0L }
+        }
     }
 }
 

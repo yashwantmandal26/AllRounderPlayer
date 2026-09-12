@@ -30,6 +30,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
@@ -144,7 +145,7 @@ fun FolderDetailScreen(
 
     // Background animation
     val infiniteTransition = rememberInfiniteTransition(label = "bg")
-    val gradientOffset by infiniteTransition.animateFloat(
+    val gradientOffset = infiniteTransition.animateFloat(
         initialValue = 0f,
         targetValue = 1000f,
         animationSpec = infiniteRepeatable(tween(20000, easing = LinearEasing), RepeatMode.Reverse),
@@ -165,35 +166,29 @@ fun FolderDetailScreen(
     val totalFolderSize = remember(rawVideos) { rawVideos.sumOf { it.size } }
 
     Box(modifier = Modifier.fillMaxSize()) {
-        // Dynamic Ambient Background
+        // Dynamic Ambient Background (Draw-phase only to prevent 60fps recomposition)
         Box(
             modifier = Modifier
                 .fillMaxSize()
                 .background(c.baseBackground)
-        ) {
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .background(
-                        Brush.radialGradient(
+                .drawBehind {
+                    val offset = gradientOffset.value
+                    drawRect(
+                        brush = Brush.radialGradient(
                             colors = listOf(c.gradientBlob1.copy(alpha = 0.8f), Color.Transparent),
-                            center = Offset(gradientOffset, gradientOffset * 1.5f),
+                            center = Offset(offset, offset * 1.5f),
                             radius = 1200f
                         )
                     )
-            )
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .background(
-                        Brush.radialGradient(
+                    drawRect(
+                        brush = Brush.radialGradient(
                             colors = listOf(c.gradientBlob2.copy(alpha = 0.9f), Color.Transparent),
-                            center = Offset(1000f - gradientOffset, 2000f - gradientOffset),
+                            center = Offset(1000f - offset, 2000f - offset),
                             radius = 1500f
                         )
                     )
-            )
-        }
+                }
+        )
 
         Scaffold(
             containerColor = Color.Transparent,

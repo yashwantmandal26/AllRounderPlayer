@@ -1,6 +1,6 @@
 package com.example.ymediaplayer.theme
 
-import androidx.compose.runtime.staticCompositionLocalOf
+import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.ui.graphics.Color
 
 /**
@@ -136,4 +136,4 @@ val DarkAppColors = DarkGreyAppColors
 val LightAppColors = LessWhiteAppColors
 
 /** Defaults to dark grey. */
-val LocalAppColors = staticCompositionLocalOf { DarkGreyAppColors }
+val LocalAppColors = compositionLocalOf { DarkGreyAppColors }
