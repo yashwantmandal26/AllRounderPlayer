@@ -63,6 +63,7 @@ class MainActivity : ComponentActivity() {
         const val EXTRA_OPEN_VIDEO_URL = "EXTRA_OPEN_VIDEO_URL"
         val openMusicTrigger = mutableStateOf(false)
         val openVideoUrl = mutableStateOf<String?>(null)
+        var onUserLeaveHintListener: (() -> Unit)? = null
     }
 
     private var videoPermissionGranted by mutableStateOf(false)
@@ -125,6 +126,11 @@ class MainActivity : ComponentActivity() {
             lp.screenBrightness = WindowManager.LayoutParams.BRIGHTNESS_OVERRIDE_NONE
             window.attributes = lp
         }
+    }
+
+    override fun onUserLeaveHint() {
+        super.onUserLeaveHint()
+        onUserLeaveHintListener?.invoke()
     }
 
     override fun onNewIntent(intent: android.content.Intent) {

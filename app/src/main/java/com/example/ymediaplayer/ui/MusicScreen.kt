@@ -12,7 +12,11 @@ import androidx.activity.compose.BackHandler
 import androidx.compose.animation.*
 import androidx.compose.animation.core.*
 import androidx.compose.foundation.*
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.detectDragGestures
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
@@ -408,12 +412,21 @@ fun MusicScreen(
         }
     }
 
-    // ─── Sync now-playing state to MusicService companion so Video tab can show indicator ───
-    LaunchedEffect(currentlyPlaying, isPlaying) {
+    // ─── Sync now-playing state to MusicService companion so Video tab can show indicator & controls ───
+    LaunchedEffect(currentlyPlaying, isPlaying, allSongs) {
         MusicService.isMusicPlaying.value = isPlaying && currentlyPlaying != null
         MusicService.nowPlayingTitle.value = currentlyPlaying?.title ?: ""
         MusicService.nowPlayingArtist.value = currentlyPlaying?.artist ?: ""
         MusicService.nowPlayingArtUri.value = currentlyPlaying?.albumArtUri
+        if (allSongs.isNotEmpty()) {
+            MusicService.currentPlaylist = allSongs
+            MusicService.currentSongIndex = allSongs.indexOfFirst { it.id == currentlyPlaying?.id }
+        }
+        MusicService.onPlayNextAction = playNext
+        MusicService.onPlayPrevAction = playPrev
+        MusicService.onTogglePlayPauseAction = {
+            if (mediaController?.isPlaying == true) mediaController?.pause() else mediaController?.play()
+        }
     }
 
     // ─── Online Streaming Data Groupings ──────────────────────────────────────────
@@ -2753,6 +2766,7 @@ private fun MusicVerticalGestureBar(
     onValueChange: (Float) -> Unit,
     modifier: Modifier = Modifier
 ) {
+    val haptic = LocalHapticFeedback.current
     val clampedPct = percentage.coerceIn(0f, 1f)
     val animatedPct by animateFloatAsState(
         targetValue = clampedPct,
@@ -2763,53 +2777,117 @@ private fun MusicVerticalGestureBar(
         label = "smoothMusicGesturePct"
     )
 
+    var lastHapticMilestone by remember { mutableIntStateOf((clampedPct * 10).toInt()) }
+    val updateValueWithHaptic: (Float) -> Unit = { newVal ->
+        val cl = newVal.coerceIn(0f, 1f)
+        val milestone = (cl * 10).toInt()
+        if (milestone != lastHapticMilestone) {
+            lastHapticMilestone = milestone
+            try { haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove) } catch (_: Exception) {}
+        }
+        onValueChange(cl)
+    }
+
+    // Outer touch area (72.dp wide for effortless finger touch target)
     Box(
         modifier = modifier
-            .width(48.dp)
-            .height(200.dp)
-            .shadow(16.dp, RoundedCornerShape(24.dp), ambientColor = glowColor, spotColor = glowColor)
-            .clip(RoundedCornerShape(24.dp))
-            .background(Color.Black.copy(alpha = 0.58f))
-            .border(1.2.dp, Color.White.copy(alpha = 0.28f), RoundedCornerShape(24.dp))
-            .pointerInput(Unit) {
-                detectDragGestures { change, dragAmount ->
-                    change.consume()
-                    val dragRatio = -dragAmount.y / size.height
-                    onValueChange(clampedPct + dragRatio)
+            .width(72.dp)
+            .height(216.dp)
+            .pointerInput(clampedPct) {
+                awaitEachGesture {
+                    val down = awaitFirstDown(requireUnconsumed = false)
+                    val downY = down.position.y
+                    val barHeight = size.height.toFloat().coerceAtLeast(1f)
+                    var hasMoved = false
+
+                    while (true) {
+                        val event = awaitPointerEvent()
+                        val change = event.changes.firstOrNull { it.id == down.id }
+                        if (change == null || !change.pressed) break
+
+                        val currentY = change.position.y
+                        if (abs(currentY - downY) > 6f) {
+                            hasMoved = true
+                            // Direct 1:1 scrub tracking with high responsiveness
+                            val targetPct = (1f - (currentY / barHeight)).coerceIn(0f, 1f)
+                            updateValueWithHaptic(targetPct)
+                            change.consume()
+                        }
+                    }
+
+                    if (!hasMoved) {
+                        // Quick stationary tap on the bar!
+                        try { haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove) } catch (_: Exception) {}
+                        if (downY < barHeight * 0.5f) {
+                            updateValueWithHaptic((clampedPct + 0.066f).coerceAtMost(1f))
+                        } else {
+                            updateValueWithHaptic((clampedPct - 0.066f).coerceAtLeast(0f))
+                        }
+                    }
                 }
             },
-        contentAlignment = Alignment.BottomCenter
+        contentAlignment = Alignment.Center
     ) {
-        // Vertical Fill Capsule
+        // Visual Glassmorphic Bar (48.dp wide, 200.dp tall)
         Box(
             modifier = Modifier
-                .fillMaxWidth()
-                .fillMaxHeight(animatedPct)
+                .width(48.dp)
+                .height(200.dp)
+                .shadow(18.dp, RoundedCornerShape(24.dp), ambientColor = glowColor, spotColor = glowColor)
                 .clip(RoundedCornerShape(24.dp))
-                .background(gradient)
-        )
-
-        // Inside Indicator: Top Icon & Bottom Percentage
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(vertical = 12.dp),
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.SpaceBetween
+                .background(Color.Black.copy(alpha = 0.65f))
+                .border(1.4.dp, Color.White.copy(alpha = 0.35f), RoundedCornerShape(24.dp)),
+            contentAlignment = Alignment.BottomCenter
         ) {
-            Icon(
-                imageVector = icon,
-                contentDescription = null,
-                tint = Color.White,
-                modifier = Modifier.size(24.dp)
+            // Vertical Fill Capsule
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .fillMaxHeight(animatedPct)
+                    .clip(RoundedCornerShape(24.dp))
+                    .background(gradient)
             )
-            Text(
-                text = label,
-                color = Color.White,
-                fontSize = 11.sp,
-                fontWeight = FontWeight.Bold,
-                fontFamily = FontFamily.Monospace
-            )
+
+            // Inside Indicator: Top Icon, Nudge Guides, and Bottom Label
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(vertical = 10.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.SpaceBetween
+            ) {
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    Icon(
+                        imageVector = icon,
+                        contentDescription = null,
+                        tint = Color.White,
+                        modifier = Modifier.size(24.dp)
+                    )
+                    Text(
+                        text = "+",
+                        color = Color.White.copy(alpha = 0.60f),
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
+
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    Text(
+                        text = "-",
+                        color = Color.White.copy(alpha = 0.60f),
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Bold
+                    )
+                    Text(
+                        text = label,
+                        color = Color.White,
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Bold,
+                        fontFamily = FontFamily.Monospace,
+                        textAlign = TextAlign.Center
+                    )
+                }
+            }
         }
     }
 }

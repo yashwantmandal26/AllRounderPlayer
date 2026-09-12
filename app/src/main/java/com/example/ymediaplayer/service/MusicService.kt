@@ -17,6 +17,10 @@ class MusicService : MediaSessionService() {
         var currentAudioSessionId: Int = 0
             private set
 
+        // Direct player reference when service is running
+        var playerInstance: androidx.media3.common.Player? = null
+            private set
+
         // Observable "Now Playing" state — readable from any Composable
         var isMusicPlaying: androidx.compose.runtime.MutableState<Boolean> =
             androidx.compose.runtime.mutableStateOf(false)
@@ -26,6 +30,72 @@ class MusicService : MediaSessionService() {
             androidx.compose.runtime.mutableStateOf("")
         var nowPlayingArtUri: androidx.compose.runtime.MutableState<android.net.Uri?> =
             androidx.compose.runtime.mutableStateOf(null)
+
+        var currentPlaylist: List<com.example.ymediaplayer.data.MusicItem> = emptyList()
+        var currentSongIndex: Int = -1
+
+        var onPlayNextAction: (() -> Unit)? = null
+        var onPlayPrevAction: (() -> Unit)? = null
+        var onTogglePlayPauseAction: (() -> Unit)? = null
+
+        fun playSong(item: com.example.ymediaplayer.data.MusicItem) {
+            val player = playerInstance ?: return
+            val metadata = androidx.media3.common.MediaMetadata.Builder()
+                .setTitle(item.title)
+                .setArtist(item.artist)
+                .setArtworkUri(item.albumArtUri)
+                .build()
+            val mediaItem = androidx.media3.common.MediaItem.Builder()
+                .setUri(item.uri)
+                .setMediaId(item.id.toString())
+                .setMediaMetadata(metadata)
+                .build()
+            player.setMediaItem(mediaItem)
+            player.prepare()
+            player.play()
+            nowPlayingTitle.value = item.title
+            nowPlayingArtist.value = item.artist
+            nowPlayingArtUri.value = item.albumArtUri
+            isMusicPlaying.value = true
+        }
+
+        fun togglePlayPause() {
+            if (onTogglePlayPauseAction != null) {
+                onTogglePlayPauseAction?.invoke()
+            } else {
+                playerInstance?.let {
+                    if (it.isPlaying) it.pause() else it.play()
+                }
+            }
+        }
+
+        fun playNext() {
+            if (onPlayNextAction != null) {
+                onPlayNextAction?.invoke()
+            } else if (currentPlaylist.isNotEmpty()) {
+                val nextIdx = (currentSongIndex + 1) % currentPlaylist.size
+                currentSongIndex = nextIdx
+                playSong(currentPlaylist[nextIdx])
+            } else {
+                playerInstance?.let {
+                    if (it.hasNextMediaItem()) it.seekToNextMediaItem()
+                }
+            }
+        }
+
+        fun playPrevious() {
+            if (onPlayPrevAction != null) {
+                onPlayPrevAction?.invoke()
+            } else if (currentPlaylist.isNotEmpty()) {
+                val prevIdx = if (currentSongIndex <= 0) currentPlaylist.size - 1 else currentSongIndex - 1
+                currentSongIndex = prevIdx
+                playSong(currentPlaylist[prevIdx])
+            } else {
+                playerInstance?.let {
+                    if (it.hasPreviousMediaItem()) it.seekToPreviousMediaItem() else it.seekTo(0L)
+                }
+            }
+        }
     }
 
     override fun onCreate() {
@@ -40,10 +110,21 @@ class MusicService : MediaSessionService() {
             )
             .build()
 
+        playerInstance = player
         currentAudioSessionId = player.audioSessionId
         player.addListener(object : androidx.media3.common.Player.Listener {
             override fun onAudioSessionIdChanged(audioSessionId: Int) {
                 currentAudioSessionId = audioSessionId
+            }
+            override fun onIsPlayingChanged(isPlaying: Boolean) {
+                isMusicPlaying.value = isPlaying
+            }
+            override fun onMediaItemTransition(mediaItem: androidx.media3.common.MediaItem?, reason: Int) {
+                mediaItem?.mediaMetadata?.let { meta ->
+                    if (!meta.title.isNullOrBlank()) nowPlayingTitle.value = meta.title.toString()
+                    if (!meta.artist.isNullOrBlank()) nowPlayingArtist.value = meta.artist.toString()
+                    if (meta.artworkUri != null) nowPlayingArtUri.value = meta.artworkUri
+                }
             }
         })
 
@@ -68,6 +149,7 @@ class MusicService : MediaSessionService() {
     }
 
     override fun onDestroy() {
+        playerInstance = null
         mediaSession?.run {
             player.release()
             release()

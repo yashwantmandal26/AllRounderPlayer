@@ -881,7 +881,7 @@ fun FolderListScreen(
                     .padding(bottom = 16.dp),
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
-                // Animated "Now Playing" pill visible on Video tab when music is playing
+                // Animated "Now Playing" pill visible on Video tab with controls & 100% opaque background
                 AnimatedVisibility(
                     visible = currentTab == "Video" && (isMusicPlaying || nowPlayingTitle.isNotBlank()),
                     enter = slideInVertically(initialOffsetY = { it / 2 }) + fadeIn(),
@@ -889,25 +889,25 @@ fun FolderListScreen(
                 ) {
                     Box(
                         modifier = Modifier
-                            .padding(bottom = 10.dp, start = 16.dp, end = 16.dp)
+                            .padding(bottom = 10.dp, start = 12.dp, end = 12.dp)
                             .shadow(16.dp, RoundedCornerShape(24.dp), ambientColor = c.accentBlue.copy(0.4f), spotColor = c.accentBlue)
                             .clip(RoundedCornerShape(24.dp))
-                            .background(c.cardBg)
+                            .background(Color(0xFF141724)) // 100% solid, fully opaque background
                             .border(1.2.dp, Brush.horizontalGradient(listOf(c.accentBlue, c.cardBorderHighlight)), RoundedCornerShape(24.dp))
-                            .clickable { currentTab = "Music" }
-                            .padding(horizontal = 14.dp, vertical = 8.dp)
+                            .padding(horizontal = 10.dp, vertical = 6.dp)
                     ) {
                         Row(
                             verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(10.dp)
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
                         ) {
-                            // Thumbnail / Fallback
+                            // Thumbnail / Fallback (Click to open Music tab)
                             Box(
                                 modifier = Modifier
                                     .size(36.dp)
                                     .clip(RoundedCornerShape(10.dp))
                                     .background(Color(0xFF1E2136))
-                                    .border(0.8.dp, c.cardBorderHighlight, RoundedCornerShape(10.dp)),
+                                    .border(0.8.dp, c.cardBorderHighlight, RoundedCornerShape(10.dp))
+                                    .clickable { currentTab = "Music" },
                                 contentAlignment = Alignment.Center
                             ) {
                                 if (nowPlayingArtUri != null) {
@@ -927,8 +927,12 @@ fun FolderListScreen(
                                 }
                             }
 
-                            // Song title & artist
-                            Column(modifier = Modifier.widthIn(max = 160.dp)) {
+                            // Song title & artist (Click to open Music tab)
+                            Column(
+                                modifier = Modifier
+                                    .widthIn(max = 130.dp)
+                                    .clickable { currentTab = "Music" }
+                            ) {
                                 Text(
                                     text = nowPlayingTitle.ifBlank { "Music Playing" },
                                     color = Color.White,
@@ -946,11 +950,53 @@ fun FolderListScreen(
                                 )
                             }
 
+                            // Previous button
+                            IconButton(
+                                onClick = { MusicService.playPrevious() },
+                                modifier = Modifier.size(32.dp)
+                            ) {
+                                Icon(
+                                    Icons.Rounded.SkipPrevious,
+                                    contentDescription = "Previous Track",
+                                    tint = Color.White,
+                                    modifier = Modifier.size(20.dp)
+                                )
+                            }
+
+                            // Play / Pause button
+                            IconButton(
+                                onClick = { MusicService.togglePlayPause() },
+                                modifier = Modifier
+                                    .size(34.dp)
+                                    .clip(CircleShape)
+                                    .background(c.accentBlue)
+                            ) {
+                                Icon(
+                                    imageVector = if (isMusicPlaying) Icons.Rounded.Pause else Icons.Rounded.PlayArrow,
+                                    contentDescription = "Play/Pause",
+                                    tint = c.onAccent,
+                                    modifier = Modifier.size(20.dp)
+                                )
+                            }
+
+                            // Next button
+                            IconButton(
+                                onClick = { MusicService.playNext() },
+                                modifier = Modifier.size(32.dp)
+                            ) {
+                                Icon(
+                                    Icons.Rounded.SkipNext,
+                                    contentDescription = "Next Track",
+                                    tint = Color.White,
+                                    modifier = Modifier.size(20.dp)
+                                )
+                            }
+
                             // Animated equalizer bars
                             Row(
                                 horizontalArrangement = Arrangement.spacedBy(2.5.dp),
                                 verticalAlignment = Alignment.Bottom,
-                                modifier = Modifier.height(16.dp)
+                                modifier = Modifier.height(16.dp).padding(end = 4.dp)
                             ) {
                                 val infiniteTransition = rememberInfiniteTransition(label = "nowPlayingBars")
                                 val bar1 by infiniteTransition.animateFloat(
