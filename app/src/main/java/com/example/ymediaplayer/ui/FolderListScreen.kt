@@ -9,11 +9,17 @@ import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.IntentSenderRequest
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.compose.animation.*
 import androidx.compose.animation.core.*
 import androidx.compose.foundation.*
+import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.*
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
@@ -34,12 +40,14 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.pointer.pointerInput
@@ -65,9 +73,11 @@ import kotlinx.coroutines.launch
 fun FolderListScreen(
     onFolderClick: (String, String) -> Unit,
     onVideoClick: (String) -> Unit,
+    onOpenSettings: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
+    val view = androidx.compose.ui.platform.LocalView.current
     val c = LocalAppColors.current
     val themeController = LocalThemeController.current
     val systemDark = androidx.compose.foundation.isSystemInDarkTheme()
@@ -185,6 +195,20 @@ fun FolderListScreen(
         }
     }
 
+    // Refresh automatically whenever screen resumes (e.g. returning from video player)
+    val lifecycleOwner = LocalLifecycleOwner.current
+    DisposableEffect(lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME) {
+                refreshTrigger++
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose {
+            lifecycleOwner.lifecycle.removeObserver(observer)
+        }
+    }
+
     // Load data
     LaunchedEffect(refreshTrigger) {
         isLoading = true
@@ -244,22 +268,64 @@ fun FolderListScreen(
         processed
     }
 
-    val recentlyAddedVideos = remember(allFolders) {
-        allFolders.flatMap { it.videos }.sortedByDescending { it.id }.distinctBy { it.id }.take(15)
+    val allUniqueVideos = remember(allFolders) {
+        allFolders.flatMap { it.videos }.distinctBy { it.uri.toString() }
     }
 
-    val continueWatchingVideos = remember(allFolders, refreshTrigger) {
-        allFolders.flatMap { it.videos }.filter { video ->
-            val progress = appPreferences.getVideoProgress(video.uri.toString())
-            val duration = video.duration
-            progress > 5000L && duration > 0 && (progress.toFloat() / duration) in 0.03f..0.92f
-        }.sortedByDescending { appPreferences.getVideoLastPlayedTime(it.uri.toString()) }.take(8)
+    val searchMatchingVideos = remember(allUniqueVideos, searchQuery, sortOrder) {
+        if (searchQuery.isBlank()) emptyList()
+        else allUniqueVideos.filter {
+            it.title.contains(searchQuery.trim(), ignoreCase = true)
+        }.sortVideosWithOrder(sortOrder)
     }
 
-    val totalVideoCount = remember(allFolders) { allFolders.sumOf { it.videos.size } }
-    val totalSize = remember(allFolders) { allFolders.flatMap { it.videos }.sumOf { it.size } }
-    val favoritesCount = remember(favorites, allFolders) {
-        val allUris = allFolders.flatMap { it.videos }.map { it.uri.toString() }.toSet()
+    val searchMatchingFolders = remember(allFolders, searchQuery, sortOrder) {
+        if (searchQuery.isBlank()) emptyList()
+        else allFolders.filter {
+            it.name.contains(searchQuery.trim(), ignoreCase = true)
+        }.sortFoldersWithOrder(sortOrder)
+    }
+
+    val progressVersion = appPreferences.lastProgressUpdate.longValue
+
+    val recentlyAddedVideos = remember(allUniqueVideos, progressVersion, refreshTrigger) {
+        if (!appPreferences.isShowRecentlyAdded()) return@remember emptyList()
+        val excludeSec = appPreferences.getExcludeShortClipsSeconds()
+        allUniqueVideos.filter { video ->
+            excludeSec == 0 || video.duration >= excludeSec * 1000L
+        }.sortedWith(
+            compareByDescending<VideoItem> { it.dateAdded }.thenByDescending { it.id }
+        ).take(15)
+    }
+
+    val continueWatchingVideos = remember(allUniqueVideos, progressVersion, refreshTrigger) {
+        if (!appPreferences.isShowContinueWatching()) return@remember emptyList()
+        val limit = appPreferences.getContinueWatchingLimit()
+        val playedUris = appPreferences.getPlayedUris()
+        val playedOrder = playedUris.mapIndexed { index, uri -> uri to index }.toMap()
+
+        allUniqueVideos.filter { video ->
+            val uriStr = video.uri.toString()
+            if (appPreferences.isCompleted(uriStr)) return@filter false
+            val progress = appPreferences.getVideoProgress(uriStr)
+            val duration = if (video.duration > 0L) video.duration else appPreferences.getVideoDuration(uriStr)
+            if (progress <= 3000L) return@filter false
+            if (duration > 0L) {
+                val ratio = progress.toFloat() / duration
+                ratio in 0.02f..0.96f && progress < (duration - 3000L)
+            } else {
+                true
+            }
+        }.sortedWith(
+            compareByDescending<VideoItem> { appPreferences.getVideoLastPlayedTime(it.uri.toString()) }
+                .thenBy { playedOrder[it.uri.toString()] ?: Int.MAX_VALUE }
+        ).take(limit)
+    }
+
+    val totalVideoCount = remember(allUniqueVideos) { allUniqueVideos.size }
+    val totalSize = remember(allUniqueVideos) { allUniqueVideos.sumOf { it.size } }
+    val favoritesCount = remember(favorites, allUniqueVideos) {
+        val allUris = allUniqueVideos.map { it.uri.toString() }.toSet()
         favorites.count { allUris.contains(it) }
     }
     val downloaderCount = remember(allFolders) {
@@ -317,16 +383,18 @@ fun FolderListScreen(
                     } else {
                         Box(modifier = Modifier.fillMaxWidth()) {
                             // Frosted glass blur backdrop
-                            Box(
-                                modifier = Modifier
-                                    .matchParentSize()
-                                    .background(c.glassBg.copy(alpha = 0.6f))
-                                    .blur(20.dp)
-                            )
+                            if (!c.isMatte) {
+                                Box(
+                                    modifier = Modifier
+                                        .matchParentSize()
+                                        .background(c.glassBg.copy(alpha = 0.6f))
+                                        .blur(20.dp)
+                                )
+                            }
                             Column(
                                 modifier = Modifier.fillMaxWidth()
-                                    .background(c.topBarScrim.copy(alpha = 0.75f))
-                                    .border(0.5.dp, c.glassBorder)
+                                    .background(if (c.isMatte) c.baseBackground else c.topBarScrim.copy(alpha = 0.75f))
+                                    .border(if (c.isMatte) 1.dp else 0.5.dp, c.glassBorder)
                             ) {
                             Row(
                                 modifier = Modifier.fillMaxWidth().statusBarsPadding().padding(horizontal = 16.dp, vertical = 10.dp),
@@ -334,32 +402,50 @@ fun FolderListScreen(
                                 horizontalArrangement = Arrangement.SpaceBetween
                             ) {
                                 if (isSearching) {
-                                    TextField(
-                                        value = searchQuery,
-                                        onValueChange = { searchQuery = it },
-                                        placeholder = { Text("Search videos...", color = c.textHint) },
-                                        singleLine = true,
-                                        colors = TextFieldDefaults.colors(
-                                            focusedContainerColor = c.glassBg,
-                                            unfocusedContainerColor = c.glassBg,
-                                            focusedTextColor = c.textPrimary,
-                                            unfocusedTextColor = c.textPrimary,
-                                            cursorColor = c.accentBlue,
-                                            focusedIndicatorColor = Color.Transparent,
-                                            unfocusedIndicatorColor = Color.Transparent
-                                        ),
-                                        shape = RoundedCornerShape(12.dp),
-                                        modifier = Modifier.weight(1f).height(48.dp)
-                                            .shadow(elevation = 6.dp, shape = RoundedCornerShape(12.dp), ambientColor = c.cardShadowColor, spotColor = c.cardShadowColor)
-                                            .clip(RoundedCornerShape(12.dp))
-                                            .background(Brush.verticalGradient(listOf(c.cardBgElevated, c.cardBg)))
-                                            .border(1.2.dp, Brush.verticalGradient(listOf(c.cardBorderHighlight, c.glassBorder, c.cardBorderShadow)), RoundedCornerShape(12.dp))
-                                            .focusRequester(searchFocusRequester)
-                                    )
+                                    Row(
+                                        modifier = Modifier
+                                            .weight(1f)
+                                            .height(46.dp)
+                                            .then(if (c.isMatte) Modifier else Modifier.shadow(elevation = 6.dp, shape = RoundedCornerShape(23.dp), ambientColor = c.cardShadowColor, spotColor = c.cardShadowColor))
+                                            .clip(RoundedCornerShape(23.dp))
+                                            .background(if (c.isMatte) SolidColor(c.cardBgElevated) else Brush.verticalGradient(listOf(c.cardBgElevated, c.cardBg)))
+                                            .border(1.2.dp, if (c.isMatte) SolidColor(c.glassBorder) else Brush.verticalGradient(listOf(c.cardBorderHighlight, c.glassBorder, c.cardBorderShadow)), RoundedCornerShape(23.dp))
+                                            .padding(horizontal = 14.dp),
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Icon(
+                                            Icons.Rounded.Search,
+                                            contentDescription = null,
+                                            tint = c.accentBlue,
+                                            modifier = Modifier.size(20.dp)
+                                        )
+                                        Spacer(Modifier.width(10.dp))
+                                        Box(modifier = Modifier.weight(1f), contentAlignment = Alignment.CenterStart) {
+                                            if (searchQuery.isEmpty()) {
+                                                Text("Search any folder or video...", color = c.textHint, fontSize = 14.sp)
+                                            }
+                                            BasicTextField(
+                                                value = searchQuery,
+                                                onValueChange = { searchQuery = it },
+                                                singleLine = true,
+                                                textStyle = TextStyle(color = c.textPrimary, fontSize = 14.sp, fontWeight = FontWeight.Medium),
+                                                cursorBrush = SolidColor(c.accentBlue),
+                                                modifier = Modifier.fillMaxWidth().focusRequester(searchFocusRequester)
+                                            )
+                                        }
+                                        if (searchQuery.isNotEmpty()) {
+                                            IconButton(onClick = { searchQuery = "" }, modifier = Modifier.size(24.dp)) {
+                                                Icon(Icons.Rounded.Close, contentDescription = "Clear", tint = c.textSecondary, modifier = Modifier.size(16.dp))
+                                            }
+                                        }
+                                    }
                                     Spacer(Modifier.width(8.dp))
-                                    Text("Cancel", color = c.accentBlue, fontSize = 16.sp,
-                                        modifier = Modifier.clip(RoundedCornerShape(8.dp))
-                                            .clickable { isSearching = false; searchQuery = "" }.padding(8.dp))
+                                    TextButton(
+                                        onClick = { isSearching = false; searchQuery = "" },
+                                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp)
+                                    ) {
+                                        Text("Cancel", color = c.accentBlue, fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
+                                    }
                                 } else {
                                     Column(modifier = Modifier.weight(1f)) {
                                         Text(currentTab, fontSize = 28.sp, fontWeight = FontWeight.Bold, color = c.textPrimary)
@@ -367,54 +453,62 @@ fun FolderListScreen(
                                             Text("$totalVideoCount videos · ${formatSize(totalSize)}", fontSize = 12.sp, color = c.textSecondary)
                                         }
                                     }
-                                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                    Row(
+                                        horizontalArrangement = Arrangement.spacedBy(2.dp),
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        // 1. Color Theme Palette button (reverted, clean icon button, 7% larger)
                                         IconButton(
                                             onClick = {
+                                                view.performHaptic(HapticType.LIGHT)
                                                 val nextTheme = themeController.cycleColorTheme()
                                                 Toast.makeText(context, "Theme: ${nextTheme.displayName}", Toast.LENGTH_SHORT).show()
                                             },
-                                            modifier = Modifier
-                                                .size(38.dp)
-                                                .shadow(6.dp, CircleShape, ambientColor = c.cardShadowColor, spotColor = c.cardShadowColor)
-                                                .clip(CircleShape)
-                                                .background(Brush.verticalGradient(listOf(c.cardBgElevated, c.cardBg)))
-                                                .border(1.2.dp, Brush.verticalGradient(listOf(c.cardBorderHighlight, c.glassBorder, c.cardBorderShadow)), CircleShape)
+                                            modifier = Modifier.size(39.dp)
                                         ) {
-                                            Icon(Icons.Rounded.Palette, contentDescription = "Theme", tint = c.accentBlue, modifier = Modifier.size(20.dp))
+                                            Icon(Icons.Rounded.Palette, contentDescription = "Theme", tint = c.accentBlue, modifier = Modifier.size(22.dp))
                                         }
+
+                                        // 2. Light / Dark Mode button (reverted, clean icon button, 7% larger)
                                         IconButton(
                                             onClick = {
+                                                view.performHaptic(HapticType.LIGHT)
                                                 val nextMode = themeController.cycleThemeMode()
                                                 Toast.makeText(context, "Theme: ${nextMode.displayName}", Toast.LENGTH_SHORT).show()
                                             },
-                                            modifier = Modifier
-                                                .size(38.dp)
-                                                .shadow(6.dp, CircleShape, ambientColor = c.cardShadowColor, spotColor = c.cardShadowColor)
-                                                .clip(CircleShape)
-                                                .background(Brush.verticalGradient(listOf(c.cardBgElevated, c.cardBg)))
-                                                .border(1.2.dp, Brush.verticalGradient(listOf(c.cardBorderHighlight, c.glassBorder, c.cardBorderShadow)), CircleShape)
+                                            modifier = Modifier.size(39.dp)
                                         ) {
                                             Icon(
                                                 imageVector = if (c.isDark) Icons.Rounded.LightMode else Icons.Rounded.DarkMode,
                                                 contentDescription = "Theme: ${themeController.mode.displayName}",
                                                 tint = c.textPrimary,
-                                                modifier = Modifier.size(20.dp)
+                                                modifier = Modifier.size(22.dp)
                                             )
                                         }
+
+                                        // 3. Search button (clean icon button, 7% larger)
                                         if (currentTab == "Video") {
                                             IconButton(
-                                                onClick = { isSearching = true },
-                                                modifier = Modifier
-                                                    .size(38.dp)
-                                                    .shadow(6.dp, CircleShape, ambientColor = c.cardShadowColor, spotColor = c.cardShadowColor)
-                                                    .clip(CircleShape)
-                                                    .background(Brush.verticalGradient(listOf(c.cardBgElevated, c.cardBg)))
-                                                    .border(1.2.dp, Brush.verticalGradient(listOf(c.cardBorderHighlight, c.glassBorder, c.cardBorderShadow)), CircleShape)
+                                                onClick = {
+                                                    view.performHaptic(HapticType.LIGHT)
+                                                    isSearching = true
+                                                },
+                                                modifier = Modifier.size(39.dp)
                                             ) {
-                                                Icon(Icons.Filled.Search, contentDescription = "Search", tint = c.textPrimary, modifier = Modifier.size(20.dp))
+                                                Icon(Icons.Filled.Search, contentDescription = "Search", tint = c.textPrimary, modifier = Modifier.size(22.dp))
                                             }
                                         }
 
+                                        // 4. Settings button (clean icon button, 7% larger)
+                                        IconButton(
+                                            onClick = {
+                                                view.performHaptic(HapticType.LIGHT)
+                                                onOpenSettings()
+                                            },
+                                            modifier = Modifier.size(39.dp)
+                                        ) {
+                                            Icon(Icons.Rounded.Settings, contentDescription = "Settings", tint = c.textPrimary, modifier = Modifier.size(22.dp))
+                                        }
                                     }
                                 }
                             }
@@ -425,12 +519,18 @@ fun FolderListScreen(
             },
             modifier = modifier
         ) { paddingValues ->
-            if (currentTab == "Music") {
-                MusicScreen(
-                    modifier = Modifier.fillMaxSize().padding(top = paddingValues.calculateTopPadding()),
-                    onFullScreenChanged = { musicPlayerExpanded = it }
-                )
-            } else if (isLoading) {
+            Crossfade(
+                targetState = currentTab,
+                animationSpec = tween(180),
+                label = "TabCrossfade",
+                modifier = Modifier.fillMaxSize()
+            ) { tab ->
+                if (tab == "Music") {
+                    MusicScreen(
+                        modifier = Modifier.fillMaxSize().padding(top = paddingValues.calculateTopPadding()),
+                        onFullScreenChanged = { musicPlayerExpanded = it }
+                    )
+                } else if (isLoading) {
                 Box(modifier = Modifier.fillMaxSize().padding(paddingValues), contentAlignment = Alignment.Center) {
                     CircularProgressIndicator(color = c.accentBlue, strokeWidth = 3.dp)
                 }
@@ -459,19 +559,127 @@ fun FolderListScreen(
                     modifier = Modifier.fillMaxSize().padding(top = paddingValues.calculateTopPadding()),
                     contentPadding = PaddingValues(bottom = 140.dp)
                 ) {
-                    // Chips
-                    item {
-                        LazyRow(
-                            contentPadding = PaddingValues(horizontal = 16.dp, vertical = 12.dp),
-                            horizontalArrangement = Arrangement.spacedBy(10.dp)
-                        ) {
-                            item { ChipItem(icon = Icons.Rounded.PlayArrow, text = "All Videos", isSelected = activeChip == "All Videos", count = totalVideoCount) { activeChip = if (activeChip == "All Videos") null else "All Videos" } }
-                            item { ChipItem(icon = Icons.Rounded.Favorite, text = "Favorites", isSelected = activeChip == "Favorites", count = favoritesCount) { activeChip = if (activeChip == "Favorites") null else "Favorites" } }
-                            item { ChipItem(icon = Icons.Rounded.Download, text = "Downloader", isSelected = activeChip == "Downloader", count = downloaderCount) { activeChip = if (activeChip == "Downloader") null else "Downloader" } }
-                        }
-                    }
 
-                    if (activeChip == "All Videos" || activeChip == "Favorites") {
+                    if (isSearching) {
+                        if (searchQuery.isBlank()) {
+                            item {
+                                Box(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(top = 48.dp, start = 24.dp, end = 24.dp),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Column(
+                                        horizontalAlignment = Alignment.CenterHorizontally,
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .clip(RoundedCornerShape(22.dp))
+                                            .background(c.glassBg)
+                                            .border(1.dp, c.glassBorder, RoundedCornerShape(22.dp))
+                                            .padding(horizontal = 24.dp, vertical = 28.dp)
+                                    ) {
+                                        Icon(Icons.Rounded.Search, contentDescription = null, tint = c.accentBlue, modifier = Modifier.size(44.dp))
+                                        Spacer(Modifier.height(12.dp))
+                                        Text("Search Folders or Videos", color = c.textPrimary, fontSize = 16.sp, fontWeight = FontWeight.Bold)
+                                        Spacer(Modifier.height(6.dp))
+                                        Text("Type a name above to search across your device", color = c.textSecondary, fontSize = 12.5.sp)
+                                    }
+                                }
+                            }
+                        } else if (searchMatchingVideos.isEmpty() && searchMatchingFolders.isEmpty()) {
+                            item {
+                                Box(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(top = 48.dp, start = 24.dp, end = 24.dp),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Column(
+                                        horizontalAlignment = Alignment.CenterHorizontally,
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .clip(RoundedCornerShape(22.dp))
+                                            .background(c.glassBg)
+                                            .border(1.dp, c.glassBorder, RoundedCornerShape(22.dp))
+                                            .padding(horizontal = 24.dp, vertical = 28.dp)
+                                    ) {
+                                        Icon(Icons.Rounded.SearchOff, contentDescription = null, tint = c.textSecondary, modifier = Modifier.size(44.dp))
+                                        Spacer(Modifier.height(12.dp))
+                                        Text("No Results Found", color = c.textPrimary, fontSize = 16.sp, fontWeight = FontWeight.Bold)
+                                        Spacer(Modifier.height(6.dp))
+                                        Text("No folders or videos match \"$searchQuery\"", color = c.textSecondary, fontSize = 12.5.sp)
+                                    }
+                                }
+                            }
+                        } else {
+                            // 1. Matching Folders Section
+                            if (searchMatchingFolders.isNotEmpty()) {
+                                item {
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Icon(Icons.Rounded.FolderOpen, contentDescription = null, tint = c.accentBlue, modifier = Modifier.size(16.dp))
+                                        Spacer(Modifier.width(6.dp))
+                                        Text("FOLDERS (${searchMatchingFolders.size})", color = c.textSecondary, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+                                    }
+                                }
+                                items(searchMatchingFolders, key = { "search_folder_${it.id}" }) { folder ->
+                                    Box(modifier = Modifier.animateItem()) {
+                                        FolderItem(
+                                            folder = folder,
+                                            isPinned = appPreferences.isFolderPinned(folder.id),
+                                            onClick = { onFolderClick(folder.id, folder.name) },
+                                            onLongPress = {
+                                                haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                                folderActionTarget = folder
+                                            }
+                                        )
+                                    }
+                                }
+                                item {
+                                    Spacer(Modifier.height(8.dp))
+                                }
+                            }
+
+                            // 2. Matching Videos Section
+                            if (searchMatchingVideos.isNotEmpty()) {
+                                item {
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Icon(Icons.Rounded.VideoLibrary, contentDescription = null, tint = c.accentBlue, modifier = Modifier.size(16.dp))
+                                        Spacer(Modifier.width(6.dp))
+                                        Text("VIDEOS (${searchMatchingVideos.size})", color = c.textSecondary, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+                                    }
+                                }
+                                items(searchMatchingVideos, key = { "search_vid_${it.id}" }) { video ->
+                                    Box(modifier = Modifier.animateItem()) {
+                                        VideoDetailedListItem(
+                                            video = video,
+                                            isFavorite = favorites.contains(video.uri.toString()),
+                                            inSelectionMode = inSelectionMode,
+                                            isSelected = selectedVideoIds.contains(video.id),
+                                            onClick = {
+                                                if (inSelectionMode) {
+                                                    selectedVideoIds = if (selectedVideoIds.contains(video.id)) selectedVideoIds - video.id else selectedVideoIds + video.id
+                                                } else {
+                                                    onVideoClick(video.uri.toString())
+                                                }
+                                            },
+                                            onLongPress = {
+                                                haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                                if (!inSelectionMode) videoActionTarget = video
+                                                else selectedVideoIds = selectedVideoIds + video.id
+                                            },
+                                            onFavoriteToggle = { toggleFavorite(video.uri.toString()) }
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    } else if (activeChip == "All Videos" || activeChip == "Favorites") {
                         val flatVideos = displayFolders.filter { it.id != "recently_added" }.flatMap { it.videos }.distinctBy { it.id }
                         item {
                             Row(
@@ -679,8 +887,20 @@ fun FolderListScreen(
                                         horizontalArrangement = Arrangement.spacedBy(12.dp),
                                         modifier = Modifier.padding(bottom = 8.dp)
                                     ) {
-                                        items(continueWatchingVideos, key = { "cw_${it.id}" }) { video ->
-                                            ContinueWatchingCard(video = video, appPreferences = appPreferences, onClick = { onVideoClick(video.uri.toString()) })
+                                        items(continueWatchingVideos, key = { "cw_${it.uri}" }) { video ->
+                                            ContinueWatchingCard(
+                                                video = video,
+                                                appPreferences = appPreferences,
+                                                onClick = { onVideoClick(video.uri.toString()) },
+                                                onLongPress = {
+                                                    view.performHaptic(HapticType.HEAVY)
+                                                    if (!inSelectionMode) videoActionTarget = video
+                                                },
+                                                onRemove = {
+                                                    appPreferences.clearVideoProgress(video.uri.toString())
+                                                    Toast.makeText(context, "Removed from Continue Watching", Toast.LENGTH_SHORT).show()
+                                                }
+                                            )
                                         }
                                     }
                                 }
@@ -711,7 +931,15 @@ fun FolderListScreen(
                                     modifier = Modifier.padding(bottom = 18.dp)
                                 ) {
                                     items(recentlyAddedVideos, key = { "recent_${it.id}" }) { video ->
-                                        RecentlyAddedVideoCard(video = video, appPreferences = appPreferences, onClick = { onVideoClick(video.uri.toString()) })
+                                        RecentlyAddedVideoCard(
+                                            video = video,
+                                            appPreferences = appPreferences,
+                                            onClick = { onVideoClick(video.uri.toString()) },
+                                            onLongPress = {
+                                                view.performHaptic(HapticType.HEAVY)
+                                                if (!inSelectionMode) videoActionTarget = video
+                                            }
+                                        )
                                     }
                                 }
                             }
@@ -731,10 +959,10 @@ fun FolderListScreen(
                                 }
                                 Row(
                                     modifier = Modifier
-                                        .shadow(elevation = 6.dp, shape = CircleShape, ambientColor = c.cardShadowColor, spotColor = c.cardShadowColor)
+                                        .then(if (c.isMatte) Modifier else Modifier.shadow(elevation = 6.dp, shape = CircleShape, ambientColor = c.cardShadowColor, spotColor = c.cardShadowColor))
                                         .clip(CircleShape)
-                                        .background(Brush.verticalGradient(listOf(c.cardBgElevated, c.cardBg)))
-                                        .border(1.2.dp, Brush.verticalGradient(listOf(c.cardBorderHighlight, c.glassBorder, c.cardBorderShadow)), CircleShape)
+                                        .background(if (c.isMatte) SolidColor(c.cardBgElevated) else Brush.verticalGradient(listOf(c.cardBgElevated, c.cardBg)))
+                                        .border(1.2.dp, if (c.isMatte) SolidColor(c.glassBorder) else Brush.verticalGradient(listOf(c.cardBorderHighlight, c.glassBorder, c.cardBorderShadow)), CircleShape)
                                         .padding(horizontal = 6.dp, vertical = 2.dp),
                                     verticalAlignment = Alignment.CenterVertically
                                 ) {
@@ -865,6 +1093,7 @@ fun FolderListScreen(
                 }
             }
         }
+        }
 
         // Floating Nav Pill + Animated Music Playing Indicator in Video Mode
         if (!musicPlayerExpanded) {
@@ -873,14 +1102,36 @@ fun FolderListScreen(
             val nowPlayingArtist by remember { MusicService.nowPlayingArtist }
             val nowPlayingArtUri by remember { MusicService.nowPlayingArtUri }
 
-            Column(
+            Box(
                 modifier = Modifier
                     .fillMaxWidth()
                     .align(Alignment.BottomCenter)
-                    .navigationBarsPadding()
-                    .padding(bottom = 16.dp),
-                horizontalAlignment = Alignment.CenterHorizontally
             ) {
+                // Progressive blur & frosted dark gradient: low blur/translucent at top, increasing density downwards
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .matchParentSize()
+                        .background(
+                            Brush.verticalGradient(
+                                colors = listOf(
+                                    Color.Transparent,
+                                    c.baseBackground.copy(alpha = 0.35f),
+                                    c.baseBackground.copy(alpha = 0.75f),
+                                    c.baseBackground.copy(alpha = 0.94f),
+                                    c.baseBackground
+                                )
+                            )
+                        )
+                )
+
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .navigationBarsPadding()
+                        .padding(top = 28.dp, bottom = 16.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
                 // Animated "Now Playing" pill visible on Video tab with controls & 100% opaque background
                 AnimatedVisibility(
                     visible = currentTab == "Video" && (isMusicPlaying || nowPlayingTitle.isNotBlank()),
@@ -890,10 +1141,10 @@ fun FolderListScreen(
                     Box(
                         modifier = Modifier
                             .padding(bottom = 10.dp, start = 12.dp, end = 12.dp)
-                            .shadow(16.dp, RoundedCornerShape(24.dp), ambientColor = c.accentBlue.copy(0.4f), spotColor = c.accentBlue)
+                            .then(if (c.isMatte) Modifier else Modifier.shadow(16.dp, RoundedCornerShape(24.dp), ambientColor = c.accentBlue.copy(0.4f), spotColor = c.accentBlue))
                             .clip(RoundedCornerShape(24.dp))
-                            .background(Color(0xFF141724)) // 100% solid, fully opaque background
-                            .border(1.2.dp, Brush.horizontalGradient(listOf(c.accentBlue, c.cardBorderHighlight)), RoundedCornerShape(24.dp))
+                            .background(if (c.isMatte) c.cardBg else Color(0xFF141724)) // 100% solid, fully opaque background
+                            .border(1.2.dp, if (c.isMatte) androidx.compose.ui.graphics.SolidColor(c.glassBorder) else Brush.horizontalGradient(listOf(c.accentBlue, c.cardBorderHighlight)), RoundedCornerShape(24.dp))
                             .padding(horizontal = 10.dp, vertical = 6.dp)
                     ) {
                         Row(
@@ -1043,41 +1294,64 @@ fun FolderListScreen(
                     }
                 }
 
-                // Solid, 100% opaque non-translucent background Nav Pill
+                // Refined Grey Nav Pill
                 Box(
                     modifier = Modifier
-                        .shadow(20.dp, CircleShape, ambientColor = c.cardShadowColor, spotColor = c.cardShadowColor)
+                        .then(if (c.isMatte) Modifier else Modifier.shadow(16.dp, CircleShape, ambientColor = c.cardShadowColor, spotColor = c.cardShadowColor))
                         .clip(CircleShape)
-                        .background(c.cardBg)
-                        .border(1.2.dp, Brush.verticalGradient(listOf(c.cardBorderHighlight, c.cardBorderShadow)), CircleShape)
+                        .background(Color(0xFF1E202A))
+                        .border(1.dp, Color.White.copy(alpha = 0.12f), CircleShape)
                 ) {
-                    Row(modifier = Modifier.padding(6.dp), horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Row(modifier = Modifier.padding(5.dp), horizontalArrangement = Arrangement.spacedBy(4.dp), verticalAlignment = Alignment.CenterVertically) {
+                        val view = androidx.compose.ui.platform.LocalView.current
                         listOf("Video" to Icons.Rounded.Movie, "Music" to Icons.Rounded.MusicNote).forEach { (label, icon) ->
                             val selected = currentTab == label
+                            val pillBgColor by animateColorAsState(
+                                targetValue = if (selected) Color(0xFF2E3140) else Color.Transparent,
+                                animationSpec = spring(
+                                    dampingRatio = Spring.DampingRatioNoBouncy,
+                                    stiffness = Spring.StiffnessMediumLow
+                                ),
+                                label = "pillBgColor"
+                            )
+                            val pillTextColor by animateColorAsState(
+                                targetValue = if (selected) c.accentBlue else c.textSecondary,
+                                animationSpec = tween(220),
+                                label = "pillTextColor"
+                            )
+                            val pillElevation by animateDpAsState(
+                                targetValue = if (selected) 6.dp else 0.dp,
+                                animationSpec = tween(250),
+                                label = "pillElevation"
+                            )
                             Row(
                                 verticalAlignment = Alignment.CenterVertically,
                                 modifier = Modifier
-                                    .shadow(if (selected) 6.dp else 0.dp, CircleShape, ambientColor = if (selected) c.accentBlue.copy(0.45f) else Color.Transparent)
+                                    .shadow(pillElevation, CircleShape, ambientColor = if (selected) c.accentBlue.copy(0.45f) else Color.Transparent)
                                     .clip(CircleShape)
+                                    .background(pillBgColor)
                                     .then(
                                         if (selected) {
-                                            Modifier
-                                                .background(c.accentBlue)
-                                                .border(1.dp, Color.White.copy(0.35f), CircleShape)
+                                            Modifier.border(1.dp, Color.White.copy(0.35f), CircleShape)
                                         } else {
                                             Modifier
                                         }
                                     )
-                                    .bounceClick { currentTab = label; if (label != "Video") selectedVideoIds = emptySet() }
+                                    .bounceClick { 
+                                        if (currentTab != label) view.performHaptic(HapticType.LIGHT)
+                                        currentTab = label
+                                        if (label != "Video") selectedVideoIds = emptySet() 
+                                    }
                                     .padding(horizontal = 20.dp, vertical = 12.dp)
                             ) {
-                                Icon(icon, contentDescription = label, tint = if (selected) c.onAccent else c.textSecondary, modifier = Modifier.size(20.dp))
+                                Icon(icon, contentDescription = label, tint = pillTextColor, modifier = Modifier.size(20.dp))
                                 Spacer(Modifier.width(6.dp))
-                                Text(label, color = if (selected) c.onAccent else c.textSecondary, fontSize = 14.sp, fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium)
+                                Text(label, color = pillTextColor, fontSize = 14.sp, fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium)
                             }
                         }
                     }
                 }
+            }
             }
         }
 
@@ -1353,26 +1627,27 @@ internal fun CanvasBg(offsetProvider: () -> Float) {
                 .background(
                     Brush.verticalGradient(
                         colors = listOf(
-                            Color(0xFF252733), // Elegant charcoal grey at top
-                            Color(0xFF1D1F28), // Dark slate-grey in middle
-                            Color(0xFF16171F)  // Deep rich dark grey at bottom
+                            Color(0xFF22242D), // Clean dark grey at top
+                            Color(0xFF181921), // Dark slate-grey in middle
+                            Color(0xFF14151B)  // Deep rich dark grey at bottom
                         )
                     )
                 )
                 .drawBehind {
                     val offset = offsetProvider()
+                    // Lil theme colours in the background (delicate ambient glow, preserving the dark grey base!)
                     drawRect(
                         brush = Brush.radialGradient(
-                            colors = listOf(Color(0xFF383B4C).copy(alpha = 0.25f), Color.Transparent),
-                            center = Offset(offset, offset * 0.8f),
-                            radius = 1000f
+                            colors = listOf(c.gradientBlob1.copy(alpha = 0.09f), Color.Transparent),
+                            center = Offset(offset * 0.4f, 150f),
+                            radius = 650f
                         )
                     )
                     drawRect(
                         brush = Brush.radialGradient(
-                            colors = listOf(c.accentBlue.copy(alpha = 0.15f), Color.Transparent),
-                            center = Offset(1000f - offset, 1800f - offset),
-                            radius = 1200f
+                            colors = listOf(c.gradientBlob2.copy(alpha = 0.07f), Color.Transparent),
+                            center = Offset(size.width - 80f, size.height * 0.65f),
+                            radius = 700f
                         )
                     )
                 }
@@ -1406,7 +1681,7 @@ private fun MultiSelectTopBar(
     onSelectAll: () -> Unit
 ) {
     val c = LocalAppColors.current
-    Column(modifier = Modifier.fillMaxWidth().background(c.topBarScrim).border(1.dp, Brush.verticalGradient(listOf(c.cardBorderHighlight, c.glassBorder)), RectangleShape)) {
+    Column(modifier = Modifier.fillMaxWidth().background(if (c.isMatte) c.baseBackground else c.topBarScrim).border(1.dp, if (c.isMatte) androidx.compose.ui.graphics.SolidColor(c.glassBorder) else Brush.verticalGradient(listOf(c.cardBorderHighlight, c.glassBorder)), RectangleShape)) {
         Row(
             modifier = Modifier.fillMaxWidth().statusBarsPadding().padding(horizontal = 8.dp, vertical = 8.dp),
             verticalAlignment = Alignment.CenterVertically
@@ -1438,21 +1713,21 @@ private fun ChipItem(
     Row(
         verticalAlignment = Alignment.CenterVertically,
         modifier = Modifier
-            .shadow(
+            .then(if (c.isMatte) Modifier else Modifier.shadow(
                 elevation = if (isSelected) 8.dp else 4.dp,
                 shape = CircleShape,
                 ambientColor = if (isSelected) c.accentBlue.copy(0.45f) else c.cardShadowColor,
                 spotColor = if (isSelected) c.accentBlue.copy(0.55f) else c.cardShadowColor
-            )
+            ))
             .clip(CircleShape)
             .background(
-                if (isSelected) Brush.verticalGradient(listOf(c.accentBlue, c.accentBlue.copy(alpha = 0.82f)))
-                else Brush.verticalGradient(listOf(c.cardBgElevated, c.cardBg))
+                if (isSelected) Brush.verticalGradient(listOf(Color(0xFF353848), Color(0xFF2B2E3C)))
+                else Brush.verticalGradient(listOf(Color(0xFF282A36), Color(0xFF20222C)))
             )
             .border(
-                width = if (isSelected) 1.5.dp else 1.2.dp,
-                brush = if (isSelected) Brush.verticalGradient(listOf(Color.White.copy(0.6f), c.accentBlue))
-                else Brush.verticalGradient(listOf(c.cardBorderHighlight, c.glassBorder, c.cardBorderShadow)),
+                width = 1.dp,
+                brush = if (isSelected) SolidColor(c.accentBlue.copy(alpha = 0.65f))
+                else SolidColor(Color.White.copy(alpha = 0.10f)),
                 shape = CircleShape
             )
             .bounceClick {
@@ -1461,15 +1736,15 @@ private fun ChipItem(
             }
             .padding(start = 14.dp, end = if (count != null && count > 0) 8.dp else 14.dp, top = 8.dp, bottom = 8.dp)
     ) {
-        Icon(icon, contentDescription = null, tint = if (isSelected) c.onAccent else c.textSecondary, modifier = Modifier.size(15.dp))
+        Icon(icon, contentDescription = null, tint = if (isSelected) c.accentBlue else c.textSecondary, modifier = Modifier.size(15.dp))
         Spacer(Modifier.width(6.dp))
-        Text(text, color = if (isSelected) c.onAccent else c.textPrimary, fontSize = 13.sp, fontWeight = if (isSelected) FontWeight.SemiBold else FontWeight.Medium)
+        Text(text, color = if (isSelected) Color.White else c.textSecondary, fontSize = 13.sp, fontWeight = if (isSelected) FontWeight.SemiBold else FontWeight.Medium)
         if (count != null && count > 0) {
             Spacer(Modifier.width(6.dp))
             Box(
                 modifier = Modifier
                     .clip(CircleShape)
-                    .background(if (isSelected) Color.White.copy(alpha = 0.25f) else c.accentBlue.copy(alpha = 0.15f))
+                    .background(Color(0xFF1E202A))
                     .padding(horizontal = 7.dp, vertical = 2.dp),
                 contentAlignment = Alignment.Center
             ) {
@@ -1477,7 +1752,7 @@ private fun ChipItem(
                     text = count.toString(),
                     fontSize = 11.sp,
                     fontWeight = FontWeight.Bold,
-                    color = if (isSelected) c.onAccent else c.accentBlue
+                    color = c.accentBlue
                 )
             }
         }
@@ -1488,58 +1763,101 @@ private fun ChipItem(
 // CONTINUE WATCHING CARD
 // ═══════════════════════════════════════════════════════════════════════════════
 @Composable
-private fun ContinueWatchingCard(video: VideoItem, appPreferences: AppPreferences, onClick: () -> Unit) {
+private fun ContinueWatchingCard(
+    video: VideoItem,
+    appPreferences: AppPreferences,
+    onClick: () -> Unit,
+    onLongPress: (() -> Unit)? = null,
+    onRemove: (() -> Unit)? = null
+) {
     val c = LocalAppColors.current
     val context = LocalContext.current
     val progress = appPreferences.getVideoProgress(video.uri.toString())
-    val ratio = if (video.duration > 0) (progress.toFloat() / video.duration).coerceIn(0f, 1f) else 0f
+    val dur = if (video.duration > 0L) video.duration else appPreferences.getVideoDuration(video.uri.toString())
+    val ratio = if (dur > 0L) (progress.toFloat() / dur).coerceIn(0f, 1f) else 0f
     val pct = (ratio * 100).toInt()
 
     Box(
         modifier = Modifier
             .width(150.dp)
             .height(96.dp)
-            .shadow(
+            .then(if (c.isMatte) Modifier else Modifier.shadow(
                 elevation = 8.dp,
                 shape = RoundedCornerShape(18.dp),
                 ambientColor = c.cardShadowColor,
                 spotColor = c.cardShadowColor
-            )
+            ))
             .clip(RoundedCornerShape(18.dp))
-            .background(Brush.verticalGradient(listOf(c.cardBgElevated, c.cardBg)))
+            .background(if (c.isMatte) SolidColor(c.cardBg) else Brush.verticalGradient(listOf(c.cardBgElevated, c.cardBg)))
             .border(
                 width = 1.4.dp,
-                brush = Brush.verticalGradient(listOf(c.cardBorderHighlight, c.glassBorder, c.cardBorderShadow)),
+                brush = if (c.isMatte) SolidColor(c.glassBorder) else Brush.verticalGradient(listOf(c.cardBorderHighlight, c.glassBorder, c.cardBorderShadow)),
                 shape = RoundedCornerShape(18.dp)
             )
-            .bounceClick(onClick = onClick)
+            .bounceClick(onClick = onClick, onLongClick = onLongPress)
     ) {
         AsyncImage(
             model = remember(video.uri) { buildVideoThumbnailRequest(context, video.uri, video.duration) },
             contentDescription = null, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize()
         )
-        // Top right percentage badge
+        // Top right duration + percentage badge
         Box(
             modifier = Modifier
                 .align(Alignment.TopEnd)
                 .padding(6.dp)
-                .shadow(4.dp, RoundedCornerShape(8.dp), ambientColor = Color.Black.copy(0.6f))
+                .then(if (c.isMatte) Modifier else Modifier.shadow(4.dp, RoundedCornerShape(8.dp), ambientColor = Color.Black.copy(0.6f)))
                 .clip(RoundedCornerShape(8.dp))
                 .background(Color(0xD90E0F16))
                 .border(1.dp, Color.White.copy(alpha = 0.28f), RoundedCornerShape(8.dp))
                 .padding(horizontal = 6.dp, vertical = 2.5.dp)
         ) {
-            Text("$pct%", color = Color.White, fontSize = 9.sp, fontWeight = FontWeight.Bold)
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(3.dp)
+            ) {
+                if (dur > 0L) {
+                    Text(
+                        formatTime(dur),
+                        color = Color.White,
+                        fontSize = 9.sp,
+                        fontWeight = FontWeight.Bold,
+                        fontFamily = FontFamily.Monospace
+                    )
+                    Text("•", color = Color.White.copy(alpha = 0.5f), fontSize = 9.sp)
+                }
+                Text("$pct%", color = c.accentBlue, fontSize = 9.sp, fontWeight = FontWeight.Bold)
+            }
+        }
+        // Top left remove button
+        if (onRemove != null) {
+            Box(
+                modifier = Modifier
+                    .align(Alignment.TopStart)
+                    .padding(6.dp)
+                    .size(22.dp)
+                    .clip(CircleShape)
+                    .background(Color.Black.copy(alpha = 0.70f))
+                    .border(0.8.dp, Color.White.copy(alpha = 0.35f), CircleShape)
+                    .clickable { onRemove() },
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    Icons.Rounded.Close,
+                    contentDescription = "Remove",
+                    tint = Color.White.copy(alpha = 0.90f),
+                    modifier = Modifier.size(13.dp)
+                )
+            }
         }
         // Center resume play button with 3D embossed accent ring
         Box(
             modifier = Modifier
                 .align(Alignment.Center)
                 .size(36.dp)
-                .shadow(6.dp, CircleShape, ambientColor = c.accentBlue.copy(0.6f))
+                .then(if (c.isMatte) Modifier else Modifier.shadow(6.dp, CircleShape, ambientColor = c.accentBlue.copy(0.6f)))
                 .clip(CircleShape)
-                .background(Brush.radialGradient(listOf(Color(0xE6141520), Color(0xFA0B0C10))))
-                .border(1.6.dp, Brush.verticalGradient(listOf(Color.White.copy(0.7f), c.accentBlue)), CircleShape),
+                .background(if (c.isMatte) SolidColor(Color(0xFF19191E)) else Brush.radialGradient(listOf(Color(0xE6141520), Color(0xFA0B0C10))))
+                .border(1.6.dp, if (c.isMatte) SolidColor(c.accentBlue) else Brush.verticalGradient(listOf(Color.White.copy(0.7f), c.accentBlue)), CircleShape),
             contentAlignment = Alignment.Center
         ) {
             Icon(
@@ -1570,7 +1888,12 @@ private fun ContinueWatchingCard(video: VideoItem, appPreferences: AppPreference
 // RECENTLY ADDED CARD (200x130dp)
 // ═══════════════════════════════════════════════════════════════════════════════
 @Composable
-private fun RecentlyAddedVideoCard(video: VideoItem, appPreferences: AppPreferences, onClick: () -> Unit) {
+private fun RecentlyAddedVideoCard(
+    video: VideoItem,
+    appPreferences: AppPreferences,
+    onClick: () -> Unit,
+    onLongPress: (() -> Unit)? = null
+) {
     val c = LocalAppColors.current
     val context = LocalContext.current
     val progress = appPreferences.getVideoProgress(video.uri.toString())
@@ -1579,45 +1902,56 @@ private fun RecentlyAddedVideoCard(video: VideoItem, appPreferences: AppPreferen
         modifier = Modifier
             .width(150.dp)
             .height(96.dp)
-            .shadow(
+            .then(if (c.isMatte) Modifier else Modifier.shadow(
                 elevation = 8.dp,
                 shape = RoundedCornerShape(18.dp),
                 ambientColor = c.cardShadowColor,
                 spotColor = c.cardShadowColor
-            )
+            ))
             .clip(RoundedCornerShape(18.dp))
-            .background(Brush.verticalGradient(listOf(c.cardBgElevated, c.cardBg)))
+            .background(if (c.isMatte) SolidColor(c.cardBg) else Brush.verticalGradient(listOf(c.cardBgElevated, c.cardBg)))
             .border(
                 width = 1.4.dp,
-                brush = if (progress > 0) Brush.verticalGradient(listOf(Color.White.copy(0.5f), c.accentBlue.copy(0.7f)))
+                brush = if (c.isMatte) {
+                    SolidColor(c.glassBorder)
+                } else if (progress > 0) Brush.verticalGradient(listOf(Color.White.copy(0.5f), c.accentBlue.copy(0.7f)))
                 else Brush.verticalGradient(listOf(c.cardBorderHighlight, c.glassBorder, c.cardBorderShadow)),
                 shape = RoundedCornerShape(18.dp)
             )
-            .bounceClick(onClick = onClick)
+            .bounceClick(onClick = onClick, onLongClick = onLongPress)
     ) {
         AsyncImage(
             model = remember(video.uri) { buildVideoThumbnailRequest(context, video.uri, video.duration) },
             contentDescription = null, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize()
         )
+        // Top right total duration badge
+        if (video.duration > 0L) {
+            Box(
+                modifier = Modifier
+                    .align(Alignment.TopEnd)
+                    .padding(6.dp)
+                    .then(if (c.isMatte) Modifier else Modifier.shadow(4.dp, RoundedCornerShape(8.dp), ambientColor = Color.Black.copy(0.6f)))
+                    .clip(RoundedCornerShape(8.dp))
+                    .background(Color(0xD90E0F16))
+                    .border(1.dp, Color.White.copy(alpha = 0.28f), RoundedCornerShape(8.dp))
+                    .padding(horizontal = 6.dp, vertical = 2.5.dp)
+            ) {
+                Text(
+                    formatTime(video.duration),
+                    color = Color.White,
+                    fontSize = 9.sp,
+                    fontWeight = FontWeight.Bold,
+                    fontFamily = FontFamily.Monospace
+                )
+            }
+        }
         Box(modifier = Modifier.align(Alignment.BottomCenter).fillMaxWidth().height(44.dp)
             .background(Brush.verticalGradient(listOf(Color.Transparent, Color.Black.copy(0.88f)))))
         Text(
             video.title.substringBeforeLast("."), color = Color.White, fontSize = 10.sp, fontWeight = FontWeight.Medium,
             maxLines = 1, overflow = TextOverflow.Ellipsis,
-            modifier = Modifier.align(Alignment.BottomStart).padding(start = 8.dp, end = 48.dp, bottom = if (progress > 0) 9.dp else 7.dp)
+            modifier = Modifier.align(Alignment.BottomStart).padding(start = 8.dp, end = 8.dp, bottom = if (progress > 0) 9.dp else 7.dp)
         )
-        Box(
-            modifier = Modifier
-                .align(Alignment.BottomEnd)
-                .padding(6.dp)
-                .shadow(4.dp, RoundedCornerShape(6.dp), ambientColor = Color.Black.copy(0.7f))
-                .clip(RoundedCornerShape(6.dp))
-                .background(if (progress > 0) c.accentBlue else Color(0xD90E0F16))
-                .border(0.8.dp, Color.White.copy(0.3f), RoundedCornerShape(6.dp))
-                .padding(horizontal = 6.dp, vertical = 2.5.dp)
-        ) {
-            Text(if (progress > 0) formatTime(progress) else formatTime(video.duration), color = Color.White, fontSize = 9.sp, fontWeight = FontWeight.SemiBold)
-        }
         if (progress > 0 && video.duration > 0) {
             val ratio = (progress.toFloat() / video.duration).coerceIn(0f, 1f)
             Box(modifier = Modifier.align(Alignment.BottomStart).fillMaxWidth().height(3.dp).background(Color.White.copy(0.25f))) {
@@ -1667,58 +2001,52 @@ fun FolderItem(
     Box(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = 16.dp, vertical = 5.dp)
-            .shadow(
+            .padding(horizontal = 16.dp, vertical = 2.5.dp)
+            .then(if (c.isMatte) Modifier else Modifier.shadow(
                 elevation = 8.dp,
                 shape = RoundedCornerShape(22.dp),
                 ambientColor = c.cardShadowColor,
                 spotColor = c.cardShadowColor
-            )
+            ))
             .clip(RoundedCornerShape(22.dp))
             .background(
                 Brush.verticalGradient(
-                    colors = if (isHistory) listOf(c.accentBlue.copy(alpha = 0.22f), c.cardBgElevated)
-                    else listOf(c.cardBgElevated, c.cardBg)
+                    listOf(Color(0xFF282A36), Color(0xFF22242E))
                 )
             )
             .border(
-                width = if (isPinned) 2.dp else 1.4.dp,
-                brush = if (isPinned) Brush.verticalGradient(listOf(c.accentBlue, c.accentBlue.copy(0.6f)))
-                else if (isHistory) Brush.verticalGradient(listOf(c.accentBlue.copy(0.6f), c.glassBorder))
-                else Brush.verticalGradient(listOf(
-                    c.accentBlue.copy(alpha = 0.28f),
-                    c.cardBorderHighlight,
-                    c.glassBorder,
-                    c.cardBorderShadow
-                )),
+                width = 1.dp,
+                brush = Brush.verticalGradient(
+                    listOf(
+                        Color.White.copy(alpha = 0.12f),
+                        Color.White.copy(alpha = 0.04f)
+                    )
+                ),
                 shape = RoundedCornerShape(22.dp)
             )
-            .pointerInput(Unit) {
-                detectTapGestures(
-                    onTap = {
-                        haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-                        onClick()
-                    },
-                    onLongPress = {
-                        haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                        onLongPress()
-                    }
-                )
-            }
-            .padding(horizontal = 14.dp, vertical = 12.dp)
+            .bounceClick(
+                scaleDown = 0.965f,
+                onLongClick = onLongPress,
+                onClick = onClick
+            )
     ) {
         Row(
-            modifier = Modifier.fillMaxWidth(),
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 14.dp, vertical = 12.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            // Folder icon / thumbnail with 3D bezel
+            // Folder icon / thumbnail
             Box(
                 modifier = Modifier
                     .size(46.dp)
-                    .shadow(4.dp, RoundedCornerShape(14.dp), ambientColor = Color.Black.copy(0.6f))
                     .clip(RoundedCornerShape(14.dp))
-                    .background(if (isHistory) c.accentBlue.copy(0.25f) else c.cardBg)
-                    .border(1.2.dp, if (isHistory) c.accentBlue.copy(0.5f) else Color.White.copy(0.24f), RoundedCornerShape(14.dp)),
+                    .background(Color(0xFF2C2F3D))
+                    .border(
+                        width = 1.dp,
+                        brush = SolidColor(Color.White.copy(alpha = 0.12f)),
+                        shape = RoundedCornerShape(14.dp)
+                    ),
                 contentAlignment = Alignment.Center
             ) {
                 if (isAllVideos) {
@@ -1745,34 +2073,44 @@ fun FolderItem(
             }
             Spacer(Modifier.width(14.dp))
             Column(modifier = Modifier.weight(1f)) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    if (isPinned) {
-                        Icon(Icons.Rounded.PushPin, contentDescription = "Pinned", tint = c.accentBlue, modifier = Modifier.size(13.dp))
-                        Spacer(Modifier.width(4.dp))
-                    }
-                    Text(folder.name, fontSize = 16.sp, fontWeight = FontWeight.SemiBold, color = c.textPrimary, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                }
+                Text(folder.name, fontSize = 16.sp, fontWeight = FontWeight.SemiBold, color = c.textPrimary, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 if (subtitleText.isNotEmpty()) {
                     Text(subtitleText, fontSize = 11.sp, color = c.textSecondary, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 }
             }
             Spacer(Modifier.width(10.dp))
-            // Count badge with 3D bevel
+            // Count badge
             Box(
                 modifier = Modifier
-                    .shadow(4.dp, RoundedCornerShape(10.dp), ambientColor = Color.Black.copy(0.4f))
                     .clip(RoundedCornerShape(10.dp))
-                    .background(
-                        if (isHistory) Brush.verticalGradient(listOf(c.accentBlue, c.accentBlue.copy(0.8f)))
-                        else Brush.verticalGradient(listOf(c.accentBlue.copy(0.25f), c.accentBlue.copy(0.12f)))
-                    )
-                    .border(1.dp, c.accentBlue.copy(0.45f), RoundedCornerShape(10.dp))
+                    .background(Color(0xFF2D303D))
+                    .border(1.dp, Color.White.copy(alpha = 0.10f), RoundedCornerShape(10.dp))
                     .padding(horizontal = 10.dp, vertical = 5.dp)
             ) {
-                Text(folder.videos.size.toString(), fontSize = 13.sp, fontWeight = FontWeight.Bold, color = if (isHistory) Color.White else c.accentBlue)
+                Text(folder.videos.size.toString(), fontSize = 13.sp, fontWeight = FontWeight.Bold, color = c.accentBlue)
             }
             Spacer(Modifier.width(6.dp))
             Icon(Icons.AutoMirrored.Rounded.ArrowForwardIos, contentDescription = null, tint = c.textSecondary, modifier = Modifier.size(14.dp))
+        }
+
+        if (isPinned) {
+            Box(
+                modifier = Modifier
+                    .align(Alignment.TopStart)
+                    .padding(start = 7.dp, top = 7.dp)
+                    .size(18.dp)
+                    .clip(CircleShape)
+                    .background(Color(0xFF20222C))
+                    .border(0.8.dp, Color.White.copy(alpha = 0.18f), CircleShape),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    Icons.Rounded.PushPin,
+                    contentDescription = "Pinned",
+                    tint = c.accentBlue,
+                    modifier = Modifier.size(10.dp).rotate(-35f)
+                )
+            }
         }
     }
 }
@@ -1793,73 +2131,98 @@ fun FolderGridItem(
     val context = LocalContext.current
     val previewVideos = folder.videos.take(4)
 
-    Column(
-        modifier = Modifier.fillMaxWidth().padding(vertical = 5.dp)
-            .shadow(
+    Box(
+        modifier = Modifier.fillMaxWidth().padding(vertical = 3.dp)
+            .then(if (c.isMatte) Modifier else Modifier.shadow(
                 elevation = 8.dp,
                 shape = RoundedCornerShape(20.dp),
                 ambientColor = c.cardShadowColor,
                 spotColor = c.cardShadowColor
-            )
+            ))
             .clip(RoundedCornerShape(20.dp))
-            .background(Brush.verticalGradient(listOf(c.cardBgElevated, c.cardBg)))
+            .background(Brush.verticalGradient(listOf(Color(0xFF282A36), Color(0xFF20222C))))
             .border(
-                width = if (isPinned) 2.dp else 1.4.dp,
-                brush = if (isPinned) Brush.verticalGradient(listOf(c.accentBlue, c.accentBlue.copy(0.6f)))
-                else Brush.verticalGradient(listOf(c.cardBorderHighlight, c.glassBorder, c.cardBorderShadow)),
+                width = 1.dp,
+                brush = Brush.verticalGradient(
+                    listOf(
+                        Color.White.copy(alpha = 0.12f),
+                        Color.White.copy(alpha = 0.04f)
+                    )
+                ),
                 shape = RoundedCornerShape(20.dp)
             )
-            .pointerInput(Unit) { detectTapGestures(onTap = { onClick() }, onLongPress = { onLongPress() }) }
+            .bounceClick(scaleDown = 0.95f, onLongClick = onLongPress, onClick = onClick)
     ) {
-        // 2x2 mosaic preview (or icon)
-        if (previewVideos.isNotEmpty() && !isHistory) {
-            Box(modifier = Modifier.fillMaxWidth().height(90.dp)) {
-                Row(modifier = Modifier.fillMaxSize()) {
-                    Column(modifier = Modifier.weight(1f).fillMaxHeight(), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                        previewVideos.getOrNull(0)?.let { video ->
-                            AsyncImage(
-                                model = remember(video.uri) { buildVideoThumbnailRequest(context, video.uri, video.duration) },
-                                contentDescription = null, contentScale = ContentScale.Crop,
-                                modifier = Modifier.weight(1f).fillMaxWidth()
-                            )
+        Column(modifier = Modifier.fillMaxWidth()) {
+            // 2x2 mosaic preview (or icon)
+            if (previewVideos.isNotEmpty() && !isHistory) {
+                Box(modifier = Modifier.fillMaxWidth().height(90.dp)) {
+                    Row(modifier = Modifier.fillMaxSize()) {
+                        Column(modifier = Modifier.weight(1f).fillMaxHeight(), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                            previewVideos.getOrNull(0)?.let { video ->
+                                AsyncImage(
+                                    model = remember(video.uri) { buildVideoThumbnailRequest(context, video.uri, video.duration) },
+                                    contentDescription = null, contentScale = ContentScale.Crop,
+                                    modifier = Modifier.weight(1f).fillMaxWidth()
+                                )
+                            }
+                            previewVideos.getOrNull(2)?.let { video ->
+                                AsyncImage(
+                                    model = remember(video.uri) { buildVideoThumbnailRequest(context, video.uri, video.duration) },
+                                    contentDescription = null, contentScale = ContentScale.Crop,
+                                    modifier = Modifier.weight(1f).fillMaxWidth()
+                                )
+                            }
                         }
-                        previewVideos.getOrNull(2)?.let { video ->
-                            AsyncImage(
-                                model = remember(video.uri) { buildVideoThumbnailRequest(context, video.uri, video.duration) },
-                                contentDescription = null, contentScale = ContentScale.Crop,
-                                modifier = Modifier.weight(1f).fillMaxWidth()
-                            )
-                        }
-                    }
-                    Spacer(Modifier.width(2.dp))
-                    Column(modifier = Modifier.weight(1f).fillMaxHeight(), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                        previewVideos.getOrNull(1)?.let { video ->
-                            AsyncImage(
-                                model = remember(video.uri) { buildVideoThumbnailRequest(context, video.uri, video.duration) },
-                                contentDescription = null, contentScale = ContentScale.Crop,
-                                modifier = Modifier.weight(1f).fillMaxWidth()
-                            )
-                        }
-                        previewVideos.getOrNull(3)?.let { video ->
-                            AsyncImage(
-                                model = remember(video.uri) { buildVideoThumbnailRequest(context, video.uri, video.duration) },
-                                contentDescription = null, contentScale = ContentScale.Crop,
-                                modifier = Modifier.weight(1f).fillMaxWidth()
-                            )
+                        Spacer(Modifier.width(2.dp))
+                        Column(modifier = Modifier.weight(1f).fillMaxHeight(), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                            previewVideos.getOrNull(1)?.let { video ->
+                                AsyncImage(
+                                    model = remember(video.uri) { buildVideoThumbnailRequest(context, video.uri, video.duration) },
+                                    contentDescription = null, contentScale = ContentScale.Crop,
+                                    modifier = Modifier.weight(1f).fillMaxWidth()
+                                )
+                            }
+                            previewVideos.getOrNull(3)?.let { video ->
+                                AsyncImage(
+                                    model = remember(video.uri) { buildVideoThumbnailRequest(context, video.uri, video.duration) },
+                                    contentDescription = null, contentScale = ContentScale.Crop,
+                                    modifier = Modifier.weight(1f).fillMaxWidth()
+                                )
+                            }
                         }
                     }
                 }
+            } else {
+                Box(modifier = Modifier.fillMaxWidth().height(80.dp).background(c.accentBlue.copy(0.12f)), contentAlignment = Alignment.Center) {
+                    Icon(if (isAllVideos) Icons.Rounded.VideoLibrary else if (isHistory) Icons.Rounded.History else Icons.Rounded.Folder, contentDescription = null, tint = if (isAllVideos || isHistory) c.accentBlue else c.textSecondary, modifier = Modifier.size(36.dp))
+                }
             }
-        } else {
-            Box(modifier = Modifier.fillMaxWidth().height(80.dp).background(c.accentBlue.copy(0.12f)), contentAlignment = Alignment.Center) {
-                Icon(if (isAllVideos) Icons.Rounded.VideoLibrary else if (isHistory) Icons.Rounded.History else Icons.Rounded.Folder, contentDescription = null, tint = if (isAllVideos || isHistory) c.accentBlue else c.textSecondary, modifier = Modifier.size(36.dp))
+            // Info row
+            Row(modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
+                Text(folder.name, fontSize = 14.sp, fontWeight = FontWeight.SemiBold, color = c.textPrimary, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
+                Text("${folder.videos.size}", fontSize = 12.sp, color = c.accentBlue, fontWeight = FontWeight.Bold)
             }
         }
-        // Info row
-        Row(modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
-            if (isPinned) { Icon(Icons.Rounded.PushPin, contentDescription = null, tint = c.accentBlue, modifier = Modifier.size(12.dp)); Spacer(Modifier.width(4.dp)) }
-            Text(folder.name, fontSize = 14.sp, fontWeight = FontWeight.SemiBold, color = c.textPrimary, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
-            Text("${folder.videos.size}", fontSize = 12.sp, color = c.accentBlue, fontWeight = FontWeight.Bold)
+
+        if (isPinned) {
+            Box(
+                modifier = Modifier
+                    .align(Alignment.TopStart)
+                    .padding(start = 7.dp, top = 7.dp)
+                    .size(18.dp)
+                    .clip(CircleShape)
+                    .background(Color(0xFF20222C))
+                    .border(0.8.dp, Color.White.copy(alpha = 0.18f), CircleShape),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    Icons.Rounded.PushPin,
+                    contentDescription = "Pinned",
+                    tint = c.accentBlue,
+                    modifier = Modifier.size(10.dp).rotate(-35f)
+                )
+            }
         }
     }
 }
@@ -1947,21 +2310,29 @@ fun VideoListItem(
         modifier = Modifier
             .fillMaxWidth()
             .padding(horizontal = 16.dp, vertical = 5.dp)
-            .shadow(
+            .then(if (c.isMatte) Modifier else Modifier.shadow(
                 elevation = if (isSelected) 10.dp else 6.dp,
                 shape = RoundedCornerShape(18.dp),
                 ambientColor = if (isSelected) c.accentBlue.copy(0.35f) else c.cardShadowColor,
                 spotColor = if (isSelected) c.accentBlue.copy(0.45f) else c.cardShadowColor
-            )
+            ))
             .clip(RoundedCornerShape(18.dp))
             .background(
-                if (isSelected) Brush.verticalGradient(listOf(c.accentBlue.copy(0.28f), c.cardBg))
-                else Brush.verticalGradient(listOf(c.cardBgElevated, c.cardBg))
+                if (c.isMatte) {
+                    SolidColor(if (isSelected) c.accentBlue.copy(alpha = 0.15f) else c.cardBg)
+                } else {
+                    if (isSelected) Brush.verticalGradient(listOf(c.accentBlue.copy(0.28f), c.cardBg))
+                    else Brush.verticalGradient(listOf(c.cardBgElevated, c.cardBg))
+                }
             )
             .border(
                 width = if (isSelected) 1.8.dp else 1.3.dp,
-                brush = if (isSelected) Brush.verticalGradient(listOf(Color.White.copy(0.65f), c.accentBlue))
-                else Brush.verticalGradient(listOf(c.cardBorderHighlight, c.glassBorder, c.cardBorderShadow)),
+                brush = if (c.isMatte) {
+                    androidx.compose.ui.graphics.SolidColor(if (isSelected) c.accentBlue else c.glassBorder)
+                } else {
+                    if (isSelected) Brush.verticalGradient(listOf(Color.White.copy(0.65f), c.accentBlue))
+                    else Brush.verticalGradient(listOf(c.cardBorderHighlight, c.glassBorder, c.cardBorderShadow))
+                },
                 shape = RoundedCornerShape(18.dp)
             )
             .pointerInput(Unit) {

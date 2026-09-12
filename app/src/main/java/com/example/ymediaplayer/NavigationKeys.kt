@@ -6,3 +6,4 @@ import kotlinx.serialization.Serializable
 @Serializable data object FolderList : NavKey
 @Serializable data class FolderDetail(val folderId: String, val folderName: String) : NavKey
 @Serializable data class VideoPlayer(val videoUri: String) : NavKey
+@Serializable data object Settings : NavKey

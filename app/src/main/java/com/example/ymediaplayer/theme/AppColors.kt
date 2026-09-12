@@ -9,6 +9,7 @@ import androidx.compose.ui.graphics.Color
  */
 data class AppColors(
     val isDark: Boolean,
+    val isMatte: Boolean = false,
     val baseBackground: Color,
     val gradientBlob1: Color,
     val gradientBlob2: Color,
@@ -31,80 +32,88 @@ data class AppColors(
     val cardShadowColor: Color = if (isDark) Color(0xD9000000) else Color(0x30000000),
 )
 
-/** 1. Dark Grey: Muted dark grey background, elegant graphite cards */
-val DarkGreyAppColors = AppColors(
+/** 1. Solid Dark: Dark grey background with grey cards & buttons */
+val SolidDarkAppColors = AppColors(
     isDark = true,
-    baseBackground = Color(0xFF1A1B22),      // Elegant dark grey background (not black)
-    gradientBlob1 = Color(0xFF2C2D3A),       // Muted slate-grey ambient blob
-    gradientBlob2 = Color(0xFF22232E),       // Deep grey-slate ambient blob
-    glassBg = Color(0xFA252733),             // Sleek dark grey card surface
-    glassBgNested = Color(0xFF303242),       // Slightly elevated dark grey
-    glassBorder = Color.White.copy(alpha = 0.16f),
-    topBarScrim = Color(0xEE1A1B22),
-    navBarScrim = Color(0xF421222C),
+    isMatte = false,
+    baseBackground = Color(0xFF16171E),      // Dark grey background
+    gradientBlob1 = Color(0xFF262935),       // Subtle ambient blob
+    gradientBlob2 = Color(0xFF1E202A),       // Subtle ambient blob
+    glassBg = Color(0xFF232530),             // Grey card surface
+    glassBgNested = Color(0xFF2D303D),       // Elevated grey
+    glassBorder = Color(0xFF383B4B),         // Subtle grey border
+    topBarScrim = Color(0xF216171E),         // Dark grey scrim
+    navBarScrim = Color(0xF616171E),         // Dark grey scrim
     textPrimary = Color(0xFFFFFFFF),
     textSecondary = Color.White.copy(alpha = 0.72f),
     textHint = Color.White.copy(alpha = 0.45f),
-    accentBlue = Color(0xFF0A84FF),
-    accentGreen = Color(0xFF32D74B),
+    accentBlue = Color(0xFF1565C0),
+    accentGreen = Color(0xFF1E824C),
     onAccent = Color.White,
-    dropdownBg = Color(0xFF252733),
-    cardBg = Color(0xFF232531),              // Dark grey card background
-    cardBgElevated = Color(0xFF2E303F),      // Elevated dark grey
-    cardBorderHighlight = Color.White.copy(alpha = 0.28f),
-    cardBorderShadow = Color.Black.copy(alpha = 0.35f),
-    cardShadowColor = Color.Black.copy(alpha = 0.45f),
+    dropdownBg = Color(0xFF232530),
+    cardBg = Color(0xFF232530),              // Grey card
+    cardBgElevated = Color(0xFF2D303D),      // Elevated grey for buttons/cards
+    cardBorderHighlight = Color(0xFF424658), // Grey border highlight
+    cardBorderShadow = Color(0xFF101116),
+    cardShadowColor = Color.Black.copy(alpha = 0.35f),
 )
 
-/** 2. Solid Black & Grey: AMOLED true pitch black with solid dark grey cards */
-val SolidBlackAppColors = AppColors(
-    isDark = true,
-    baseBackground = Color(0xFF000000),      // Pitch AMOLED black
-    gradientBlob1 = Color(0xFF141416),       // Deep charcoal ambient blob
-    gradientBlob2 = Color(0xFF0D0D0F),       // Deep dark ambient blob
-    glassBg = Color(0xFF141416),             // Solid dark grey card surface
-    glassBgNested = Color(0xFF1E1E22),       // Elevated dark grey
-    glassBorder = Color.White.copy(alpha = 0.12f),
-    topBarScrim = Color(0xF2000000),
-    navBarScrim = Color(0xF8080808),
-    textPrimary = Color(0xFFFFFFFF),
-    textSecondary = Color.White.copy(alpha = 0.65f),
-    textHint = Color.White.copy(alpha = 0.40f),
-    accentBlue = Color(0xFF0A84FF),
-    accentGreen = Color(0xFF32D74B),
-    onAccent = Color.White,
-    dropdownBg = Color(0xFF161618),
-    cardBg = Color(0xFF161618),              // Solid dark grey card
-    cardBgElevated = Color(0xFF202024),      // Elevated dark grey card
-    cardBorderHighlight = Color.White.copy(alpha = 0.20f),
-    cardBorderShadow = Color.Black.copy(alpha = 0.65f),
-    cardShadowColor = Color.Black.copy(alpha = 0.65f),
-)
-
-/** 3. Solid Milk White: Crisp pure white background and clean white surfaces */
-val MilkWhiteAppColors = AppColors(
+/** 2. Solid White: Pure solid flat white background, solid matte cards, ZERO gradients, ZERO glass */
+val SolidWhiteAppColors = AppColors(
     isDark = false,
-    baseBackground = Color(0xFFFFFFFF),      // Pure solid milk white
-    gradientBlob1 = Color(0xFFF6F7FA),       // Subtle clean ambient tint
-    gradientBlob2 = Color(0xFFEFF1F7),       // Subtle clean ambient tint
-    glassBg = Color(0xFFFFFFFF),             // Solid milk white cards
-    glassBgNested = Color(0xFFF7F8FA),
-    glassBorder = Color.Black.copy(alpha = 0.08f),
-    topBarScrim = Color.White.copy(alpha = 0.95f),
-    navBarScrim = Color.White.copy(alpha = 0.96f),
-    textPrimary = Color(0xFF0D0D11),
-    textSecondary = Color.Black.copy(alpha = 0.65f),
-    textHint = Color.Black.copy(alpha = 0.40f),
+    isMatte = true,
+    baseBackground = Color(0xFFFFFFFF),      // Pure solid matte white (no gradient)
+    gradientBlob1 = Color.Transparent,       // Zero gradient blob
+    gradientBlob2 = Color.Transparent,       // Zero gradient blob
+    glassBg = Color(0xFFF6F7F9),             // Solid matte card surface (no glass/blur)
+    glassBgNested = Color(0xFFECEEF2),       // Solid elevated matte surface
+    glassBorder = Color(0xFFE2E4E9),         // Clean flat matte border
+    topBarScrim = Color(0xFFFFFFFF),         // 100% opaque solid white
+    navBarScrim = Color(0xFFFFFFFF),         // 100% opaque solid white
+    textPrimary = Color(0xFF11141D),
+    textSecondary = Color(0xFF4B5565),
+    textHint = Color(0xFF9AA4B2),
     accentBlue = Color(0xFF0A84FF),
-    accentGreen = Color(0xFF28A745),
+    accentGreen = Color(0xFF16A34A),
     onAccent = Color.White,
     dropdownBg = Color(0xFFFFFFFF),
-    cardBg = Color(0xFFFFFFFF),              // Pure milk white card
-    cardBgElevated = Color(0xFFF8F9FD),      // Elevated milk white card
-    cardBorderHighlight = Color.White,
-    cardBorderShadow = Color.Black.copy(alpha = 0.08f),
-    cardShadowColor = Color.Black.copy(alpha = 0.10f),
+    cardBg = Color(0xFFF6F7F9),              // Pure flat solid matte card
+    cardBgElevated = Color(0xFFECEEF2),      // Solid elevated matte card
+    cardBorderHighlight = Color(0xFFE2E4E9), // Clean flat border
+    cardBorderShadow = Color(0xFFE2E4E9),
+    cardShadowColor = Color(0x08000000),     // Minimal subtle elevation
 )
+
+/** Backward compatible aliases */
+val SolidBlackAppColors = SolidDarkAppColors
+val MilkWhiteAppColors = SolidWhiteAppColors
+
+/** 3. Dark Grey: Dark grey background with grey cards/buttons & subtle theme ambient colors */
+val DarkGreyAppColors = AppColors(
+    isDark = true,
+    isMatte = false,
+    baseBackground = Color(0xFF16171E),      // Dark grey background
+    gradientBlob1 = Color(0xFF262935),       // Ambient blob
+    gradientBlob2 = Color(0xFF1E202A),       // Ambient blob
+    glassBg = Color(0xFF232530),             // Grey card surface
+    glassBgNested = Color(0xFF2D303D),       // Elevated grey
+    glassBorder = Color(0xFF383B4B),         // Subtle grey border
+    topBarScrim = Color(0xF216171E),
+    navBarScrim = Color(0xF616171E),
+    textPrimary = Color(0xFFFFFFFF),
+    textSecondary = Color.White.copy(alpha = 0.72f),
+    textHint = Color.White.copy(alpha = 0.45f),
+    accentBlue = Color(0xFF1565C0),
+    accentGreen = Color(0xFF1E824C),
+    onAccent = Color.White,
+    dropdownBg = Color(0xFF232530),
+    cardBg = Color(0xFF232530),              // Grey card
+    cardBgElevated = Color(0xFF2D303D),      // Elevated grey for buttons/cards
+    cardBorderHighlight = Color(0xFF424658),
+    cardBorderShadow = Color(0xFF101116),
+    cardShadowColor = Color.Black.copy(alpha = 0.35f),
+)
+
 
 /** 4. Less White: Muted soft light grey / off-white, easier on eyes */
 val LessWhiteAppColors = AppColors(

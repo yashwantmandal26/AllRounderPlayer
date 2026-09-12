@@ -28,19 +28,20 @@ fun YMediaPlayerTheme(
   content: @Composable () -> Unit,
 ) {
   val baseAppColors = when (themeMode) {
+    ThemeMode.SOLID_DARK -> SolidDarkAppColors
+    ThemeMode.SOLID_WHITE -> SolidWhiteAppColors
     ThemeMode.DARK_GREY -> DarkGreyAppColors
-    ThemeMode.SOLID_BLACK -> SolidBlackAppColors
-    ThemeMode.MILK_WHITE -> MilkWhiteAppColors
     ThemeMode.LESS_WHITE -> LessWhiteAppColors
   }
   val isDark = baseAppColors.isDark
   
-  // Apply selected color theme to app accents & ambient gradient blobs
+  // Apply selected color theme to app accents & ambient gradient blobs (subtle theme colours in bg)
   val appColors = baseAppColors.copy(
       accentBlue = colorTheme.primaryAccent,
+      accentGreen = colorTheme.secondaryAccent,
       onAccent = androidx.compose.ui.graphics.Color.White,
-      gradientBlob1 = if (isDark) colorTheme.secondaryAccent.copy(alpha = 0.12f) else colorTheme.secondaryAccent.copy(alpha = 0.18f),
-      gradientBlob2 = if (isDark) colorTheme.primaryAccent.copy(alpha = 0.10f) else colorTheme.primaryAccent.copy(alpha = 0.14f)
+      gradientBlob1 = if (isDark) colorTheme.primaryAccent.copy(alpha = 0.22f) else colorTheme.primaryAccent.copy(alpha = 0.14f),
+      gradientBlob2 = if (isDark) colorTheme.secondaryAccent.copy(alpha = 0.18f) else colorTheme.secondaryAccent.copy(alpha = 0.12f)
   )
 
   val colorScheme = if (isDark) {

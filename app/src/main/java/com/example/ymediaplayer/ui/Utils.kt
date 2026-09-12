@@ -13,10 +13,14 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsPressedAsState
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.composed
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawWithContent
@@ -104,10 +108,10 @@ internal fun buildVideoThumbnailRequest(context: Context, uri: Uri, durationMs: 
 
 fun Modifier.bounceClick(
     scaleDown: Float = 0.91f,
+    onLongClick: (() -> Unit)? = null,
     onClick: () -> Unit
 ): Modifier = composed {
-    val interactionSource = remember { MutableInteractionSource() }
-    val isPressed by interactionSource.collectIsPressedAsState()
+    var isPressed by remember { mutableStateOf(false) }
     
     val scale by animateFloatAsState(
         targetValue = if (isPressed) scaleDown else 1f,
@@ -123,11 +127,17 @@ fun Modifier.bounceClick(
             scaleX = scale
             scaleY = scale
         }
-        .clickable(
-            interactionSource = interactionSource,
-            indication = null, // Disable default grey ripple in favor of glass compression
-            onClick = onClick
-        )
+        .pointerInput(onClick, onLongClick) {
+            detectTapGestures(
+                onPress = {
+                    isPressed = true
+                    tryAwaitRelease()
+                    isPressed = false
+                },
+                onTap = { onClick() },
+                onLongPress = { onLongClick?.invoke() }
+            )
+        }
 }
 
 /**
@@ -230,130 +240,130 @@ enum class PlayerTheme(
     CYBER(
         id = "CYBER",
         displayName = "Electric Cyber",
-        description = "Apple iOS 18 Electric Cyan & Deep Indigo",
-        primaryAccent = Color(0xFF0A84FF),
-        secondaryAccent = Color(0xFFBF5AF2),
-        highlightColor = Color(0xFF5AC8FA),
+        description = "Deep Sapphire Blue & Royal Indigo",
+        primaryAccent = Color(0xFF1565C0),
+        secondaryAccent = Color(0xFF5E35B1),
+        highlightColor = Color(0xFF1E88E5),
         orbBrush = Brush.radialGradient(
-            listOf(Color(0xFF5AC8FA), Color(0xFF0A84FF), Color(0xFF003FCC))
+            listOf(Color(0xFF1E88E5), Color(0xFF1565C0), Color(0xFF0D47A1))
         ),
         gestureBrush = Brush.verticalGradient(
-            listOf(Color(0xFF00F2FE), Color(0xFF4FACFE), Color(0xFF0072FF))
+            listOf(Color(0xFF1E88E5), Color(0xFF1565C0), Color(0xFF0D47A1))
         ),
-        glowColor = Color(0xFF0A84FF),
-        previewGradient = listOf(Color(0xFF0A84FF), Color(0xFF003FCC))
+        glowColor = Color(0xFF1565C0),
+        previewGradient = listOf(Color(0xFF1565C0), Color(0xFF0D47A1))
     ),
     SUNSET(
         id = "SUNSET",
         displayName = "Sunset Mirage",
-        description = "Radiant Amber, Coral Flame & Golden Sunburst",
-        primaryAccent = Color(0xFFFF9F0A),
-        secondaryAccent = Color(0xFFFF453A),
-        highlightColor = Color(0xFFFFD60A),
+        description = "Deep Burnt Amber & Dark Crimson",
+        primaryAccent = Color(0xFFD35400),
+        secondaryAccent = Color(0xFFC0392B),
+        highlightColor = Color(0xFFE67E22),
         orbBrush = Brush.radialGradient(
-            listOf(Color(0xFFFFD60A), Color(0xFFFF9F0A), Color(0xFFFF3B30))
+            listOf(Color(0xFFE67E22), Color(0xFFD35400), Color(0xFF78281F))
         ),
         gestureBrush = Brush.verticalGradient(
-            listOf(Color(0xFFFFD60A), Color(0xFFFF9F0A), Color(0xFFFF453A))
+            listOf(Color(0xFFE67E22), Color(0xFFD35400), Color(0xFFC0392B))
         ),
-        glowColor = Color(0xFFFF9F0A),
-        previewGradient = listOf(Color(0xFFFF9F0A), Color(0xFFFF453A))
+        glowColor = Color(0xFFD35400),
+        previewGradient = listOf(Color(0xFFD35400), Color(0xFF900C3F))
     ),
     AURORA(
         id = "AURORA",
-        displayName = "Emerald Aurora",
-        description = "Cyber Mint, Radiant Teal & Deep Forest",
-        primaryAccent = Color(0xFF30D158),
-        secondaryAccent = Color(0xFF00F5D4),
-        highlightColor = Color(0xFF64FFDA),
+        displayName = "Dark Jade Forest",
+        description = "Deep Jade, Dark Teal & Pine Forest",
+        primaryAccent = Color(0xFF16796F),
+        secondaryAccent = Color(0xFF0F5750),
+        highlightColor = Color(0xFF2E948A),
         orbBrush = Brush.radialGradient(
-            listOf(Color(0xFF64FFDA), Color(0xFF30D158), Color(0xFF00796B))
+            listOf(Color(0xFF2E948A), Color(0xFF16796F), Color(0xFF0B3B36))
         ),
         gestureBrush = Brush.verticalGradient(
-            listOf(Color(0xFF64FFDA), Color(0xFF00F5D4), Color(0xFF00B0FF))
+            listOf(Color(0xFF2E948A), Color(0xFF16796F), Color(0xFF0F5750))
         ),
-        glowColor = Color(0xFF30D158),
-        previewGradient = listOf(Color(0xFF30D158), Color(0xFF00796B))
+        glowColor = Color(0xFF16796F),
+        previewGradient = listOf(Color(0xFF16796F), Color(0xFF0F5750))
     ),
     NEBULA(
         id = "NEBULA",
         displayName = "Amethyst Nebula",
-        description = "Ultraviolet, Vivid Violet & Cosmic Neon Pink",
-        primaryAccent = Color(0xFFBF5AF2),
-        secondaryAccent = Color(0xFFFF2D55),
-        highlightColor = Color(0xFFE056FD),
+        description = "Deep Royal Amethyst & Plum",
+        primaryAccent = Color(0xFF6C3483),
+        secondaryAccent = Color(0xFF884EA0),
+        highlightColor = Color(0xFF7D3C98),
         orbBrush = Brush.radialGradient(
-            listOf(Color(0xFFE056FD), Color(0xFFBF5AF2), Color(0xFF5E17EB))
+            listOf(Color(0xFF7D3C98), Color(0xFF6C3483), Color(0xFF4A235A))
         ),
         gestureBrush = Brush.verticalGradient(
-            listOf(Color(0xFFFF2D55), Color(0xFFBF5AF2), Color(0xFF7000FF))
+            listOf(Color(0xFF884EA0), Color(0xFF6C3483), Color(0xFF4A235A))
         ),
-        glowColor = Color(0xFFBF5AF2),
-        previewGradient = listOf(Color(0xFFBF5AF2), Color(0xFF5E17EB))
+        glowColor = Color(0xFF6C3483),
+        previewGradient = listOf(Color(0xFF6C3483), Color(0xFF4A235A))
     ),
     ONYX(
         id = "ONYX",
         displayName = "Titanium Onyx",
         description = "Frosted Platinum, Stealth Chrome & Silver",
-        primaryAccent = Color(0xFFF2F2F7),
-        secondaryAccent = Color(0xFF8E8E93),
-        highlightColor = Color(0xFFFFFFFF),
+        primaryAccent = Color(0xFFD1D5DB),
+        secondaryAccent = Color(0xFF6B7280),
+        highlightColor = Color(0xFF9CA3AF),
         orbBrush = Brush.radialGradient(
-            listOf(Color(0xFFFFFFFF), Color(0xFFD1D1D6), Color(0xFF3A3A3C))
+            listOf(Color(0xFFD1D5DB), Color(0xFF9CA3AF), Color(0xFF374151))
         ),
         gestureBrush = Brush.verticalGradient(
-            listOf(Color(0xFFFFFFFF), Color(0xFF8E8E93), Color(0xFF2C2C2E))
+            listOf(Color(0xFFD1D5DB), Color(0xFF6B7280), Color(0xFF374151))
         ),
-        glowColor = Color(0xFFE5E5EA),
-        previewGradient = listOf(Color(0xFFFFFFFF), Color(0xFF48484A))
+        glowColor = Color(0xFF9CA3AF),
+        previewGradient = listOf(Color(0xFF9CA3AF), Color(0xFF374151))
     ),
     SAKURA(
         id = "SAKURA",
         displayName = "Sakura Blossom",
-        description = "Blush Rose, Soft Coral & Pastel Petals",
-        primaryAccent = Color(0xFFFF6584),
-        secondaryAccent = Color(0xFFFF85A1),
-        highlightColor = Color(0xFFFFAAC9),
+        description = "Deep Ruby Rose & Wine Velvet",
+        primaryAccent = Color(0xFFB03A2E),
+        secondaryAccent = Color(0xFF922B21),
+        highlightColor = Color(0xFFC0392B),
         orbBrush = Brush.radialGradient(
-            listOf(Color(0xFFFFAAC9), Color(0xFFFF6584), Color(0xFFC9184A))
+            listOf(Color(0xFFC0392B), Color(0xFFB03A2E), Color(0xFF641E16))
         ),
         gestureBrush = Brush.verticalGradient(
-            listOf(Color(0xFFFFAAC9), Color(0xFFFF6584), Color(0xFFFF4D6D))
+            listOf(Color(0xFFC0392B), Color(0xFFB03A2E), Color(0xFF922B21))
         ),
-        glowColor = Color(0xFFFF6584),
-        previewGradient = listOf(Color(0xFFFF6584), Color(0xFFC9184A))
+        glowColor = Color(0xFFB03A2E),
+        previewGradient = listOf(Color(0xFFB03A2E), Color(0xFF641E16))
     ),
     SUNSET_GOLD(
         id = "SUNSET_GOLD",
         displayName = "Sunset Gold",
-        description = "Warm Amber, Honey Gold & Radiant Orange",
-        primaryAccent = Color(0xFFFFB703),
-        secondaryAccent = Color(0xFFFB8500),
-        highlightColor = Color(0xFFFFEE70),
+        description = "Antique Gold & Deep Bronze",
+        primaryAccent = Color(0xFFB7791F),
+        secondaryAccent = Color(0xFF975A16),
+        highlightColor = Color(0xFFD69E2E),
         orbBrush = Brush.radialGradient(
-            listOf(Color(0xFFFFEE70), Color(0xFFFFB703), Color(0xFFD46000))
+            listOf(Color(0xFFD69E2E), Color(0xFFB7791F), Color(0xFF5F370E))
         ),
         gestureBrush = Brush.verticalGradient(
-            listOf(Color(0xFFFFEE70), Color(0xFFFFB703), Color(0xFFFB8500))
+            listOf(Color(0xFFD69E2E), Color(0xFFB7791F), Color(0xFF975A16))
         ),
-        glowColor = Color(0xFFFFB703),
-        previewGradient = listOf(Color(0xFFFFB703), Color(0xFFFB8500))
+        glowColor = Color(0xFFB7791F),
+        previewGradient = listOf(Color(0xFFB7791F), Color(0xFF744210))
     ),
     MATRIX(
         id = "MATRIX",
-        displayName = "Cyber Matrix",
-        description = "Matrix Hacker Green, Neon Lime & Forest Shadow",
-        primaryAccent = Color(0xFF00FF66),
-        secondaryAccent = Color(0xFF00E676),
-        highlightColor = Color(0xFF69F0AE),
+        displayName = "Dark Emerald Matrix",
+        description = "Deep Forest Emerald, Dark Pine & Shadow Jade",
+        primaryAccent = Color(0xFF1E824C),
+        secondaryAccent = Color(0xFF145A32),
+        highlightColor = Color(0xFF27AE60),
         orbBrush = Brush.radialGradient(
-            listOf(Color(0xFF69F0AE), Color(0xFF00FF66), Color(0xFF004D20))
+            listOf(Color(0xFF27AE60), Color(0xFF1E824C), Color(0xFF0A361E))
         ),
         gestureBrush = Brush.verticalGradient(
-            listOf(Color(0xFF69F0AE), Color(0xFF00FF66), Color(0xFF007A33))
+            listOf(Color(0xFF27AE60), Color(0xFF1E824C), Color(0xFF145A32))
         ),
-        glowColor = Color(0xFF00FF66),
-        previewGradient = listOf(Color(0xFF00FF66), Color(0xFF004D20))
+        glowColor = Color(0xFF1E824C),
+        previewGradient = listOf(Color(0xFF1E824C), Color(0xFF145A32))
     );
 
     companion object {
@@ -412,6 +422,7 @@ fun SwipeableVideoRow(
 ) {
     val c = LocalAppColors.current
     val context = LocalContext.current
+    val view = androidx.compose.ui.platform.LocalView.current
     val appPreferences = remember { AppPreferences(context) }
     val progress = appPreferences.getVideoProgress(video.uri.toString())
 
@@ -427,7 +438,10 @@ fun SwipeableVideoRow(
                     if (inSelectionMode) onSelectToggle()
                     else onClick()
                 },
-                onLongClick = onLongPress
+                onLongClick = {
+                    view.performHaptic(HapticType.MEDIUM)
+                    onLongPress()
+                }
             )
     ) {
         Row(

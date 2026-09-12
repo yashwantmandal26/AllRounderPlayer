@@ -1,4 +1,4 @@
-﻿package com.example.ymediaplayer.data
+package com.example.ymediaplayer.data
 
 import android.content.SharedPreferences
 import org.junit.Assert.assertEquals
@@ -14,6 +14,7 @@ class PreferencesAndResumeTest {
 
     @Before
     fun setUp() {
+        AppPreferences.clearCache()
         fakePrefs = FakeSharedPreferences()
         appPreferences = AppPreferences(fakePrefs)
     }
@@ -96,6 +97,110 @@ class PreferencesAndResumeTest {
         // Re-play uri1, it should move to the top
         appPreferences.saveVideoProgress(uri1, 5000L)
         assertEquals(listOf(uri1, uri3, uri2), appPreferences.getPlayedUris())
+    }
+
+    @Test
+    fun playbackSettings_defaultsAndUpdates() {
+        assertEquals("AUTO", appPreferences.getResumeMode())
+        appPreferences.setResumeMode("ASK")
+        assertEquals("ASK", appPreferences.getResumeMode())
+
+        assertEquals(10, appPreferences.getDoubleTapSeekSeconds())
+        appPreferences.setDoubleTapSeekSeconds(15)
+        assertEquals(15, appPreferences.getDoubleTapSeekSeconds())
+
+        assertTrue(appPreferences.isHwAccelerationEnabled())
+        appPreferences.setHwAccelerationEnabled(false)
+        assertFalse(appPreferences.isHwAccelerationEnabled())
+
+        assertTrue(appPreferences.isKeepScreenAwake())
+        appPreferences.setKeepScreenAwake(false)
+        assertFalse(appPreferences.isKeepScreenAwake())
+    }
+
+    @Test
+    fun gestureSettings_defaultsAndUpdates() {
+        assertTrue(appPreferences.isBrightnessGestureEnabled())
+        appPreferences.setBrightnessGestureEnabled(false)
+        assertFalse(appPreferences.isBrightnessGestureEnabled())
+
+        assertTrue(appPreferences.isVolumeGestureEnabled())
+        appPreferences.setVolumeGestureEnabled(false)
+        assertFalse(appPreferences.isVolumeGestureEnabled())
+
+        assertEquals(2.0f, appPreferences.getPressHoldSpeed(), 0.01f)
+        appPreferences.setPressHoldSpeed(2.5f)
+        assertEquals(2.5f, appPreferences.getPressHoldSpeed(), 0.01f)
+    }
+
+    @Test
+    fun subtitleSettings_defaultsAndUpdates() {
+        assertEquals(18, appPreferences.getSubtitleFontSize())
+        appPreferences.setSubtitleFontSize(24)
+        assertEquals(24, appPreferences.getSubtitleFontSize())
+
+        assertEquals(0xFFFFFFFFL, appPreferences.getSubtitleColor())
+        appPreferences.setSubtitleColor(0xFFFFD700L)
+        assertEquals(0xFFFFD700L, appPreferences.getSubtitleColor())
+
+        assertTrue(appPreferences.isPauseOnHeadsetDisconnect())
+        appPreferences.setPauseOnHeadsetDisconnect(false)
+        assertFalse(appPreferences.isPauseOnHeadsetDisconnect())
+    }
+
+    @Test
+    fun libraryAndMaintenanceSettings_resetAllRestoresDefaults() {
+        appPreferences.setShowContinueWatching(false)
+        appPreferences.setContinueWatchingLimit(5)
+        appPreferences.setDoubleTapSeekSeconds(30)
+        appPreferences.setResumeMode("START")
+
+        assertFalse(appPreferences.isShowContinueWatching())
+        assertEquals(5, appPreferences.getContinueWatchingLimit())
+        assertEquals(30, appPreferences.getDoubleTapSeekSeconds())
+        assertEquals("START", appPreferences.getResumeMode())
+
+        appPreferences.resetAllSettingsToDefaults()
+
+        assertTrue(appPreferences.isShowContinueWatching())
+        assertEquals(20, appPreferences.getContinueWatchingLimit())
+        assertEquals(10, appPreferences.getDoubleTapSeekSeconds())
+        assertEquals("AUTO", appPreferences.getResumeMode())
+    }
+
+    @Test
+    fun playbackSpeed_rememberSpeedAndReset() {
+        assertFalse(appPreferences.isRememberPlaybackSpeed())
+        assertEquals(1.0f, appPreferences.getLastPlaybackSpeed(), 0.001f)
+
+        appPreferences.setRememberPlaybackSpeed(true)
+        appPreferences.setLastPlaybackSpeed(1.75f)
+
+        assertTrue(appPreferences.isRememberPlaybackSpeed())
+        assertEquals(1.75f, appPreferences.getLastPlaybackSpeed(), 0.001f)
+
+        appPreferences.resetAllSettingsToDefaults()
+
+        assertFalse(appPreferences.isRememberPlaybackSpeed())
+        assertEquals(1.0f, appPreferences.getLastPlaybackSpeed(), 0.001f)
+    }
+
+    @Test
+    fun playlistSettings_defaultsOnAndResetRestoresTrue() {
+        // Defaults must be true (ON)
+        assertTrue(appPreferences.isAutoPlayNextEnabled())
+        assertTrue(appPreferences.isRememberPlaylistQueue())
+
+        // Can be toggled to false
+        appPreferences.setAutoPlayNextEnabled(false)
+        appPreferences.setRememberPlaylistQueue(false)
+        assertFalse(appPreferences.isAutoPlayNextEnabled())
+        assertFalse(appPreferences.isRememberPlaylistQueue())
+
+        // Reset to defaults must restore both to true
+        appPreferences.resetAllSettingsToDefaults()
+        assertTrue(appPreferences.isAutoPlayNextEnabled())
+        assertTrue(appPreferences.isRememberPlaylistQueue())
     }
 }
 

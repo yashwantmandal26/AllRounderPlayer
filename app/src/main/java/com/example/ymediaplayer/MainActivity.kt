@@ -26,6 +26,8 @@ import androidx.core.view.WindowInsetsControllerCompat
 import androidx.navigation3.runtime.entryProvider
 import androidx.navigation3.runtime.rememberNavBackStack
 import androidx.navigation3.ui.NavDisplay
+import androidx.compose.animation.*
+import androidx.compose.animation.core.*
 import androidx.compose.runtime.CompositionLocalProvider
 import com.example.ymediaplayer.theme.LocalThemeController
 import com.example.ymediaplayer.theme.ThemeMode
@@ -34,6 +36,7 @@ import com.example.ymediaplayer.theme.rememberThemeController
 import com.example.ymediaplayer.ui.FolderDetailScreen
 import com.example.ymediaplayer.ui.FolderListScreen
 import com.example.ymediaplayer.ui.VideoPlayerScreen
+import com.example.ymediaplayer.ui.SettingsScreen
 import java.net.URLDecoder
 import java.net.URLEncoder
 
@@ -238,6 +241,58 @@ fun MainApp() {
     NavDisplay(
             backStack = backStack,
             onBack = { if (backStack.size > 1) backStack.removeLastOrNull() },
+            transitionSpec = {
+                val targetKey = targetState.key
+                if (targetKey is VideoPlayer) {
+                    // VideoPlayer slides up smoothly from bottom with quick fade, background stays stationary to prevent GPU jank
+                    (slideIntoContainer(
+                        towards = AnimatedContentTransitionScope.SlideDirection.Up,
+                        animationSpec = tween(260, easing = FastOutSlowInEasing)
+                    ) + fadeIn(animationSpec = tween(180, easing = FastOutSlowInEasing)))
+                    .togetherWith(
+                        fadeOut(animationSpec = tween(180))
+                    )
+                } else {
+                    // Forward navigation (FolderDetail, Settings): Fluid snappy slide with subtle parallax
+                    (slideIntoContainer(
+                        towards = AnimatedContentTransitionScope.SlideDirection.Start,
+                        animationSpec = tween(240, easing = FastOutSlowInEasing)
+                    ) + fadeIn(animationSpec = tween(180, easing = FastOutSlowInEasing)))
+                    .togetherWith(
+                        slideOutOfContainer(
+                            towards = AnimatedContentTransitionScope.SlideDirection.Start,
+                            targetOffset = { (it * 0.12f).toInt() },
+                            animationSpec = tween(240, easing = FastOutSlowInEasing)
+                        ) + fadeOut(animationSpec = tween(160))
+                    )
+                }
+            },
+            popTransitionSpec = {
+                val initialKey = initialState.key
+                if (initialKey is VideoPlayer) {
+                    // Exiting VideoPlayer: Slides down to bottom, stationary background screen fades in
+                    fadeIn(animationSpec = tween(200, easing = FastOutSlowInEasing))
+                    .togetherWith(
+                        slideOutOfContainer(
+                            towards = AnimatedContentTransitionScope.SlideDirection.Down,
+                            animationSpec = tween(240, easing = FastOutSlowInEasing)
+                        ) + fadeOut(animationSpec = tween(180))
+                    )
+                } else {
+                    // Popping back (FolderDetail, Settings): Reverse snappy horizontal slide
+                    (slideIntoContainer(
+                        towards = AnimatedContentTransitionScope.SlideDirection.End,
+                        initialOffset = { -(it * 0.12f).toInt() },
+                        animationSpec = tween(220, easing = FastOutSlowInEasing)
+                    ) + fadeIn(animationSpec = tween(180, easing = FastOutSlowInEasing)))
+                    .togetherWith(
+                        slideOutOfContainer(
+                            towards = AnimatedContentTransitionScope.SlideDirection.End,
+                            animationSpec = tween(220, easing = FastOutSlowInEasing)
+                        ) + fadeOut(animationSpec = tween(160))
+                    )
+                }
+            },
             entryProvider = entryProvider {
                 entry<FolderList> {
                     LaunchedEffect(Unit) {
@@ -247,6 +302,16 @@ fun MainApp() {
                         if (lp != null && lp.screenBrightness != WindowManager.LayoutParams.BRIGHTNESS_OVERRIDE_NONE) {
                             lp.screenBrightness = WindowManager.LayoutParams.BRIGHTNESS_OVERRIDE_NONE
                             act.window?.attributes = lp
+                        }
+                        MainActivity.onUserLeaveHintListener = null
+                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                            try {
+                                act?.setPictureInPictureParams(
+                                    android.app.PictureInPictureParams.Builder()
+                                        .setAutoEnterEnabled(false)
+                                        .build()
+                                )
+                            } catch (_: Exception) {}
                         }
                     }
                     Surface(
@@ -260,6 +325,9 @@ fun MainApp() {
                             onVideoClick = { uri -> 
                                 val encodedUri = URLEncoder.encode(uri, "UTF-8")
                                 backStack.add(VideoPlayer(encodedUri)) 
+                            },
+                            onOpenSettings = {
+                                backStack.add(com.example.ymediaplayer.Settings)
                             }
                         )
                     }
@@ -272,6 +340,16 @@ fun MainApp() {
                         if (lp != null && lp.screenBrightness != WindowManager.LayoutParams.BRIGHTNESS_OVERRIDE_NONE) {
                             lp.screenBrightness = WindowManager.LayoutParams.BRIGHTNESS_OVERRIDE_NONE
                             act.window?.attributes = lp
+                        }
+                        MainActivity.onUserLeaveHintListener = null
+                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                            try {
+                                act?.setPictureInPictureParams(
+                                    android.app.PictureInPictureParams.Builder()
+                                        .setAutoEnterEnabled(false)
+                                        .build()
+                                )
+                            } catch (_: Exception) {}
                         }
                     }
                     FolderDetailScreen(
@@ -292,6 +370,31 @@ fun MainApp() {
                     ) {
                         VideoPlayerScreen(
                             videoUrl = decodedUri,
+                            onBack = { if (backStack.size > 1) backStack.removeLastOrNull() },
+                            onOpenSettings = { backStack.add(com.example.ymediaplayer.Settings) }
+                        )
+                    }
+                }
+                entry<com.example.ymediaplayer.Settings> {
+                    LaunchedEffect(Unit) {
+                        insetsController?.show(WindowInsetsCompat.Type.systemBars())
+                        MainActivity.onUserLeaveHintListener = null
+                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                            val act = context as? ComponentActivity
+                            try {
+                                act?.setPictureInPictureParams(
+                                    android.app.PictureInPictureParams.Builder()
+                                        .setAutoEnterEnabled(false)
+                                        .build()
+                                )
+                            } catch (_: Exception) {}
+                        }
+                    }
+                    Surface(
+                        modifier = Modifier.fillMaxSize(),
+                        color = appColors.baseBackground
+                    ) {
+                        SettingsScreen(
                             onBack = { if (backStack.size > 1) backStack.removeLastOrNull() }
                         )
                     }

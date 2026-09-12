@@ -10,12 +10,17 @@ import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.IntentSenderRequest
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.compose.animation.*
 import androidx.compose.animation.core.*
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -37,6 +42,7 @@ import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
@@ -59,6 +65,7 @@ fun FolderDetailScreen(
 ) {
     val c = LocalAppColors.current
     val context = LocalContext.current
+    val view = androidx.compose.ui.platform.LocalView.current
     val repository = remember { VideoRepository(context) }
     val appPreferences = remember { AppPreferences(context) }
     val fileManager = remember { FileManager(context) }
@@ -108,19 +115,38 @@ fun FolderDetailScreen(
         }
     }
 
+    // Refresh automatically whenever screen resumes (e.g. returning from video player)
+    val lifecycleOwner = LocalLifecycleOwner.current
+    DisposableEffect(lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME) {
+                refreshTrigger++
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose {
+            lifecycleOwner.lifecycle.removeObserver(observer)
+        }
+    }
+
+    val progressVersion = appPreferences.lastProgressUpdate.longValue
+
     // Load folder content
-    LaunchedEffect(folderId, refreshTrigger) {
+    LaunchedEffect(folderId, refreshTrigger, progressVersion) {
         isLoading = true
         val allFolders = repository.getFoldersWithVideos()
         if (folderId == "all_videos") {
-            val allVideos = allFolders.flatMap { it.videos }.distinctBy { it.id }
+            val allVideos = allFolders.flatMap { it.videos }.distinctBy { it.uri.toString() }
             folder = VideoFolder(id = "all_videos", name = "All Videos", videos = allVideos)
         } else if (folderId == "recently_added") {
-            val recentVideos = allFolders.flatMap { it.videos }.sortedByDescending { it.id }.take(50)
+            val recentVideos = allFolders.flatMap { it.videos }
+                .distinctBy { it.uri.toString() }
+                .sortedWith(compareByDescending<VideoItem> { it.dateAdded }.thenByDescending { it.id })
+                .take(50)
             folder = VideoFolder(id = "recently_added", name = "Recent Added", videos = recentVideos)
         } else if (folderId == "last_played") {
             val playedUris = appPreferences.getPlayedUris()
-            val allVideosMap = allFolders.flatMap { it.videos }.associateBy { it.uri.toString() }
+            val allVideosMap = allFolders.flatMap { it.videos }.distinctBy { it.uri.toString() }.associateBy { it.uri.toString() }
             val playedVideos = playedUris.mapNotNull { allVideosMap[it] }
             folder = VideoFolder(id = "last_played", name = "Last Played", videos = playedVideos)
         } else {
@@ -172,21 +198,25 @@ fun FolderDetailScreen(
         Box(
             modifier = Modifier
                 .fillMaxSize()
-                .background(c.baseBackground)
+                .background(
+                    if (c.isDark) Brush.verticalGradient(listOf(Color(0xFF22242D), Color(0xFF181921), Color(0xFF14151B)))
+                    else Brush.verticalGradient(listOf(c.baseBackground, c.baseBackground))
+                )
                 .drawBehind {
                     val offset = gradientOffset.value
+                    // Lil theme colours in the background (delicate ambient glow, preserving the dark grey base!)
                     drawRect(
                         brush = Brush.radialGradient(
-                            colors = listOf(c.gradientBlob1.copy(alpha = 0.8f), Color.Transparent),
-                            center = Offset(offset, offset * 1.5f),
-                            radius = 1200f
+                            colors = listOf(c.gradientBlob1.copy(alpha = 0.09f), Color.Transparent),
+                            center = Offset(offset * 0.4f, 150f),
+                            radius = 650f
                         )
                     )
                     drawRect(
                         brush = Brush.radialGradient(
-                            colors = listOf(c.gradientBlob2.copy(alpha = 0.9f), Color.Transparent),
-                            center = Offset(1000f - offset, 2000f - offset),
-                            radius = 1500f
+                            colors = listOf(c.gradientBlob2.copy(alpha = 0.07f), Color.Transparent),
+                            center = Offset(size.width - 80f, size.height * 0.65f),
+                            radius = 700f
                         )
                     )
                 }
@@ -200,8 +230,8 @@ fun FolderDetailScreen(
                     Column(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .background(c.topBarScrim)
-                            .border(1.dp, Brush.verticalGradient(listOf(c.cardBorderHighlight, c.glassBorder)), RectangleShape)
+                            .background(if (c.isMatte) c.baseBackground else c.topBarScrim)
+                            .border(1.dp, if (c.isMatte) androidx.compose.ui.graphics.SolidColor(c.glassBorder) else Brush.verticalGradient(listOf(c.cardBorderHighlight, c.glassBorder)), RectangleShape)
                     ) {
                         Row(
                             modifier = Modifier
@@ -246,8 +276,8 @@ fun FolderDetailScreen(
                     Column(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .background(c.topBarScrim)
-                            .border(1.dp, Brush.verticalGradient(listOf(c.cardBorderHighlight, c.glassBorder)), RectangleShape)
+                            .background(if (c.isMatte) c.baseBackground else c.topBarScrim)
+                            .border(1.dp, if (c.isMatte) androidx.compose.ui.graphics.SolidColor(c.glassBorder) else Brush.verticalGradient(listOf(c.cardBorderHighlight, c.glassBorder)), RectangleShape)
                     ) {
                         Row(
                             modifier = Modifier
@@ -261,10 +291,10 @@ fun FolderDetailScreen(
                                 onClick = onBack,
                                 modifier = Modifier
                                     .size(38.dp)
-                                    .shadow(6.dp, CircleShape, ambientColor = c.cardShadowColor, spotColor = c.cardShadowColor)
+                                    .then(if (c.isMatte) Modifier else Modifier.shadow(6.dp, CircleShape, ambientColor = c.cardShadowColor, spotColor = c.cardShadowColor))
                                     .clip(CircleShape)
-                                    .background(Brush.verticalGradient(listOf(c.cardBgElevated, c.cardBg)))
-                                    .border(1.2.dp, Brush.verticalGradient(listOf(c.cardBorderHighlight, c.glassBorder, c.cardBorderShadow)), CircleShape)
+                                    .background(if (c.isMatte) SolidColor(c.cardBgElevated) else Brush.verticalGradient(listOf(c.cardBgElevated, c.cardBg)))
+                                    .border(1.2.dp, if (c.isMatte) androidx.compose.ui.graphics.SolidColor(c.glassBorder) else Brush.verticalGradient(listOf(c.cardBorderHighlight, c.glassBorder, c.cardBorderShadow)), CircleShape)
                             ) {
                                 Icon(Icons.AutoMirrored.Rounded.ArrowBack, contentDescription = "Back", tint = c.textPrimary, modifier = Modifier.size(20.dp))
                             }
@@ -273,33 +303,46 @@ fun FolderDetailScreen(
 
                             if (isSearching) {
                                 // Live In-Folder Search Input
-                                TextField(
-                                    value = searchQuery,
-                                    onValueChange = { searchQuery = it },
-                                    placeholder = { Text("Search in folder...", color = c.textHint, fontSize = 14.sp) },
-                                    singleLine = true,
-                                    colors = TextFieldDefaults.colors(
-                                        focusedContainerColor = c.glassBg,
-                                        unfocusedContainerColor = c.glassBg,
-                                        focusedTextColor = c.textPrimary,
-                                        unfocusedTextColor = c.textPrimary,
-                                        cursorColor = c.accentBlue,
-                                        focusedIndicatorColor = Color.Transparent,
-                                        unfocusedIndicatorColor = Color.Transparent
-                                    ),
-                                    shape = RoundedCornerShape(12.dp),
+                                Row(
                                     modifier = Modifier
                                         .weight(1f)
-                                        .height(46.dp)
-                                        .shadow(4.dp, RoundedCornerShape(12.dp))
-                                        .clip(RoundedCornerShape(12.dp))
-                                        .background(Brush.verticalGradient(listOf(c.cardBgElevated, c.cardBg)))
-                                        .border(1.2.dp, Brush.verticalGradient(listOf(c.cardBorderHighlight, c.glassBorder, c.cardBorderShadow)), RoundedCornerShape(12.dp))
-                                        .focusRequester(searchFocusRequester)
-                                )
-                                Spacer(Modifier.width(8.dp))
-                                IconButton(onClick = { isSearching = false; searchQuery = "" }) {
-                                    Icon(Icons.Filled.Close, contentDescription = "Close search", tint = c.textPrimary)
+                                        .height(44.dp)
+                                        .then(if (c.isMatte) Modifier else Modifier.shadow(4.dp, RoundedCornerShape(22.dp)))
+                                        .clip(RoundedCornerShape(22.dp))
+                                        .background(if (c.isMatte) SolidColor(c.cardBgElevated) else Brush.verticalGradient(listOf(c.cardBgElevated, c.cardBg)))
+                                        .border(1.2.dp, if (c.isMatte) androidx.compose.ui.graphics.SolidColor(c.glassBorder) else Brush.verticalGradient(listOf(c.cardBorderHighlight, c.glassBorder, c.cardBorderShadow)), RoundedCornerShape(22.dp))
+                                        .padding(horizontal = 12.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Icon(
+                                        Icons.Rounded.Search,
+                                        contentDescription = null,
+                                        tint = c.accentBlue,
+                                        modifier = Modifier.size(18.dp)
+                                    )
+                                    Spacer(Modifier.width(8.dp))
+                                    Box(modifier = Modifier.weight(1f), contentAlignment = Alignment.CenterStart) {
+                                        if (searchQuery.isEmpty()) {
+                                            Text("Search in folder...", color = c.textHint, fontSize = 14.sp)
+                                        }
+                                        BasicTextField(
+                                            value = searchQuery,
+                                            onValueChange = { searchQuery = it },
+                                            singleLine = true,
+                                            textStyle = TextStyle(color = c.textPrimary, fontSize = 14.sp, fontWeight = FontWeight.Medium),
+                                            cursorBrush = SolidColor(c.accentBlue),
+                                            modifier = Modifier.fillMaxWidth().focusRequester(searchFocusRequester)
+                                        )
+                                    }
+                                    if (searchQuery.isNotEmpty()) {
+                                        IconButton(onClick = { searchQuery = "" }, modifier = Modifier.size(24.dp)) {
+                                            Icon(Icons.Rounded.Close, contentDescription = "Clear", tint = c.textSecondary, modifier = Modifier.size(15.dp))
+                                        }
+                                    }
+                                }
+                                Spacer(Modifier.width(6.dp))
+                                IconButton(onClick = { isSearching = false; searchQuery = "" }, modifier = Modifier.size(36.dp)) {
+                                    Icon(Icons.Rounded.Close, contentDescription = "Close search", tint = c.textPrimary, modifier = Modifier.size(20.dp))
                                 }
                             } else {
                                 // Folder Title & Subtitle
@@ -325,10 +368,10 @@ fun FolderDetailScreen(
                                         onClick = { isSearching = true },
                                         modifier = Modifier
                                             .size(38.dp)
-                                            .shadow(6.dp, CircleShape, ambientColor = c.cardShadowColor, spotColor = c.cardShadowColor)
+                                            .then(if (c.isMatte) Modifier else Modifier.shadow(6.dp, CircleShape, ambientColor = c.cardShadowColor, spotColor = c.cardShadowColor))
                                             .clip(CircleShape)
-                                            .background(Brush.verticalGradient(listOf(c.cardBgElevated, c.cardBg)))
-                                            .border(1.2.dp, Brush.verticalGradient(listOf(c.cardBorderHighlight, c.glassBorder, c.cardBorderShadow)), CircleShape)
+                                            .background(if (c.isMatte) SolidColor(c.cardBgElevated) else Brush.verticalGradient(listOf(c.cardBgElevated, c.cardBg)))
+                                            .border(1.2.dp, if (c.isMatte) androidx.compose.ui.graphics.SolidColor(c.glassBorder) else Brush.verticalGradient(listOf(c.cardBorderHighlight, c.glassBorder, c.cardBorderShadow)), CircleShape)
                                     ) {
                                         Icon(Icons.Filled.Search, contentDescription = "Search", tint = c.textPrimary, modifier = Modifier.size(19.dp))
                                     }
@@ -348,10 +391,10 @@ fun FolderDetailScreen(
                                             onClick = { showSortMenu = true },
                                             modifier = Modifier
                                                 .size(38.dp)
-                                                .shadow(6.dp, CircleShape, ambientColor = c.cardShadowColor, spotColor = c.cardShadowColor)
+                                                .then(if (c.isMatte) Modifier else Modifier.shadow(6.dp, CircleShape, ambientColor = c.cardShadowColor, spotColor = c.cardShadowColor))
                                                 .clip(CircleShape)
-                                                .background(Brush.verticalGradient(listOf(c.cardBgElevated, c.cardBg)))
-                                                .border(1.2.dp, Brush.verticalGradient(listOf(c.cardBorderHighlight, c.glassBorder, c.cardBorderShadow)), CircleShape)
+                                                .background(if (c.isMatte) SolidColor(c.cardBgElevated) else Brush.verticalGradient(listOf(c.cardBgElevated, c.cardBg)))
+                                                .border(1.2.dp, if (c.isMatte) androidx.compose.ui.graphics.SolidColor(c.glassBorder) else Brush.verticalGradient(listOf(c.cardBorderHighlight, c.glassBorder, c.cardBorderShadow)), CircleShape)
                                         ) {
                                             Icon(Icons.AutoMirrored.Rounded.Sort, contentDescription = "Sort", tint = c.textPrimary, modifier = Modifier.size(19.dp))
                                         }
@@ -454,58 +497,72 @@ fun FolderDetailScreen(
                     }
                 }
             } else {
-                MediaFilesView(
-                    videos = displayVideos,
-                    viewType = currentViewType,
-                    inSelectionMode = inSelectionMode,
-                    selectedVideoIds = selectedVideoIds,
-                    favorites = favorites,
-                    onVideoClick = { video -> onVideoClick(video.uri.toString()) },
-                    onVideoLongPress = { video ->
-                        if (!inSelectionMode) {
-                            videoActionTarget = video
-                        } else {
+                AnimatedContent(
+                    targetState = currentViewType,
+                    transitionSpec = {
+                        (fadeIn(animationSpec = tween(220, easing = FastOutSlowInEasing)) +
+                         scaleIn(initialScale = 0.97f, animationSpec = tween(220, easing = FastOutSlowInEasing)))
+                        .togetherWith(
+                            fadeOut(animationSpec = tween(160)) +
+                            scaleOut(targetScale = 1.02f, animationSpec = tween(160))
+                        )
+                    },
+                    label = "ViewTypeTransition",
+                    modifier = Modifier.fillMaxSize()
+                ) { vt ->
+                    MediaFilesView(
+                        videos = displayVideos,
+                        viewType = vt,
+                        inSelectionMode = inSelectionMode,
+                        selectedVideoIds = selectedVideoIds,
+                        favorites = favorites,
+                        onVideoClick = { video -> onVideoClick(video.uri.toString()) },
+                        onVideoLongPress = { video ->
+                            view.performHaptic(HapticType.MEDIUM)
+                            if (!inSelectionMode) {
+                                videoActionTarget = video
+                            } else {
+                                selectedVideoIds = if (selectedVideoIds.contains(video.id)) {
+                                    selectedVideoIds - video.id
+                                } else {
+                                    selectedVideoIds + video.id
+                                }
+                            }
+                        },
+                        onFavoriteToggle = { video -> toggleFavorite(video.uri.toString()) },
+                        onSelectToggle = { video ->
                             selectedVideoIds = if (selectedVideoIds.contains(video.id)) {
                                 selectedVideoIds - video.id
                             } else {
                                 selectedVideoIds + video.id
                             }
-                        }
-                    },
-                    onFavoriteToggle = { video -> toggleFavorite(video.uri.toString()) },
-                    onSelectToggle = { video ->
-                        selectedVideoIds = if (selectedVideoIds.contains(video.id)) {
-                            selectedVideoIds - video.id
-                        } else {
-                            selectedVideoIds + video.id
-                        }
-                    },
-                    modifier = Modifier.fillMaxSize().padding(top = paddingValues.calculateTopPadding()),
-                    headerContent = {
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(horizontal = 16.dp, vertical = 10.dp),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Text(
-                                "${displayVideos.size} VIDEOS",
-                                color = c.textSecondary,
-                                fontSize = 12.sp,
-                                fontWeight = FontWeight.Bold,
-                                letterSpacing = 0.5.sp
-                            )
-                            Text(
-                                "View: ${currentViewType.displayName}",
-                                color = c.accentBlue,
-                                fontSize = 12.sp,
-                                fontWeight = FontWeight.SemiBold
-                            )
-                        }
-                    },
-                    contentPadding = PaddingValues(bottom = 80.dp)
-                )
+                        },
+                        modifier = Modifier.fillMaxSize().padding(top = paddingValues.calculateTopPadding()),
+                        headerContent = {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(horizontal = 16.dp, vertical = 10.dp),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text(
+                                    "${displayVideos.size} VIDEOS",
+                                    color = c.textSecondary,
+                                    fontSize = 12.sp,
+                                    fontWeight = FontWeight.Bold
+                                )
+                                Text(
+                                    "View: ${vt.displayName}",
+                                    color = c.accentBlue,
+                                    fontSize = 12.sp,
+                                    fontWeight = FontWeight.SemiBold
+                                )
+                            }
+                        },
+                        contentPadding = PaddingValues(bottom = 80.dp)
+                    )
+                }
             }
         }
 
@@ -526,10 +583,10 @@ fun FolderDetailScreen(
         ) {
             Box(
                 modifier = Modifier
-                    .shadow(16.dp, RoundedCornerShape(24.dp), ambientColor = c.accentBlue.copy(0.4f), spotColor = c.accentBlue)
+                    .then(if (c.isMatte) Modifier else Modifier.shadow(16.dp, RoundedCornerShape(24.dp), ambientColor = c.accentBlue.copy(0.4f), spotColor = c.accentBlue))
                     .clip(RoundedCornerShape(24.dp))
-                    .background(Color(0xFF141724)) // 100% solid, fully opaque background
-                    .border(1.2.dp, Brush.horizontalGradient(listOf(c.accentBlue, c.cardBorderHighlight)), RoundedCornerShape(24.dp))
+                    .background(if (c.isMatte) c.cardBg else Color(0xFF141724)) // 100% solid, fully opaque background
+                    .border(1.2.dp, if (c.isMatte) androidx.compose.ui.graphics.SolidColor(c.glassBorder) else Brush.horizontalGradient(listOf(c.accentBlue, c.cardBorderHighlight)), RoundedCornerShape(24.dp))
                     .padding(horizontal = 10.dp, vertical = 6.dp)
             ) {
                 Row(

@@ -100,7 +100,20 @@ class MusicService : MediaSessionService() {
 
     override fun onCreate() {
         super.onCreate()
-        val player = ExoPlayer.Builder(this)
+        val audioVisualizerProcessor = AudioVisualizerProcessor()
+        val renderersFactory = object : androidx.media3.exoplayer.DefaultRenderersFactory(this) {
+            override fun buildAudioSink(
+                context: android.content.Context,
+                enableFloatOutput: Boolean,
+                enableAudioTrackPlaybackParams: Boolean
+            ): androidx.media3.exoplayer.audio.AudioSink {
+                return androidx.media3.exoplayer.audio.DefaultAudioSink.Builder(context)
+                    .setAudioProcessors(arrayOf(audioVisualizerProcessor))
+                    .build()
+            }
+        }
+
+        val player = ExoPlayer.Builder(this, renderersFactory)
             .setAudioAttributes(
                 AudioAttributes.Builder()
                     .setContentType(C.AUDIO_CONTENT_TYPE_MUSIC)
@@ -118,8 +131,25 @@ class MusicService : MediaSessionService() {
             }
             override fun onIsPlayingChanged(isPlaying: Boolean) {
                 isMusicPlaying.value = isPlaying
+                if (!isPlaying) {
+                    AudioReactor.reset()
+                }
+            }
+            override fun onPlaybackStateChanged(playbackState: Int) {
+                if (playbackState == androidx.media3.common.Player.STATE_ENDED ||
+                    playbackState == androidx.media3.common.Player.STATE_IDLE) {
+                    AudioReactor.reset()
+                }
+            }
+            override fun onPositionDiscontinuity(
+                oldPosition: androidx.media3.common.Player.PositionInfo,
+                newPosition: androidx.media3.common.Player.PositionInfo,
+                reason: Int
+            ) {
+                AudioReactor.reset()
             }
             override fun onMediaItemTransition(mediaItem: androidx.media3.common.MediaItem?, reason: Int) {
+                AudioReactor.reset()
                 mediaItem?.mediaMetadata?.let { meta ->
                     if (!meta.title.isNullOrBlank()) nowPlayingTitle.value = meta.title.toString()
                     if (!meta.artist.isNullOrBlank()) nowPlayingArtist.value = meta.artist.toString()

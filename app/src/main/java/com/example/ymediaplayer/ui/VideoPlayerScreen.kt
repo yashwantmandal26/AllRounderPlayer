@@ -43,15 +43,21 @@ import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.rounded.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.RectangleShape
+import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalConfiguration
@@ -86,8 +92,11 @@ import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
 import com.example.ymediaplayer.data.AppPreferences
+import com.example.ymediaplayer.data.SortOrder
 import com.example.ymediaplayer.data.VideoFolder
 import com.example.ymediaplayer.data.VideoItem
+import com.example.ymediaplayer.data.sortVideosWithOrder
+import com.example.ymediaplayer.data.sortFoldersWithOrder
 import com.example.ymediaplayer.data.VideoRepository
 import com.example.ymediaplayer.theme.LocalAppColors
 import com.example.ymediaplayer.theme.LocalThemeController
@@ -112,6 +121,9 @@ private const val ACTION_VIDEO_PLAY_PAUSE = "com.example.ymediaplayer.ACTION_VID
 private const val ACTION_VIDEO_REWIND = "com.example.ymediaplayer.ACTION_VIDEO_REWIND"
 private const val ACTION_VIDEO_FORWARD = "com.example.ymediaplayer.ACTION_VIDEO_FORWARD"
 private const val ACTION_PIP_PLAY_PAUSE = "com.example.ymediaplayer.ACTION_PIP_PLAY_PAUSE"
+private const val ACTION_PIP_PREV = "com.example.ymediaplayer.ACTION_PIP_PREV"
+private const val ACTION_PIP_NEXT = "com.example.ymediaplayer.ACTION_PIP_NEXT"
+private const val ACTION_PIP_BG_PLAY = "com.example.ymediaplayer.ACTION_PIP_BG_PLAY"
 private const val ACTION_PIP_REWIND = "com.example.ymediaplayer.ACTION_PIP_REWIND"
 private const val ACTION_PIP_FORWARD = "com.example.ymediaplayer.ACTION_PIP_FORWARD"
 
@@ -126,6 +138,7 @@ private enum class PlayerGestureMode {
     SPEED_HOLD,
     ORIENTATION_SWIPE,
     VIDEO_SWITCH_SWIPE,
+    PINCH_ZOOM,
     IGNORED_DRAG
 }
 
@@ -133,9 +146,11 @@ private enum class PlayerGestureMode {
 @Composable
 fun VideoPlayerScreen(
     videoUrl: String,
-    onBack: () -> Unit
+    onBack: () -> Unit,
+    onOpenSettings: (() -> Unit)? = null
 ) {
     val context = LocalContext.current
+    val view = androidx.compose.ui.platform.LocalView.current
     val activity = context as? Activity
     val componentActivity = context as? androidx.activity.ComponentActivity
     val lifecycleOwner = LocalLifecycleOwner.current
@@ -180,7 +195,18 @@ fun VideoPlayerScreen(
     }
 
     // ─── ExoPlayer Setup ──────────────────────────────────────────────────────
+    val initialPlaybackSpeed = remember {
+        if (appPreferences.isRememberPlaybackSpeed()) appPreferences.getLastPlaybackSpeed() else 1.0f
+    }
+    val initialRepeatMode = remember { appPreferences.getPlayerRepeatMode() }
+    val initialMuted = remember { appPreferences.isPlayerMuted() }
+    val preferredAudioLang = remember { appPreferences.getPreferredAudioLanguage() }
+    val preferredSubLang = remember { appPreferences.getPreferredSubtitleLanguage() }
+    val subtitlesEnabled = remember { appPreferences.isSubtitlesEnabled() }
+
     val exoPlayer = remember {
+        val resumeMode = appPreferences.getResumeMode()
+        val initialProgress = if (resumeMode != "START") appPreferences.getVideoProgress(videoUrl) else 0L
         ExoPlayer.Builder(context)
             .setAudioAttributes(
                 AudioAttributes.Builder()
@@ -189,9 +215,33 @@ fun VideoPlayerScreen(
                     .build(),
                 true
             )
-            .setHandleAudioBecomingNoisy(true)
+            .setHandleAudioBecomingNoisy(appPreferences.isPauseOnHeadsetDisconnect())
             .build().apply {
-                setMediaItem(MediaItem.fromUri(videoUrl))
+                var tspBuilder = trackSelectionParameters.buildUpon()
+                if (preferredAudioLang != "default" && preferredAudioLang.isNotEmpty()) {
+                    tspBuilder = tspBuilder.setPreferredAudioLanguage(preferredAudioLang)
+                }
+                if (!subtitlesEnabled) {
+                    tspBuilder = tspBuilder.setIgnoredTextSelectionFlags(C.SELECTION_FLAG_DEFAULT)
+                } else if (preferredSubLang.isNotEmpty()) {
+                    tspBuilder = tspBuilder.setPreferredTextLanguage(preferredSubLang)
+                }
+                trackSelectionParameters = tspBuilder.build()
+
+                if (initialPlaybackSpeed != 1.0f) {
+                    playbackParameters = PlaybackParameters(initialPlaybackSpeed)
+                }
+                if (initialRepeatMode != Player.REPEAT_MODE_OFF) {
+                    repeatMode = initialRepeatMode
+                }
+                if (initialMuted) {
+                    volume = 0f
+                }
+                if (initialProgress > 3000L) {
+                    setMediaItem(MediaItem.fromUri(videoUrl), initialProgress)
+                } else {
+                    setMediaItem(MediaItem.fromUri(videoUrl))
+                }
                 prepare()
                 playWhenReady = true
             }
@@ -200,9 +250,18 @@ fun VideoPlayerScreen(
     val allVideos = remember(allFolders) { allFolders.flatMap { it.videos } }
 
     val playVideoItem: (VideoItem) -> Unit = { item ->
+        val curPos = exoPlayer.currentPosition
+        if (curPos > 1000L) {
+            appPreferences.saveVideoProgress(currentUrl, curPos, exoPlayer.duration.coerceAtLeast(0L))
+        }
         currentUrl = item.uri.toString()
         videoTitle = item.title.substringBeforeLast(".")
-        exoPlayer.setMediaItem(MediaItem.fromUri(item.uri))
+        val itemProgress = appPreferences.getVideoProgress(item.uri.toString())
+        if (itemProgress > 3000L) {
+            exoPlayer.setMediaItem(MediaItem.fromUri(item.uri), itemProgress)
+        } else {
+            exoPlayer.setMediaItem(MediaItem.fromUri(item.uri))
+        }
         exoPlayer.prepare()
         exoPlayer.play()
         val idx = playlistVideos.indexOfFirst { it.uri == item.uri }
@@ -240,14 +299,31 @@ fun VideoPlayerScreen(
     var bufferedPosition by remember { mutableLongStateOf(0L) }
     var duration by remember { mutableLongStateOf(0L) }
     var showControls by remember { mutableStateOf(true) }
-    var isMuted by remember { mutableStateOf(false) }
-    var playbackSpeed by remember { mutableFloatStateOf(1.0f) }
+    var isTouchingControls by remember { mutableStateOf(false) }
+    var controlsInteractionTimestamp by remember { mutableLongStateOf(0L) }
+    val optionsScrollState = rememberScrollState()
+    var isMuted by remember { mutableStateOf(initialMuted) }
+    var playbackSpeed by remember { mutableFloatStateOf(initialPlaybackSpeed) }
     val configuration = LocalConfiguration.current
     val isLandscape = configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
+    val c = LocalAppColors.current
     var isLocked by remember { mutableStateOf(false) }
-    var isNightMode by remember { mutableStateOf(false) }
-    var isBackgroundAudio by remember { mutableStateOf(false) }
-    var resizeMode by remember { mutableIntStateOf(AspectRatioFrameLayout.RESIZE_MODE_FIT) }
+    var isNightMode by remember { mutableStateOf(appPreferences.isNightMode()) }
+    var isBackgroundAudio by remember { mutableStateOf(appPreferences.isBackgroundPlayEnabled()) }
+    var resizeMode by remember { mutableIntStateOf(appPreferences.getDefaultResizeMode()) }
+    var isAmbientMode by remember { mutableStateOf(appPreferences.isAmbientModeEnabled()) }
+
+    val toggleAmbientMode: () -> Unit = {
+        view.performHaptic(HapticType.LIGHT)
+        val newState = !isAmbientMode
+        isAmbientMode = newState
+        appPreferences.setAmbientModeEnabled(newState)
+        Toast.makeText(
+            context,
+            if (newState) "Ambient Mode: On" else "Ambient Mode: Off",
+            Toast.LENGTH_SHORT
+        ).show()
+    }
 
     // ─── Music Now Playing Overlay State in Video Player ─────────────────────
     val isMusicPlaying by remember { MusicService.isMusicPlaying }
@@ -263,8 +339,12 @@ fun VideoPlayerScreen(
     // Ensure screen capture and flags are always cleared (Privacy Shield removed)
     DisposableEffect(Unit) {
         activity?.window?.clearFlags(WindowManager.LayoutParams.FLAG_SECURE)
+        if (appPreferences.isKeepScreenAwake()) {
+            activity?.window?.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+        }
         onDispose {
             activity?.window?.clearFlags(WindowManager.LayoutParams.FLAG_SECURE)
+            activity?.window?.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         }
     }
 
@@ -298,21 +378,11 @@ fun VideoPlayerScreen(
 
     // ─── Press-Hold Speed Boost State ─────────────────────────────────────────
     var isSpeedHolding by remember { mutableStateOf(false) }
-    var speedHoldDisplaySpeed by remember { mutableFloatStateOf(1.5f) }
+    var speedHoldDisplaySpeed by remember { mutableFloatStateOf(appPreferences.getPressHoldSpeed()) }
     var preHoldSpeed by remember { mutableFloatStateOf(1.0f) }
 
-    // ─── Resume Playback Prompt State ─────────────────────────────────────────
-    var resumePromptPosition by remember(currentUrl) {
-        val saved = appPreferences.getVideoProgress(currentUrl)
-        mutableLongStateOf(if (saved > 5000L) saved else 0L)
-    }
-
-    LaunchedEffect(resumePromptPosition) {
-        if (resumePromptPosition > 0L) {
-            delay(7000L)
-            resumePromptPosition = 0L
-        }
-    }
+    // ─── Resume Playback Prompt State (Disabled - no prompt asking for Start Over) ───
+    var resumePromptPosition by remember(currentUrl) { mutableLongStateOf(0L) }
 
     // ─── A-B Looping State ───────────────────────────────────────────────────
     var loopStartMs by remember { mutableStateOf<Long?>(null) }
@@ -321,13 +391,9 @@ fun VideoPlayerScreen(
     // ─── Bookmarks State ─────────────────────────────────────────────────────
     var bookmarksList by remember(currentUrl) { mutableStateOf(appPreferences.getBookmarks(currentUrl)) }
 
-    // ─── Resolution Badge Intro Overlay ──────────────────────────────────────
-    var showResolutionBadgeIntro by remember(currentUrl) { mutableStateOf(true) }
-    LaunchedEffect(currentUrl) {
-        showResolutionBadgeIntro = true
-        delay(3500L)
-        showResolutionBadgeIntro = false
-    }
+    // ─── Resolution Badge Intro Overlay (Disabled per user request) ──────────
+    var showResolutionBadgeIntro by remember(currentUrl) { mutableStateOf(false) }
+    var isQuickActionsExpanded by rememberSaveable { mutableStateOf(false) }
 
     var lastSeekMilestone by remember { mutableIntStateOf(-1) }
     var showRewindJumpMenu by remember { mutableStateOf(false) }
@@ -395,18 +461,22 @@ fun VideoPlayerScreen(
             }
         }
     }
-    var audioSubInitialTab by remember { mutableIntStateOf(0) }
 
     // ─── Fat Vertical Gesture Bars State ──────────────────────────────────────
     // Brightness on Left (0.01f..1f)
+    val savedBrightness = remember { appPreferences.getLastPlayerBrightness() }
     var brightnessPct by remember {
         val lp = activity?.window?.attributes
         val currentVal = lp?.screenBrightness?.takeIf { it in 0.005f..1f }
-        mutableFloatStateOf(if (currentVal != null) screenBrightnessToSlider(currentVal) else getSystemBrightness(context))
+        mutableFloatStateOf(
+            if (savedBrightness in 0.01f..1.0f) savedBrightness
+            else if (currentVal != null) screenBrightnessToSlider(currentVal)
+            else getSystemBrightness(context)
+        )
     }
     var showBrightnessBar by remember { mutableStateOf(false) }
     var brightnessTouchTrigger by remember { mutableLongStateOf(0L) }
-    var hasUserAdjustedBrightness by remember { mutableStateOf(false) }
+    var hasUserAdjustedBrightness by remember { mutableStateOf(savedBrightness in 0.01f..1.0f) }
 
     // Smooth screen brightness batch updater using perceptual gamma curve (alters brightness when user changes it)
     LaunchedEffect(brightnessPct, hasUserAdjustedBrightness) {
@@ -418,6 +488,7 @@ fun VideoPlayerScreen(
             lp.screenBrightness = targetHardware
             act.window?.attributes = lp
         }
+        appPreferences.setLastPlayerBrightness(brightnessPct)
     }
 
     // Volume on Right (0f..1f)
@@ -440,6 +511,7 @@ fun VideoPlayerScreen(
     var verticalSwipeSwitchHUD by remember { mutableStateOf<String?>(null) }
     var verticalSwipeSwitchIsNext by remember { mutableStateOf(true) }
     var verticalSwipeSwitchKey by remember { mutableLongStateOf(0L) }
+    var showRemainingTime by remember { mutableStateOf(false) }
 
     // Instant Peek Preview updater (Runs for both Portrait and Fullscreen Landscape)
     LaunchedEffect(scrubPosition, isDraggingSeek) {
@@ -486,10 +558,12 @@ fun VideoPlayerScreen(
 
     // Sheets & Dialogs
     var showPlaylistSheet by remember { mutableStateOf(false) }
+    var showSettingsOverlay by remember { mutableStateOf(false) }
     var showMoreMenuSheet by remember { mutableStateOf(false) }
     var showSpeedSheet by remember { mutableStateOf(false) }
     var showSleepTimerSheet by remember { mutableStateOf(false) }
-    var showAudioSubSheet by remember { mutableStateOf(false) }
+    var showAudioTrackSheet by remember { mutableStateOf(false) }
+    var showSubtitleSheet by remember { mutableStateOf(false) }
     var showThemePickerSheet by remember { mutableStateOf(false) }
     var showVideoInfoSheet by remember { mutableStateOf(false) }
     var showQuickControlsBar by remember { mutableStateOf(false) }
@@ -504,12 +578,12 @@ fun VideoPlayerScreen(
                 ViewGroup.LayoutParams.MATCH_PARENT,
                 ViewGroup.LayoutParams.MATCH_PARENT
             )
-            applySubtitleDesign(this, subtitleDesign)
+            applySubtitleDesign(this, subtitleDesign, appPreferences)
         }
     }
 
     LaunchedEffect(subtitleDesign, playerView) {
-        applySubtitleDesign(playerView, subtitleDesign)
+        applySubtitleDesign(playerView, subtitleDesign, appPreferences)
         appPreferences.saveSubtitleDesign(subtitleDesign)
     }
 
@@ -520,18 +594,37 @@ fun VideoPlayerScreen(
     var isInPiP by remember { mutableStateOf(false) }
     var prePipSubtitleFlags by remember { mutableIntStateOf(-1) } // stores subtitle flags before PiP entry
 
+    // Pinch-to-Zoom & Pan
+    var videoZoomScale by remember { mutableFloatStateOf(1f) }
+    var videoPanX by remember { mutableFloatStateOf(0f) }
+    var videoPanY by remember { mutableFloatStateOf(0f) }
+    var showZoomHUD by remember { mutableStateOf(false) }
+    var zoomHUDText by remember { mutableStateOf("") }
+
+    val resetSpeedToOne: () -> Unit = {
+        view.performHaptic(HapticType.MEDIUM)
+        playbackSpeed = 1.0f
+        exoPlayer.playbackParameters = PlaybackParameters(1.0f)
+        if (appPreferences.isRememberPlaybackSpeed()) {
+            appPreferences.setLastPlaybackSpeed(1.0f)
+        }
+        Toast.makeText(context, "Speed reset to 1.0x", Toast.LENGTH_SHORT).show()
+    }
+
     // Repeat Mode (0: Off, 1: One, 2: All)
-    var repeatMode by remember { mutableIntStateOf(Player.REPEAT_MODE_OFF) }
+    var repeatMode by remember { mutableIntStateOf(initialRepeatMode) }
 
     // ─── Back Press Handling ──────────────────────────────────────────────────
     androidx.activity.compose.BackHandler(enabled = true) {
         when {
             showQuickControlsBar -> showQuickControlsBar = false
+            showSettingsOverlay -> showSettingsOverlay = false
             showPlaylistSheet -> showPlaylistSheet = false
             showMoreMenuSheet -> showMoreMenuSheet = false
             showSpeedSheet -> showSpeedSheet = false
             showSleepTimerSheet -> showSleepTimerSheet = false
-            showAudioSubSheet -> showAudioSubSheet = false
+            showAudioTrackSheet -> showAudioTrackSheet = false
+            showSubtitleSheet -> showSubtitleSheet = false
             showThemePickerSheet -> showThemePickerSheet = false
             showVideoInfoSheet -> showVideoInfoSheet = false
             isLocked -> isLocked = false
@@ -539,9 +632,12 @@ fun VideoPlayerScreen(
         }
     }
 
+    val configuredSeekStepSec = remember { appPreferences.getDoubleTapSeekSeconds().coerceAtLeast(1) }
+    val configuredSeekStepMs = remember(configuredSeekStepSec) { configuredSeekStepSec * 1000L }
+
     // ─── Helper Functions ─────────────────────────────────────────────────────
     fun safeSeek(targetMs: Long) {
-        val target = targetMs.coerceIn(0L, duration.coerceAtLeast(0L))
+        val target = if (duration > 0L) targetMs.coerceIn(0L, duration) else targetMs.coerceAtLeast(0L)
         exoPlayer.seekTo(target)
         currentPosition = target
     }
@@ -552,12 +648,21 @@ fun VideoPlayerScreen(
 
     val playNextVideo: () -> Unit = {
         if (playlistVideos.isNotEmpty() && currentVideoIndex < playlistVideos.size - 1) {
+            val curPos = exoPlayer.currentPosition
+            if (curPos > 1000L) {
+                appPreferences.saveVideoProgress(currentUrl, curPos, exoPlayer.duration.coerceAtLeast(0L))
+            }
             val nextIndex = currentVideoIndex + 1
             val nextVideo = playlistVideos[nextIndex]
             currentVideoIndex = nextIndex
             currentUrl = nextVideo.uri.toString()
             videoTitle = nextVideo.title.substringBeforeLast(".")
-            exoPlayer.setMediaItem(MediaItem.fromUri(nextVideo.uri))
+            val nextProgress = appPreferences.getVideoProgress(nextVideo.uri.toString())
+            if (nextProgress > 3000L) {
+                exoPlayer.setMediaItem(MediaItem.fromUri(nextVideo.uri), nextProgress)
+            } else {
+                exoPlayer.setMediaItem(MediaItem.fromUri(nextVideo.uri))
+            }
             exoPlayer.prepare()
             exoPlayer.play()
         }
@@ -565,12 +670,21 @@ fun VideoPlayerScreen(
 
     val playPreviousVideo: () -> Unit = {
         if (playlistVideos.isNotEmpty() && currentVideoIndex > 0) {
+            val curPos = exoPlayer.currentPosition
+            if (curPos > 1000L) {
+                appPreferences.saveVideoProgress(currentUrl, curPos, exoPlayer.duration.coerceAtLeast(0L))
+            }
             val prevIndex = currentVideoIndex - 1
             val prevVideo = playlistVideos[prevIndex]
             currentVideoIndex = prevIndex
             currentUrl = prevVideo.uri.toString()
             videoTitle = prevVideo.title.substringBeforeLast(".")
-            exoPlayer.setMediaItem(MediaItem.fromUri(prevVideo.uri))
+            val prevProgress = appPreferences.getVideoProgress(prevVideo.uri.toString())
+            if (prevProgress > 3000L) {
+                exoPlayer.setMediaItem(MediaItem.fromUri(prevVideo.uri), prevProgress)
+            } else {
+                exoPlayer.setMediaItem(MediaItem.fromUri(prevVideo.uri))
+            }
             exoPlayer.prepare()
             exoPlayer.play()
         }
@@ -579,6 +693,7 @@ fun VideoPlayerScreen(
     val toggleMute: () -> Unit = {
         isMuted = !isMuted
         exoPlayer.volume = if (isMuted) 0f else 1f
+        appPreferences.setPlayerMuted(isMuted)
         if (!isMuted) {
             volumePct = (audioManager.getStreamVolume(AudioManager.STREAM_MUSIC).toFloat() / maxVolume.toFloat()).coerceIn(0.05f, 1f)
         }
@@ -592,6 +707,7 @@ fun VideoPlayerScreen(
             AspectRatioFrameLayout.RESIZE_MODE_FILL -> AspectRatioFrameLayout.RESIZE_MODE_FIXED_WIDTH
             else -> AspectRatioFrameLayout.RESIZE_MODE_FIT
         }
+        appPreferences.setDefaultResizeMode(resizeMode)
         val label = when (resizeMode) {
             AspectRatioFrameLayout.RESIZE_MODE_FIT -> "Fit to Screen"
             AspectRatioFrameLayout.RESIZE_MODE_ZOOM -> "Zoom / Crop"
@@ -665,10 +781,11 @@ fun VideoPlayerScreen(
 
             override fun onPlaybackStateChanged(playbackState: Int) {
                 if (playbackState == Player.STATE_ENDED) {
+                    appPreferences.markCompleted(currentUrl, true)
                     if (repeatMode == Player.REPEAT_MODE_ONE) {
                         exoPlayer.seekTo(0)
                         exoPlayer.play()
-                    } else if (repeatMode == Player.REPEAT_MODE_ALL || (playlistVideos.isNotEmpty() && currentVideoIndex < playlistVideos.size - 1)) {
+                    } else if (repeatMode == Player.REPEAT_MODE_ALL || (appPreferences.isAutoPlayNextEnabled() && playlistVideos.isNotEmpty() && currentVideoIndex < playlistVideos.size - 1)) {
                         playNextVideo()
                     }
                 }
@@ -732,9 +849,16 @@ fun VideoPlayerScreen(
                 currentOrientationSetting = 0
                 activity?.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_SENSOR_PORTRAIT
             } else {
-                // Horizontal video (e.g. 16:9) -> play in landscape!
-                currentOrientationSetting = 1
-                activity?.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
+                // Horizontal video (e.g. 16:9)
+                // When phone is in vertical (portrait) orientation, open in vertical mode only!
+                val isPhonePortrait = configuration.orientation == Configuration.ORIENTATION_PORTRAIT
+                if (isPhonePortrait) {
+                    currentOrientationSetting = 0
+                    activity?.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_SENSOR_PORTRAIT
+                } else {
+                    currentOrientationSetting = 1
+                    activity?.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
+                }
             }
         }
     }
@@ -768,19 +892,41 @@ fun VideoPlayerScreen(
         }
     }
 
+    // ─── PiP Subtitle Hiding: Completely suppress subtitles in PiP mode ────────
+    LaunchedEffect(isInPiP) {
+        if (isInPiP) {
+            playerView.subtitleView?.visibility = android.view.View.GONE
+            playerView.subtitleView?.setCues(emptyList())
+            playerView.subtitleView?.alpha = 0f
+        } else {
+            playerView.subtitleView?.visibility = android.view.View.VISIBLE
+            playerView.subtitleView?.alpha = 1f
+        }
+    }
+
     // ─── PiP Callback (Subtitle disable/restore + remote actions) ──────────────
     DisposableEffect(componentActivity) {
         val listener = Consumer<PictureInPictureModeChangedInfo> { info ->
             isInPiP = info.isInPictureInPictureMode
             if (info.isInPictureInPictureMode) {
-                // Entering PiP: save subtitle state and disable subtitles
+                // Entering PiP: physically hide subtitle view, clear cues, and disable text tracks
+                playerView.subtitleView?.visibility = android.view.View.GONE
+                playerView.subtitleView?.setCues(emptyList())
+                playerView.subtitleView?.alpha = 0f
                 prePipSubtitleFlags = exoPlayer.trackSelectionParameters.ignoredTextSelectionFlags
                 exoPlayer.trackSelectionParameters = exoPlayer.trackSelectionParameters
                     .buildUpon()
+                    .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, true)
                     .setIgnoredTextSelectionFlags(C.SELECTION_FLAG_DEFAULT)
                     .build()
             } else {
-                // Exiting PiP: restore subtitle state
+                // Exiting PiP: restore subtitle view and state
+                playerView.subtitleView?.visibility = android.view.View.VISIBLE
+                playerView.subtitleView?.alpha = 1f
+                exoPlayer.trackSelectionParameters = exoPlayer.trackSelectionParameters
+                    .buildUpon()
+                    .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, false)
+                    .build()
                 if (prePipSubtitleFlags >= 0) {
                     exoPlayer.trackSelectionParameters = exoPlayer.trackSelectionParameters
                         .buildUpon()
@@ -799,6 +945,20 @@ fun VideoPlayerScreen(
                     ACTION_PIP_PLAY_PAUSE -> {
                         if (exoPlayer.isPlaying) exoPlayer.pause() else exoPlayer.play()
                     }
+                    ACTION_PIP_PREV -> {
+                        playPreviousVideo()
+                    }
+                    ACTION_PIP_NEXT -> {
+                        playNextVideo()
+                    }
+                    ACTION_PIP_BG_PLAY -> {
+                        isBackgroundAudio = true
+                        appPreferences.setBackgroundPlayEnabled(true)
+                        Toast.makeText(context, "Background Audio enabled", Toast.LENGTH_SHORT).show()
+                        try {
+                            activity?.moveTaskToBack(true)
+                        } catch (_: Exception) {}
+                    }
                     ACTION_PIP_REWIND -> {
                         val target = (exoPlayer.currentPosition - 10000L).coerceAtLeast(0L)
                         exoPlayer.seekTo(target)
@@ -812,6 +972,9 @@ fun VideoPlayerScreen(
         }
         val pipFilter = IntentFilter().apply {
             addAction(ACTION_PIP_PLAY_PAUSE)
+            addAction(ACTION_PIP_PREV)
+            addAction(ACTION_PIP_NEXT)
+            addAction(ACTION_PIP_BG_PLAY)
             addAction(ACTION_PIP_REWIND)
             addAction(ACTION_PIP_FORWARD)
         }
@@ -828,7 +991,7 @@ fun VideoPlayerScreen(
     }
 
     // ─── PiP Params Builder (clamped aspect ratio, remote actions, auto-enter) ─
-    val buildPipParams = remember(videoWidth, videoHeight, isPlaying, isVerticalVideo) {
+    val buildPipParams = remember(videoWidth, videoHeight, isPlaying, isVerticalVideo, currentVideoIndex, playlistVideos, isBackgroundAudio) {
         {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
                 try {
@@ -842,9 +1005,9 @@ fun VideoPlayerScreen(
                         android.util.Rational(1000, (1000 / clampedRatio).toInt())
                     }
 
-                    val rewindPendingIntent = PendingIntent.getBroadcast(
+                    val prevPendingIntent = PendingIntent.getBroadcast(
                         context, 201,
-                        Intent(ACTION_PIP_REWIND).setPackage(context.packageName),
+                        Intent(ACTION_PIP_PREV).setPackage(context.packageName),
                         PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
                     )
                     val playPausePendingIntent = PendingIntent.getBroadcast(
@@ -852,40 +1015,85 @@ fun VideoPlayerScreen(
                         Intent(ACTION_PIP_PLAY_PAUSE).setPackage(context.packageName),
                         PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
                     )
-                    val forwardPendingIntent = PendingIntent.getBroadcast(
+                    val nextPendingIntent = PendingIntent.getBroadcast(
                         context, 203,
-                        Intent(ACTION_PIP_FORWARD).setPackage(context.packageName),
+                        Intent(ACTION_PIP_NEXT).setPackage(context.packageName),
+                        PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+                    )
+                    val bgPlayPendingIntent = PendingIntent.getBroadcast(
+                        context, 204,
+                        Intent(ACTION_PIP_BG_PLAY).setPackage(context.packageName),
                         PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
                     )
 
-                    val remoteActions = listOf(
-                        android.app.RemoteAction(
-                            android.graphics.drawable.Icon.createWithResource(context, android.R.drawable.ic_media_rew),
-                            "-10s", "Rewind 10 seconds",
-                            rewindPendingIntent
+                    val canPrev = playlistVideos.isNotEmpty() && currentVideoIndex > 0
+                    val canNext = playlistVideos.isNotEmpty() && currentVideoIndex < playlistVideos.size - 1
+
+                    val prevAction = android.app.RemoteAction(
+                        android.graphics.drawable.Icon.createWithResource(context, android.R.drawable.ic_media_previous),
+                        "Previous",
+                        "Play previous video",
+                        prevPendingIntent
+                    ).apply { isEnabled = canPrev }
+
+                    val playPauseAction = android.app.RemoteAction(
+                        android.graphics.drawable.Icon.createWithResource(
+                            context,
+                            if (isPlaying) android.R.drawable.ic_media_pause else android.R.drawable.ic_media_play
                         ),
-                        android.app.RemoteAction(
-                            android.graphics.drawable.Icon.createWithResource(
-                                context,
-                                if (isPlaying) android.R.drawable.ic_media_pause else android.R.drawable.ic_media_play
-                            ),
-                            if (isPlaying) "Pause" else "Play",
-                            if (isPlaying) "Pause playback" else "Resume playback",
-                            playPausePendingIntent
-                        ),
-                        android.app.RemoteAction(
-                            android.graphics.drawable.Icon.createWithResource(context, android.R.drawable.ic_media_ff),
-                            "+10s", "Forward 10 seconds",
-                            forwardPendingIntent
-                        )
+                        if (isPlaying) "Pause" else "Play",
+                        if (isPlaying) "Pause playback" else "Resume playback",
+                        playPausePendingIntent
                     )
+
+                    val nextAction = android.app.RemoteAction(
+                        android.graphics.drawable.Icon.createWithResource(context, android.R.drawable.ic_media_next),
+                        "Next",
+                        "Play next video",
+                        nextPendingIntent
+                    ).apply { isEnabled = canNext }
+
+                    val bgPlayAction = android.app.RemoteAction(
+                        android.graphics.drawable.Icon.createWithResource(context, com.example.ymediaplayer.R.drawable.ic_pip_bg_play),
+                        "BG Play",
+                        "Play in background",
+                        bgPlayPendingIntent
+                    )
+
+                    val maxAllowed = try {
+                        activity?.maxNumPictureInPictureActions ?: 3
+                    } catch (_: Exception) { 3 }
+
+                    val actionsList = mutableListOf<android.app.RemoteAction>()
+                    if (maxAllowed >= 4) {
+                        actionsList.add(prevAction)
+                        actionsList.add(playPauseAction)
+                        actionsList.add(nextAction)
+                        actionsList.add(bgPlayAction)
+                    } else if (maxAllowed == 3) {
+                        // Exactly 3 action slots available on standard Android:
+                        // Slot 1: BG Play (Always visible as requested)
+                        // Slot 2: Play / Pause
+                        // Slot 3: Next (or Previous if at the end of playlist)
+                        if (canPrev && !canNext) {
+                            actionsList.add(prevAction)
+                            actionsList.add(playPauseAction)
+                            actionsList.add(bgPlayAction)
+                        } else {
+                            actionsList.add(bgPlayAction)
+                            actionsList.add(playPauseAction)
+                            actionsList.add(nextAction)
+                        }
+                    } else {
+                        actionsList.add(playPauseAction)
+                    }
 
                     val paramsBuilder = android.app.PictureInPictureParams.Builder()
                         .setAspectRatio(rational)
-                        .setActions(remoteActions)
+                        .setActions(actionsList.take(maxAllowed))
 
                     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-                        paramsBuilder.setAutoEnterEnabled(true)
+                        paramsBuilder.setAutoEnterEnabled(!isBackgroundAudio && !isMusicPlaying)
                         paramsBuilder.setSeamlessResizeEnabled(true)
                     }
 
@@ -906,23 +1114,38 @@ fun VideoPlayerScreen(
     }
 
     // Proactively set PiP params so auto-enter & mini controls are pre-registered
-    LaunchedEffect(videoWidth, videoHeight, isPlaying, isVerticalVideo) {
+    LaunchedEffect(videoWidth, videoHeight, isPlaying, isVerticalVideo, currentVideoIndex, isBackgroundAudio, isMusicPlaying) {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             val act = activity ?: return@LaunchedEffect
-            val params = buildPipParams()
-            if (params != null) {
-                try {
-                    act.setPictureInPictureParams(params)
-                } catch (_: Exception) {}
+            if (isBackgroundAudio || isMusicPlaying) {
+                // For music / background audio, PiP should NOT be shown!
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                    try {
+                        val noPip = android.app.PictureInPictureParams.Builder()
+                            .setAutoEnterEnabled(false)
+                            .build()
+                        act.setPictureInPictureParams(noPip)
+                    } catch (_: Exception) {}
+                }
+            } else {
+                val params = buildPipParams()
+                if (params != null) {
+                    try {
+                        act.setPictureInPictureParams(params)
+                    } catch (_: Exception) {}
+                }
             }
         }
     }
 
     // Connect to MainActivity.onUserLeaveHintListener so pressing Home button enters PiP on all Android versions
-    DisposableEffect(exoPlayer, isPlaying, buildPipParams) {
+    DisposableEffect(exoPlayer, isPlaying, buildPipParams, isBackgroundAudio, isMusicPlaying) {
         MainActivity.onUserLeaveHintListener = {
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && exoPlayer.isPlaying) {
+            if (!isBackgroundAudio && !isMusicPlaying && appPreferences.isAutoPipEnabled() && Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
                 try {
+                    playerView.subtitleView?.visibility = android.view.View.GONE
+                    playerView.subtitleView?.setCues(emptyList())
+                    playerView.subtitleView?.alpha = 0f
                     val params = buildPipParams()
                     if (params != null) {
                         activity?.enterPictureInPictureMode(params)
@@ -935,6 +1158,48 @@ fun VideoPlayerScreen(
         }
         onDispose {
             MainActivity.onUserLeaveHintListener = null
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                try {
+                    activity?.setPictureInPictureParams(
+                        android.app.PictureInPictureParams.Builder()
+                            .setAutoEnterEnabled(false)
+                            .build()
+                    )
+                } catch (_: Exception) {}
+            }
+        }
+    }
+
+    val enterPiP: () -> Unit = {
+        view.performHaptic(HapticType.MEDIUM)
+        playerView.subtitleView?.visibility = android.view.View.GONE
+        playerView.subtitleView?.setCues(emptyList())
+        playerView.subtitleView?.alpha = 0f
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            showControls = false
+            try {
+                val params = buildPipParams()
+                val entered: Boolean = if (params != null) {
+                    activity?.enterPictureInPictureMode(params) ?: false
+                } else {
+                    @Suppress("DEPRECATION")
+                    activity?.enterPictureInPictureMode()
+                    true
+                }
+                if (!entered) {
+                    @Suppress("DEPRECATION")
+                    activity?.enterPictureInPictureMode()
+                }
+            } catch (_: Exception) {
+                try {
+                    @Suppress("DEPRECATION")
+                    activity?.enterPictureInPictureMode()
+                } catch (_: Exception) {
+                    Toast.makeText(context, "Picture-in-Picture not supported on this device", Toast.LENGTH_SHORT).show()
+                }
+            }
+        } else {
+            Toast.makeText(context, "Picture-in-Picture requires Android 8.0+", Toast.LENGTH_SHORT).show()
         }
     }
 
@@ -956,13 +1221,55 @@ fun VideoPlayerScreen(
         }
     }
 
-    // ─── Auto-hide Controls (2.5s on play, stay visible on pause) ─────────────
-    LaunchedEffect(showControls, isPlaying, isDraggingSeek, isLocked) {
+    // ─── Periodic Progress Auto-Save (Every 4s while playing) ─────────────────
+    LaunchedEffect(currentUrl) {
+        while (true) {
+            delay(4000.milliseconds)
+            if (exoPlayer.isPlaying) {
+                val pos = exoPlayer.currentPosition
+                val dur = exoPlayer.duration.coerceAtLeast(0L)
+                if (pos > 1000L) {
+                    appPreferences.saveVideoProgress(currentUrl, pos, dur)
+                }
+            }
+        }
+    }
+
+    // ─── Auto-hide Controls (Stay visible while touching, dragging, dialogs open, or paused) ──
+    val isAnySheetOrMenuOpen = showPlaylistSheet ||
+            showSettingsOverlay ||
+            showMoreMenuSheet ||
+            showSpeedSheet ||
+            showSleepTimerSheet ||
+            showAudioTrackSheet ||
+            showSubtitleSheet ||
+            showThemePickerSheet ||
+            showVideoInfoSheet ||
+            showRewindJumpMenu ||
+            showForwardJumpMenu
+
+    val isControlsBusy = isDraggingSeek ||
+            isTouchingControls ||
+            optionsScrollState.isScrollInProgress ||
+            isQuickActionsExpanded ||
+            isAnySheetOrMenuOpen
+
+    val autoHideTimeoutMs = remember { appPreferences.getControlsAutoHideTimeoutMs() }
+
+    LaunchedEffect(
+        showControls,
+        isPlaying,
+        isLocked,
+        isControlsBusy,
+        controlsInteractionTimestamp
+    ) {
         if (!isPlaying && !isLocked) {
             showControls = true
-        } else if (showControls && isPlaying && !isDraggingSeek && !isLocked) {
-            delay(2500.milliseconds)
-            showControls = false
+        } else if (showControls && isPlaying && !isLocked && !isControlsBusy) {
+            if (autoHideTimeoutMs > 0L) {
+                delay(autoHideTimeoutMs.milliseconds)
+                showControls = false
+            }
         }
     }
 
@@ -1038,10 +1345,10 @@ fun VideoPlayerScreen(
                         if (exoPlayer.isPlaying) exoPlayer.pause() else exoPlayer.play()
                     }
                     ACTION_VIDEO_REWIND -> {
-                        safeSeek((exoPlayer.currentPosition - 10000).coerceAtLeast(0L))
+                        safeSeek((exoPlayer.currentPosition - configuredSeekStepMs).coerceAtLeast(0L))
                     }
                     ACTION_VIDEO_FORWARD -> {
-                        safeSeek((exoPlayer.currentPosition + 10000).coerceAtMost(exoPlayer.duration.coerceAtLeast(0L)))
+                        safeSeek((exoPlayer.currentPosition + configuredSeekStepMs).coerceAtMost(exoPlayer.duration.coerceAtLeast(0L)))
                     }
                 }
             }
@@ -1147,7 +1454,12 @@ fun VideoPlayerScreen(
         val observer = LifecycleEventObserver { _, event ->
             when (event) {
                 Lifecycle.Event.ON_PAUSE -> {
-                    if (!isBackgroundAudio && !isInPiP) {
+                    val pos = exoPlayer.currentPosition
+                    if (pos > 1000L) {
+                        appPreferences.saveVideoProgress(currentUrl, pos, exoPlayer.duration.coerceAtLeast(0L))
+                    }
+                    val allowBg = isBackgroundAudio || appPreferences.isBackgroundPlayEnabled()
+                    if (!allowBg && !isInPiP) {
                         exoPlayer.pause()
                     }
                 }
@@ -1168,7 +1480,7 @@ fun VideoPlayerScreen(
             // Save progress
             val pos = exoPlayer.currentPosition
             if (pos > 1000L) {
-                appPreferences.saveVideoProgress(currentUrl, pos)
+                appPreferences.saveVideoProgress(currentUrl, pos, exoPlayer.duration.coerceAtLeast(0L))
             }
             exoPlayer.release()
             val lp = activity?.window?.attributes
@@ -1194,6 +1506,21 @@ fun VideoPlayerScreen(
         }
     }
 
+    val controlsTouchModifier = Modifier.pointerInput(Unit) {
+        awaitPointerEventScope {
+            try {
+                while (true) {
+                    val event = awaitPointerEvent(PointerEventPass.Initial)
+                    val anyPressed = event.changes.any { it.pressed }
+                    isTouchingControls = anyPressed
+                    controlsInteractionTimestamp = System.currentTimeMillis()
+                }
+            } finally {
+                isTouchingControls = false
+            }
+        }
+    }
+
     val playerGestureModifier = Modifier.pointerInput(isLocked, playbackSpeed, duration, isLandscape, isVerticalVideo) {
         if (isLocked) {
             detectTapGestures(
@@ -1207,7 +1534,8 @@ fun VideoPlayerScreen(
         var lastTapY = 0f
 
         awaitEachGesture {
-            val down = awaitFirstDown(requireUnconsumed = true)
+            val down = awaitFirstDown(requireUnconsumed = false)
+            var wasConsumed = down.isConsumed
             val downTime = System.currentTimeMillis()
             val startX = down.position.x
             val startY = down.position.y
@@ -1225,32 +1553,129 @@ fun VideoPlayerScreen(
             currentDragSeekTarget = startPosition
             var lastHoldX = startX
             var didActivateSpeedHold = false
+            var speedHoldAccumulatorX = 0f
             var finalDiffX = 0f
             var finalDiffY = 0f
+            var currentX = startX
+            var currentY = startY
+            var lastPinchDist = 0f
+            var lastPinchCentroid = Offset.Zero
+            var lastPanX = startX
+            var lastPanY = startY
 
             while (true) {
-                val event = awaitPointerEvent()
+                val elapsed = System.currentTimeMillis() - downTime
+
+                // ─── 1-Second Speed Hold Activation (Tapping & holding anywhere on screen) ───
+                if ((gestureMode == PlayerGestureMode.NONE || gestureMode == PlayerGestureMode.IGNORED_DRAG) && elapsed >= 1000L && !isDoubleTap) {
+                    gestureMode = PlayerGestureMode.SPEED_HOLD
+                    activeGestureMode = gestureMode
+                    didActivateSpeedHold = true
+                    preHoldSpeed = playbackSpeed
+                    val targetHoldSpeed = appPreferences.getPressHoldSpeed()
+                    speedHoldDisplaySpeed = targetHoldSpeed
+                    speedHoldAccumulatorX = 0f
+                    isSpeedHolding = true
+                    showControls = false
+                    exoPlayer.setPlaybackSpeed(targetHoldSpeed)
+                    lastHoldX = currentX
+                    view.performHaptic(HapticType.HEAVY)
+                }
+
+                val remainingMs = if ((gestureMode == PlayerGestureMode.NONE || gestureMode == PlayerGestureMode.IGNORED_DRAG) && !isDoubleTap && !didActivateSpeedHold) {
+                    (1000L - elapsed).coerceAtLeast(1L)
+                } else {
+                    Long.MAX_VALUE
+                }
+
+                val event = if (remainingMs < 5000L) {
+                    withTimeoutOrNull(remainingMs) { awaitPointerEvent() }
+                } else {
+                    awaitPointerEvent()
+                }
+
+                if (event != null && event.changes.any { it.isConsumed }) {
+                    wasConsumed = true
+                }
+
+                if (event == null) {
+                    // Exactly 1 second reached while finger is held stationary
+                    continue
+                }
+
+                // ─── Multi-touch Pinch-to-Zoom & Pan Detection ───
+                val pressedPointers = event.changes.filter { it.pressed }
+                if (pressedPointers.size >= 2) {
+                    if (gestureMode == PlayerGestureMode.SPEED_HOLD && didActivateSpeedHold) {
+                        isSpeedHolding = false
+                        exoPlayer.setPlaybackSpeed(preHoldSpeed)
+                        didActivateSpeedHold = false
+                    }
+                    gestureMode = PlayerGestureMode.PINCH_ZOOM
+                    activeGestureMode = gestureMode
+                    hasMoved = true
+
+                    val p1 = pressedPointers[0].position
+                    val p2 = pressedPointers[1].position
+                    val currentDist = kotlin.math.hypot(p1.x - p2.x, p1.y - p2.y)
+                    val currentCentroid = Offset((p1.x + p2.x) / 2f, (p1.y + p2.y) / 2f)
+
+                    if (lastPinchDist > 0f) {
+                        val zoomFactor = currentDist / lastPinchDist
+                        val newScale = (videoZoomScale * zoomFactor).coerceIn(0.75f, 5.0f)
+                        videoZoomScale = newScale
+
+                        if (newScale > 1.05f) {
+                            videoPanX += (currentCentroid.x - lastPinchCentroid.x)
+                            videoPanY += (currentCentroid.y - lastPinchCentroid.y)
+                        } else {
+                            videoPanX = 0f
+                            videoPanY = 0f
+                        }
+
+                        val pct = (newScale * 100).roundToInt()
+                        zoomHUDText = if (abs(newScale - 1f) < 0.05f) "Fit (100%)" else "$pct%"
+                        showZoomHUD = true
+                    }
+
+                    lastPinchDist = currentDist
+                    lastPinchCentroid = currentCentroid
+                    pressedPointers.forEach { it.consume() }
+                    continue
+                }
+
                 val change = event.changes.firstOrNull { it.id == down.id }
                 if (change == null || !change.pressed) {
+                    if (change?.isConsumed == true) {
+                        wasConsumed = true
+                    }
                     break
                 }
 
-                val currentX = change.position.x
-                val currentY = change.position.y
+                currentX = change.position.x
+                currentY = change.position.y
                 val diffX = currentX - startX
                 val diffY = currentY - startY
                 finalDiffX = diffX
                 finalDiffY = diffY
-                val elapsed = System.currentTimeMillis() - downTime
 
                 // Step 1: Detect mode if still NONE
                 if (gestureMode == PlayerGestureMode.NONE) {
-                    if (abs(diffX) > 20f || abs(diffY) > 20f) {
+                    val moveDistX = abs(diffX)
+                    val moveDistY = abs(diffY)
+
+                    if (videoZoomScale > 1.1f && (moveDistX > 15f || moveDistY > 15f)) {
+                        hasMoved = true
+                        gestureMode = PlayerGestureMode.PINCH_ZOOM
+                        activeGestureMode = gestureMode
+                        lastPanX = currentX
+                        lastPanY = currentY
+                    } else if (moveDistX > 45f || moveDistY > 45f) {
                         hasMoved = true
                         if (!isLandscape && !isVerticalVideo) {
                             // ─── PORTRAIT / SMALL WINDOWED MODE ───
                             // No brightness or volume controls in small windowed mode
-                            if (diffY < -30f && abs(diffY) > abs(diffX)) {
+                            if (diffY < -45f && moveDistY > moveDistX * 1.3f) {
                                 // Gesturing swipe up on the screen makes it full screen
                                 manualOrientationOverrideTime = System.currentTimeMillis() + 3000L
                                 currentOrientationSetting = 1
@@ -1259,12 +1684,13 @@ fun VideoPlayerScreen(
                                 activeGestureMode = gestureMode
                                 change.consume()
                                 break
-                            } else if (abs(diffX) > 35f && abs(diffX) > abs(diffY) * 1.3f) {
-                                // Horizontal swipe in portrait = Next / Previous Video
-                                gestureMode = PlayerGestureMode.VIDEO_SWITCH_SWIPE
-                                activeGestureMode = gestureMode
-                                change.consume()
-                            } else if (diffY > 40f && abs(diffY) > abs(diffX)) {
+                            } else if (moveDistX > 50f && moveDistX > moveDistY * 1.3f) {
+                                if (appPreferences.isVideoSwitchGestureEnabled()) {
+                                    gestureMode = PlayerGestureMode.VIDEO_SWITCH_SWIPE
+                                    activeGestureMode = gestureMode
+                                    change.consume()
+                                }
+                            } else if (diffY > 50f && moveDistY > moveDistX * 1.3f) {
                                 // Downward swipe in portrait = enter PiP!
                                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
                                     try {
@@ -1286,25 +1712,30 @@ fun VideoPlayerScreen(
                             // ─── FULL-SCREEN VIDEO PLAYER MODE ───
                             // Extreme side areas have brightness (left) and volume (right).
                             // Screen center area has swipe down to return to windowed mode.
-                            val isExtremeLeft = startX <= screenWidth * 0.40f
-                            val isExtremeRight = startX >= screenWidth * 0.60f
-                            val isCenterArea = startX in (screenWidth * 0.40f)..(screenWidth * 0.60f)
+                            val isExtremeLeft = startX <= screenWidth * 0.35f
+                            val isExtremeRight = startX >= screenWidth * 0.65f
+                            val isCenterArea = startX in (screenWidth * 0.35f)..(screenWidth * 0.65f)
 
-                            if (isExtremeLeft && abs(diffY) > abs(diffX)) {
-                                gestureMode = PlayerGestureMode.BRIGHTNESS
-                                activeGestureMode = gestureMode
-                                change.consume()
-                            } else if (isExtremeRight && abs(diffY) > abs(diffX)) {
-                                gestureMode = PlayerGestureMode.VOLUME
-                                activeGestureMode = gestureMode
-                                change.consume()
-                            } else if (isVerticalVideo && abs(diffX) > 35f && abs(diffX) > abs(diffY) * 1.3f) {
-                                // Horizontal swipe in vertical video mode = Next / Previous Video
-                                gestureMode = PlayerGestureMode.VIDEO_SWITCH_SWIPE
-                                activeGestureMode = gestureMode
-                                change.consume()
+                            if (isExtremeLeft && moveDistY > moveDistX * 1.3f) {
+                                if (appPreferences.isBrightnessGestureEnabled()) {
+                                    gestureMode = PlayerGestureMode.BRIGHTNESS
+                                    activeGestureMode = gestureMode
+                                    change.consume()
+                                }
+                            } else if (isExtremeRight && moveDistY > moveDistX * 1.3f) {
+                                if (appPreferences.isVolumeGestureEnabled()) {
+                                    gestureMode = PlayerGestureMode.VOLUME
+                                    activeGestureMode = gestureMode
+                                    change.consume()
+                                }
+                            } else if (isVerticalVideo && moveDistX > 50f && moveDistX > moveDistY * 1.3f) {
+                                if (appPreferences.isVideoSwitchGestureEnabled()) {
+                                    gestureMode = PlayerGestureMode.VIDEO_SWITCH_SWIPE
+                                    activeGestureMode = gestureMode
+                                    change.consume()
+                                }
                             } else if (isCenterArea) {
-                                if (diffY > 35f && abs(diffY) > abs(diffX)) {
+                                if (diffY > 50f && moveDistY > moveDistX * 1.3f) {
                                     if (isVerticalVideo) {
                                         // Swipe down on vertical video = enter PiP!
                                         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
@@ -1332,27 +1763,13 @@ fun VideoPlayerScreen(
                                         change.consume()
                                         break
                                     }
-                                } else if (abs(diffX) > 22f && abs(diffX) > abs(diffY)) {
+                                } else if (moveDistX > 45f && moveDistX > moveDistY) {
                                     // Horizontal swipe on screen disabled for seek; progress bar is used
-                                    gestureMode = PlayerGestureMode.IGNORED_DRAG
-                                    change.consume()
-                                } else if (diffY < -35f && abs(diffY) > abs(diffX)) {
                                     gestureMode = PlayerGestureMode.IGNORED_DRAG
                                     change.consume()
                                 }
                             }
                         }
-                    } else if (elapsed >= 420L && !isDoubleTap) {
-                        // Stationary hold for 420ms -> Speed Boost!
-                        gestureMode = PlayerGestureMode.SPEED_HOLD
-                        activeGestureMode = gestureMode
-                        didActivateSpeedHold = true
-                        preHoldSpeed = playbackSpeed
-                        speedHoldDisplaySpeed = 1.5f
-                        isSpeedHolding = true
-                        exoPlayer.setPlaybackSpeed(1.5f)
-                        lastHoldX = currentX
-                        change.consume()
                     }
                 }
 
@@ -1392,9 +1809,33 @@ fun VideoPlayerScreen(
                     PlayerGestureMode.SPEED_HOLD -> {
                         val deltaX = currentX - lastHoldX
                         lastHoldX = currentX
-                        val newSpeed = (speedHoldDisplaySpeed + deltaX * 0.005f).coerceIn(0.25f, 4.0f)
-                        speedHoldDisplaySpeed = newSpeed
-                        exoPlayer.setPlaybackSpeed(newSpeed)
+                        speedHoldAccumulatorX += deltaX
+
+                        // Each ~48px of horizontal slide adjusts speed by 0.1x
+                        val stepPx = 48f
+                        if (kotlin.math.abs(speedHoldAccumulatorX) >= stepPx) {
+                            val steps = (speedHoldAccumulatorX / stepPx).toInt()
+                            speedHoldAccumulatorX -= steps * stepPx
+
+                            val currentSpeed10 = kotlin.math.round(speedHoldDisplaySpeed * 10f).toInt()
+                            val newSpeed10 = (currentSpeed10 + steps).coerceIn(2, 40) // 0.2x to 4.0x
+                            val newSpeed = newSpeed10 / 10f
+
+                            if (kotlin.math.abs(newSpeed - speedHoldDisplaySpeed) >= 0.05f) {
+                                speedHoldDisplaySpeed = newSpeed
+                                exoPlayer.setPlaybackSpeed(newSpeed)
+                                view.performHaptic(HapticType.LIGHT)
+                            }
+                        }
+                        change.consume()
+                    }
+                    PlayerGestureMode.PINCH_ZOOM -> {
+                        val deltaX = currentX - lastPanX
+                        val deltaY = currentY - lastPanY
+                        lastPanX = currentX
+                        lastPanY = currentY
+                        videoPanX += deltaX
+                        videoPanY += deltaY
                         change.consume()
                     }
                     PlayerGestureMode.VIDEO_SWITCH_SWIPE -> {
@@ -1409,6 +1850,13 @@ fun VideoPlayerScreen(
             // Pointer lifted / up: Finalize gesture
             activeGestureMode = PlayerGestureMode.NONE
             when (gestureMode) {
+                PlayerGestureMode.PINCH_ZOOM -> {
+                    if (abs(videoZoomScale - 1f) < 0.08f) {
+                        videoZoomScale = 1f
+                        videoPanX = 0f
+                        videoPanY = 0f
+                    }
+                }
                 PlayerGestureMode.BRIGHTNESS -> {
                     brightnessTouchTrigger = System.currentTimeMillis()
                 }
@@ -1436,7 +1884,7 @@ fun VideoPlayerScreen(
                             verticalSwipeSwitchHUD = "Next: ${nextItem.title.substringBeforeLast(".")}"
                             verticalSwipeSwitchIsNext = true
                             verticalSwipeSwitchKey = System.currentTimeMillis()
-                            try { haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove) } catch (_: Exception) {}
+                            view.performHaptic(HapticType.MEDIUM)
                         } else {
                             Toast.makeText(context, "End of playlist", Toast.LENGTH_SHORT).show()
                         }
@@ -1449,7 +1897,7 @@ fun VideoPlayerScreen(
                             verticalSwipeSwitchHUD = "Previous: ${prevItem.title.substringBeforeLast(".")}"
                             verticalSwipeSwitchIsNext = false
                             verticalSwipeSwitchKey = System.currentTimeMillis()
-                            try { haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove) } catch (_: Exception) {}
+                            view.performHaptic(HapticType.MEDIUM)
                         } else {
                             Toast.makeText(context, "Beginning of playlist", Toast.LENGTH_SHORT).show()
                         }
@@ -1459,28 +1907,44 @@ fun VideoPlayerScreen(
                     // Swiped orientation or ignored drag - do not trigger tap
                 }
                 PlayerGestureMode.NONE -> {
-                    if (!hasMoved) {
+                    if (!hasMoved && !didActivateSpeedHold && !wasConsumed) {
                         // Quick stationary tap!
                         if (isDoubleTap) {
                             lastTapTime = 0L // consume double tap
-                            val isCenter = startX in (screenWidth * 0.35f)..(screenWidth * 0.65f)
-                            if (isCenter) {
-                                // Double tap in center area: Play / Pause toggle!
-                                if (isPlaying) exoPlayer.pause() else exoPlayer.play()
-                                centerDoubleTapPlayPause = !isPlaying
-                                centerDoubleTapKey = System.currentTimeMillis()
-                                try { haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove) } catch (_: Exception) {}
+                            if (videoZoomScale != 1.0f) {
+                                videoZoomScale = 1.0f
+                                videoPanX = 0f
+                                videoPanY = 0f
+                                zoomHUDText = "Fit (100%)"
+                                showZoomHUD = true
+                                view.performHaptic(HapticType.MEDIUM)
                             } else {
-                                val isRightSide = startX > screenWidth * 0.65f
-                                if (isRightSide) {
-                                    seekBy(10000L)
-                                    doubleTapIsForward = true
+                                val isCenter = startX in (screenWidth * 0.35f)..(screenWidth * 0.65f)
+                                if (isCenter) {
+                                    if (appPreferences.isDoubleTapCenterPlayPauseEnabled()) {
+                                        if (isPlaying) exoPlayer.pause() else exoPlayer.play()
+                                        centerDoubleTapPlayPause = !isPlaying
+                                        centerDoubleTapKey = System.currentTimeMillis()
+                                        if (appPreferences.isHapticsEnabled()) {
+                                            view.performHaptic(HapticType.LIGHT)
+                                        }
+                                    }
                                 } else {
-                                    seekBy(-10000L)
-                                    doubleTapIsForward = false
+                                    val isRightSide = startX > screenWidth * 0.65f
+                                    val seekStepSec = appPreferences.getDoubleTapSeekSeconds()
+                                    val stepMs = seekStepSec * 1000L
+                                    if (isRightSide) {
+                                        seekBy(stepMs)
+                                        doubleTapIsForward = true
+                                    } else {
+                                        seekBy(-stepMs)
+                                        doubleTapIsForward = false
+                                    }
+                                    doubleTapSeekSeconds += seekStepSec
+                                    if (appPreferences.isHapticsEnabled()) {
+                                        view.performHaptic(HapticType.LIGHT)
+                                    }
                                 }
-                                doubleTapSeekSeconds += 10
-                                try { haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove) } catch (_: Exception) {}
                             }
                         } else {
                             lastTapTime = downTime
@@ -1495,6 +1959,34 @@ fun VideoPlayerScreen(
         }
     }
 
+    LaunchedEffect(showZoomHUD, zoomHUDText) {
+        if (showZoomHUD) {
+            delay(1500L)
+            showZoomHUD = false
+        }
+    }
+
+    // ─── PiP PURE VIDEO MODE: SHOW ONLY VIDEO SURFACE (NO SUBTITLES) ──────────
+    if (isInPiP) {
+        AndroidView(
+            factory = { _ ->
+                (playerView.parent as? ViewGroup)?.removeView(playerView)
+                playerView.subtitleView?.visibility = android.view.View.GONE
+                playerView.subtitleView?.setCues(emptyList())
+                playerView.subtitleView?.alpha = 0f
+                playerView
+            },
+            update = { pv ->
+                pv.resizeMode = resizeMode
+                pv.subtitleView?.visibility = android.view.View.GONE
+                pv.subtitleView?.setCues(emptyList())
+                pv.subtitleView?.alpha = 0f
+            },
+            modifier = Modifier.fillMaxSize()
+        )
+        return
+    }
+
     // ─── ADAPTIVE ORIENTATION LAYOUT (Landscape vs Portrait YouTube Style) ───
     if (isLandscape || isVerticalVideo) {
         // ─── FULLSCREEN PLAYER MODE (Landscape or Fullscreen Vertical 9:16) ───
@@ -1504,8 +1996,8 @@ fun VideoPlayerScreen(
                 .background(Color.Black)
                 .then(playerGestureModifier)
         ) {
-            // ─── 0. Ambient Blurred Backdrop for Vertical Videos ──────────────────
-            if (isVerticalVideo) {
+            // ─── 0. Ambient Blurred Backdrop (Atmospheric Halo Reflection) ────────
+            if (isVerticalVideo || isAmbientMode) {
                 Box(modifier = Modifier.fillMaxSize()) {
                     val bgBmp = seekThumbnail
                     if (bgBmp != null) {
@@ -1515,7 +2007,7 @@ fun VideoPlayerScreen(
                             contentScale = ContentScale.Crop,
                             modifier = Modifier
                                 .fillMaxSize()
-                                .blur(36.dp)
+                                .blur(48.dp)
                         )
                     } else {
                         AsyncImage(
@@ -1527,26 +2019,44 @@ fun VideoPlayerScreen(
                             contentScale = ContentScale.Crop,
                             modifier = Modifier
                                 .fillMaxSize()
-                                .blur(36.dp)
+                                .blur(48.dp)
                         )
                     }
                     Box(
                         modifier = Modifier
                             .fillMaxSize()
-                            .background(Color.Black.copy(alpha = 0.45f))
+                            .background(Color.Black.copy(alpha = if (isAmbientMode && !isVerticalVideo) 0.55f else 0.45f))
                     )
                 }
             }
 
-            // ─── 1. Video Surface ─────────────────────────────────────────────────
-            AndroidView(
-                factory = { _ ->
-                    (playerView.parent as? ViewGroup)?.removeView(playerView)
-                    playerView
-                },
-                update = { pv -> pv.resizeMode = resizeMode },
-                modifier = Modifier.fillMaxSize()
-            )
+            // ─── 1. Video Surface with Pinch-to-Zoom & Pan ────────────────────────
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .clipToBounds()
+                    .graphicsLayer {
+                        scaleX = videoZoomScale
+                        scaleY = videoZoomScale
+                        translationX = videoPanX
+                        translationY = videoPanY
+                    }
+            ) {
+                AndroidView(
+                    factory = { _ ->
+                        (playerView.parent as? ViewGroup)?.removeView(playerView)
+                        playerView
+                    },
+                    update = { pv ->
+                        pv.resizeMode = resizeMode
+                        if (!isInPiP) {
+                            pv.subtitleView?.visibility = android.view.View.VISIBLE
+                            pv.subtitleView?.alpha = 1f
+                        }
+                    },
+                    modifier = Modifier.fillMaxSize()
+                )
+            }
 
         // ─── 2. Night Mode Tint Overlay ───────────────────────────────────────
         if (isNightMode) {
@@ -1569,7 +2079,7 @@ fun VideoPlayerScreen(
             VerticalGestureBar(
                 icon = Icons.Rounded.LightMode,
                 percentage = brightnessPct,
-                label = "${(brightnessPct * 100).toInt()}%",
+                label = "${(brightnessPct * 100).roundToInt()}%",
                 gradient = gestureBrush,
                 glowColor = glowColor,
                 onValueChange = {
@@ -1591,9 +2101,9 @@ fun VideoPlayerScreen(
                 .padding(end = 28.dp)
         ) {
             VerticalGestureBar(
-                icon = if (isMuted || volumePct == 0f) Icons.AutoMirrored.Rounded.VolumeOff else Icons.AutoMirrored.Rounded.VolumeUp,
+                icon = if (isMuted || volumePct <= 0f) Icons.AutoMirrored.Rounded.VolumeOff else if (volumePct < 0.5f) Icons.AutoMirrored.Rounded.VolumeDown else Icons.AutoMirrored.Rounded.VolumeUp,
                 percentage = if (isMuted) 0f else volumePct,
-                label = if (isMuted) "Muted" else "${(volumePct * maxVolume).roundToInt()} / $maxVolume",
+                label = if (isMuted) "Muted" else "${(volumePct * 100).roundToInt()}%",
                 gradient = gestureBrush,
                 glowColor = glowColor,
                 onValueChange = {
@@ -1674,28 +2184,27 @@ fun VideoPlayerScreen(
             }
         }
 
-        // ─── 6a. Center Double-Tap Play/Pause Ripple Indicator ───────────────
+        // ─── 6a. Center Double-Tap Play/Pause Ripple Indicator (Disabled per user request) ───
+
+        // ─── 6c. Pinch-to-Zoom HUD Indicator ──────────────────────────────────
         AnimatedVisibility(
-            visible = centerDoubleTapPlayPause != null && !isInPiP,
-            enter = fadeIn(tween(90)) + scaleIn(initialScale = 0.65f, animationSpec = spring(dampingRatio = Spring.DampingRatioMediumBouncy)),
-            exit = fadeOut(tween(220)) + scaleOut(targetScale = 1.15f),
+            visible = showZoomHUD && !isInPiP,
+            enter = fadeIn(tween(140)) + scaleIn(initialScale = 0.85f),
+            exit = fadeOut(tween(250)),
             modifier = Modifier.align(Alignment.Center)
         ) {
             Box(
                 modifier = Modifier
-                    .size(78.dp)
-                    .shadow(20.dp, CircleShape, ambientColor = primaryAccent, spotColor = primaryAccent)
-                    .clip(CircleShape)
-                    .background(Color.Black.copy(alpha = 0.78f))
-                    .border(2.dp, primaryAccent, CircleShape),
+                    .clip(RoundedCornerShape(24.dp))
+                    .background(Color.Black.copy(alpha = 0.80f))
+                    .border(1.2.dp, primaryAccent, RoundedCornerShape(24.dp))
+                    .padding(horizontal = 20.dp, vertical = 10.dp),
                 contentAlignment = Alignment.Center
             ) {
-                Icon(
-                    imageVector = if (centerDoubleTapPlayPause == true) Icons.Rounded.PlayArrow else Icons.Rounded.Pause,
-                    contentDescription = null,
-                    tint = Color.White,
-                    modifier = Modifier.size(44.dp)
-                )
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Icon(Icons.Rounded.ZoomIn, contentDescription = null, tint = primaryAccent, modifier = Modifier.size(22.dp))
+                    Text(text = zoomHUDText, color = Color.White, fontSize = 15.sp, fontWeight = FontWeight.Bold, fontFamily = FontFamily.Monospace)
+                }
             }
         }
 
@@ -1735,57 +2244,19 @@ fun VideoPlayerScreen(
             }
         }
 
-        // ─── 6b. Press-Hold Speed HUD (Transparent, Zero Background) ─────────
+        // ─── 6b. Press-Hold Speed HUD (Small Pill with Animated ">>" Icon) ───
         AnimatedVisibility(
             visible = isSpeedHolding && !isInPiP,
-            enter = fadeIn(tween(120)) + scaleIn(initialScale = 0.85f, animationSpec = spring(stiffness = Spring.StiffnessMediumLow)),
+            enter = fadeIn(tween(120)) + scaleIn(initialScale = 0.85f),
             exit = fadeOut(tween(200)) + scaleOut(targetScale = 0.90f),
             modifier = Modifier
                 .align(Alignment.TopCenter)
-                .padding(top = 36.dp)
+                .padding(top = 22.dp)
         ) {
-            Column(
-                horizontalAlignment = Alignment.CenterHorizontally,
-                modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp)
-            ) {
-                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Icon(
-                        Icons.Rounded.Speed,
-                        contentDescription = null,
-                        tint = primaryAccent,
-                        modifier = Modifier.size(30.dp)
-                    )
-                    Text(
-                        text = String.format(Locale.getDefault(), "%.2f", speedHoldDisplaySpeed) + "×",
-                        color = Color.White,
-                        fontSize = 32.sp,
-                        fontWeight = FontWeight.ExtraBold,
-                        fontFamily = FontFamily.Monospace,
-                        style = androidx.compose.ui.text.TextStyle(
-                            shadow = androidx.compose.ui.graphics.Shadow(
-                                color = Color.Black.copy(alpha = 0.95f),
-                                offset = Offset(2f, 2f),
-                                blurRadius = 8f
-                            )
-                        )
-                    )
-                }
-                Spacer(Modifier.height(3.dp))
-                Text(
-                    text = "Slide ←→ to adjust",
-                    color = Color.White.copy(alpha = 0.85f),
-                    fontSize = 12.sp,
-                    fontWeight = FontWeight.SemiBold,
-                    letterSpacing = 0.5.sp,
-                    style = androidx.compose.ui.text.TextStyle(
-                        shadow = androidx.compose.ui.graphics.Shadow(
-                            color = Color.Black.copy(alpha = 0.95f),
-                            offset = Offset(1f, 1f),
-                            blurRadius = 6f
-                        )
-                    )
-                )
-            }
+            TemporarySpeedHoldBadge(
+                speed = speedHoldDisplaySpeed,
+                accentColor = primaryAccent
+            )
         }
 
         // ─── 6c. Floating Music Mini Bar in Fullscreen (Opaque Background) ───
@@ -1809,42 +2280,7 @@ fun VideoPlayerScreen(
             )
         }
 
-        // ─── 6d. Resume Playback Floating Prompt ─────────────────────────────
-        AnimatedVisibility(
-            visible = resumePromptPosition > 0L && !isInPiP,
-            enter = slideInVertically(initialOffsetY = { it }) + fadeIn(),
-            exit = slideOutVertically(targetOffsetY = { it }) + fadeOut(),
-            modifier = Modifier
-                .align(Alignment.BottomCenter)
-                .padding(bottom = if (showControls) 130.dp else 30.dp, start = 16.dp, end = 16.dp)
-        ) {
-            ResumePlaybackPrompt(
-                resumePosition = resumePromptPosition,
-                onResume = {
-                    safeSeek(resumePromptPosition)
-                    resumePromptPosition = 0L
-                },
-                onDismiss = { resumePromptPosition = 0L },
-                primaryAccent = primaryAccent
-            )
-        }
 
-        // ─── 6e. Resolution Badge Intro Card ─────────────────────────────────
-        AnimatedVisibility(
-            visible = showResolutionBadgeIntro && resolutionBadge != null && !isInPiP && !showControls,
-            enter = slideInVertically(initialOffsetY = { -it }) + fadeIn(),
-            exit = slideOutVertically(targetOffsetY = { -it }) + fadeOut(),
-            modifier = Modifier
-                .align(Alignment.TopCenter)
-                .padding(top = 24.dp)
-        ) {
-            ResolutionBadgeIntroCard(
-                badge = resolutionBadge ?: "",
-                width = videoWidth,
-                height = videoHeight,
-                primaryAccent = primaryAccent
-            )
-        }
 
         // ─── 7. Main Controls Overlay ─────────────────────────────────────────
         AnimatedVisibility(
@@ -1853,7 +2289,7 @@ fun VideoPlayerScreen(
             exit = fadeOut(tween(200)),
             modifier = Modifier.fillMaxSize()
         ) {
-            Box(Modifier.fillMaxSize()) {
+            Box(Modifier.fillMaxSize().then(controlsTouchModifier)) {
                 // Top Clean Black Gradient Scrim (No colored washes)
                 Box(
                     modifier = Modifier
@@ -1980,33 +2416,22 @@ fun VideoPlayerScreen(
                                                     color = Color.White.copy(alpha = 0.40f),
                                                     fontSize = 11.sp
                                                 )
-                                                Box(
-                                                    modifier = Modifier
-                                                        .clip(RoundedCornerShape(4.dp))
-                                                        .background(primaryAccent.copy(alpha = 0.22f))
-                                                        .border(0.6.dp, primaryAccent.copy(alpha = 0.6f), RoundedCornerShape(4.dp))
-                                                        .padding(horizontal = 4.dp, vertical = 0.5.dp)
-                                                ) {
-                                                    Text(
-                                                        text = resolutionBadge,
-                                                        color = primaryAccent,
-                                                        fontSize = 9.sp,
-                                                        fontWeight = FontWeight.Bold,
-                                                        fontFamily = FontFamily.Monospace
-                                                    )
-                                                }
+                                                Text(
+                                                    text = resolutionBadge,
+                                                    color = Color.White.copy(alpha = 0.75f),
+                                                    fontSize = 11.sp,
+                                                    fontWeight = FontWeight.Medium,
+                                                    fontFamily = FontFamily.Monospace
+                                                )
                                             }
                                         }
                                     }
                                 }
 
                                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                                    // Color Theme Palette Button (Instant 1-tap cycle)
+                                    // Picture-in-Picture Button (Direct 1-Tap Entry)
                                     IconButton(
-                                        onClick = {
-                                            val nextTheme = themeController.cycleColorTheme()
-                                            Toast.makeText(context, "Theme: ${nextTheme.displayName}", Toast.LENGTH_SHORT).show()
-                                        },
+                                        onClick = enterPiP,
                                         modifier = Modifier
                                             .size(38.dp)
                                             .shadow(6.dp, CircleShape, ambientColor = Color.Black.copy(0.7f))
@@ -2015,12 +2440,15 @@ fun VideoPlayerScreen(
                                             .border(1.2.dp, Brush.verticalGradient(listOf(Color.White.copy(0.40f), Color.White.copy(0.15f), Color.Black.copy(0.5f))), CircleShape)
                                     ) {
                                         Icon(
-                                            Icons.Rounded.Palette,
-                                            contentDescription = "Theme",
-                                            tint = primaryAccent,
+                                            Icons.Rounded.PictureInPicture,
+                                            contentDescription = "PiP",
+                                            tint = Color.White,
                                             modifier = Modifier.size(20.dp)
                                         )
                                     }
+
+                                    // Color Theme Palette Button (Instant 1-tap cycle)
+                                    // Theme button removed to declutter header
 
                                     // Playlist Button
                                     IconButton(
@@ -2048,16 +2476,17 @@ fun VideoPlayerScreen(
                             // ─── Floating Player Controls Bar on Main Screen ───
                             FloatingPlayerControlsBar(
                                 exoPlayer = exoPlayer,
+                                scrollState = optionsScrollState,
                                 onOpenAudioDialog = {
-                                    audioSubInitialTab = 0
-                                    showAudioSubSheet = true
+                                    showAudioTrackSheet = true
                                 },
                                 onOpenSubtitleDialog = {
-                                    audioSubInitialTab = 1
-                                    showAudioSubSheet = true
+                                    showSubtitleSheet = true
                                 },
                                 playbackSpeed = playbackSpeed,
                                 onOpenSpeedDialog = { showSpeedSheet = true },
+                                onResetSpeedToOne = resetSpeedToOne,
+                                onEnterPiP = enterPiP,
                                 repeatMode = repeatMode,
                                 onCycleRepeatMode = {
                                     repeatMode = when (repeatMode) {
@@ -2066,6 +2495,7 @@ fun VideoPlayerScreen(
                                         else -> Player.REPEAT_MODE_OFF
                                     }
                                     exoPlayer.repeatMode = repeatMode
+                                    appPreferences.setPlayerRepeatMode(repeatMode)
                                     Toast.makeText(context, when(repeatMode) {
                                         Player.REPEAT_MODE_ONE -> "Repeat: Loop 1"
                                         Player.REPEAT_MODE_ALL -> "Repeat: Loop All"
@@ -2075,6 +2505,7 @@ fun VideoPlayerScreen(
                                 isNightMode = isNightMode,
                                 onToggleNightMode = {
                                     isNightMode = !isNightMode
+                                    appPreferences.setNightMode(isNightMode)
                                     Toast.makeText(context, if (isNightMode) "Night mode ON" else "Night mode OFF", Toast.LENGTH_SHORT).show()
                                 },
                                 sleepTimerMinutes = sleepTimerMinutes,
@@ -2082,6 +2513,7 @@ fun VideoPlayerScreen(
                                 isBackgroundAudio = isBackgroundAudio,
                                 onToggleBackgroundAudio = {
                                     isBackgroundAudio = !isBackgroundAudio
+                                    appPreferences.setBackgroundPlayEnabled(isBackgroundAudio)
                                     Toast.makeText(context, if (isBackgroundAudio) "Background audio ON" else "Background audio OFF", Toast.LENGTH_SHORT).show()
                                 },
                                 onOpenVideoInfo = { showVideoInfoSheet = true },
@@ -2110,6 +2542,17 @@ fun VideoPlayerScreen(
                                     Toast.makeText(context, "Bookmark saved at ${formatTime(currentPosition)}", Toast.LENGTH_SHORT).show()
                                 },
                                 primaryAccent = primaryAccent,
+                                onOpenSettings = {
+                                    showMoreMenuSheet = false
+                                    showSettingsOverlay = true
+                                },
+                                isExpanded = isQuickActionsExpanded,
+                                onToggleExpanded = {
+                                    isQuickActionsExpanded = !isQuickActionsExpanded
+                                    controlsInteractionTimestamp = System.currentTimeMillis()
+                                },
+                                isAmbientMode = isAmbientMode,
+                                onToggleAmbientMode = toggleAmbientMode,
                                 modifier = Modifier.fillMaxWidth().padding(horizontal = 4.dp)
                             )
                         }
@@ -2200,7 +2643,7 @@ fun VideoPlayerScreen(
                                         val milestone = ((it / dur) * 4).toInt()
                                         if (milestone != lastSeekMilestone) {
                                             lastSeekMilestone = milestone
-                                            try { haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove) } catch (_: Exception) {}
+                                            view.performHaptic(HapticType.LIGHT)
                                         }
                                     },
                                     onValueChangeFinished = {
@@ -2257,11 +2700,12 @@ fun VideoPlayerScreen(
                                 )
 
                                 Text(
-                                    text = formatTime(duration),
+                                    text = if (showRemainingTime) "-${formatTime(maxOf(0L, duration - currentPosition))}" else formatTime(duration),
                                     color = Color.White,
                                     fontSize = 13.sp,
                                     fontFamily = FontFamily.Monospace,
-                                    fontWeight = FontWeight.Medium
+                                    fontWeight = FontWeight.Medium,
+                                    modifier = Modifier.clickable { showRemainingTime = !showRemainingTime }
                                 )
                             }
 
@@ -2282,7 +2726,10 @@ fun VideoPlayerScreen(
                                         horizontalArrangement = Arrangement.spacedBy(10.dp)
                                     ) {
                                         IconButton(
-                                            onClick = { isLocked = true },
+                                            onClick = { 
+                                                view.performHaptic(HapticType.MEDIUM)
+                                                isLocked = true 
+                                            },
                                             modifier = Modifier
                                                 .size(42.dp)
                                                 .clip(CircleShape)
@@ -2322,7 +2769,7 @@ fun VideoPlayerScreen(
                                         horizontalArrangement = Arrangement.spacedBy(16.dp)
                                     ) {
                                         IconButton(
-                                            onClick = { seekBy(-10000L) },
+                                            onClick = { seekBy(-configuredSeekStepMs) },
                                             modifier = Modifier
                                                 .size(42.dp)
                                                 .clip(CircleShape)
@@ -2331,7 +2778,7 @@ fun VideoPlayerScreen(
                                         ) {
                                             Icon(
                                                 Icons.Rounded.Replay10,
-                                                contentDescription = "-10 seconds",
+                                                contentDescription = "-${configuredSeekStepSec}s",
                                                 tint = primaryAccent,
                                                 modifier = Modifier.size(24.dp)
                                             )
@@ -2393,7 +2840,7 @@ fun VideoPlayerScreen(
                                         }
 
                                         IconButton(
-                                            onClick = { seekBy(10000L) },
+                                            onClick = { seekBy(configuredSeekStepMs) },
                                             modifier = Modifier
                                                 .size(42.dp)
                                                 .clip(CircleShape)
@@ -2402,7 +2849,7 @@ fun VideoPlayerScreen(
                                         ) {
                                             Icon(
                                                 Icons.Rounded.Forward10,
-                                                contentDescription = "+10 seconds",
+                                                contentDescription = "+${configuredSeekStepSec}s",
                                                 tint = primaryAccent,
                                                 modifier = Modifier.size(24.dp)
                                             )
@@ -2457,202 +2904,106 @@ fun VideoPlayerScreen(
                                     }
                                 }
                             } else {
-                                // Portrait / Vertical Video: 2-tier ergonomic layout (zero button overlap)
-                                Column(
+                                // Portrait / Vertical Video: Clean 1-row layout (Lock, Prev, Play/Pause, Next, Aspect Ratio)
+                                Row(
                                     modifier = Modifier
                                         .fillMaxWidth()
-                                        .padding(horizontal = 2.dp, vertical = 2.dp),
-                                    horizontalAlignment = Alignment.CenterHorizontally
+                                        .padding(horizontal = 8.dp, vertical = 2.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.SpaceEvenly
                                 ) {
-                                    // Row 1: Utility Controls (Lock & Mute on left, FitScreen & Rotate on right)
-                                    Row(
+                                    // 1. Lock Controls
+                                    IconButton(
+                                        onClick = { 
+                                            view.performHaptic(HapticType.MEDIUM)
+                                            isLocked = true 
+                                        },
                                         modifier = Modifier
-                                            .fillMaxWidth()
-                                            .padding(horizontal = 6.dp),
-                                        verticalAlignment = Alignment.CenterVertically,
-                                        horizontalArrangement = Arrangement.SpaceBetween
+                                            .size(44.dp)
+                                            .clip(CircleShape)
+                                            .background(Brush.verticalGradient(listOf(Color(0xFF252636), Color(0xFF11121C))))
+                                            .border(1.2.dp, Brush.verticalGradient(listOf(primaryAccent.copy(0.6f), primaryAccent.copy(0.2f))), CircleShape)
                                     ) {
-                                        // Left Group: Lock & Mute
-                                        Row(
-                                            verticalAlignment = Alignment.CenterVertically,
-                                            horizontalArrangement = Arrangement.spacedBy(10.dp)
-                                        ) {
-                                            IconButton(
-                                                onClick = { isLocked = true },
-                                                modifier = Modifier
-                                                    .size(40.dp)
-                                                    .clip(CircleShape)
-                                                    .background(Brush.verticalGradient(listOf(Color(0xFF252636), Color(0xFF11121C))))
-                                                    .border(1.2.dp, Brush.verticalGradient(listOf(primaryAccent.copy(0.6f), primaryAccent.copy(0.2f))), CircleShape)
-                                            ) {
-                                                Icon(
-                                                    Icons.Rounded.LockOpen,
-                                                    contentDescription = "Lock controls",
-                                                    tint = primaryAccent,
-                                                    modifier = Modifier.size(20.dp)
-                                                )
-                                            }
-
-                                            IconButton(
-                                                onClick = toggleMute,
-                                                modifier = Modifier
-                                                    .size(40.dp)
-                                                    .clip(CircleShape)
-                                                    .background(Brush.verticalGradient(listOf(Color(0xFF252636), Color(0xFF11121C))))
-                                                    .border(1.2.dp, Brush.verticalGradient(listOf(primaryAccent.copy(0.6f), primaryAccent.copy(0.2f))), CircleShape)
-                                            ) {
-                                                Icon(
-                                                    if (isMuted || volumePct == 0f) Icons.AutoMirrored.Rounded.VolumeOff else Icons.AutoMirrored.Rounded.VolumeUp,
-                                                    contentDescription = "Mute toggle",
-                                                    tint = if (isMuted) Color(0xFFFF5252) else primaryAccent,
-                                                    modifier = Modifier.size(20.dp)
-                                                )
-                                            }
-                                        }
-
-                                        // Right Group: Aspect Ratio & Rotate
-                                        Row(
-                                            verticalAlignment = Alignment.CenterVertically,
-                                            horizontalArrangement = Arrangement.spacedBy(10.dp)
-                                        ) {
-                                            IconButton(
-                                                onClick = cycleResizeMode,
-                                                modifier = Modifier
-                                                    .size(40.dp)
-                                                    .clip(CircleShape)
-                                                    .background(Brush.verticalGradient(listOf(Color(0xFF252636), Color(0xFF11121C))))
-                                                    .border(1.2.dp, Brush.verticalGradient(listOf(primaryAccent.copy(0.6f), primaryAccent.copy(0.2f))), CircleShape)
-                                            ) {
-                                                Icon(
-                                                    Icons.Rounded.FitScreen,
-                                                    contentDescription = "Aspect ratio",
-                                                    tint = primaryAccent,
-                                                    modifier = Modifier.size(20.dp)
-                                                )
-                                            }
-
-                                            IconButton(
-                                                onClick = {
-                                                    manualOrientationOverrideTime = System.currentTimeMillis() + 3000L
-                                                    currentOrientationSetting = if (isLandscape) 0 else 1
-                                                    activity?.requestedOrientation = if (isLandscape) {
-                                                        ActivityInfo.SCREEN_ORIENTATION_SENSOR_PORTRAIT
-                                                    } else {
-                                                        ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
-                                                    }
-                                                },
-                                                modifier = Modifier
-                                                    .size(40.dp)
-                                                    .clip(CircleShape)
-                                                    .background(Brush.verticalGradient(listOf(Color(0xFF252636), Color(0xFF11121C))))
-                                                    .border(1.2.dp, Brush.verticalGradient(listOf(primaryAccent.copy(0.6f), primaryAccent.copy(0.2f))), CircleShape)
-                                            ) {
-                                                Icon(
-                                                    Icons.Rounded.ScreenRotation,
-                                                    contentDescription = "Rotate Screen",
-                                                    tint = primaryAccent,
-                                                    modifier = Modifier.size(20.dp)
-                                                )
-                                            }
-                                        }
+                                        Icon(
+                                            Icons.Rounded.LockOpen,
+                                            contentDescription = "Lock controls",
+                                            tint = primaryAccent,
+                                            modifier = Modifier.size(22.dp)
+                                        )
                                     }
 
-                                    Spacer(Modifier.height(8.dp))
-
-                                    // Row 2: Primary Media Playback Controls (10s Back, Prev, Play/Pause, Next, 10s Forward)
-                                    Row(
+                                    // 2. Previous Video
+                                    IconButton(
+                                        onClick = playPreviousVideo,
+                                        enabled = currentVideoIndex > 0,
                                         modifier = Modifier
-                                            .fillMaxWidth()
-                                            .padding(horizontal = 4.dp),
-                                        verticalAlignment = Alignment.CenterVertically,
-                                        horizontalArrangement = Arrangement.SpaceEvenly
+                                            .size(44.dp)
+                                            .clip(CircleShape)
+                                            .background(Brush.verticalGradient(listOf(Color(0xFF252636), Color(0xFF11121C))))
+                                            .border(1.2.dp, Brush.verticalGradient(listOf(primaryAccent.copy(0.6f), primaryAccent.copy(0.2f))), CircleShape)
                                     ) {
-                                        IconButton(
-                                            onClick = { seekBy(-10000L) },
-                                            modifier = Modifier
-                                                .size(42.dp)
-                                                .clip(CircleShape)
-                                                .background(Brush.verticalGradient(listOf(Color(0xFF252636), Color(0xFF11121C))))
-                                                .border(1.2.dp, Brush.verticalGradient(listOf(primaryAccent.copy(0.6f), primaryAccent.copy(0.2f))), CircleShape)
-                                        ) {
-                                            Icon(
-                                                Icons.Rounded.Replay10,
-                                                contentDescription = "-10 seconds",
-                                                tint = primaryAccent,
-                                                modifier = Modifier.size(24.dp)
-                                            )
-                                        }
+                                        Icon(
+                                            Icons.Rounded.SkipPrevious,
+                                            contentDescription = "Previous video",
+                                            tint = if (currentVideoIndex > 0) primaryAccent else primaryAccent.copy(alpha = 0.35f),
+                                            modifier = Modifier.size(26.dp)
+                                        )
+                                    }
 
-                                        IconButton(
-                                            onClick = playPreviousVideo,
-                                            enabled = currentVideoIndex > 0,
-                                            modifier = Modifier
-                                                .size(42.dp)
-                                                .clip(CircleShape)
-                                                .background(Brush.verticalGradient(listOf(Color(0xFF252636), Color(0xFF11121C))))
-                                                .border(1.2.dp, Brush.verticalGradient(listOf(primaryAccent.copy(0.6f), primaryAccent.copy(0.2f))), CircleShape)
-                                        ) {
-                                            Icon(
-                                                Icons.Rounded.SkipPrevious,
-                                                contentDescription = "Previous video",
-                                                tint = if (currentVideoIndex > 0) primaryAccent else primaryAccent.copy(alpha = 0.35f),
-                                                modifier = Modifier.size(26.dp)
-                                            )
-                                        }
+                                    // 3. Center Play/Pause Button
+                                    Box(
+                                        modifier = Modifier
+                                            .size(58.dp)
+                                            .clip(CircleShape)
+                                            .background(Brush.radialGradient(listOf(primaryAccent, primaryAccent.copy(alpha = 0.85f))))
+                                            .border(2.dp, Color.White, CircleShape)
+                                            .clickable {
+                                                if (isPlaying) exoPlayer.pause() else exoPlayer.play()
+                                            },
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        Icon(
+                                            imageVector = if (isPlaying) Icons.Rounded.Pause else Icons.Rounded.PlayArrow,
+                                            contentDescription = "Play/Pause",
+                                            tint = Color.White,
+                                            modifier = Modifier.size(36.dp)
+                                        )
+                                    }
 
-                                        // Center Play/Pause button with theme-colored radiant gradient & white icon
-                                        Box(
-                                            modifier = Modifier
-                                                .size(58.dp)
-                                                .clip(CircleShape)
-                                                .background(Brush.radialGradient(listOf(primaryAccent, primaryAccent.copy(alpha = 0.85f))))
-                                                .border(2.dp, Color.White, CircleShape)
-                                                .clickable {
-                                                    if (isPlaying) exoPlayer.pause() else exoPlayer.play()
-                                                },
-                                            contentAlignment = Alignment.Center
-                                        ) {
-                                            Icon(
-                                                imageVector = if (isPlaying) Icons.Rounded.Pause else Icons.Rounded.PlayArrow,
-                                                contentDescription = "Play/Pause",
-                                                tint = Color.White,
-                                                modifier = Modifier.size(36.dp)
-                                            )
-                                        }
+                                    // 4. Next Video
+                                    IconButton(
+                                        onClick = playNextVideo,
+                                        enabled = currentVideoIndex >= 0 && currentVideoIndex < playlistVideos.size - 1,
+                                        modifier = Modifier
+                                            .size(44.dp)
+                                            .clip(CircleShape)
+                                            .background(Brush.verticalGradient(listOf(Color(0xFF252636), Color(0xFF11121C))))
+                                            .border(1.2.dp, Brush.verticalGradient(listOf(primaryAccent.copy(0.6f), primaryAccent.copy(0.2f))), CircleShape)
+                                    ) {
+                                        Icon(
+                                            Icons.Rounded.SkipNext,
+                                            contentDescription = "Next video",
+                                            tint = if (currentVideoIndex >= 0 && currentVideoIndex < playlistVideos.size - 1)
+                                                primaryAccent else primaryAccent.copy(alpha = 0.35f),
+                                            modifier = Modifier.size(26.dp)
+                                        )
+                                    }
 
-                                        IconButton(
-                                            onClick = playNextVideo,
-                                            enabled = currentVideoIndex >= 0 && currentVideoIndex < playlistVideos.size - 1,
-                                            modifier = Modifier
-                                                .size(42.dp)
-                                                .clip(CircleShape)
-                                                .background(Brush.verticalGradient(listOf(Color(0xFF252636), Color(0xFF11121C))))
-                                                .border(1.2.dp, Brush.verticalGradient(listOf(primaryAccent.copy(0.6f), primaryAccent.copy(0.2f))), CircleShape)
-                                        ) {
-                                            Icon(
-                                                Icons.Rounded.SkipNext,
-                                                contentDescription = "Next video",
-                                                tint = if (currentVideoIndex >= 0 && currentVideoIndex < playlistVideos.size - 1)
-                                                    primaryAccent else primaryAccent.copy(alpha = 0.35f),
-                                                modifier = Modifier.size(26.dp)
-                                            )
-                                        }
-
-                                        IconButton(
-                                            onClick = { seekBy(10000L) },
-                                            modifier = Modifier
-                                                .size(42.dp)
-                                                .clip(CircleShape)
-                                                .background(Brush.verticalGradient(listOf(Color(0xFF252636), Color(0xFF11121C))))
-                                                .border(1.2.dp, Brush.verticalGradient(listOf(primaryAccent.copy(0.6f), primaryAccent.copy(0.2f))), CircleShape)
-                                        ) {
-                                            Icon(
-                                                Icons.Rounded.Forward10,
-                                                contentDescription = "+10 seconds",
-                                                tint = primaryAccent,
-                                                modifier = Modifier.size(24.dp)
-                                            )
-                                        }
+                                    // 5. Aspect Ratio / Resize Mode
+                                    IconButton(
+                                        onClick = cycleResizeMode,
+                                        modifier = Modifier
+                                            .size(44.dp)
+                                            .clip(CircleShape)
+                                            .background(Brush.verticalGradient(listOf(Color(0xFF252636), Color(0xFF11121C))))
+                                            .border(1.2.dp, Brush.verticalGradient(listOf(primaryAccent.copy(0.6f), primaryAccent.copy(0.2f))), CircleShape)
+                                    ) {
+                                        Icon(
+                                            Icons.Rounded.FitScreen,
+                                            contentDescription = "Aspect ratio",
+                                            tint = primaryAccent,
+                                            modifier = Modifier.size(22.dp)
+                                        )
                                     }
                                 }
                             }
@@ -2663,7 +3014,10 @@ fun VideoPlayerScreen(
                 // ─── Screen Locked Floating Unlock Button ─────────────────────
                 if (isLocked) {
                     IconButton(
-                        onClick = { isLocked = false },
+                        onClick = { 
+                            view.performHaptic(HapticType.MEDIUM)
+                            isLocked = false 
+                        },
                         modifier = Modifier
                             .align(Alignment.BottomStart)
                             .systemBarsPadding()
@@ -2706,15 +3060,67 @@ fun VideoPlayerScreen(
                     .background(Color.Black)
                     .then(playerGestureModifier)
             ) {
-                // 1. Video Surface
-                AndroidView(
-                    factory = { _ ->
-                        (playerView.parent as? ViewGroup)?.removeView(playerView)
-                        playerView
-                    },
-                    update = { pv -> pv.resizeMode = resizeMode },
-                    modifier = Modifier.fillMaxSize()
-                )
+                // 0. Ambient Blurred Backdrop for Portrait Video Box
+                if (isAmbientMode) {
+                    Box(modifier = Modifier.fillMaxSize()) {
+                        val bgBmp = seekThumbnail
+                        if (bgBmp != null) {
+                            androidx.compose.foundation.Image(
+                                bitmap = bgBmp.asImageBitmap(),
+                                contentDescription = null,
+                                contentScale = ContentScale.Crop,
+                                modifier = Modifier
+                                    .fillMaxSize()
+                                    .blur(36.dp)
+                            )
+                        } else {
+                            AsyncImage(
+                                model = ImageRequest.Builder(context)
+                                    .data(currentUrl)
+                                    .decoderFactory(VideoFrameDecoder.Factory())
+                                    .build(),
+                                contentDescription = null,
+                                contentScale = ContentScale.Crop,
+                                modifier = Modifier
+                                    .fillMaxSize()
+                                    .blur(36.dp)
+                            )
+                        }
+                        Box(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .background(Color.Black.copy(alpha = 0.50f))
+                        )
+                    }
+                }
+
+                // 1. Video Surface with Pinch-to-Zoom & Pan
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .clipToBounds()
+                        .graphicsLayer {
+                            scaleX = videoZoomScale
+                            scaleY = videoZoomScale
+                            translationX = videoPanX
+                            translationY = videoPanY
+                        }
+                ) {
+                    AndroidView(
+                        factory = { _ ->
+                            (playerView.parent as? ViewGroup)?.removeView(playerView)
+                            playerView
+                        },
+                        update = { pv ->
+                            pv.resizeMode = resizeMode
+                            if (!isInPiP) {
+                                pv.subtitleView?.visibility = android.view.View.VISIBLE
+                                pv.subtitleView?.alpha = 1f
+                            }
+                        },
+                        modifier = Modifier.fillMaxSize()
+                    )
+                }
 
                 // 2. Night mode
                 if (isNightMode) {
@@ -2752,34 +3158,52 @@ fun VideoPlayerScreen(
                     }
                 }
 
-                // 5. Speed Hold HUD (Transparent, Zero Background)
+                // 5. Speed Hold HUD (Small Pill with Animated ">>" Icon)
                 androidx.compose.animation.AnimatedVisibility(
                     visible = isSpeedHolding && !isInPiP,
-                    enter = fadeIn(tween(120)),
-                    exit = fadeOut(tween(200)),
+                    enter = fadeIn(tween(120)) + scaleIn(initialScale = 0.85f),
+                    exit = fadeOut(tween(200)) + scaleOut(targetScale = 0.90f),
                     modifier = Modifier
                         .align(Alignment.TopCenter)
                         .padding(top = 16.dp)
                 ) {
-                    Column(
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp)
+                    TemporarySpeedHoldBadge(
+                        speed = speedHoldDisplaySpeed,
+                        accentColor = primaryAccent
+                    )
+                }
+
+                // 5b. Pinch-to-Zoom HUD Indicator
+                androidx.compose.animation.AnimatedVisibility(
+                    visible = showZoomHUD && !isInPiP,
+                    enter = fadeIn(tween(140)) + scaleIn(initialScale = 0.85f),
+                    exit = fadeOut(tween(250)),
+                    modifier = Modifier.align(Alignment.Center)
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(24.dp))
+                            .background(Color.Black.copy(alpha = 0.80f))
+                            .border(1.2.dp, primaryAccent, RoundedCornerShape(24.dp))
+                            .padding(horizontal = 20.dp, vertical = 10.dp),
+                        contentAlignment = Alignment.Center
                     ) {
-                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                            Icon(Icons.Rounded.Speed, contentDescription = null, tint = primaryAccent, modifier = Modifier.size(22.dp))
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            Icon(
+                                Icons.Rounded.ZoomIn,
+                                contentDescription = null,
+                                tint = primaryAccent,
+                                modifier = Modifier.size(22.dp)
+                            )
                             Text(
-                                text = String.format(Locale.getDefault(), "%.2f", speedHoldDisplaySpeed) + "×",
+                                text = zoomHUDText,
                                 color = Color.White,
-                                fontSize = 20.sp,
-                                fontWeight = FontWeight.ExtraBold,
-                                fontFamily = FontFamily.Monospace,
-                                style = androidx.compose.ui.text.TextStyle(
-                                    shadow = androidx.compose.ui.graphics.Shadow(
-                                        color = Color.Black.copy(alpha = 0.95f),
-                                        offset = Offset(2f, 2f),
-                                        blurRadius = 6f
-                                    )
-                                )
+                                fontSize = 15.sp,
+                                fontWeight = FontWeight.Bold,
+                                fontFamily = FontFamily.Monospace
                             )
                         }
                     }
@@ -2844,7 +3268,7 @@ fun VideoPlayerScreen(
                     exit = fadeOut(tween(200)),
                     modifier = Modifier.fillMaxSize()
                 ) {
-                    Box(Modifier.fillMaxSize()) {
+                    Box(Modifier.fillMaxSize().then(controlsTouchModifier)) {
                         // Top Scrim
                         Box(
                             modifier = Modifier
@@ -2903,6 +3327,30 @@ fun VideoPlayerScreen(
                                 verticalAlignment = Alignment.CenterVertically,
                                 horizontalArrangement = Arrangement.spacedBy(6.dp)
                             ) {
+                                IconButton(
+                                    onClick = enterPiP,
+                                    modifier = Modifier.size(32.dp)
+                                ) {
+                                    Icon(
+                                        Icons.Rounded.PictureInPicture,
+                                        contentDescription = "PiP",
+                                        tint = Color.White,
+                                        modifier = Modifier.size(19.dp)
+                                    )
+                                }
+
+                                IconButton(
+                                    onClick = { showPlaylistSheet = true },
+                                    modifier = Modifier.size(32.dp)
+                                ) {
+                                    Icon(
+                                        Icons.AutoMirrored.Rounded.QueueMusic,
+                                        contentDescription = "Playlist",
+                                        tint = Color.White,
+                                        modifier = Modifier.size(19.dp)
+                                    )
+                                }
+
                                 QuickActionButton(
                                     icon = Icons.Rounded.Info,
                                     label = "Details",
@@ -2911,15 +3359,7 @@ fun VideoPlayerScreen(
                                     onClick = { showVideoInfoSheet = true }
                                 )
 
-                                IconButton(
-                                    onClick = {
-                                        val nextTheme = themeController.cycleColorTheme()
-                                        Toast.makeText(context, "Theme: ${nextTheme.displayName}", Toast.LENGTH_SHORT).show()
-                                    },
-                                    modifier = Modifier.size(32.dp)
-                                ) {
-                                    Icon(Icons.Rounded.Palette, contentDescription = "Theme", tint = primaryAccent, modifier = Modifier.size(17.dp))
-                                }
+                                // Theme button removed to declutter header
                             }
                         }
 
@@ -2930,10 +3370,10 @@ fun VideoPlayerScreen(
                             horizontalArrangement = Arrangement.spacedBy(24.dp)
                         ) {
                             IconButton(
-                                onClick = { seekBy(-10000L) },
+                                onClick = { seekBy(-configuredSeekStepMs) },
                                 modifier = Modifier.size(38.dp).clip(CircleShape).background(Color.Black.copy(alpha = 0.50f))
                             ) {
-                                Icon(Icons.Rounded.Replay10, contentDescription = "-10s", tint = Color.White, modifier = Modifier.size(24.dp))
+                                Icon(Icons.Rounded.Replay10, contentDescription = "-${configuredSeekStepSec}s", tint = Color.White, modifier = Modifier.size(24.dp))
                             }
 
                             Box(
@@ -2956,10 +3396,10 @@ fun VideoPlayerScreen(
                             }
 
                             IconButton(
-                                onClick = { seekBy(10000L) },
+                                onClick = { seekBy(configuredSeekStepMs) },
                                 modifier = Modifier.size(38.dp).clip(CircleShape).background(Color.Black.copy(alpha = 0.50f))
                             ) {
-                                Icon(Icons.Rounded.Forward10, contentDescription = "+10s", tint = Color.White, modifier = Modifier.size(24.dp))
+                                Icon(Icons.Rounded.Forward10, contentDescription = "+${configuredSeekStepSec}s", tint = Color.White, modifier = Modifier.size(24.dp))
                             }
                         }
 
@@ -2988,7 +3428,7 @@ fun VideoPlayerScreen(
                                     val milestone = ((it / dur) * 4).toInt()
                                     if (milestone != lastSeekMilestone) {
                                         lastSeekMilestone = milestone
-                                        try { haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove) } catch (_: Exception) {}
+                                        view.performHaptic(HapticType.LIGHT)
                                     }
                                 },
                                 onValueChangeFinished = {
@@ -3045,11 +3485,12 @@ fun VideoPlayerScreen(
                             )
 
                             Text(
-                                text = formatTime(duration),
+                                text = if (showRemainingTime) "-${formatTime(maxOf(0L, duration - currentPosition))}" else formatTime(duration),
                                 color = Color.White,
                                 fontSize = 11.sp,
                                 fontFamily = FontFamily.Monospace,
-                                fontWeight = FontWeight.Medium
+                                fontWeight = FontWeight.Medium,
+                                modifier = Modifier.clickable { showRemainingTime = !showRemainingTime }
                             )
 
                             Spacer(Modifier.width(4.dp))
@@ -3095,25 +3536,7 @@ fun VideoPlayerScreen(
                 )
             }
 
-            // ─── Resume Playback Floating Prompt in Portrait ─────────
-            AnimatedVisibility(
-                visible = resumePromptPosition > 0L && !isInPiP,
-                enter = expandVertically() + fadeIn(),
-                exit = shrinkVertically() + fadeOut()
-            ) {
-                ResumePlaybackPrompt(
-                    resumePosition = resumePromptPosition,
-                    onResume = {
-                        safeSeek(resumePromptPosition)
-                        resumePromptPosition = 0L
-                    },
-                    onDismiss = { resumePromptPosition = 0L },
-                    primaryAccent = primaryAccent,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 16.dp, vertical = 4.dp)
-                )
-            }
+
 
             // Bottom Section: Portrait App Explorer (Explore while video plays!)
             PortraitAppExplorer(
@@ -3131,33 +3554,21 @@ fun VideoPlayerScreen(
                         else -> Player.REPEAT_MODE_OFF
                     }
                     exoPlayer.repeatMode = repeatMode
+                    appPreferences.setPlayerRepeatMode(repeatMode)
                 },
                 playbackSpeed = playbackSpeed,
                 onSpeedClick = { showSpeedSheet = true },
+                onResetSpeedToOne = resetSpeedToOne,
                 isNightMode = isNightMode,
-                onNightModeToggle = { isNightMode = !isNightMode },
+                onNightModeToggle = {
+                    isNightMode = !isNightMode
+                    appPreferences.setNightMode(isNightMode)
+                },
                 resizeMode = resizeMode,
                 onAspectToggle = cycleResizeMode,
                 isMuted = isMuted,
                 onMuteToggle = toggleMute,
-                onPiPClick = {
-                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                        try {
-                            val params = buildPipParams()
-                            if (params != null) {
-                                activity?.enterPictureInPictureMode(params)
-                            } else {
-                                @Suppress("DEPRECATION")
-                                activity?.enterPictureInPictureMode()
-                            }
-                        } catch (_: Exception) {
-                            try {
-                                @Suppress("DEPRECATION")
-                                activity?.enterPictureInPictureMode()
-                            } catch (_: Exception) {}
-                        }
-                    }
-                },
+                onPiPClick = enterPiP,
                 onDetailsClick = {
                     val vf = exoPlayer.videoFormat
                     val res = vf?.let { "${it.width}x${it.height}" } ?: "Adapted"
@@ -3166,223 +3577,422 @@ fun VideoPlayerScreen(
                     Toast.makeText(context, infoText, Toast.LENGTH_LONG).show()
                 },
                 onSelectVideo = playVideoItem,
+                isAmbientMode = isAmbientMode,
+                onAmbientModeToggle = toggleAmbientMode,
                 primaryAccent = primaryAccent
             )
         }
     }
 
-        // ─── Playlist Bottom Sheet ────────────────────────────────────────────
-        if (showPlaylistSheet) {
-            ModalBottomSheet(
-                onDismissRequest = { showPlaylistSheet = false },
-                containerColor = Color(0xFF16161A),
-                scrimColor = Color.Black.copy(alpha = 0.65f),
-                shape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp)
+    // ─── Settings In-Player Overlay (Preserves video playback & supports PiP anywhere) ───
+    if (showSettingsOverlay && !isInPiP) {
+        androidx.compose.ui.window.Dialog(
+            onDismissRequest = { showSettingsOverlay = false },
+            properties = androidx.compose.ui.window.DialogProperties(usePlatformDefaultWidth = false)
+        ) {
+            Surface(
+                modifier = Modifier.fillMaxSize(),
+                color = c.baseBackground
             ) {
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 20.dp, vertical = 12.dp)
+                SettingsScreen(
+                    onBack = { showSettingsOverlay = false }
+                )
+            }
+        }
+    }
+
+        // ─── Right-Side Playlist Drawer ─────────────────────────────────────────
+        AnimatedVisibility(
+            visible = showPlaylistSheet,
+            enter = fadeIn(tween(180)),
+            exit = fadeOut(tween(180))
+        ) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(Color.Black.copy(alpha = 0.65f))
+                    .pointerInput(Unit) {
+                        detectTapGestures { showPlaylistSheet = false }
+                    }
+            ) {
+                var playlistSheetTab by remember { mutableIntStateOf(0) }
+
+                AnimatedVisibility(
+                    visible = showPlaylistSheet,
+                    enter = slideInHorizontally(
+                        initialOffsetX = { it },
+                        animationSpec = tween(280, easing = FastOutSlowInEasing)
+                    ),
+                    exit = slideOutHorizontally(
+                        targetOffsetX = { it },
+                        animationSpec = tween(220)
+                    ),
+                    modifier = Modifier.align(Alignment.CenterEnd)
                 ) {
-                    var playlistSheetTab by remember { mutableIntStateOf(0) }
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Text(
-                            text = if (playlistSheetTab == 0) "Playlist (${playlistVideos.size})" else "Bookmarks (${bookmarksList.size})",
-                            color = Color.White,
-                            fontSize = 18.sp,
-                            fontWeight = FontWeight.Bold
-                        )
-                        IconButton(onClick = { showPlaylistSheet = false }) {
-                            Icon(Icons.Rounded.Close, contentDescription = "Close", tint = Color.White)
-                        }
-                    }
-
-                    Spacer(Modifier.height(10.dp))
-
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        Box(
-                            modifier = Modifier
-                                .clip(RoundedCornerShape(10.dp))
-                                .background(if (playlistSheetTab == 0) primaryAccent else Color.White.copy(alpha = 0.08f))
-                                .clickable { playlistSheetTab = 0 }
-                                .padding(horizontal = 14.dp, vertical = 6.dp)
-                        ) {
-                            Text(
-                                text = "Videos (${playlistVideos.size})",
-                                color = if (playlistSheetTab == 0) Color.White else Color.White.copy(alpha = 0.7f),
-                                fontSize = 12.sp,
-                                fontWeight = FontWeight.Bold
-                            )
-                        }
-                        Box(
-                            modifier = Modifier
-                                .clip(RoundedCornerShape(10.dp))
-                                .background(if (playlistSheetTab == 1) primaryAccent else Color.White.copy(alpha = 0.08f))
-                                .clickable { playlistSheetTab = 1 }
-                                .padding(horizontal = 14.dp, vertical = 6.dp)
-                        ) {
-                            Text(
-                                text = "Bookmarks (${bookmarksList.size})",
-                                color = if (playlistSheetTab == 1) Color.White else Color.White.copy(alpha = 0.7f),
-                                fontSize = 12.sp,
-                                fontWeight = FontWeight.Bold
-                            )
-                        }
-                    }
-
-                    Spacer(Modifier.height(12.dp))
-
-                    LazyColumn(
+                    Column(
                         modifier = Modifier
-                            .fillMaxWidth()
-                            .heightIn(max = 380.dp),
-                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                            .fillMaxHeight()
+                            .fillMaxWidth(0.5f)
+                            .background(c.dropdownBg)
+                            .border(
+                                width = 1.dp,
+                                color = c.glassBorder,
+                                shape = RectangleShape
+                            )
+                            .pointerInput(Unit) {
+                                detectTapGestures { /* consume taps inside drawer */ }
+                            }
+                            .systemBarsPadding()
+                            .padding(horizontal = 14.dp, vertical = 12.dp)
                     ) {
-                        if (playlistSheetTab == 0) {
-                            itemsIndexed(playlistVideos) { index, item ->
-                                val isCurrent = item.uri.toString() == currentUrl
-                                Row(
+                        // Header
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Column {
+                                Text(
+                                    text = if (playlistSheetTab == 0) "Playlist" else "Bookmarks",
+                                    color = c.textPrimary,
+                                    fontSize = 18.sp,
+                                    fontWeight = FontWeight.Bold
+                                )
+                                Text(
+                                    text = if (playlistSheetTab == 0) "${playlistVideos.size} videos" else "${bookmarksList.size} bookmarks",
+                                    color = c.textSecondary,
+                                    fontSize = 11.5.sp
+                                )
+                            }
+                            IconButton(
+                                onClick = { showPlaylistSheet = false },
+                                modifier = Modifier
+                                    .size(34.dp)
+                                    .clip(CircleShape)
+                                    .background(c.glassBgNested)
+                            ) {
+                                Icon(Icons.Rounded.Close, contentDescription = "Close", tint = c.textPrimary, modifier = Modifier.size(18.dp))
+                            }
+                        }
+
+                        Spacer(Modifier.height(10.dp))
+
+                        var playlistSortOrder by remember { mutableStateOf(SortOrder.DATE) }
+                        var showPlaylistSortMenu by remember { mutableStateOf(false) }
+                        val sortedPlaylistVideos = remember(playlistVideos, playlistSortOrder) {
+                            playlistVideos.sortVideosWithOrder(playlistSortOrder)
+                        }
+
+                        // Tab selector & Sort button
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                Box(
                                     modifier = Modifier
-                                        .fillMaxWidth()
-                                        .clip(RoundedCornerShape(12.dp))
-                                        .background(if (isCurrent) primaryAccent.copy(alpha = 0.20f) else Color.White.copy(alpha = 0.06f))
-                                        .border(
-                                            width = 1.dp,
-                                            color = if (isCurrent) primaryAccent else Color.Transparent,
-                                            shape = RoundedCornerShape(12.dp)
-                                        )
-                                        .clickable {
-                                            currentVideoIndex = index
-                                            currentUrl = item.uri.toString()
-                                            videoTitle = item.title.substringBeforeLast(".")
-                                            exoPlayer.setMediaItem(MediaItem.fromUri(item.uri))
-                                            exoPlayer.prepare()
-                                            exoPlayer.play()
-                                            showPlaylistSheet = false
-                                        }
-                                        .padding(12.dp),
-                                    verticalAlignment = Alignment.CenterVertically
+                                        .clip(RoundedCornerShape(10.dp))
+                                        .background(if (playlistSheetTab == 0) primaryAccent else c.glassBgNested)
+                                        .clickable { playlistSheetTab = 0 }
+                                        .padding(horizontal = 14.dp, vertical = 6.dp)
                                 ) {
-                                    Box(
+                                    Text(
+                                        text = "Videos (${playlistVideos.size})",
+                                        color = if (playlistSheetTab == 0) Color.White else c.textSecondary,
+                                        fontSize = 12.sp,
+                                        fontWeight = FontWeight.Bold
+                                    )
+                                }
+                                Box(
+                                    modifier = Modifier
+                                        .clip(RoundedCornerShape(10.dp))
+                                        .background(if (playlistSheetTab == 1) primaryAccent else c.glassBgNested)
+                                        .clickable { playlistSheetTab = 1 }
+                                        .padding(horizontal = 14.dp, vertical = 6.dp)
+                                ) {
+                                    Text(
+                                        text = "Bookmarks (${bookmarksList.size})",
+                                        color = if (playlistSheetTab == 1) Color.White else c.textSecondary,
+                                        fontSize = 12.sp,
+                                        fontWeight = FontWeight.Bold
+                                    )
+                                }
+                            }
+
+                            if (playlistSheetTab == 0) {
+                                Box {
+                                    IconButton(
+                                        onClick = { showPlaylistSortMenu = true },
                                         modifier = Modifier
-                                            .size(34.dp)
-                                            .clip(CircleShape)
-                                            .background(if (isCurrent) primaryAccent else Color.White.copy(alpha = 0.12f)),
-                                        contentAlignment = Alignment.Center
+                                            .size(32.dp)
+                                            .clip(RoundedCornerShape(8.dp))
+                                            .background(c.glassBgNested)
                                     ) {
-                                        if (isCurrent) {
-                                            Icon(Icons.Rounded.PlayArrow, contentDescription = null, tint = Color.White, modifier = Modifier.size(20.dp))
-                                        } else {
-                                            Text("${index + 1}", color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                                        Icon(
+                                            Icons.AutoMirrored.Rounded.Sort,
+                                            contentDescription = "Sort",
+                                            tint = primaryAccent,
+                                            modifier = Modifier.size(16.dp)
+                                        )
+                                    }
+
+                                    DropdownMenu(
+                                        expanded = showPlaylistSortMenu,
+                                        onDismissRequest = { showPlaylistSortMenu = false },
+                                        containerColor = c.dropdownBg,
+                                        modifier = Modifier.border(1.dp, c.glassBorder, RoundedCornerShape(12.dp))
+                                    ) {
+                                        Text(
+                                            "SORT PLAYLIST",
+                                            fontSize = 11.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            color = c.textHint,
+                                            modifier = Modifier.padding(horizontal = 14.dp, vertical = 6.dp)
+                                        )
+                                        HorizontalDivider(color = c.glassBorder.copy(alpha = 0.5f))
+                                        listOf(
+                                            SortOrder.DATE to ("Date Added (Newest)" to Icons.Rounded.Schedule),
+                                            SortOrder.DATE_ASC to ("Date Added (Oldest)" to Icons.Rounded.Schedule),
+                                            SortOrder.NAME to ("Name (A to Z)" to Icons.Rounded.SortByAlpha),
+                                            SortOrder.NAME_DESC to ("Name (Z to A)" to Icons.Rounded.SortByAlpha),
+                                            SortOrder.SIZE to ("Size (Largest)" to Icons.Rounded.Storage),
+                                            SortOrder.SIZE_ASC to ("Size (Smallest)" to Icons.Rounded.Storage),
+                                            SortOrder.DURATION to ("Duration (Longest)" to Icons.Rounded.Schedule),
+                                            SortOrder.DURATION_ASC to ("Duration (Shortest)" to Icons.Rounded.Schedule)
+                                        ).forEach { (order, pair) ->
+                                            val (label, icon) = pair
+                                            val isSelected = playlistSortOrder == order
+                                            DropdownMenuItem(
+                                                leadingIcon = {
+                                                    Icon(icon, contentDescription = null, tint = if (isSelected) primaryAccent else c.textSecondary, modifier = Modifier.size(16.dp))
+                                                },
+                                                text = {
+                                                    Text(label, color = if (isSelected) primaryAccent else c.textPrimary, fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal, fontSize = 13.sp)
+                                                },
+                                                trailingIcon = {
+                                                    if (isSelected) {
+                                                        Icon(Icons.Rounded.Check, contentDescription = null, tint = primaryAccent, modifier = Modifier.size(16.dp))
+                                                    }
+                                                },
+                                                onClick = {
+                                                    playlistSortOrder = order
+                                                    showPlaylistSortMenu = false
+                                                }
+                                            )
                                         }
                                     }
-                                    Spacer(Modifier.width(12.dp))
-                                    Column(modifier = Modifier.weight(1f)) {
-                                        Text(
-                                            text = item.title,
-                                            color = if (isCurrent) primaryAccent else Color.White,
-                                            fontSize = 14.sp,
-                                            fontWeight = if (isCurrent) FontWeight.Bold else FontWeight.Normal,
-                                            maxLines = 1,
-                                            overflow = TextOverflow.Ellipsis
-                                        )
-                                        Text(
-                                            text = formatTime(item.duration),
-                                            color = Color.White.copy(alpha = 0.60f),
-                                            fontSize = 12.sp
-                                        )
-                                        if (isCurrent && duration > 0) {
-                                            Spacer(Modifier.height(4.dp))
-                                            val prog = (currentPosition.toFloat() / duration).coerceIn(0f, 1f)
-                                            Box(
-                                                modifier = Modifier
-                                                    .fillMaxWidth()
-                                                    .height(2.5.dp)
-                                                    .clip(RoundedCornerShape(1.2.dp))
-                                                    .background(Color.White.copy(alpha = 0.15f))
-                                            ) {
+                                }
+                            }
+                        }
+
+                        Spacer(Modifier.height(12.dp))
+
+                        if (playlistSheetTab == 0) {
+                            LazyColumn(
+                                modifier = Modifier.fillMaxSize(),
+                                verticalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                itemsIndexed(sortedPlaylistVideos, key = { _, item -> item.uri.toString() }) { index, item ->
+                                    val isCurrent = item.uri.toString() == currentUrl
+                                    Row(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .clip(RoundedCornerShape(12.dp))
+                                            .background(
+                                                if (isCurrent) primaryAccent.copy(alpha = 0.22f)
+                                                else c.cardBgElevated
+                                            )
+                                            .border(
+                                                width = if (isCurrent) 1.5.dp else 1.dp,
+                                                color = if (isCurrent) primaryAccent
+                                                else c.glassBorder,
+                                                shape = RoundedCornerShape(12.dp)
+                                            )
+                                            .clickable {
+                                                playVideoItem(item)
+                                                showPlaylistSheet = false
+                                            }
+                                            .padding(8.dp),
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        // 0. Track Number
+                                        Box(
+                                            modifier = Modifier.width(26.dp),
+                                            contentAlignment = Alignment.Center
+                                        ) {
+                                            Text(
+                                                text = "${index + 1}",
+                                                color = if (isCurrent) primaryAccent else c.textSecondary,
+                                                fontSize = 12.sp,
+                                                fontWeight = if (isCurrent) FontWeight.Bold else FontWeight.Medium,
+                                                fontFamily = FontFamily.Monospace
+                                            )
+                                        }
+
+                                        Spacer(Modifier.width(4.dp))
+
+                                        // 1. Video Thumbnail
+                                        Box(
+                                            modifier = Modifier
+                                                .size(width = 76.dp, height = 48.dp)
+                                                .clip(RoundedCornerShape(8.dp))
+                                                .background(Color.Black.copy(alpha = 0.5f)),
+                                            contentAlignment = Alignment.Center
+                                        ) {
+                                            AsyncImage(
+                                                model = ImageRequest.Builder(context)
+                                                    .data(item.uri)
+                                                    .decoderFactory(VideoFrameDecoder.Factory())
+                                                    .build(),
+                                                contentDescription = item.title,
+                                                contentScale = ContentScale.Crop,
+                                                modifier = Modifier.fillMaxSize()
+                                            )
+                                            if (isCurrent) {
                                                 Box(
                                                     modifier = Modifier
-                                                        .fillMaxWidth(prog)
-                                                        .fillMaxHeight()
-                                                        .background(primaryAccent)
+                                                        .fillMaxSize()
+                                                        .background(Color.Black.copy(alpha = 0.45f)),
+                                                    contentAlignment = Alignment.Center
+                                                ) {
+                                                    Icon(
+                                                        Icons.Rounded.PlayArrow,
+                                                        contentDescription = "Playing",
+                                                        tint = primaryAccent,
+                                                        modifier = Modifier.size(24.dp)
+                                                    )
+                                                }
+                                            }
+                                        }
+
+                                        Spacer(Modifier.width(10.dp))
+
+                                        // 2. Metadata: Name, Size, and Duration
+                                        Column(modifier = Modifier.weight(1f)) {
+                                            Text(
+                                                text = item.title,
+                                                color = if (isCurrent) primaryAccent else c.textPrimary,
+                                                fontSize = 13.5.sp,
+                                                fontWeight = if (isCurrent) FontWeight.Bold else FontWeight.Medium,
+                                                maxLines = 1,
+                                                overflow = TextOverflow.Ellipsis
+                                            )
+                                            Spacer(Modifier.height(3.dp))
+                                            Row(
+                                                verticalAlignment = Alignment.CenterVertically,
+                                                horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                            ) {
+                                                Text(
+                                                    text = formatSize(item.size),
+                                                    color = c.textSecondary,
+                                                    fontSize = 11.5.sp
                                                 )
+                                                Text(
+                                                    text = "•",
+                                                    color = c.textHint,
+                                                    fontSize = 11.5.sp
+                                                )
+                                                Text(
+                                                    text = formatTime(item.duration),
+                                                    color = c.textSecondary,
+                                                    fontSize = 11.5.sp
+                                                )
+                                            }
+
+                                            if (isCurrent && duration > 0) {
+                                                Spacer(Modifier.height(4.dp))
+                                                val prog = (currentPosition.toFloat() / duration).coerceIn(0f, 1f)
+                                                Box(
+                                                    modifier = Modifier
+                                                        .fillMaxWidth()
+                                                        .height(2.5.dp)
+                                                        .clip(RoundedCornerShape(1.2.dp))
+                                                        .background(c.glassBorder)
+                                                ) {
+                                                    Box(
+                                                        modifier = Modifier
+                                                            .fillMaxWidth(prog)
+                                                            .fillMaxHeight()
+                                                            .background(primaryAccent)
+                                                    )
+                                                }
                                             }
                                         }
                                     }
                                 }
                             }
                         } else {
-                            item {
-                                Button(
-                                    onClick = {
-                                        appPreferences.saveBookmark(currentUrl, currentPosition, "")
-                                        bookmarksList = appPreferences.getBookmarks(currentUrl)
-                                        Toast.makeText(context, "Bookmark added at ${formatTime(currentPosition)}", Toast.LENGTH_SHORT).show()
-                                    },
-                                    colors = ButtonDefaults.buttonColors(containerColor = primaryAccent, contentColor = Color.White),
-                                    shape = RoundedCornerShape(10.dp),
-                                    modifier = Modifier.fillMaxWidth()
-                                ) {
-                                    Icon(Icons.Rounded.BookmarkAdd, contentDescription = null, modifier = Modifier.size(18.dp))
-                                    Spacer(Modifier.width(8.dp))
-                                    Text("+ Add Bookmark at ${formatTime(currentPosition)}", fontSize = 13.sp, fontWeight = FontWeight.Bold)
-                                }
-                            }
-                            if (bookmarksList.isEmpty()) {
+                            // Bookmarks list
+                            LazyColumn(
+                                modifier = Modifier.fillMaxSize(),
+                                verticalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
                                 item {
-                                    Box(
-                                        modifier = Modifier.fillMaxWidth().padding(vertical = 32.dp),
-                                        contentAlignment = Alignment.Center
+                                    Button(
+                                        onClick = {
+                                            appPreferences.saveBookmark(currentUrl, currentPosition, "")
+                                            bookmarksList = appPreferences.getBookmarks(currentUrl)
+                                            Toast.makeText(context, "Bookmark added at ${formatTime(currentPosition)}", Toast.LENGTH_SHORT).show()
+                                        },
+                                        colors = ButtonDefaults.buttonColors(containerColor = primaryAccent, contentColor = Color.White),
+                                        shape = RoundedCornerShape(10.dp),
+                                        modifier = Modifier.fillMaxWidth()
                                     ) {
-                                        Text("No bookmarks saved yet", color = Color.White.copy(alpha = 0.5f), fontSize = 13.sp)
+                                        Icon(Icons.Rounded.BookmarkAdd, contentDescription = null, modifier = Modifier.size(18.dp))
+                                        Spacer(Modifier.width(8.dp))
+                                        Text("+ Add Bookmark at ${formatTime(currentPosition)}", fontSize = 13.sp, fontWeight = FontWeight.Bold)
                                     }
                                 }
-                            } else {
-                                items(bookmarksList) { bookmark ->
-                                    Row(
-                                        modifier = Modifier
-                                            .fillMaxWidth()
-                                            .clip(RoundedCornerShape(12.dp))
-                                            .background(Color.White.copy(alpha = 0.06f))
-                                            .clickable {
-                                                safeSeek(bookmark.first)
-                                                showPlaylistSheet = false
-                                            }
-                                            .padding(horizontal = 14.dp, vertical = 10.dp),
-                                        verticalAlignment = Alignment.CenterVertically
-                                    ) {
-                                        Icon(Icons.Rounded.Bookmark, contentDescription = null, tint = primaryAccent, modifier = Modifier.size(20.dp))
-                                        Spacer(Modifier.width(10.dp))
-                                        Column(modifier = Modifier.weight(1f)) {
-                                            Text(
-                                                text = bookmark.second.ifBlank { "Bookmark" },
-                                                color = Color.White,
-                                                fontSize = 13.sp,
-                                                fontWeight = FontWeight.SemiBold
-                                            )
-                                            Text(
-                                                text = formatTime(bookmark.first),
-                                                color = primaryAccent,
-                                                fontSize = 12.sp,
-                                                fontFamily = FontFamily.Monospace
-                                            )
-                                        }
-                                        IconButton(
-                                            onClick = {
-                                                appPreferences.deleteBookmark(currentUrl, bookmark.first)
-                                                bookmarksList = appPreferences.getBookmarks(currentUrl)
-                                            },
-                                            modifier = Modifier.size(30.dp)
+                                if (bookmarksList.isEmpty()) {
+                                    item {
+                                        Box(
+                                            modifier = Modifier.fillMaxWidth().padding(vertical = 32.dp),
+                                            contentAlignment = Alignment.Center
                                         ) {
-                                            Icon(Icons.Rounded.DeleteOutline, contentDescription = "Delete", tint = Color.White.copy(alpha = 0.5f), modifier = Modifier.size(18.dp))
+                                            Text("No bookmarks saved yet", color = c.textHint, fontSize = 13.sp)
+                                        }
+                                    }
+                                } else {
+                                    items(bookmarksList) { bookmark ->
+                                        Row(
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .clip(RoundedCornerShape(12.dp))
+                                                .background(c.cardBgElevated)
+                                                .border(1.dp, c.glassBorder, RoundedCornerShape(12.dp))
+                                                .clickable {
+                                                    safeSeek(bookmark.first)
+                                                    showPlaylistSheet = false
+                                                }
+                                                .padding(horizontal = 14.dp, vertical = 10.dp),
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            Icon(Icons.Rounded.Bookmark, contentDescription = null, tint = primaryAccent, modifier = Modifier.size(20.dp))
+                                            Spacer(Modifier.width(10.dp))
+                                            Column(modifier = Modifier.weight(1f)) {
+                                                Text(
+                                                    text = bookmark.second.ifBlank { "Bookmark" },
+                                                    color = c.textPrimary,
+                                                    fontSize = 13.sp,
+                                                    fontWeight = FontWeight.SemiBold
+                                                )
+                                                Text(
+                                                    text = formatTime(bookmark.first),
+                                                    color = primaryAccent,
+                                                    fontSize = 12.sp,
+                                                    fontFamily = FontFamily.Monospace
+                                                )
+                                            }
+                                            IconButton(
+                                                onClick = {
+                                                    appPreferences.deleteBookmark(currentUrl, bookmark.first)
+                                                    bookmarksList = appPreferences.getBookmarks(currentUrl)
+                                                },
+                                                modifier = Modifier.size(30.dp)
+                                            ) {
+                                                Icon(Icons.Rounded.DeleteOutline, contentDescription = "Delete", tint = c.textSecondary, modifier = Modifier.size(18.dp))
+                                            }
                                         }
                                     }
                                 }
@@ -3400,8 +4010,12 @@ fun VideoPlayerScreen(
             MiniSpeedDialog(
                 currentSpeed = playbackSpeed,
                 onSpeedChange = { newSpeed ->
+                    view.performHaptic(HapticType.LIGHT)
                     playbackSpeed = newSpeed
                     exoPlayer.playbackParameters = PlaybackParameters(newSpeed)
+                    if (appPreferences.isRememberPlaybackSpeed()) {
+                        appPreferences.setLastPlaybackSpeed(newSpeed)
+                    }
                 },
                 accentColor = primaryAccent,
                 onDismiss = { showSpeedSheet = false }
@@ -3426,7 +4040,7 @@ fun VideoPlayerScreen(
         if (showThemePickerSheet) {
             ModalBottomSheet(
                 onDismissRequest = { showThemePickerSheet = false },
-                containerColor = Color(0xFF141418),
+                containerColor = c.dropdownBg,
                 scrimColor = Color.Black.copy(alpha = 0.70f),
                 shape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp)
             ) {
@@ -3435,7 +4049,7 @@ fun VideoPlayerScreen(
                         .fillMaxWidth()
                         .padding(horizontal = 24.dp, vertical = 12.dp)
                 ) {
-                    Text("Choose Player Dynamic Theme", color = Color.White, fontSize = 18.sp, fontWeight = FontWeight.Bold)
+                    Text("Choose Player Dynamic Theme", color = c.textPrimary, fontSize = 18.sp, fontWeight = FontWeight.Bold)
                     Spacer(Modifier.height(16.dp))
                     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                         PlayerTheme.entries.forEach { theme ->
@@ -3444,8 +4058,8 @@ fun VideoPlayerScreen(
                                 modifier = Modifier
                                     .fillMaxWidth()
                                     .clip(RoundedCornerShape(14.dp))
-                                    .background(if (isSelected) theme.primaryAccent.copy(alpha = 0.18f) else Color.White.copy(alpha = 0.06f))
-                                    .border(1.5.dp, if (isSelected) theme.primaryAccent else Color.Transparent, RoundedCornerShape(14.dp))
+                                    .background(if (isSelected) theme.primaryAccent.copy(alpha = 0.18f) else c.glassBgNested)
+                                    .border(1.5.dp, if (isSelected) theme.primaryAccent else c.glassBorder, RoundedCornerShape(14.dp))
                                     .clickable {
                                         themeController.updateColorTheme(theme)
                                         showThemePickerSheet = false
@@ -3461,8 +4075,8 @@ fun VideoPlayerScreen(
                                 )
                                 Spacer(Modifier.width(14.dp))
                                 Column(modifier = Modifier.weight(1f)) {
-                                    Text(theme.displayName, color = Color.White, fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
-                                    Text(theme.description, color = Color.White.copy(alpha = 0.60f), fontSize = 12.sp)
+                                    Text(theme.displayName, color = if (isSelected) theme.primaryAccent else c.textPrimary, fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
+                                    Text(theme.description, color = c.textSecondary, fontSize = 12.sp)
                                 }
                                 if (isSelected) {
                                     Icon(Icons.Rounded.CheckCircle, contentDescription = null, tint = theme.primaryAccent, modifier = Modifier.size(24.dp))
@@ -3475,19 +4089,27 @@ fun VideoPlayerScreen(
             }
         }
 
-        // ─── Audio & Subtitles Mini Dialog (Compact Screen with 4 Subtitle Styles) ───
-        if (showAudioSubSheet) {
-            MiniAudioSubtitlesDialog(
+        // ─── Audio Tracks & Language Dialog ───
+        if (showAudioTrackSheet) {
+            AudioTracksDialog(
+                exoPlayer = exoPlayer,
+                accentColor = primaryAccent,
+                onDismiss = { showAudioTrackSheet = false }
+            )
+        }
+
+        // ─── Subtitles & Captions Dialog (Tracks + 4 Cinema Styles) ───
+        if (showSubtitleSheet) {
+            SubtitlesDialog(
                 exoPlayer = exoPlayer,
                 subtitleDesign = subtitleDesign,
                 onSubtitleDesignChange = { newDesign ->
                     subtitleDesign = newDesign
-                    applySubtitleDesign(playerView, newDesign)
+                    applySubtitleDesign(playerView, newDesign, appPreferences)
                     appPreferences.saveSubtitleDesign(newDesign)
                 },
                 accentColor = primaryAccent,
-                initialTab = audioSubInitialTab,
-                onDismiss = { showAudioSubSheet = false }
+                onDismiss = { showSubtitleSheet = false }
             )
         }
 
@@ -3515,12 +4137,13 @@ private fun VerticalGestureBar(
     onValueChange: (Float) -> Unit,
     modifier: Modifier = Modifier
 ) {
+    val view = androidx.compose.ui.platform.LocalView.current
     val haptic = LocalHapticFeedback.current
     val clampedPct = percentage.coerceIn(0f, 1f)
     val animatedPct by animateFloatAsState(
         targetValue = clampedPct,
         animationSpec = spring(
-            stiffness = Spring.StiffnessMediumLow,
+            stiffness = Spring.StiffnessHigh,
             dampingRatio = Spring.DampingRatioNoBouncy
         ),
         label = "smoothGesturePct"
@@ -3532,16 +4155,16 @@ private fun VerticalGestureBar(
         val milestone = (cl * 10).toInt()
         if (milestone != lastHapticMilestone) {
             lastHapticMilestone = milestone
-            try { haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove) } catch (_: Exception) {}
+            view.performHaptic(HapticType.LIGHT)
         }
         onValueChange(cl)
     }
 
-    // Outer touch area (72.dp wide for effortless finger touch target)
+    // Outer touch area (70.dp wide for effortless finger touch target)
     Box(
         modifier = modifier
-            .width(72.dp)
-            .height(216.dp)
+            .width(70.dp)
+            .height(210.dp)
             .pointerInput(clampedPct) {
                 awaitEachGesture {
                     val down = awaitFirstDown(requireUnconsumed = false)
@@ -3557,7 +4180,7 @@ private fun VerticalGestureBar(
                         val currentY = change.position.y
                         if (abs(currentY - downY) > 6f) {
                             hasMoved = true
-                            // Direct 1:1 scrub tracking with high responsiveness
+                            // Direct 1:1 scrub tracking with instant responsiveness
                             val targetPct = (1f - (currentY / barHeight)).coerceIn(0f, 1f)
                             updateValueWithHaptic(targetPct)
                             change.consume()
@@ -3565,29 +4188,27 @@ private fun VerticalGestureBar(
                     }
 
                     if (!hasMoved) {
-                        // Quick stationary tap on the bar!
-                        // Upper half tap: increment by ~6.6% (or 1 step)
-                        // Lower half tap: decrement by ~6.6% (or 1 step)
-                        try { haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove) } catch (_: Exception) {}
+                        // Quick stationary tap on the bar
+                        view.performHaptic(HapticType.LIGHT)
                         if (downY < barHeight * 0.5f) {
-                            updateValueWithHaptic((clampedPct + 0.066f).coerceAtMost(1f))
+                            updateValueWithHaptic((clampedPct + 0.05f).coerceAtMost(1f))
                         } else {
-                            updateValueWithHaptic((clampedPct - 0.066f).coerceAtLeast(0f))
+                            updateValueWithHaptic((clampedPct - 0.05f).coerceAtLeast(0f))
                         }
                     }
                 }
             },
         contentAlignment = Alignment.Center
     ) {
-        // Visual Glassmorphic Bar (48.dp wide, 200.dp tall)
+        // Visual Glassmorphic Bar (42.dp wide, 190.dp tall - sleek capsule)
         Box(
             modifier = Modifier
-                .width(48.dp)
-                .height(200.dp)
-                .shadow(18.dp, RoundedCornerShape(24.dp), ambientColor = glowColor, spotColor = glowColor)
-                .clip(RoundedCornerShape(24.dp))
-                .background(Color.Black.copy(alpha = 0.65f))
-                .border(1.4.dp, Color.White.copy(alpha = 0.35f), RoundedCornerShape(24.dp)),
+                .width(42.dp)
+                .height(190.dp)
+                .shadow(16.dp, RoundedCornerShape(21.dp), ambientColor = glowColor.copy(alpha = 0.4f), spotColor = glowColor.copy(alpha = 0.4f))
+                .clip(RoundedCornerShape(21.dp))
+                .background(Color(0xD90E0F17))
+                .border(1.2.dp, Color.White.copy(alpha = 0.22f), RoundedCornerShape(21.dp)),
             contentAlignment = Alignment.BottomCenter
         ) {
             // Vertical Fill Capsule
@@ -3595,93 +4216,164 @@ private fun VerticalGestureBar(
                 modifier = Modifier
                     .fillMaxWidth()
                     .fillMaxHeight(animatedPct)
-                    .clip(RoundedCornerShape(24.dp))
+                    .clip(RoundedCornerShape(21.dp))
                     .background(gradient)
             )
 
-            // Inside Indicator: Top Icon, Subtle Nudge Guides, and Bottom Label
+            // Inside Indicator: Top Icon and Bottom Percentage Label (No +/-)
             Column(
                 modifier = Modifier
                     .fillMaxSize()
-                    .padding(vertical = 10.dp),
+                    .padding(vertical = 12.dp),
                 horizontalAlignment = Alignment.CenterHorizontally,
                 verticalArrangement = Arrangement.SpaceBetween
             ) {
-                // Top Icon with gentle + indicator
-                Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    Icon(
-                        imageVector = icon,
-                        contentDescription = null,
-                        tint = Color.White,
-                        modifier = Modifier.size(24.dp)
-                    )
-                    Text(
-                        text = "+",
-                        color = Color.White.copy(alpha = 0.60f),
-                        fontSize = 11.sp,
-                        fontWeight = FontWeight.Bold
-                    )
-                }
+                // Top Icon
+                Icon(
+                    imageVector = icon,
+                    contentDescription = null,
+                    tint = Color.White,
+                    modifier = Modifier.size(22.dp)
+                )
 
-                // Bottom Label with gentle - indicator
-                Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    Text(
-                        text = "-",
-                        color = Color.White.copy(alpha = 0.60f),
-                        fontSize = 11.sp,
-                        fontWeight = FontWeight.Bold
-                    )
-                    Text(
-                        text = label,
-                        color = Color.White,
-                        fontSize = 11.sp,
-                        fontWeight = FontWeight.Bold,
-                        fontFamily = FontFamily.Monospace,
-                        textAlign = TextAlign.Center
-                    )
-                }
+                // Bottom Percentage Label
+                Text(
+                    text = label,
+                    color = Color.White,
+                    fontSize = 11.sp,
+                    fontWeight = FontWeight.Bold,
+                    fontFamily = FontFamily.Monospace,
+                    textAlign = TextAlign.Center
+                )
+            }
+        }
+    }
+}
+
+// ─── Temporary Press-Hold Speed Badge (Small Capsule with Animated ">>" Icon) ───
+@Composable
+private fun TemporarySpeedHoldBadge(
+    speed: Float,
+    accentColor: Color,
+    modifier: Modifier = Modifier
+) {
+    val infiniteTransition = rememberInfiniteTransition(label = "speedChevron")
+    val chevronAlpha by infiniteTransition.animateFloat(
+        initialValue = 0.20f,
+        targetValue = 1.0f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(durationMillis = 380, easing = LinearEasing),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "chevronBlink"
+    )
+
+    val speedText = if (abs(speed - speed.toInt().toFloat()) < 0.05f) {
+        "${speed.toInt()}X"
+    } else {
+        String.format(Locale.getDefault(), "%.1fX", speed)
+    }
+
+    Box(
+        modifier = modifier
+            .shadow(6.dp, RoundedCornerShape(16.dp), ambientColor = Color.Black.copy(alpha = 0.5f), spotColor = Color.Black.copy(alpha = 0.5f))
+            .clip(RoundedCornerShape(16.dp))
+            .background(Color(0xD90E0F17))
+            .border(1.dp, Color.White.copy(alpha = 0.18f), RoundedCornerShape(16.dp))
+            .padding(horizontal = 12.dp, vertical = 5.dp),
+        contentAlignment = Alignment.Center
+    ) {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(5.dp)
+        ) {
+            Text(
+                text = speedText,
+                color = Color.White,
+                fontSize = 12.5.sp,
+                fontWeight = FontWeight.Bold,
+                fontFamily = FontFamily.Monospace,
+                letterSpacing = 0.4.sp
+            )
+
+            // Animated ">>" on / off chevrons
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier.graphicsLayer { alpha = chevronAlpha }
+            ) {
+                Icon(
+                    imageVector = Icons.AutoMirrored.Rounded.ArrowForwardIos,
+                    contentDescription = null,
+                    tint = accentColor,
+                    modifier = Modifier.size(9.5.dp)
+                )
+                Icon(
+                    imageVector = Icons.AutoMirrored.Rounded.ArrowForwardIos,
+                    contentDescription = null,
+                    tint = accentColor,
+                    modifier = Modifier
+                        .size(9.5.dp)
+                        .offset(x = (-3.5).dp)
+                )
             }
         }
     }
 }
 
 // ─── Compact Quick Action Pill (Close together & space efficient) ────────────
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun QuickActionButton(
     icon: ImageVector,
     label: String,
     isActive: Boolean = false,
     activeColor: Color = Color(0xFF22C55E),
+    onLongClick: (() -> Unit)? = null,
     onClick: () -> Unit
 ) {
+    val contentColor = if (isActive) Color.White else Color.White.copy(alpha = 0.92f)
     Row(
         verticalAlignment = Alignment.CenterVertically,
         modifier = Modifier
+            .shadow(
+                elevation = if (isActive) 5.dp else 2.dp,
+                shape = RoundedCornerShape(16.dp),
+                ambientColor = if (isActive) activeColor.copy(alpha = 0.35f) else Color.Black.copy(alpha = 0.45f),
+                spotColor = if (isActive) activeColor.copy(alpha = 0.45f) else Color.Black.copy(alpha = 0.45f)
+            )
             .clip(RoundedCornerShape(16.dp))
             .background(
-                if (isActive) activeColor.copy(alpha = 0.22f)
-                else Color.Black.copy(alpha = 0.55f)
+                if (isActive) Brush.horizontalGradient(
+                    listOf(activeColor, activeColor.copy(alpha = 0.82f))
+                )
+                else Brush.verticalGradient(
+                    listOf(Color(0xFF292C3A), Color(0xFF1E202B))
+                )
             )
             .border(
-                width = 0.8.dp,
-                color = if (isActive) activeColor.copy(alpha = 0.80f) else Color.White.copy(alpha = 0.18f),
+                width = if (isActive) 1.dp else 0.8.dp,
+                color = if (isActive) activeColor.copy(alpha = 0.9f) else Color.White.copy(alpha = 0.14f),
                 shape = RoundedCornerShape(16.dp)
             )
-            .clickable(onClick = onClick)
-            .padding(horizontal = 10.dp, vertical = 6.dp)
+            .combinedClickable(
+                onClick = onClick,
+                onLongClick = onLongClick
+            )
+            .padding(horizontal = 11.dp, vertical = 7.dp)
     ) {
         Icon(
             imageVector = icon,
             contentDescription = label,
-            tint = if (isActive) activeColor else Color.White.copy(alpha = 0.90f),
+            tint = contentColor,
             modifier = Modifier.size(15.dp)
         )
         Spacer(Modifier.width(5.dp))
         Text(
             text = label,
-            color = if (isActive) activeColor else Color.White.copy(alpha = 0.90f),
-            fontSize = 11.5.sp,
-            fontWeight = if (isActive) FontWeight.Bold else FontWeight.Medium
+            color = contentColor,
+            fontSize = 12.sp,
+            fontWeight = if (isActive) FontWeight.Bold else FontWeight.SemiBold,
+            letterSpacing = 0.2.sp
         )
     }
 }
@@ -3728,57 +4420,83 @@ private fun PlayerMenuItem(
 }
 
 // ─── Subtitle Style Applicator (4 Distinct Designs) ──────────────────────────
-fun applySubtitleDesign(playerView: PlayerView?, design: Int) {
+fun applySubtitleDesign(playerView: PlayerView?, design: Int, appPreferences: AppPreferences? = null) {
     val subtitleView = playerView?.subtitleView ?: return
     subtitleView.setApplyEmbeddedStyles(false)
     subtitleView.setApplyEmbeddedFontSizes(false)
-    subtitleView.setFixedTextSize(android.util.TypedValue.COMPLEX_UNIT_SP, 18f)
+    val fontSize = appPreferences?.getSubtitleFontSize()?.toFloat() ?: 18f
+    subtitleView.setFixedTextSize(android.util.TypedValue.COMPLEX_UNIT_SP, fontSize)
 
-    val captionStyle = when (design) {
-        // Design 0: Classic Cinema - Crisp white text, transparent bg, bold black outline
-        0 -> CaptionStyleCompat(
-            android.graphics.Color.WHITE,
+    val captionStyle = if (appPreferences != null && design == 0) {
+        val textColor = appPreferences.getSubtitleColor().toInt()
+        val bgStyle = appPreferences.getSubtitleBackgroundStyle()
+        val bgColor = when (bgStyle) {
+            1 -> android.graphics.Color.argb(180, 0, 0, 0)
+            2 -> android.graphics.Color.argb(255, 0, 0, 0)
+            else -> android.graphics.Color.TRANSPARENT
+        }
+        val outlineStyle = appPreferences.getSubtitleOutlineStyle()
+        val edgeType = when (outlineStyle) {
+            1 -> CaptionStyleCompat.EDGE_TYPE_DROP_SHADOW
+            0 -> CaptionStyleCompat.EDGE_TYPE_NONE
+            else -> CaptionStyleCompat.EDGE_TYPE_OUTLINE
+        }
+        val edgeColor = if (outlineStyle == 0) android.graphics.Color.TRANSPARENT else android.graphics.Color.BLACK
+        CaptionStyleCompat(
+            textColor,
+            bgColor,
             android.graphics.Color.TRANSPARENT,
-            android.graphics.Color.TRANSPARENT,
-            CaptionStyleCompat.EDGE_TYPE_OUTLINE,
-            android.graphics.Color.BLACK,
+            edgeType,
+            edgeColor,
             Typeface.DEFAULT_BOLD
         )
-        // Design 1: Dark Box - Clean white text on translucent dark-grey box backing
-        1 -> CaptionStyleCompat(
-            android.graphics.Color.WHITE,
-            android.graphics.Color.argb(215, 26, 27, 34),
-            android.graphics.Color.TRANSPARENT,
-            CaptionStyleCompat.EDGE_TYPE_NONE,
-            android.graphics.Color.TRANSPARENT,
-            Typeface.SANS_SERIF
-        )
-        // Design 2: Golden Film - Warm golden-yellow text with drop shadow
-        2 -> CaptionStyleCompat(
-            android.graphics.Color.rgb(255, 215, 0),
-            android.graphics.Color.TRANSPARENT,
-            android.graphics.Color.TRANSPARENT,
-            CaptionStyleCompat.EDGE_TYPE_DROP_SHADOW,
-            android.graphics.Color.argb(220, 0, 0, 0),
-            Typeface.DEFAULT_BOLD
-        )
-        // Design 3: Cyber Neon - High-contrast cyan text with deep backing and cyan neon outline
-        3 -> CaptionStyleCompat(
-            android.graphics.Color.rgb(0, 240, 255),
-            android.graphics.Color.argb(220, 16, 18, 25),
-            android.graphics.Color.TRANSPARENT,
-            CaptionStyleCompat.EDGE_TYPE_OUTLINE,
-            android.graphics.Color.rgb(0, 130, 160),
-            Typeface.MONOSPACE
-        )
-        else -> CaptionStyleCompat(
-            android.graphics.Color.WHITE,
-            android.graphics.Color.TRANSPARENT,
-            android.graphics.Color.TRANSPARENT,
-            CaptionStyleCompat.EDGE_TYPE_OUTLINE,
-            android.graphics.Color.BLACK,
-            Typeface.DEFAULT_BOLD
-        )
+    } else {
+        when (design) {
+            // Design 0: Classic Cinema - Crisp white text, transparent bg, bold black outline
+            0 -> CaptionStyleCompat(
+                android.graphics.Color.WHITE,
+                android.graphics.Color.TRANSPARENT,
+                android.graphics.Color.TRANSPARENT,
+                CaptionStyleCompat.EDGE_TYPE_OUTLINE,
+                android.graphics.Color.BLACK,
+                Typeface.DEFAULT_BOLD
+            )
+            // Design 1: Dark Box - Clean white text on translucent dark-grey box backing
+            1 -> CaptionStyleCompat(
+                android.graphics.Color.WHITE,
+                android.graphics.Color.argb(215, 26, 27, 34),
+                android.graphics.Color.TRANSPARENT,
+                CaptionStyleCompat.EDGE_TYPE_NONE,
+                android.graphics.Color.TRANSPARENT,
+                Typeface.SANS_SERIF
+            )
+            // Design 2: Golden Film - Warm golden-yellow text with drop shadow
+            2 -> CaptionStyleCompat(
+                android.graphics.Color.rgb(255, 215, 0),
+                android.graphics.Color.TRANSPARENT,
+                android.graphics.Color.TRANSPARENT,
+                CaptionStyleCompat.EDGE_TYPE_DROP_SHADOW,
+                android.graphics.Color.argb(220, 0, 0, 0),
+                Typeface.DEFAULT_BOLD
+            )
+            // Design 3: Cyber Neon - High-contrast cyan text with deep backing and cyan neon outline
+            3 -> CaptionStyleCompat(
+                android.graphics.Color.rgb(0, 240, 255),
+                android.graphics.Color.argb(220, 16, 18, 25),
+                android.graphics.Color.TRANSPARENT,
+                CaptionStyleCompat.EDGE_TYPE_OUTLINE,
+                android.graphics.Color.rgb(0, 130, 160),
+                Typeface.MONOSPACE
+            )
+            else -> CaptionStyleCompat(
+                android.graphics.Color.WHITE,
+                android.graphics.Color.TRANSPARENT,
+                android.graphics.Color.TRANSPARENT,
+                CaptionStyleCompat.EDGE_TYPE_OUTLINE,
+                android.graphics.Color.BLACK,
+                Typeface.DEFAULT_BOLD
+            )
+        }
     }
     subtitleView.setStyle(captionStyle)
 }
@@ -3787,10 +4505,15 @@ fun applySubtitleDesign(playerView: PlayerView?, design: Int) {
 @Composable
 private fun FloatingPlayerControlsBar(
     exoPlayer: ExoPlayer,
+    scrollState: ScrollState = rememberScrollState(),
+    isExpanded: Boolean = false,
+    onToggleExpanded: () -> Unit = {},
     onOpenAudioDialog: () -> Unit,
     onOpenSubtitleDialog: () -> Unit,
     playbackSpeed: Float,
     onOpenSpeedDialog: () -> Unit,
+    onResetSpeedToOne: () -> Unit = {},
+    onEnterPiP: () -> Unit = {},
     repeatMode: Int,
     onCycleRepeatMode: () -> Unit,
     isNightMode: Boolean,
@@ -3805,20 +4528,43 @@ private fun FloatingPlayerControlsBar(
     onToggleLoop: () -> Unit = {},
     onAddBookmark: () -> Unit = {},
     primaryAccent: Color,
+    onOpenSettings: (() -> Unit)? = null,
+    isAmbientMode: Boolean = true,
+    onToggleAmbientMode: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     val hasSubtitles = remember(exoPlayer.currentTracks) {
         exoPlayer.currentTracks.groups.any { it.type == C.TRACK_TYPE_TEXT && it.isSelected }
     }
 
+    LaunchedEffect(isExpanded) {
+        if (!isExpanded) {
+            scrollState.animateScrollTo(0)
+        } else {
+            delay(50)
+            scrollState.animateScrollTo(scrollState.maxValue)
+        }
+    }
+
     Row(
         modifier = modifier
-            .horizontalScroll(rememberScrollState())
+            .horizontalScroll(scrollState)
+            .pointerInput(Unit) { detectTapGestures { } }
             .padding(horizontal = 4.dp, vertical = 2.dp),
         horizontalArrangement = Arrangement.spacedBy(6.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        // 1. Audio Track / Language (Opens Mini Popup Dialog on Audio Tab)
+        // 1. Playback Speed (Press & hold resets to 1.0x)
+        QuickActionButton(
+            icon = Icons.Rounded.Speed,
+            label = if (playbackSpeed != 1f) String.format(Locale.getDefault(), "%.2fx", playbackSpeed) else "Speed",
+            isActive = playbackSpeed != 1f,
+            activeColor = primaryAccent,
+            onLongClick = onResetSpeedToOne,
+            onClick = onOpenSpeedDialog
+        )
+
+        // 2. Audio Track / Language (Opens Mini Popup Dialog on Audio Tab)
         QuickActionButton(
             icon = Icons.Rounded.Audiotrack,
             label = "Audio",
@@ -3827,7 +4573,7 @@ private fun FloatingPlayerControlsBar(
             onClick = onOpenAudioDialog
         )
 
-        // 2. Subtitles (Opens Mini Popup Dialog with 4 Styles Preview + Audio/Sub tracks)
+        // 3. Subtitles (Opens Mini Popup Dialog with 4 Styles Preview + Audio/Sub tracks)
         QuickActionButton(
             icon = Icons.Rounded.Subtitles,
             label = "Subtitles",
@@ -3836,84 +4582,7 @@ private fun FloatingPlayerControlsBar(
             onClick = onOpenSubtitleDialog
         )
 
-        // 3. Playback Speed (Opens Mini Popup Dialog with - / + user defined speed)
-        QuickActionButton(
-            icon = Icons.Rounded.Speed,
-            label = if (playbackSpeed != 1f) String.format(Locale.getDefault(), "%.2fx", playbackSpeed) else "Speed",
-            isActive = playbackSpeed != 1f,
-            activeColor = primaryAccent,
-            onClick = onOpenSpeedDialog
-        )
-
-        // 4. A-B Loop Button
-        val isLoopActive = loopStartMs != null
-        val loopLabel = when {
-            loopStartMs != null && loopEndMs != null -> "A-B [${formatTime(loopStartMs)}-${formatTime(loopEndMs)}]"
-            loopStartMs != null -> "Set B [${formatTime(loopStartMs)}]"
-            else -> "A-B Loop"
-        }
-        QuickActionButton(
-            icon = Icons.Rounded.AllInclusive,
-            label = loopLabel,
-            isActive = isLoopActive,
-            activeColor = primaryAccent,
-            onClick = onToggleLoop
-        )
-
-        // 5. Bookmark Button
-        QuickActionButton(
-            icon = Icons.Rounded.BookmarkAdd,
-            label = "Bookmark",
-            isActive = false,
-            activeColor = primaryAccent,
-            onClick = onAddBookmark
-        )
-
-        // 6. Sleep Timer (Opens Mini Popup Dialog)
-        QuickActionButton(
-            icon = Icons.Rounded.Timer,
-            label = if (sleepTimerMinutes > 0) "${sleepTimerMinutes}m" else "Timer",
-            isActive = sleepTimerMinutes > 0,
-            activeColor = primaryAccent,
-            onClick = onOpenSleepTimerDialog
-        )
-
-        // 7. Repeat / Loop Mode
-        QuickActionButton(
-            icon = when (repeatMode) {
-                Player.REPEAT_MODE_ONE -> Icons.Rounded.RepeatOne
-                Player.REPEAT_MODE_ALL -> Icons.Rounded.Repeat
-                else -> Icons.Rounded.Repeat
-            },
-            label = when (repeatMode) {
-                Player.REPEAT_MODE_ONE -> "Loop 1"
-                Player.REPEAT_MODE_ALL -> "Loop All"
-                else -> "Loop"
-            },
-            isActive = repeatMode != Player.REPEAT_MODE_OFF,
-            activeColor = primaryAccent,
-            onClick = onCycleRepeatMode
-        )
-
-        // 8. Night Cinema Tint
-        QuickActionButton(
-            icon = Icons.Rounded.Bedtime,
-            label = if (isNightMode) "Night ON" else "Night",
-            isActive = isNightMode,
-            activeColor = primaryAccent,
-            onClick = onToggleNightMode
-        )
-
-        // 9. Background Audio Playback
-        QuickActionButton(
-            icon = Icons.Rounded.Headphones,
-            label = if (isBackgroundAudio) "BG ON" else "BG Play",
-            isActive = isBackgroundAudio,
-            activeColor = primaryAccent,
-            onClick = onToggleBackgroundAudio
-        )
-
-        // 10. Video Details
+        // 4. Video Details
         QuickActionButton(
             icon = Icons.Rounded.Info,
             label = "Details",
@@ -3921,20 +4590,439 @@ private fun FloatingPlayerControlsBar(
             activeColor = primaryAccent,
             onClick = onOpenVideoInfo
         )
+
+        // 5. Expand / Collapse '>' Button
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            modifier = Modifier
+                .shadow(
+                    elevation = if (isExpanded) 5.dp else 2.dp,
+                    shape = RoundedCornerShape(16.dp),
+                    ambientColor = if (isExpanded) primaryAccent.copy(alpha = 0.35f) else Color.Black.copy(alpha = 0.45f),
+                    spotColor = if (isExpanded) primaryAccent.copy(alpha = 0.45f) else Color.Black.copy(alpha = 0.45f)
+                )
+                .clip(RoundedCornerShape(16.dp))
+                .background(
+                    if (isExpanded) Brush.horizontalGradient(
+                        listOf(primaryAccent, primaryAccent.copy(alpha = 0.82f))
+                    )
+                    else Brush.verticalGradient(
+                        listOf(Color(0xFF292C3A), Color(0xFF1E202B))
+                    )
+                )
+                .border(
+                    width = if (isExpanded) 1.dp else 0.8.dp,
+                    color = if (isExpanded) primaryAccent.copy(alpha = 0.9f) else Color.White.copy(alpha = 0.14f),
+                    shape = RoundedCornerShape(16.dp)
+                )
+                .clickable { onToggleExpanded() }
+                .padding(horizontal = 11.dp, vertical = 7.dp)
+        ) {
+            Icon(
+                imageVector = if (isExpanded) Icons.AutoMirrored.Rounded.KeyboardArrowLeft else Icons.AutoMirrored.Rounded.KeyboardArrowRight,
+                contentDescription = if (isExpanded) "Collapse" else "Expand",
+                tint = Color.White,
+                modifier = Modifier.size(16.dp)
+            )
+        }
+
+        // Rest of the buttons (shown when isExpanded == true)
+        if (isExpanded) {
+            // A-B Loop Button
+            val isLoopActive = loopStartMs != null
+            val loopLabel = when {
+                loopStartMs != null && loopEndMs != null -> "A-B [${formatTime(loopStartMs)}-${formatTime(loopEndMs)}]"
+                loopStartMs != null -> "Set B [${formatTime(loopStartMs)}]"
+                else -> "A-B Loop"
+            }
+            QuickActionButton(
+                icon = Icons.Rounded.AllInclusive,
+                label = loopLabel,
+                isActive = isLoopActive,
+                activeColor = primaryAccent,
+                onClick = onToggleLoop
+            )
+
+            // Sleep Timer (Opens Mini Popup Dialog)
+            QuickActionButton(
+                icon = Icons.Rounded.Timer,
+                label = if (sleepTimerMinutes > 0) "${sleepTimerMinutes}m" else "Timer",
+                isActive = sleepTimerMinutes > 0,
+                activeColor = primaryAccent,
+                onClick = onOpenSleepTimerDialog
+            )
+
+            // Repeat / Loop Mode
+            QuickActionButton(
+                icon = when (repeatMode) {
+                    Player.REPEAT_MODE_ONE -> Icons.Rounded.RepeatOne
+                    Player.REPEAT_MODE_ALL -> Icons.Rounded.Repeat
+                    else -> Icons.Rounded.Repeat
+                },
+                label = when (repeatMode) {
+                    Player.REPEAT_MODE_ONE -> "Loop 1"
+                    Player.REPEAT_MODE_ALL -> "Loop All"
+                    else -> "Loop"
+                },
+                isActive = repeatMode != Player.REPEAT_MODE_OFF,
+                activeColor = primaryAccent,
+                onClick = onCycleRepeatMode
+            )
+
+            // Night Cinema Tint
+            QuickActionButton(
+                icon = Icons.Rounded.Bedtime,
+                label = if (isNightMode) "Night ON" else "Night",
+                isActive = isNightMode,
+                activeColor = primaryAccent,
+                onClick = onToggleNightMode
+            )
+
+            // Background Audio Playback
+            QuickActionButton(
+                icon = Icons.Rounded.Headphones,
+                label = if (isBackgroundAudio) "BG ON" else "BG Play",
+                isActive = isBackgroundAudio,
+                activeColor = primaryAccent,
+                onClick = onToggleBackgroundAudio
+            )
+
+            // Dynamic Video Ambient Mode
+            QuickActionButton(
+                icon = if (isAmbientMode) Icons.Rounded.BlurOn else Icons.Rounded.BlurOff,
+                label = if (isAmbientMode) "Ambient ON" else "Ambient",
+                isActive = isAmbientMode,
+                activeColor = primaryAccent,
+                onClick = onToggleAmbientMode
+            )
+
+            // Settings
+            if (onOpenSettings != null) {
+                QuickActionButton(
+                    icon = Icons.Rounded.Settings,
+                    label = "Settings",
+                    isActive = false,
+                    activeColor = primaryAccent,
+                    onClick = onOpenSettings
+                )
+            }
+
+            // Trailing collapse button (quick collapse after scrolling to end)
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier
+                    .shadow(2.dp, RoundedCornerShape(16.dp), ambientColor = Color.Black.copy(alpha = 0.45f), spotColor = Color.Black.copy(alpha = 0.45f))
+                    .clip(RoundedCornerShape(16.dp))
+                    .background(
+                        Brush.verticalGradient(
+                            listOf(Color(0xFF292C3A), Color(0xFF1E202B))
+                        )
+                    )
+                    .border(
+                        width = 0.8.dp,
+                        color = Color.White.copy(alpha = 0.14f),
+                        shape = RoundedCornerShape(16.dp)
+                    )
+                    .clickable { onToggleExpanded() }
+                    .padding(horizontal = 11.dp, vertical = 7.dp)
+            ) {
+                Icon(
+                    imageVector = Icons.AutoMirrored.Rounded.KeyboardArrowLeft,
+                    contentDescription = "Collapse",
+                    tint = Color.White.copy(alpha = 0.90f),
+                    modifier = Modifier.size(16.dp)
+                )
+            }
+        }
     }
 }
 
-// ─── Mini Audio & Subtitles Dialog (Compact Screen) ───────────────────────────
+// ─── Comprehensive ISO-639-1 & ISO-639-2 Language Dictionary ────────────────
+private val ISO_639_LANG_MAP = mapOf(
+    // Indian Languages
+    "hin" to "Hindi", "hi" to "Hindi",
+    "tam" to "Tamil", "ta" to "Tamil",
+    "tel" to "Telugu", "te" to "Telugu",
+    "kan" to "Kannada", "kn" to "Kannada",
+    "mal" to "Malayalam", "ml" to "Malayalam",
+    "ben" to "Bengali", "bn" to "Bengali",
+    "guj" to "Gujarati", "gu" to "Gujarati",
+    "mar" to "Marathi", "mr" to "Marathi",
+    "pan" to "Punjabi", "pa" to "Punjabi",
+    "urd" to "Urdu", "ur" to "Urdu",
+    "ori" to "Odia", "or" to "Odia",
+    "asm" to "Assamese", "as" to "Assamese",
+    "nep" to "Nepali", "ne" to "Nepali",
+    "san" to "Sanskrit", "sa" to "Sanskrit",
+    "sin" to "Sinhala", "si" to "Sinhala",
+    "bho" to "Bhojpuri", "mai" to "Maithili",
+
+    // Major Global Languages
+    "eng" to "English", "en" to "English",
+    "spa" to "Spanish", "es" to "Spanish",
+    "fre" to "French", "fra" to "French", "fr" to "French",
+    "ger" to "German", "deu" to "German", "de" to "German",
+    "ita" to "Italian", "it" to "Italian",
+    "por" to "Portuguese", "pt" to "Portuguese",
+    "rus" to "Russian", "ru" to "Russian",
+    "jpn" to "Japanese", "ja" to "Japanese",
+    "chi" to "Chinese", "zho" to "Chinese", "zh" to "Chinese",
+    "kor" to "Korean", "ko" to "Korean",
+    "ara" to "Arabic", "ar" to "Arabic",
+    "tur" to "Turkish", "tr" to "Turkish",
+    "vie" to "Vietnamese", "vi" to "Vietnamese",
+    "tha" to "Thai", "th" to "Thai",
+    "ind" to "Indonesian", "id" to "Indonesian",
+    "may" to "Malay", "msa" to "Malay", "ms" to "Malay",
+    "per" to "Persian", "fas" to "Persian", "fa" to "Persian",
+    "nld" to "Dutch", "dut" to "Dutch", "nl" to "Dutch",
+    "pol" to "Polish", "pl" to "Polish",
+    "ukr" to "Ukrainian", "uk" to "Ukrainian",
+    "ces" to "Czech", "cze" to "Czech", "cs" to "Czech",
+    "slk" to "Slovak", "slo" to "Slovak", "sk" to "Slovak",
+    "hun" to "Hungarian", "hu" to "Hungarian",
+    "ron" to "Romanian", "rum" to "Romanian", "ro" to "Romanian",
+    "bul" to "Bulgarian", "bg" to "Bulgarian",
+    "ell" to "Greek", "gre" to "Greek", "el" to "Greek",
+    "heb" to "Hebrew", "he" to "Hebrew",
+    "swe" to "Swedish", "sv" to "Swedish",
+    "nor" to "Norwegian", "no" to "Norwegian", "nob" to "Norwegian Bokmål", "nno" to "Norwegian Nynorsk",
+    "dan" to "Danish", "da" to "Danish",
+    "fin" to "Finnish", "fi" to "Finnish",
+    "fil" to "Filipino", "tgl" to "Tagalog", "tl" to "Tagalog",
+    "kat" to "Georgian", "geo" to "Georgian", "ka" to "Georgian",
+    "hye" to "Armenian", "arm" to "Armenian", "hy" to "Armenian",
+    "aze" to "Azerbaijani", "az" to "Azerbaijani",
+    "kaz" to "Kazakh", "kk" to "Kazakh",
+    "uzb" to "Uzbek", "uz" to "Uzbek",
+    "mon" to "Mongolian", "mn" to "Mongolian",
+    "mya" to "Burmese", "bur" to "Burmese", "my" to "Burmese",
+    "khm" to "Khmer", "km" to "Khmer",
+    "swa" to "Swahili", "sw" to "Swahili",
+    "hau" to "Hausa", "ha" to "Hausa",
+    "yor" to "Yoruba", "yo" to "Yoruba",
+    "ibo" to "Igbo", "ig" to "Igbo",
+    "zul" to "Zulu", "zu" to "Zulu",
+    "afr" to "Afrikaans", "af" to "Afrikaans",
+    "lat" to "Latin", "la" to "Latin",
+    "cat" to "Catalan", "ca" to "Catalan",
+    "glg" to "Galician", "gl" to "Galician",
+    "eus" to "Basque", "baq" to "Basque", "eu" to "Basque",
+    "cym" to "Welsh", "wel" to "Welsh", "cy" to "Welsh",
+    "gle" to "Irish", "ga" to "Irish",
+    "gla" to "Scottish Gaelic", "gd" to "Scottish Gaelic",
+    "hrv" to "Croatian", "hr" to "Croatian",
+    "srp" to "Serbian", "sr" to "Serbian",
+    "bos" to "Bosnian", "bs" to "Bosnian",
+    "slv" to "Slovenian", "sl" to "Slovenian",
+    "mkd" to "Macedonian", "mac" to "Macedonian", "mk" to "Macedonian",
+    "sqi" to "Albanian", "alb" to "Albanian", "sq" to "Albanian",
+    "est" to "Estonian", "et" to "Estonian",
+    "lav" to "Latvian", "lv" to "Latvian",
+    "lit" to "Lithuanian", "lt" to "Lithuanian"
+)
+
+private fun resolveCleanLanguageName(langCode: String?): String? {
+    if (langCode.isNullOrBlank()) return null
+    val clean = langCode.trim().lowercase()
+    if (clean == "und" || clean == "..." || clean == "zxx" || clean == "mis" || clean == "mul" || clean == "none") {
+        return null
+    }
+
+    // Direct map lookup (covers 3-letter & 2-letter codes)
+    ISO_639_LANG_MAP[clean]?.let { return it }
+
+    // Strip dialect/region e.g. "en-US", "pt_BR", "zh-CN"
+    val baseCode = clean.split('-', '_').firstOrNull()?.trim()
+    if (!baseCode.isNullOrBlank()) {
+        ISO_639_LANG_MAP[baseCode]?.let { baseName ->
+            val region = clean.substringAfter('-', "").ifBlank { clean.substringAfter('_', "") }.uppercase()
+            return if (region.isNotBlank() && region.length <= 4) "$baseName ($region)" else baseName
+        }
+    }
+
+    // Fallback to Java Locale
+    return runCatching {
+        val localeFromTag = Locale.forLanguageTag(langCode)
+        val name = localeFromTag.getDisplayLanguage(Locale.ENGLISH)
+        if (name.isNotBlank() && !name.equals(langCode, ignoreCase = true)) {
+            val country = localeFromTag.getDisplayCountry(Locale.ENGLISH)
+            if (country.isNotBlank()) "$name ($country)" else name
+        } else {
+            val simpleLoc = Locale(langCode)
+            val sName = simpleLoc.getDisplayLanguage(Locale.ENGLISH)
+            if (sName.isNotBlank() && !sName.equals(langCode, ignoreCase = true)) sName else null
+        }
+    }.getOrNull()?.takeIf { it.isNotBlank() } ?: langCode.replaceFirstChar { it.uppercase() }
+}
+
+private fun formatAudioCodec(sampleMimeType: String?, codecs: String?): String? {
+    val mime = sampleMimeType?.lowercase() ?: ""
+    val c = codecs?.lowercase() ?: ""
+    return when {
+        mime.contains("eac3-joc") || (mime.contains("eac3") && c.contains("joc")) -> "Dolby Atmos"
+        mime.contains("eac3") -> "Dolby Digital Plus (E-AC-3)"
+        mime.contains("ac3") -> "Dolby Digital (AC-3)"
+        mime.contains("true-hd") || mime.contains("truehd") -> "Dolby TrueHD"
+        mime.contains("dts-hd") || mime.contains("dtshd") -> "DTS-HD MA"
+        mime.contains("dts") -> "DTS Audio"
+        mime.contains("flac") -> "FLAC Lossless"
+        mime.contains("opus") -> "Opus"
+        mime.contains("vorbis") -> "Ogg Vorbis"
+        mime.contains("mp4a") || mime.contains("aac") -> "AAC"
+        mime.contains("mpeg") || mime.contains("mp3") -> "MP3"
+        mime.contains("raw") || mime.contains("pcm") || mime.contains("wav") -> "PCM Audio"
+        mime.isNotBlank() -> mime.substringAfterLast("/").substringAfter("x-").uppercase()
+        else -> null
+    }
+}
+
+private fun formatAudioChannels(channels: Int): String? = when (channels) {
+    1 -> "1.0 Mono"
+    2 -> "2.0 Stereo"
+    6 -> "5.1 Surround"
+    8 -> "7.1 Surround"
+    in 3..5 -> "$channels Ch"
+    else -> if (channels > 0) "$channels Channels" else null
+}
+
+private fun formatSubtitleCodec(sampleMimeType: String?): String? {
+    val mime = sampleMimeType?.lowercase() ?: ""
+    return when {
+        mime.contains("subrip") || mime.contains("x-subrip") || mime.contains("srt") -> "SubRip (.srt)"
+        mime.contains("x-ssa") || mime.contains("ssa") -> "SubStation Alpha (.ssa)"
+        mime.contains("x-ass") || mime.contains("ass") -> "Advanced SSA (.ass)"
+        mime.contains("vtt") || mime.contains("webvtt") -> "WebVTT"
+        mime.contains("pgs") || mime.contains("hdmv") -> "PGS (Blu-ray)"
+        mime.contains("vobsub") || mime.contains("dvd") -> "VobSub (DVD)"
+        mime.contains("ttml") || mime.contains("xml") -> "TTML"
+        mime.contains("tx3g") || mime.contains("mov_text") -> "MP4 Timed Text"
+        mime.isNotBlank() -> mime.substringAfterLast("/").substringAfter("x-").uppercase()
+        else -> "Subtitles"
+    }
+}
+
+private data class TrackDisplayMeta(
+    val title: String,
+    val details: String,
+    val badges: List<String>
+)
+
+// ─── Track Resolution Helpers (Eliminates "..." and blank labels) ────────────
+private fun resolveAudioTrackDetails(format: Format, trackIndex: Int): TrackDisplayMeta {
+    val rawLabel = format.label?.trim()?.takeIf {
+        it.isNotBlank() && it != "..." && it != "und" && !it.equals("unknown", ignoreCase = true)
+    }
+    val langDisplay = resolveCleanLanguageName(format.language)
+
+    val title = when {
+        !rawLabel.isNullOrBlank() && !langDisplay.isNullOrBlank() -> {
+            if (rawLabel.contains(langDisplay, ignoreCase = true)) rawLabel
+            else "$langDisplay ($rawLabel)"
+        }
+        !langDisplay.isNullOrBlank() -> langDisplay
+        !rawLabel.isNullOrBlank() -> rawLabel
+        else -> "Audio Track $trackIndex"
+    }
+
+    // Technical details
+    val codec = formatAudioCodec(format.sampleMimeType, format.codecs)
+    val channels = formatAudioChannels(format.channelCount)
+    val sampleRate = format.sampleRate.takeIf { it > 0 }?.let { "${it / 1000} kHz" }
+    val bitrate = format.bitrate.takeIf { it > 0 }?.let {
+        if (it >= 1_000_000) String.format(Locale.getDefault(), "%.1f Mbps", it / 1_000_000f)
+        else "${it / 1000} kbps"
+    }
+
+    val detailsList = mutableListOf<String>()
+    codec?.let { detailsList.add(it) }
+    channels?.let { detailsList.add(it) }
+    sampleRate?.let { detailsList.add(it) }
+    bitrate?.let { detailsList.add(it) }
+
+    // Badges
+    val badges = mutableListOf<String>()
+    if ((format.selectionFlags and C.SELECTION_FLAG_DEFAULT) != 0) {
+        badges.add("DEFAULT")
+    }
+    if ((format.selectionFlags and C.SELECTION_FLAG_FORCED) != 0) {
+        badges.add("FORCED")
+    }
+    if ((format.roleFlags and C.ROLE_FLAG_DUB) != 0) {
+        badges.add("DUBBED")
+    }
+    if ((format.roleFlags and C.ROLE_FLAG_COMMENTARY) != 0) {
+        badges.add("COMMENTARY")
+    }
+    if ((format.roleFlags and C.ROLE_FLAG_DESCRIBES_VIDEO) != 0) {
+        badges.add("AUDIO DESC")
+    }
+    if ((format.roleFlags and C.ROLE_FLAG_ENHANCED_DIALOG_INTELLIGIBILITY) != 0) {
+        badges.add("CLEAR VOICE")
+    }
+
+    val details = if (detailsList.isNotEmpty()) detailsList.joinToString(" • ") else "Embedded Audio"
+    return TrackDisplayMeta(title = title, details = details, badges = badges)
+}
+
+private fun resolveSubtitleTrackDetails(format: Format, trackIndex: Int): TrackDisplayMeta {
+    val rawLabel = format.label?.trim()?.takeIf {
+        it.isNotBlank() && it != "..." && it != "und" && !it.equals("unknown", ignoreCase = true)
+    }
+    val langDisplay = resolveCleanLanguageName(format.language)
+
+    val title = when {
+        !rawLabel.isNullOrBlank() && !langDisplay.isNullOrBlank() -> {
+            if (rawLabel.contains(langDisplay, ignoreCase = true)) rawLabel
+            else "$langDisplay ($rawLabel)"
+        }
+        !langDisplay.isNullOrBlank() -> langDisplay
+        !rawLabel.isNullOrBlank() -> rawLabel
+        else -> "Subtitle Track $trackIndex"
+    }
+
+    val formatName = formatSubtitleCodec(format.sampleMimeType)
+
+    val detailsList = mutableListOf<String>()
+    formatName?.let { detailsList.add(it) }
+    detailsList.add("Track #$trackIndex")
+
+    // Badges
+    val badges = mutableListOf<String>()
+    if ((format.selectionFlags and C.SELECTION_FLAG_DEFAULT) != 0) {
+        badges.add("DEFAULT")
+    }
+    if ((format.selectionFlags and C.SELECTION_FLAG_FORCED) != 0) {
+        badges.add("FORCED")
+    }
+    val isSdh = (format.roleFlags and C.ROLE_FLAG_CAPTION) != 0 ||
+            rawLabel?.contains("sdh", ignoreCase = true) == true ||
+            rawLabel?.contains("cc", ignoreCase = true) == true
+    if (isSdh) {
+        badges.add("SDH / CC")
+    }
+    if ((format.roleFlags and C.ROLE_FLAG_COMMENTARY) != 0) {
+        badges.add("COMMENTARY")
+    }
+
+    val details = detailsList.joinToString(" • ")
+    return TrackDisplayMeta(title = title, details = details, badges = badges)
+}
+
+// ─── Audio Tracks & Languages Dialog (Direct from Audio Button) ────────────────
 @Composable
-private fun MiniAudioSubtitlesDialog(
+private fun AudioTracksDialog(
     exoPlayer: ExoPlayer,
-    subtitleDesign: Int,
-    onSubtitleDesignChange: (Int) -> Unit,
     accentColor: Color,
-    initialTab: Int = 0,
     onDismiss: () -> Unit
 ) {
-    var selectedTab by remember(initialTab) { mutableIntStateOf(initialTab) }
+    val context = LocalContext.current
+    val c = LocalAppColors.current
+    val appPreferences = remember { AppPreferences(context) }
+    val currentTracks = exoPlayer.currentTracks
+    val audioGroups = remember(currentTracks) {
+        currentTracks.groups.filter { it.type == C.TRACK_TYPE_AUDIO }
+    }
 
     Dialog(
         onDismissRequest = onDismiss,
@@ -3942,18 +5030,18 @@ private fun MiniAudioSubtitlesDialog(
     ) {
         Card(
             modifier = Modifier
-                .width(340.dp)
+                .width(350.dp)
                 .wrapContentHeight()
                 .padding(16.dp),
-            shape = RoundedCornerShape(20.dp),
-            colors = CardDefaults.cardColors(containerColor = Color(0xFF222432)),
-            border = BorderStroke(1.dp, Color.White.copy(alpha = 0.15f)),
+            shape = RoundedCornerShape(22.dp),
+            colors = CardDefaults.cardColors(containerColor = c.dropdownBg),
+            border = BorderStroke(1.2.dp, c.glassBorder),
             elevation = CardDefaults.cardElevation(16.dp)
         ) {
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(16.dp)
+                    .padding(18.dp)
             ) {
                 // Header
                 Row(
@@ -3961,12 +5049,38 @@ private fun MiniAudioSubtitlesDialog(
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Text(
-                        text = "Audio & Subtitles",
-                        color = Color.White,
-                        fontSize = 16.sp,
-                        fontWeight = FontWeight.Bold
-                    )
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .size(32.dp)
+                                .clip(CircleShape)
+                                .background(accentColor.copy(alpha = 0.2f)),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(
+                                Icons.Rounded.Audiotrack,
+                                contentDescription = null,
+                                tint = accentColor,
+                                modifier = Modifier.size(18.dp)
+                            )
+                        }
+                        Column {
+                            Text(
+                                text = "Audio Tracks",
+                                color = c.textPrimary,
+                                fontSize = 16.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+                            Text(
+                                text = "Select audio stream & language",
+                                color = c.textSecondary,
+                                fontSize = 11.sp
+                            )
+                        }
+                    }
                     IconButton(
                         onClick = onDismiss,
                         modifier = Modifier.size(28.dp)
@@ -3974,156 +5088,459 @@ private fun MiniAudioSubtitlesDialog(
                         Icon(
                             Icons.Rounded.Close,
                             contentDescription = "Close",
-                            tint = Color.White.copy(alpha = 0.7f),
+                            tint = c.textSecondary,
                             modifier = Modifier.size(18.dp)
                         )
                     }
                 }
 
-                Spacer(Modifier.height(10.dp))
+                Spacer(Modifier.height(14.dp))
+                HorizontalDivider(color = c.glassBorder, thickness = 0.8.dp)
+                Spacer(Modifier.height(12.dp))
 
-                // 3 Compact Tabs
-                TabRow(
-                    selectedTabIndex = selectedTab,
-                    containerColor = Color(0xFF191A24),
-                    contentColor = accentColor,
-                    modifier = Modifier.clip(RoundedCornerShape(10.dp))
+                if (audioGroups.isEmpty()) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(vertical = 20.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            Icon(
+                                Icons.Rounded.Audiotrack,
+                                contentDescription = null,
+                                tint = c.textHint,
+                                modifier = Modifier.size(36.dp)
+                            )
+                            Spacer(Modifier.height(8.dp))
+                            Text(
+                                "Default Audio Stream",
+                                color = c.textPrimary,
+                                fontSize = 14.sp,
+                                fontWeight = FontWeight.SemiBold
+                            )
+                            Spacer(Modifier.height(2.dp))
+                            Text(
+                                "Standard embedded audio output",
+                                color = c.textSecondary,
+                                fontSize = 12.sp
+                            )
+                        }
+                    }
+                } else {
+                    LazyColumn(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .heightIn(max = 280.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        var trackCounter = 1
+                        audioGroups.forEach { group ->
+                            for (i in 0 until group.length) {
+                                val currentIdx = trackCounter++
+                                val isSelected = group.isTrackSelected(i)
+                                val format = group.getTrackFormat(i)
+
+                                val meta = resolveAudioTrackDetails(format, currentIdx)
+
+                                item {
+                                    Row(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .clip(RoundedCornerShape(12.dp))
+                                            .background(
+                                                if (isSelected) accentColor.copy(alpha = 0.18f)
+                                                else c.cardBgElevated
+                                            )
+                                            .border(
+                                                1.dp,
+                                                if (isSelected) accentColor.copy(alpha = 0.85f)
+                                                else c.glassBorder,
+                                                RoundedCornerShape(12.dp)
+                                            )
+                                            .clickable {
+                                                exoPlayer.trackSelectionParameters = exoPlayer.trackSelectionParameters
+                                                    .buildUpon()
+                                                    .setOverrideForType(TrackSelectionOverride(group.mediaTrackGroup, i))
+                                                    .build()
+                                                format.language?.let { appPreferences.setPreferredAudioLanguage(it) }
+                                                Toast.makeText(context, "Audio: ${meta.title}", Toast.LENGTH_SHORT).show()
+                                                onDismiss()
+                                            }
+                                            .padding(horizontal = 14.dp, vertical = 10.dp),
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Column(modifier = Modifier.weight(1f)) {
+                                            Row(
+                                                verticalAlignment = Alignment.CenterVertically,
+                                                horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                            ) {
+                                                Text(
+                                                    text = meta.title,
+                                                    color = if (isSelected) accentColor else c.textPrimary,
+                                                    fontSize = 14.sp,
+                                                    fontWeight = if (isSelected) FontWeight.Bold else FontWeight.SemiBold
+                                                )
+                                                if (isSelected) {
+                                                    Box(
+                                                        modifier = Modifier
+                                                            .clip(RoundedCornerShape(4.dp))
+                                                            .background(accentColor)
+                                                            .padding(horizontal = 5.dp, vertical = 1.dp)
+                                                    ) {
+                                                        Text(
+                                                            "ACTIVE",
+                                                            color = Color.White,
+                                                            fontSize = 8.5.sp,
+                                                            fontWeight = FontWeight.ExtraBold
+                                                        )
+                                                    }
+                                                }
+                                                meta.badges.forEach { badge ->
+                                                    Box(
+                                                        modifier = Modifier
+                                                            .clip(RoundedCornerShape(4.dp))
+                                                            .background(c.glassBgNested)
+                                                            .border(0.8.dp, c.glassBorder, RoundedCornerShape(4.dp))
+                                                            .padding(horizontal = 5.dp, vertical = 1.dp)
+                                                    ) {
+                                                        Text(
+                                                            badge,
+                                                            color = c.textSecondary,
+                                                            fontSize = 8.5.sp,
+                                                            fontWeight = FontWeight.Bold
+                                                        )
+                                                    }
+                                                }
+                                            }
+                                            if (meta.details.isNotBlank()) {
+                                                Spacer(Modifier.height(3.dp))
+                                                Text(
+                                                    text = meta.details,
+                                                    color = c.textSecondary,
+                                                    fontSize = 11.5.sp
+                                                )
+                                            }
+                                        }
+
+                                        if (isSelected) {
+                                            Icon(
+                                                Icons.Rounded.CheckCircle,
+                                                contentDescription = "Selected",
+                                                tint = accentColor,
+                                                modifier = Modifier.size(20.dp)
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+// ─── Subtitles & Captions Dialog (Direct from Subtitles Button) ────────────────
+@Composable
+private fun SubtitlesDialog(
+    exoPlayer: ExoPlayer,
+    subtitleDesign: Int,
+    onSubtitleDesignChange: (Int) -> Unit,
+    accentColor: Color,
+    onDismiss: () -> Unit
+) {
+    val context = LocalContext.current
+    val c = LocalAppColors.current
+    val appPreferences = remember { AppPreferences(context) }
+    var selectedTab by remember { mutableIntStateOf(0) }
+    val currentTracks = exoPlayer.currentTracks
+    val textGroups = remember(currentTracks) {
+        currentTracks.groups.filter { it.type == C.TRACK_TYPE_TEXT }
+    }
+
+    Dialog(
+        onDismissRequest = onDismiss,
+        properties = DialogProperties(usePlatformDefaultWidth = false)
+    ) {
+        Card(
+            modifier = Modifier
+                .width(350.dp)
+                .wrapContentHeight()
+                .padding(16.dp),
+            shape = RoundedCornerShape(22.dp),
+            colors = CardDefaults.cardColors(containerColor = c.dropdownBg),
+            border = BorderStroke(1.2.dp, c.glassBorder),
+            elevation = CardDefaults.cardElevation(16.dp)
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(18.dp)
+            ) {
+                // Header
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Tab(
-                        selected = selectedTab == 0,
-                        onClick = { selectedTab = 0 },
-                        text = { Text("Audio", fontSize = 12.sp, fontWeight = FontWeight.SemiBold) }
-                    )
-                    Tab(
-                        selected = selectedTab == 1,
-                        onClick = { selectedTab = 1 },
-                        text = { Text("Subtitles", fontSize = 12.sp, fontWeight = FontWeight.SemiBold) }
-                    )
-                    Tab(
-                        selected = selectedTab == 2,
-                        onClick = { selectedTab = 2 },
-                        text = { Text("Styles (4)", fontSize = 12.sp, fontWeight = FontWeight.SemiBold) }
-                    )
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .size(32.dp)
+                                .clip(CircleShape)
+                                .background(accentColor.copy(alpha = 0.2f)),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(
+                                Icons.Rounded.Subtitles,
+                                contentDescription = null,
+                                tint = accentColor,
+                                modifier = Modifier.size(18.dp)
+                            )
+                        }
+                        Column {
+                            Text(
+                                text = "Subtitles",
+                                color = c.textPrimary,
+                                fontSize = 16.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+                            Text(
+                                text = "Manage captions & styles",
+                                color = c.textSecondary,
+                                fontSize = 11.sp
+                            )
+                        }
+                    }
+                    IconButton(
+                        onClick = onDismiss,
+                        modifier = Modifier.size(28.dp)
+                    ) {
+                        Icon(
+                            Icons.Rounded.Close,
+                            contentDescription = "Close",
+                            tint = c.textSecondary,
+                            modifier = Modifier.size(18.dp)
+                        )
+                    }
                 }
 
                 Spacer(Modifier.height(12.dp))
 
-                val currentTracks = exoPlayer.currentTracks
-                val trackGroups = currentTracks.groups
+                // 2 Tabs: Tracks & Styles
+                TabRow(
+                    selectedTabIndex = selectedTab,
+                    containerColor = c.cardBgElevated,
+                    contentColor = accentColor,
+                    modifier = Modifier.clip(RoundedCornerShape(10.dp)),
+                    indicator = {}
+                ) {
+                    Tab(
+                        selected = selectedTab == 0,
+                        onClick = { selectedTab = 0 },
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(10.dp))
+                            .background(if (selectedTab == 0) accentColor.copy(alpha = 0.25f) else Color.Transparent),
+                        text = {
+                            Text(
+                                "Tracks (${textGroups.sumOf { it.length }})",
+                                fontSize = 12.sp,
+                                fontWeight = if (selectedTab == 0) FontWeight.Bold else FontWeight.Normal,
+                                color = if (selectedTab == 0) accentColor else c.textSecondary
+                            )
+                        }
+                    )
+                    Tab(
+                        selected = selectedTab == 1,
+                        onClick = { selectedTab = 1 },
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(10.dp))
+                            .background(if (selectedTab == 1) accentColor.copy(alpha = 0.25f) else Color.Transparent),
+                        text = {
+                            Text(
+                                "Styles (4)",
+                                fontSize = 12.sp,
+                                fontWeight = if (selectedTab == 1) FontWeight.Bold else FontWeight.Normal,
+                                color = if (selectedTab == 1) accentColor else c.textSecondary
+                            )
+                        }
+                    )
+                }
+
+                Spacer(Modifier.height(14.dp))
 
                 when (selectedTab) {
-                    0 -> { // Audio tracks
-                        val audioGroups = trackGroups.filter { it.type == C.TRACK_TYPE_AUDIO }
-                        if (audioGroups.isEmpty()) {
-                            Box(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(vertical = 24.dp),
-                                contentAlignment = Alignment.Center
-                            ) {
-                                Text("Default Audio Stream", color = Color.White.copy(alpha = 0.6f), fontSize = 13.sp)
-                            }
-                        } else {
-                            LazyColumn(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .heightIn(max = 220.dp),
-                                verticalArrangement = Arrangement.spacedBy(6.dp)
-                            ) {
-                                audioGroups.forEachIndexed { groupIdx, group ->
-                                    for (i in 0 until group.length) {
-                                        val isSelected = group.isTrackSelected(i)
-                                        val format = group.getTrackFormat(i)
-                                        val lang = format.language ?: "Audio Track ${groupIdx + 1}"
-                                        item {
-                                            Row(
-                                                modifier = Modifier
-                                                    .fillMaxWidth()
-                                                    .clip(RoundedCornerShape(10.dp))
-                                                    .background(if (isSelected) accentColor.copy(alpha = 0.22f) else Color.White.copy(alpha = 0.06f))
-                                                    .border(1.dp, if (isSelected) accentColor else Color.Transparent, RoundedCornerShape(10.dp))
-                                                    .clickable {
-                                                        exoPlayer.trackSelectionParameters = exoPlayer.trackSelectionParameters
-                                                            .buildUpon()
-                                                            .setOverrideForType(TrackSelectionOverride(group.mediaTrackGroup, i))
-                                                            .build()
-                                                        onDismiss()
-                                                    }
-                                                    .padding(horizontal = 12.dp, vertical = 10.dp),
-                                                horizontalArrangement = Arrangement.SpaceBetween,
-                                                verticalAlignment = Alignment.CenterVertically
-                                            ) {
-                                                Text(lang, color = if (isSelected) accentColor else Color.White, fontSize = 13.sp)
-                                                if (isSelected) {
-                                                    Icon(Icons.Rounded.Check, contentDescription = null, tint = accentColor, modifier = Modifier.size(18.dp))
-                                                }
-                                            }
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
-                    1 -> { // Subtitle tracks
-                        val textGroups = trackGroups.filter { it.type == C.TRACK_TYPE_TEXT }
+                    0 -> {
+                        // Tracks Tab
+                        val areDisabled = exoPlayer.trackSelectionParameters.ignoredTextSelectionFlags == C.SELECTION_FLAG_DEFAULT ||
+                                !textGroups.any { it.isSelected }
+
                         LazyColumn(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .heightIn(max = 220.dp),
-                            verticalArrangement = Arrangement.spacedBy(6.dp)
+                                .heightIn(max = 260.dp),
+                            verticalArrangement = Arrangement.spacedBy(8.dp)
                         ) {
-                            val areDisabled = exoPlayer.trackSelectionParameters.ignoredTextSelectionFlags == C.SELECTION_FLAG_DEFAULT
+                            // Subtitles Off Item
                             item {
                                 Row(
                                     modifier = Modifier
                                         .fillMaxWidth()
-                                        .clip(RoundedCornerShape(10.dp))
-                                        .background(if (areDisabled) accentColor.copy(alpha = 0.22f) else Color.White.copy(alpha = 0.06f))
-                                        .border(1.dp, if (areDisabled) accentColor else Color.Transparent, RoundedCornerShape(10.dp))
+                                        .clip(RoundedCornerShape(12.dp))
+                                        .background(
+                                            if (areDisabled) accentColor.copy(alpha = 0.18f)
+                                            else c.cardBgElevated
+                                        )
+                                        .border(
+                                            1.dp,
+                                            if (areDisabled) accentColor.copy(alpha = 0.85f)
+                                            else c.glassBorder,
+                                            RoundedCornerShape(12.dp)
+                                        )
                                         .clickable {
                                             exoPlayer.trackSelectionParameters = exoPlayer.trackSelectionParameters
                                                 .buildUpon()
                                                 .setIgnoredTextSelectionFlags(C.SELECTION_FLAG_DEFAULT)
+                                                .clearOverridesOfType(C.TRACK_TYPE_TEXT)
                                                 .build()
+                                            appPreferences.setSubtitlesEnabled(false)
+                                            Toast.makeText(context, "Subtitles turned off", Toast.LENGTH_SHORT).show()
                                             onDismiss()
                                         }
-                                        .padding(horizontal = 12.dp, vertical = 10.dp),
+                                        .padding(horizontal = 14.dp, vertical = 10.dp),
                                     horizontalArrangement = Arrangement.SpaceBetween,
                                     verticalAlignment = Alignment.CenterVertically
                                 ) {
-                                    Text("Subtitles Off", color = if (areDisabled) accentColor else Color.White, fontSize = 13.sp)
+                                    Column {
+                                        Text(
+                                            text = "Subtitles Off",
+                                            color = if (areDisabled) accentColor else c.textPrimary,
+                                            fontSize = 13.5.sp,
+                                            fontWeight = if (areDisabled) FontWeight.Bold else FontWeight.Medium
+                                        )
+                                        Text(
+                                            text = "Disable subtitle rendering",
+                                            color = c.textSecondary,
+                                            fontSize = 11.sp
+                                        )
+                                    }
                                     if (areDisabled) {
-                                        Icon(Icons.Rounded.Check, contentDescription = null, tint = accentColor, modifier = Modifier.size(18.dp))
+                                        Icon(
+                                            Icons.Rounded.CheckCircle,
+                                            contentDescription = null,
+                                            tint = accentColor,
+                                            modifier = Modifier.size(20.dp)
+                                        )
                                     }
                                 }
                             }
-                            textGroups.forEachIndexed { groupIdx, group ->
+
+                            // Subtitle track items
+                            var trackCounter = 1
+                            textGroups.forEach { group ->
                                 for (i in 0 until group.length) {
+                                    val currentIdx = trackCounter++
                                     val isSelected = !areDisabled && group.isTrackSelected(i)
                                     val format = group.getTrackFormat(i)
-                                    val lang = format.language ?: "Subtitle ${groupIdx + 1}"
+
+                                    val meta = resolveSubtitleTrackDetails(format, currentIdx)
+
                                     item {
                                         Row(
                                             modifier = Modifier
                                                 .fillMaxWidth()
-                                                .clip(RoundedCornerShape(10.dp))
-                                                .background(if (isSelected) accentColor.copy(alpha = 0.22f) else Color.White.copy(alpha = 0.06f))
-                                                .border(1.dp, if (isSelected) accentColor else Color.Transparent, RoundedCornerShape(10.dp))
-                                                .clickable {
-                                                    exoPlayer.trackSelectionParameters = exoPlayer.trackSelectionParameters
-                                                        .buildUpon()
-                                                        .setIgnoredTextSelectionFlags(0)
-                                                        .setOverrideForType(TrackSelectionOverride(group.mediaTrackGroup, i))
-                                                        .build()
-                                                    onDismiss()
-                                                }
-                                                .padding(horizontal = 12.dp, vertical = 10.dp),
+                                                .clip(RoundedCornerShape(12.dp))
+                                                .background(
+                                                if (isSelected) accentColor.copy(alpha = 0.18f)
+                                                else c.cardBgElevated
+                                            )
+                                            .border(
+                                                1.dp,
+                                                if (isSelected) accentColor.copy(alpha = 0.85f)
+                                                else c.glassBorder,
+                                                RoundedCornerShape(12.dp)
+                                            )
+                                            .clickable {
+                                                exoPlayer.trackSelectionParameters = exoPlayer.trackSelectionParameters
+                                                    .buildUpon()
+                                                    .setIgnoredTextSelectionFlags(0)
+                                                    .setOverrideForType(TrackSelectionOverride(group.mediaTrackGroup, i))
+                                                    .build()
+                                                appPreferences.setSubtitlesEnabled(true)
+                                                format.language?.let { appPreferences.setPreferredSubtitleLanguage(it) }
+                                                Toast.makeText(context, "Subtitles: ${meta.title}", Toast.LENGTH_SHORT).show()
+                                                onDismiss()
+                                            }
+                                            .padding(horizontal = 14.dp, vertical = 10.dp),
                                             horizontalArrangement = Arrangement.SpaceBetween,
                                             verticalAlignment = Alignment.CenterVertically
                                         ) {
-                                            Text(lang, color = if (isSelected) accentColor else Color.White, fontSize = 13.sp)
+                                            Column(modifier = Modifier.weight(1f)) {
+                                                Row(
+                                                    verticalAlignment = Alignment.CenterVertically,
+                                                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                                ) {
+                                                    Text(
+                                                        text = meta.title,
+                                                        color = if (isSelected) accentColor else c.textPrimary,
+                                                        fontSize = 14.sp,
+                                                        fontWeight = if (isSelected) FontWeight.Bold else FontWeight.SemiBold
+                                                    )
+                                                    if (isSelected) {
+                                                        Box(
+                                                            modifier = Modifier
+                                                                .clip(RoundedCornerShape(4.dp))
+                                                                .background(accentColor)
+                                                                .padding(horizontal = 5.dp, vertical = 1.dp)
+                                                        ) {
+                                                            Text(
+                                                                "ACTIVE",
+                                                                color = Color.White,
+                                                                fontSize = 8.5.sp,
+                                                                fontWeight = FontWeight.ExtraBold
+                                                            )
+                                                        }
+                                                    }
+                                                    meta.badges.forEach { badge ->
+                                                        Box(
+                                                            modifier = Modifier
+                                                                .clip(RoundedCornerShape(4.dp))
+                                                                .background(c.glassBgNested)
+                                                                .border(0.8.dp, c.glassBorder, RoundedCornerShape(4.dp))
+                                                                .padding(horizontal = 5.dp, vertical = 1.dp)
+                                                        ) {
+                                                            Text(
+                                                                badge,
+                                                                color = c.textSecondary,
+                                                                fontSize = 8.5.sp,
+                                                                fontWeight = FontWeight.Bold
+                                                            )
+                                                        }
+                                                    }
+                                                }
+                                                if (meta.details.isNotBlank()) {
+                                                    Spacer(Modifier.height(3.dp))
+                                                    Text(
+                                                        text = meta.details,
+                                                        color = c.textSecondary,
+                                                        fontSize = 11.5.sp
+                                                    )
+                                                }
+                                            }
+
                                             if (isSelected) {
-                                                Icon(Icons.Rounded.Check, contentDescription = null, tint = accentColor, modifier = Modifier.size(18.dp))
+                                                Icon(
+                                                    Icons.Rounded.CheckCircle,
+                                                    contentDescription = null,
+                                                    tint = accentColor,
+                                                    modifier = Modifier.size(20.dp)
+                                                )
                                             }
                                         }
                                     }
@@ -4131,7 +5548,8 @@ private fun MiniAudioSubtitlesDialog(
                             }
                         }
                     }
-                    2 -> { // Subtitle Styles (4 distinct designs)
+                    1 -> {
+                        // Styles Tab (4 Cinema Styles)
                         val subtitleStyles = listOf(
                             Triple(0, "Classic Cinema", "White text with solid black outline"),
                             Triple(1, "Dark Box", "Crisp white text with slate box backing"),
@@ -4141,7 +5559,7 @@ private fun MiniAudioSubtitlesDialog(
                         LazyColumn(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .heightIn(max = 240.dp),
+                                .heightIn(max = 270.dp),
                             verticalArrangement = Arrangement.spacedBy(8.dp)
                         ) {
                             items(subtitleStyles) { (id, name, desc) ->
@@ -4152,11 +5570,11 @@ private fun MiniAudioSubtitlesDialog(
                                         .clickable { onSubtitleDesignChange(id) },
                                     shape = RoundedCornerShape(12.dp),
                                     colors = CardDefaults.cardColors(
-                                        containerColor = if (isChosen) accentColor.copy(alpha = 0.18f) else Color(0xFF181922)
+                                        containerColor = if (isChosen) accentColor.copy(alpha = 0.18f) else c.cardBgElevated
                                     ),
                                     border = BorderStroke(
                                         1.dp,
-                                        if (isChosen) accentColor else Color.White.copy(alpha = 0.08f)
+                                        if (isChosen) accentColor else c.glassBorder
                                     )
                                 ) {
                                     Column(modifier = Modifier.padding(10.dp)) {
@@ -4167,7 +5585,7 @@ private fun MiniAudioSubtitlesDialog(
                                         ) {
                                             Text(
                                                 text = name,
-                                                color = if (isChosen) accentColor else Color.White,
+                                                color = if (isChosen) accentColor else c.textPrimary,
                                                 fontSize = 13.sp,
                                                 fontWeight = FontWeight.Bold
                                             )
@@ -4185,16 +5603,16 @@ private fun MiniAudioSubtitlesDialog(
                                         Spacer(Modifier.height(2.dp))
                                         Text(
                                             text = desc,
-                                            color = Color.White.copy(alpha = 0.55f),
-                                            fontSize = 10.sp
+                                            color = c.textSecondary,
+                                            fontSize = 10.5.sp
                                         )
                                         Spacer(Modifier.height(6.dp))
-                                        // Visual Preview Box
+                                        // Visual Preview Box (Cinema contrast preview)
                                         Box(
                                             modifier = Modifier
                                                 .fillMaxWidth()
                                                 .clip(RoundedCornerShape(6.dp))
-                                                .background(Color(0xFF0F1015))
+                                                .background(Color(0xFF0B0C10))
                                                 .padding(vertical = 6.dp, horizontal = 10.dp),
                                             contentAlignment = Alignment.Center
                                         ) {
@@ -4260,6 +5678,7 @@ private fun MiniSpeedDialog(
     accentColor: Color,
     onDismiss: () -> Unit
 ) {
+    val c = LocalAppColors.current
     Dialog(
         onDismissRequest = onDismiss,
         properties = DialogProperties(usePlatformDefaultWidth = false)
@@ -4270,8 +5689,8 @@ private fun MiniSpeedDialog(
                 .wrapContentHeight()
                 .padding(16.dp),
             shape = RoundedCornerShape(20.dp),
-            colors = CardDefaults.cardColors(containerColor = Color(0xFF222432)),
-            border = BorderStroke(1.dp, Color.White.copy(alpha = 0.15f)),
+            colors = CardDefaults.cardColors(containerColor = c.dropdownBg),
+            border = BorderStroke(1.dp, c.glassBorder),
             elevation = CardDefaults.cardElevation(16.dp)
         ) {
             Column(
@@ -4288,10 +5707,10 @@ private fun MiniSpeedDialog(
                 ) {
                     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         Icon(Icons.Rounded.Speed, contentDescription = null, tint = accentColor, modifier = Modifier.size(22.dp))
-                        Text("Playback Speed", color = Color.White, fontSize = 17.sp, fontWeight = FontWeight.Bold)
+                        Text("Playback Speed", color = c.textPrimary, fontSize = 17.sp, fontWeight = FontWeight.Bold)
                     }
                     IconButton(onClick = onDismiss, modifier = Modifier.size(28.dp)) {
-                        Icon(Icons.Rounded.Close, contentDescription = "Close", tint = Color.White.copy(alpha = 0.7f), modifier = Modifier.size(18.dp))
+                        Icon(Icons.Rounded.Close, contentDescription = "Close", tint = c.textSecondary, modifier = Modifier.size(18.dp))
                     }
                 }
 
@@ -4312,10 +5731,10 @@ private fun MiniSpeedDialog(
                         modifier = Modifier
                             .size(46.dp)
                             .clip(CircleShape)
-                            .background(Color.White.copy(alpha = 0.08f))
-                            .border(1.dp, Color.White.copy(alpha = 0.18f), CircleShape)
+                            .background(c.cardBgElevated)
+                            .border(1.dp, c.glassBorder, CircleShape)
                     ) {
-                        Icon(Icons.Rounded.Remove, contentDescription = "Decrease speed", tint = Color.White, modifier = Modifier.size(24.dp))
+                        Icon(Icons.Rounded.Remove, contentDescription = "Decrease speed", tint = c.textPrimary, modifier = Modifier.size(24.dp))
                     }
 
                     // Speed Display (e.g. 1.25x)
@@ -4329,7 +5748,7 @@ private fun MiniSpeedDialog(
                         )
                         Text(
                             text = if (abs(currentSpeed - 1.0f) < 0.01f) "Normal Speed" else "Custom Speed",
-                            color = Color.White.copy(alpha = 0.55f),
+                            color = c.textSecondary,
                             fontSize = 11.sp
                         )
                     }
@@ -4343,10 +5762,10 @@ private fun MiniSpeedDialog(
                         modifier = Modifier
                             .size(46.dp)
                             .clip(CircleShape)
-                            .background(Color.White.copy(alpha = 0.08f))
-                            .border(1.dp, Color.White.copy(alpha = 0.18f), CircleShape)
+                            .background(c.cardBgElevated)
+                            .border(1.dp, c.glassBorder, CircleShape)
                     ) {
-                        Icon(Icons.Rounded.Add, contentDescription = "Increase speed", tint = Color.White, modifier = Modifier.size(24.dp))
+                        Icon(Icons.Rounded.Add, contentDescription = "Increase speed", tint = c.textPrimary, modifier = Modifier.size(24.dp))
                     }
                 }
 
@@ -4356,14 +5775,14 @@ private fun MiniSpeedDialog(
                 Box(
                     modifier = Modifier
                         .clip(RoundedCornerShape(12.dp))
-                        .background(if (abs(currentSpeed - 1.0f) < 0.01f) accentColor.copy(alpha = 0.25f) else Color.White.copy(alpha = 0.07f))
-                        .border(1.dp, if (abs(currentSpeed - 1.0f) < 0.01f) accentColor else Color.White.copy(alpha = 0.12f), RoundedCornerShape(12.dp))
+                        .background(if (abs(currentSpeed - 1.0f) < 0.01f) accentColor.copy(alpha = 0.25f) else c.cardBgElevated)
+                        .border(1.dp, if (abs(currentSpeed - 1.0f) < 0.01f) accentColor else c.glassBorder, RoundedCornerShape(12.dp))
                         .clickable { onSpeedChange(1.0f) }
                         .padding(horizontal = 18.dp, vertical = 6.dp)
                 ) {
                     Text(
                         text = "Reset to 1.0x",
-                        color = if (abs(currentSpeed - 1.0f) < 0.01f) accentColor else Color.White,
+                        color = if (abs(currentSpeed - 1.0f) < 0.01f) accentColor else c.textPrimary,
                         fontSize = 12.sp,
                         fontWeight = FontWeight.SemiBold
                     )
@@ -4371,14 +5790,14 @@ private fun MiniSpeedDialog(
 
                 Spacer(Modifier.height(18.dp))
 
-                HorizontalDivider(color = Color.White.copy(alpha = 0.1f))
+                HorizontalDivider(color = c.glassBorder)
 
                 Spacer(Modifier.height(12.dp))
 
                 // Presets Title & Row
                 Text(
                     text = "Quick Presets",
-                    color = Color.White.copy(alpha = 0.6f),
+                    color = c.textSecondary,
                     fontSize = 11.sp,
                     fontWeight = FontWeight.Medium,
                     modifier = Modifier.align(Alignment.Start)
@@ -4395,14 +5814,15 @@ private fun MiniSpeedDialog(
                         Box(
                             modifier = Modifier
                                 .clip(RoundedCornerShape(8.dp))
-                                .background(if (isSelected) accentColor else Color.White.copy(alpha = 0.08f))
+                                .background(if (isSelected) accentColor else c.cardBgElevated)
+                                .border(1.dp, if (isSelected) accentColor else c.glassBorder, RoundedCornerShape(8.dp))
                                 .clickable { onSpeedChange(preset) }
                                 .padding(horizontal = 8.dp, vertical = 6.dp),
                             contentAlignment = Alignment.Center
                         ) {
                             Text(
                                 text = "${preset}x",
-                                color = if (isSelected) Color.White else Color.White.copy(alpha = 0.85f),
+                                color = if (isSelected) Color.White else c.textPrimary,
                                 fontSize = 11.sp,
                                 fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal
                             )
@@ -4422,6 +5842,7 @@ private fun MiniSleepTimerDialog(
     accentColor: Color,
     onDismiss: () -> Unit
 ) {
+    val c = LocalAppColors.current
     val options = listOf(
         0 to "Turn Off Timer",
         15 to "15 Minutes",
@@ -4441,8 +5862,8 @@ private fun MiniSleepTimerDialog(
                 .wrapContentHeight()
                 .padding(16.dp),
             shape = RoundedCornerShape(20.dp),
-            colors = CardDefaults.cardColors(containerColor = Color(0xFF222432)),
-            border = BorderStroke(1.dp, Color.White.copy(alpha = 0.15f)),
+            colors = CardDefaults.cardColors(containerColor = c.dropdownBg),
+            border = BorderStroke(1.dp, c.glassBorder),
             elevation = CardDefaults.cardElevation(16.dp)
         ) {
             Column(
@@ -4458,10 +5879,10 @@ private fun MiniSleepTimerDialog(
                 ) {
                     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         Icon(Icons.Rounded.Timer, contentDescription = null, tint = accentColor, modifier = Modifier.size(22.dp))
-                        Text("Sleep Timer", color = Color.White, fontSize = 17.sp, fontWeight = FontWeight.Bold)
+                        Text("Sleep Timer", color = c.textPrimary, fontSize = 17.sp, fontWeight = FontWeight.Bold)
                     }
                     IconButton(onClick = onDismiss, modifier = Modifier.size(28.dp)) {
-                        Icon(Icons.Rounded.Close, contentDescription = "Close", tint = Color.White.copy(alpha = 0.7f), modifier = Modifier.size(18.dp))
+                        Icon(Icons.Rounded.Close, contentDescription = "Close", tint = c.textSecondary, modifier = Modifier.size(18.dp))
                     }
                 }
 
@@ -4496,8 +5917,8 @@ private fun MiniSleepTimerDialog(
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .clip(RoundedCornerShape(10.dp))
-                                .background(if (isSelected) accentColor.copy(alpha = 0.22f) else Color.White.copy(alpha = 0.05f))
-                                .border(1.dp, if (isSelected) accentColor else Color.Transparent, RoundedCornerShape(10.dp))
+                                .background(if (isSelected) accentColor.copy(alpha = 0.22f) else c.cardBgElevated)
+                                .border(1.dp, if (isSelected) accentColor else c.glassBorder, RoundedCornerShape(10.dp))
                                 .clickable { onSelectTimer(mins) }
                                 .padding(horizontal = 14.dp, vertical = 11.dp),
                             horizontalArrangement = Arrangement.SpaceBetween,
@@ -4505,7 +5926,7 @@ private fun MiniSleepTimerDialog(
                         ) {
                             Text(
                                 text = label,
-                                color = if (isSelected) accentColor else Color.White,
+                                color = if (isSelected) accentColor else c.textPrimary,
                                 fontSize = 13.5.sp,
                                 fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium
                             )
@@ -4531,6 +5952,7 @@ private fun MiniVideoDetailsDialog(
     onDismiss: () -> Unit
 ) {
     val context = LocalContext.current
+    val c = LocalAppColors.current
     val videoFormat = exoPlayer.videoFormat
     val audioFormat = exoPlayer.audioFormat
 
@@ -4578,8 +6000,8 @@ private fun MiniVideoDetailsDialog(
                 .wrapContentHeight()
                 .padding(16.dp),
             shape = RoundedCornerShape(20.dp),
-            colors = CardDefaults.cardColors(containerColor = Color(0xFF222432)),
-            border = BorderStroke(1.dp, Color.White.copy(alpha = 0.15f)),
+            colors = CardDefaults.cardColors(containerColor = c.dropdownBg),
+            border = BorderStroke(1.dp, c.glassBorder),
             elevation = CardDefaults.cardElevation(16.dp)
         ) {
             Column(
@@ -4595,7 +6017,7 @@ private fun MiniVideoDetailsDialog(
                 ) {
                     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         Icon(Icons.Rounded.Info, contentDescription = null, tint = accentColor, modifier = Modifier.size(22.dp))
-                        Text("Video Details", color = Color.White, fontSize = 17.sp, fontWeight = FontWeight.Bold)
+                        Text("Video Details", color = c.textPrimary, fontSize = 17.sp, fontWeight = FontWeight.Bold)
                     }
                     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                         IconButton(
@@ -4631,7 +6053,7 @@ private fun MiniVideoDetailsDialog(
                             Icon(Icons.Rounded.ContentCopy, contentDescription = "Copy all details", tint = accentColor, modifier = Modifier.size(18.dp))
                         }
                         IconButton(onClick = onDismiss, modifier = Modifier.size(28.dp)) {
-                            Icon(Icons.Rounded.Close, contentDescription = "Close", tint = Color.White.copy(alpha = 0.7f), modifier = Modifier.size(18.dp))
+                            Icon(Icons.Rounded.Close, contentDescription = "Close", tint = c.textSecondary, modifier = Modifier.size(18.dp))
                         }
                     }
                 }
@@ -4692,21 +6114,23 @@ private fun DetailItemRow(
     isPath: Boolean = false,
     onCopy: (() -> Unit)? = null
 ) {
+    val c = LocalAppColors.current
     Row(
         modifier = Modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(8.dp))
-            .background(Color.White.copy(alpha = 0.04f))
+            .background(c.cardBgElevated)
+            .border(0.6.dp, c.glassBorder, RoundedCornerShape(8.dp))
             .padding(horizontal = 10.dp, vertical = 7.dp),
         horizontalArrangement = Arrangement.SpaceBetween,
         verticalAlignment = Alignment.CenterVertically
     ) {
         Column(modifier = Modifier.weight(1f)) {
-            Text(text = label, color = Color.White.copy(alpha = 0.50f), fontSize = 11.sp, fontWeight = FontWeight.Medium)
+            Text(text = label, color = c.textSecondary, fontSize = 11.sp, fontWeight = FontWeight.Medium)
             Spacer(Modifier.height(2.dp))
             Text(
                 text = value,
-                color = Color.White,
+                color = c.textPrimary,
                 fontSize = if (isPath) 11.sp else 13.sp,
                 fontWeight = if (isPath) FontWeight.Normal else FontWeight.SemiBold,
                 fontFamily = if (isPath) FontFamily.Monospace else FontFamily.Default,
@@ -4743,6 +6167,7 @@ private fun PortraitAppExplorer(
     onRepeatToggle: () -> Unit,
     playbackSpeed: Float,
     onSpeedClick: () -> Unit,
+    onResetSpeedToOne: () -> Unit = {},
     isNightMode: Boolean,
     onNightModeToggle: () -> Unit,
     resizeMode: Int,
@@ -4752,16 +6177,21 @@ private fun PortraitAppExplorer(
     onPiPClick: () -> Unit,
     onDetailsClick: () -> Unit,
     onSelectVideo: (VideoItem) -> Unit,
+    isAmbientMode: Boolean = true,
+    onAmbientModeToggle: () -> Unit = {},
     primaryAccent: Color
 ) {
+    val c = LocalAppColors.current
     var selectedTab by remember { mutableIntStateOf(0) }
     var searchQuery by remember { mutableStateOf("") }
     var selectedFolder by remember { mutableStateOf<VideoFolder?>(null) }
+    var explorerSortOrder by remember { mutableStateOf(SortOrder.DATE) }
+    var showSortMenu by remember { mutableStateOf(false) }
 
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .background(Color(0xFF1E1F26))
+            .background(c.baseBackground)
     ) {
         // Video Header Info
         Column(
@@ -4771,7 +6201,7 @@ private fun PortraitAppExplorer(
         ) {
             Text(
                 text = videoTitle,
-                color = Color.White,
+                color = c.textPrimary,
                 fontSize = 16.sp,
                 fontWeight = FontWeight.Bold,
                 maxLines = 2,
@@ -4784,14 +6214,14 @@ private fun PortraitAppExplorer(
             ) {
                 Text(
                     text = formatTime(duration),
-                    color = Color.White.copy(alpha = 0.65f),
+                    color = c.textSecondary,
                     fontSize = 12.sp,
                     fontFamily = FontFamily.Monospace
                 )
-                Text("•", color = Color.White.copy(alpha = 0.35f), fontSize = 12.sp)
+                Text("•", color = c.textHint, fontSize = 12.sp)
                 Text(
                     text = "${playlistVideos.size} in playlist",
-                    color = Color.White.copy(alpha = 0.65f),
+                    color = c.textSecondary,
                     fontSize = 12.sp
                 )
             }
@@ -4824,6 +6254,7 @@ private fun PortraitAppExplorer(
                 label = if (playbackSpeed == playbackSpeed.toInt().toFloat()) "${playbackSpeed.toInt()}x" else "${playbackSpeed}x",
                 isActive = playbackSpeed != 1.0f,
                 accentColor = primaryAccent,
+                onLongClick = onResetSpeedToOne,
                 onClick = onSpeedClick
             )
 
@@ -4851,14 +6282,22 @@ private fun PortraitAppExplorer(
                 onClick = onPiPClick
             )
 
+            ExplorerActionPill(
+                icon = if (isAmbientMode) Icons.Rounded.BlurOn else Icons.Rounded.BlurOff,
+                label = if (isAmbientMode) "Ambient ON" else "Ambient",
+                isActive = isAmbientMode,
+                accentColor = primaryAccent,
+                onClick = onAmbientModeToggle
+            )
+
         }
 
-        HorizontalDivider(color = Color.White.copy(alpha = 0.08f), thickness = 0.5.dp)
+        HorizontalDivider(color = c.glassBorder, thickness = 0.5.dp)
 
         // 3 Exploration Tabs: Queue, All Videos, Folders
         TabRow(
             selectedTabIndex = selectedTab,
-            containerColor = Color(0xFF252732),
+            containerColor = c.dropdownBg,
             contentColor = primaryAccent,
             divider = {}
         ) {
@@ -4874,13 +6313,13 @@ private fun PortraitAppExplorer(
                             Icons.AutoMirrored.Rounded.QueueMusic,
                             contentDescription = null,
                             modifier = Modifier.size(16.dp),
-                            tint = if (selectedTab == 0) primaryAccent else Color.White.copy(0.6f)
+                            tint = if (selectedTab == 0) primaryAccent else c.textSecondary
                         )
                         Text(
                             "Queue (${playlistVideos.size})",
                             fontSize = 13.sp,
                             fontWeight = if (selectedTab == 0) FontWeight.Bold else FontWeight.Normal,
-                            color = if (selectedTab == 0) primaryAccent else Color.White.copy(0.7f)
+                            color = if (selectedTab == 0) primaryAccent else c.textSecondary
                         )
                     }
                 }
@@ -4897,13 +6336,13 @@ private fun PortraitAppExplorer(
                             Icons.Rounded.VideoLibrary,
                             contentDescription = null,
                             modifier = Modifier.size(16.dp),
-                            tint = if (selectedTab == 1) primaryAccent else Color.White.copy(0.6f)
+                            tint = if (selectedTab == 1) primaryAccent else c.textSecondary
                         )
                         Text(
                             "All Videos (${allVideos.size})",
                             fontSize = 13.sp,
                             fontWeight = if (selectedTab == 1) FontWeight.Bold else FontWeight.Normal,
-                            color = if (selectedTab == 1) primaryAccent else Color.White.copy(0.7f)
+                            color = if (selectedTab == 1) primaryAccent else c.textSecondary
                         )
                     }
                 }
@@ -4923,17 +6362,138 @@ private fun PortraitAppExplorer(
                             Icons.Rounded.FolderOpen,
                             contentDescription = null,
                             modifier = Modifier.size(16.dp),
-                            tint = if (selectedTab == 2) primaryAccent else Color.White.copy(0.6f)
+                            tint = if (selectedTab == 2) primaryAccent else c.textSecondary
                         )
                         Text(
                             "Folders (${allFolders.size})",
                             fontSize = 13.sp,
                             fontWeight = if (selectedTab == 2) FontWeight.Bold else FontWeight.Normal,
-                            color = if (selectedTab == 2) primaryAccent else Color.White.copy(0.7f)
+                            color = if (selectedTab == 2) primaryAccent else c.textSecondary
                         )
                     }
                 }
             )
+        }
+
+        // Sort Sub-header Bar
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 14.dp, vertical = 6.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                text = when (selectedTab) {
+                    0 -> "${playlistVideos.size} in Queue"
+                    1 -> "${allVideos.size} Total Videos"
+                    2 -> if (selectedFolder != null) "${selectedFolder!!.videos.size} in ${selectedFolder!!.name}" else "${allFolders.size} Folders"
+                    else -> ""
+                },
+                color = c.textSecondary,
+                fontSize = 12.sp,
+                fontWeight = FontWeight.Medium
+            )
+
+            Box {
+                Surface(
+                    shape = RoundedCornerShape(14.dp),
+                    color = c.glassBgNested,
+                    border = BorderStroke(0.8.dp, c.glassBorder),
+                    modifier = Modifier.clickable { showSortMenu = true }
+                ) {
+                    Row(
+                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(4.dp)
+                    ) {
+                        Icon(
+                            Icons.AutoMirrored.Rounded.Sort,
+                            contentDescription = "Sort",
+                            tint = primaryAccent,
+                            modifier = Modifier.size(14.dp)
+                        )
+                        Text(
+                            text = when (explorerSortOrder) {
+                                SortOrder.NAME -> "Name (A-Z)"
+                                SortOrder.NAME_DESC -> "Name (Z-A)"
+                                SortOrder.DATE -> "Date (Newest)"
+                                SortOrder.DATE_ASC -> "Date (Oldest)"
+                                SortOrder.SIZE -> "Size (Largest)"
+                                SortOrder.SIZE_ASC -> "Size (Smallest)"
+                                SortOrder.DURATION -> "Duration (Long)"
+                                SortOrder.DURATION_ASC -> "Duration (Short)"
+                            },
+                            color = c.textPrimary,
+                            fontSize = 11.5.sp,
+                            fontWeight = FontWeight.Medium
+                        )
+                        Icon(
+                            Icons.Rounded.ArrowDropDown,
+                            contentDescription = null,
+                            tint = c.textSecondary,
+                            modifier = Modifier.size(16.dp)
+                        )
+                    }
+                }
+
+                DropdownMenu(
+                    expanded = showSortMenu,
+                    onDismissRequest = { showSortMenu = false },
+                    modifier = Modifier
+                        .background(c.dropdownBg)
+                        .border(1.dp, c.glassBorder, RoundedCornerShape(4.dp))
+                ) {
+                    Text(
+                        "Sort by",
+                        color = c.textSecondary,
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Bold,
+                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp)
+                    )
+                    HorizontalDivider(color = c.glassBorder)
+                    listOf(
+                        SortOrder.DATE to ("Date Added (Newest)" to Icons.Rounded.Schedule),
+                        SortOrder.DATE_ASC to ("Date Added (Oldest)" to Icons.Rounded.Schedule),
+                        SortOrder.NAME to ("Name (A to Z)" to Icons.Rounded.SortByAlpha),
+                        SortOrder.NAME_DESC to ("Name (Z to A)" to Icons.Rounded.SortByAlpha),
+                        SortOrder.SIZE to ("Size (Largest)" to Icons.Rounded.Storage),
+                        SortOrder.SIZE_ASC to ("Size (Smallest)" to Icons.Rounded.Storage),
+                        SortOrder.DURATION to ("Duration (Longest)" to Icons.Rounded.Schedule),
+                        SortOrder.DURATION_ASC to ("Duration (Shortest)" to Icons.Rounded.Schedule)
+                    ).forEach { (order, pair) ->
+                        val (label, icon) = pair
+                        val isSelected = explorerSortOrder == order
+                        DropdownMenuItem(
+                            leadingIcon = {
+                                Icon(
+                                    icon,
+                                    contentDescription = null,
+                                    tint = if (isSelected) primaryAccent else c.textSecondary,
+                                    modifier = Modifier.size(16.dp)
+                                )
+                            },
+                            text = {
+                                Text(
+                                    label,
+                                    color = if (isSelected) primaryAccent else c.textPrimary,
+                                    fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
+                                    fontSize = 13.sp
+                                )
+                            },
+                            trailingIcon = {
+                                if (isSelected) {
+                                    Icon(Icons.Rounded.Check, contentDescription = null, tint = primaryAccent, modifier = Modifier.size(16.dp))
+                                }
+                            },
+                            onClick = {
+                                explorerSortOrder = order
+                                showSortMenu = false
+                            }
+                        )
+                    }
+                }
+            }
         }
 
         // Tab Content
@@ -4941,11 +6501,14 @@ private fun PortraitAppExplorer(
             when (selectedTab) {
                 0 -> {
                     // Queue / Playlist
+                    val sortedPlaylist = remember(playlistVideos, explorerSortOrder) {
+                        playlistVideos.sortVideosWithOrder(explorerSortOrder)
+                    }
                     LazyColumn(
                         modifier = Modifier.fillMaxSize(),
                         contentPadding = PaddingValues(bottom = 32.dp)
                     ) {
-                        items(playlistVideos, key = { it.uri.toString() }) { video ->
+                        items(sortedPlaylist, key = { it.uri.toString() }) { video ->
                             ExplorerVideoRow(
                                 video = video,
                                 isCurrent = video.uri.toString() == currentUrl,
@@ -4956,34 +6519,35 @@ private fun PortraitAppExplorer(
                     }
                 }
                 1 -> {
-                    // All Videos (Searchable)
-                    val filteredVideos = remember(searchQuery, allVideos) {
-                        if (searchQuery.isBlank()) allVideos
+                    // All Videos (Searchable & Sortable)
+                    val filteredVideos = remember(searchQuery, allVideos, explorerSortOrder) {
+                        val base = if (searchQuery.isBlank()) allVideos
                         else allVideos.filter { it.title.contains(searchQuery, ignoreCase = true) }
+                        base.sortVideosWithOrder(explorerSortOrder)
                     }
                     Column(modifier = Modifier.fillMaxSize()) {
                         OutlinedTextField(
                             value = searchQuery,
                             onValueChange = { searchQuery = it },
-                            placeholder = { Text("Search videos...", color = Color.White.copy(0.4f), fontSize = 13.sp) },
+                            placeholder = { Text("Search videos...", color = c.textHint, fontSize = 13.sp) },
                             leadingIcon = {
                                 Icon(Icons.Rounded.Search, contentDescription = "Search", tint = primaryAccent, modifier = Modifier.size(18.dp))
                             },
                             trailingIcon = {
                                 if (searchQuery.isNotEmpty()) {
                                     IconButton(onClick = { searchQuery = "" }, modifier = Modifier.size(28.dp)) {
-                                        Icon(Icons.Rounded.Close, contentDescription = "Clear", tint = Color.White.copy(0.6f), modifier = Modifier.size(16.dp))
+                                        Icon(Icons.Rounded.Close, contentDescription = "Clear", tint = c.textSecondary, modifier = Modifier.size(16.dp))
                                     }
                                 }
                             },
                             singleLine = true,
                             colors = OutlinedTextFieldDefaults.colors(
-                                focusedContainerColor = Color(0xFF282A36),
-                                unfocusedContainerColor = Color(0xFF282A36),
-                                focusedTextColor = Color.White,
-                                unfocusedTextColor = Color.White,
+                                focusedContainerColor = c.cardBgElevated,
+                                unfocusedContainerColor = c.cardBgElevated,
+                                focusedTextColor = c.textPrimary,
+                                unfocusedTextColor = c.textPrimary,
                                 focusedBorderColor = primaryAccent,
-                                unfocusedBorderColor = Color.White.copy(0.12f)
+                                unfocusedBorderColor = c.glassBorder
                             ),
                             shape = RoundedCornerShape(12.dp),
                             modifier = Modifier
@@ -5011,6 +6575,9 @@ private fun PortraitAppExplorer(
                     // Folders
                     val currentDrillFolder = selectedFolder
                     if (currentDrillFolder != null) {
+                        val sortedDrillVideos = remember(currentDrillFolder.videos, explorerSortOrder) {
+                            currentDrillFolder.videos.sortVideosWithOrder(explorerSortOrder)
+                        }
                         Column(modifier = Modifier.fillMaxSize()) {
                             Row(
                                 modifier = Modifier
@@ -5028,24 +6595,24 @@ private fun PortraitAppExplorer(
                                 Spacer(Modifier.width(8.dp))
                                 Text(
                                     text = currentDrillFolder.name,
-                                    color = Color.White,
+                                    color = c.textPrimary,
                                     fontSize = 15.sp,
                                     fontWeight = FontWeight.Bold
                                 )
                                 Spacer(Modifier.width(6.dp))
                                 Text(
                                     text = "(${currentDrillFolder.videos.size})",
-                                    color = Color.White.copy(0.6f),
+                                    color = c.textSecondary,
                                     fontSize = 13.sp
                                 )
                             }
-                            HorizontalDivider(color = Color.White.copy(alpha = 0.08f), thickness = 0.5.dp)
+                            HorizontalDivider(color = c.glassBorder, thickness = 0.5.dp)
 
                             LazyColumn(
                                 modifier = Modifier.fillMaxSize(),
                                 contentPadding = PaddingValues(bottom = 32.dp)
                             ) {
-                                items(currentDrillFolder.videos, key = { it.uri.toString() }) { video ->
+                                items(sortedDrillVideos, key = { it.uri.toString() }) { video ->
                                     ExplorerVideoRow(
                                         video = video,
                                         isCurrent = video.uri.toString() == currentUrl,
@@ -5056,11 +6623,14 @@ private fun PortraitAppExplorer(
                             }
                         }
                     } else {
+                        val sortedFolders = remember(allFolders, explorerSortOrder) {
+                            allFolders.sortFoldersWithOrder(explorerSortOrder)
+                        }
                         LazyColumn(
                             modifier = Modifier.fillMaxSize(),
                             contentPadding = PaddingValues(bottom = 32.dp)
                         ) {
-                            items(allFolders, key = { it.id }) { folder ->
+                            items(sortedFolders, key = { it.id }) { folder ->
                                 Row(
                                     modifier = Modifier
                                         .fillMaxWidth()
@@ -5087,7 +6657,7 @@ private fun PortraitAppExplorer(
                                     Column(modifier = Modifier.weight(1f)) {
                                         Text(
                                             text = folder.name,
-                                            color = Color.White,
+                                            color = c.textPrimary,
                                             fontSize = 15.sp,
                                             fontWeight = FontWeight.SemiBold,
                                             maxLines = 1,
@@ -5096,18 +6666,18 @@ private fun PortraitAppExplorer(
                                         Spacer(Modifier.height(2.dp))
                                         Text(
                                             text = "${folder.videos.size} videos",
-                                            color = Color.White.copy(0.6f),
+                                            color = c.textSecondary,
                                             fontSize = 12.sp
                                         )
                                     }
                                     Icon(
                                         Icons.AutoMirrored.Rounded.ArrowForwardIos,
                                         contentDescription = null,
-                                        tint = Color.White.copy(0.35f),
+                                        tint = c.textHint,
                                         modifier = Modifier.size(14.dp)
                                     )
                                 }
-                                HorizontalDivider(color = Color.White.copy(alpha = 0.05f), thickness = 0.5.dp)
+                                HorizontalDivider(color = c.glassBorder, thickness = 0.5.dp)
                             }
                         }
                     }
@@ -5117,24 +6687,31 @@ private fun PortraitAppExplorer(
     }
 }
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun ExplorerActionPill(
     icon: ImageVector,
     label: String,
     isActive: Boolean,
     accentColor: Color,
+    onLongClick: (() -> Unit)? = null,
     onClick: () -> Unit
 ) {
+    val c = LocalAppColors.current
+    val contentColor = if (isActive) Color.White else c.textPrimary
     Row(
         modifier = Modifier
             .clip(RoundedCornerShape(20.dp))
-            .background(if (isActive) accentColor.copy(alpha = 0.22f) else Color.White.copy(alpha = 0.08f))
+            .background(if (isActive) accentColor else c.cardBgElevated)
             .border(
                 1.dp,
-                if (isActive) accentColor else Color.White.copy(alpha = 0.15f),
+                if (isActive) accentColor else c.glassBorder,
                 RoundedCornerShape(20.dp)
             )
-            .clickable(onClick = onClick)
+            .combinedClickable(
+                onClick = onClick,
+                onLongClick = onLongClick
+            )
             .padding(horizontal = 12.dp, vertical = 6.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(6.dp)
@@ -5142,14 +6719,14 @@ private fun ExplorerActionPill(
         Icon(
             imageVector = icon,
             contentDescription = null,
-            tint = if (isActive) accentColor else Color.White,
+            tint = contentColor,
             modifier = Modifier.size(16.dp)
         )
         Text(
             text = label,
-            color = if (isActive) accentColor else Color.White,
+            color = contentColor,
             fontSize = 12.sp,
-            fontWeight = FontWeight.Medium
+            fontWeight = if (isActive) FontWeight.Bold else FontWeight.Medium
         )
     }
 }
@@ -5162,6 +6739,7 @@ private fun ExplorerVideoRow(
     onClick: () -> Unit
 ) {
     val context = LocalContext.current
+    val c = LocalAppColors.current
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -5175,10 +6753,10 @@ private fun ExplorerVideoRow(
                 .width(108.dp)
                 .height(62.dp)
                 .clip(RoundedCornerShape(8.dp))
-                .background(Color(0xFF282A36))
+                .background(c.cardBgElevated)
                 .border(
                     if (isCurrent) 1.5.dp else 0.5.dp,
-                    if (isCurrent) primaryAccent else Color.White.copy(0.12f),
+                    if (isCurrent) primaryAccent else c.glassBorder,
                     RoundedCornerShape(8.dp)
                 )
         ) {
@@ -5232,7 +6810,7 @@ private fun ExplorerVideoRow(
         Column(modifier = Modifier.weight(1f)) {
             Text(
                 text = video.title.substringBeforeLast("."),
-                color = if (isCurrent) primaryAccent else Color.White,
+                color = if (isCurrent) primaryAccent else c.textPrimary,
                 fontSize = 14.sp,
                 fontWeight = if (isCurrent) FontWeight.Bold else FontWeight.Normal,
                 maxLines = 2,
@@ -5245,24 +6823,24 @@ private fun ExplorerVideoRow(
             ) {
                 Text(
                     text = formatSize(video.size),
-                    color = Color.White.copy(alpha = 0.55f),
+                    color = c.textSecondary,
                     fontSize = 11.sp
                 )
                 Text(
                     text = "•",
-                    color = Color.White.copy(alpha = 0.35f),
+                    color = c.textHint,
                     fontSize = 11.sp
                 )
                 Text(
                     text = formatTime(video.duration),
-                    color = Color.White.copy(alpha = 0.55f),
+                    color = c.textSecondary,
                     fontSize = 11.sp,
                     fontFamily = FontFamily.Monospace
                 )
             }
         }
     }
-    HorizontalDivider(color = Color.White.copy(alpha = 0.04f), thickness = 0.5.dp)
+    HorizontalDivider(color = c.glassBorder, thickness = 0.5.dp)
 }
 
 // ─── Floating Music Mini Bar in Video Section (100% Solid Opaque Background) ──
@@ -5278,19 +6856,15 @@ private fun VideoMusicMiniBar(
     onClose: () -> Unit,
     modifier: Modifier = Modifier
 ) {
+    val c = LocalAppColors.current
     Box(
         modifier = modifier
             .shadow(16.dp, RoundedCornerShape(18.dp), ambientColor = Color.Black.copy(alpha = 0.85f), spotColor = Color.Black)
             .clip(RoundedCornerShape(18.dp))
-            .background(Color(0xFF131522)) // 100% solid, fully opaque background
+            .background(c.dropdownBg)
             .border(
                 1.dp,
-                Brush.horizontalGradient(
-                    listOf(
-                        Color(0xFF3E4870),
-                        Color(0xFF22263D)
-                    )
-                ),
+                c.glassBorder,
                 RoundedCornerShape(18.dp)
             )
             .padding(horizontal = 10.dp, vertical = 6.dp)
@@ -5304,8 +6878,8 @@ private fun VideoMusicMiniBar(
                 modifier = Modifier
                     .size(36.dp)
                     .clip(RoundedCornerShape(10.dp))
-                    .background(Color(0xFF202438))
-                    .border(0.8.dp, Color.White.copy(alpha = 0.15f), RoundedCornerShape(10.dp)),
+                    .background(c.cardBgElevated)
+                    .border(0.8.dp, c.glassBorder, RoundedCornerShape(10.dp)),
                 contentAlignment = Alignment.Center
             ) {
                 if (artUri != null) {
@@ -5319,7 +6893,7 @@ private fun VideoMusicMiniBar(
                     Icon(
                         Icons.Rounded.MusicNote,
                         contentDescription = null,
-                        tint = Color(0xFF6C7CFF),
+                        tint = c.accentBlue,
                         modifier = Modifier.size(20.dp)
                     )
                 }
@@ -5333,7 +6907,7 @@ private fun VideoMusicMiniBar(
             ) {
                 Text(
                     text = title.ifBlank { "Music Playing" },
-                    color = Color.White,
+                    color = c.textPrimary,
                     fontSize = 12.sp,
                     fontWeight = FontWeight.Bold,
                     maxLines = 1,
@@ -5341,7 +6915,7 @@ private fun VideoMusicMiniBar(
                 )
                 Text(
                     text = artist.ifBlank { "Background Audio" },
-                    color = Color(0xFFA0A8D0),
+                    color = c.textSecondary,
                     fontSize = 10.sp,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
@@ -5356,7 +6930,7 @@ private fun VideoMusicMiniBar(
                 Icon(
                     Icons.Rounded.SkipPrevious,
                     contentDescription = "Previous Track",
-                    tint = Color.White,
+                    tint = c.textPrimary,
                     modifier = Modifier.size(20.dp)
                 )
             }
@@ -5367,7 +6941,7 @@ private fun VideoMusicMiniBar(
                 modifier = Modifier
                     .size(34.dp)
                     .clip(CircleShape)
-                    .background(Color(0xFF4361EE))
+                    .background(c.accentBlue)
             ) {
                 Icon(
                     imageVector = if (isPlaying) Icons.Rounded.Pause else Icons.Rounded.PlayArrow,
@@ -5385,7 +6959,7 @@ private fun VideoMusicMiniBar(
                 Icon(
                     Icons.Rounded.SkipNext,
                     contentDescription = "Next Track",
-                    tint = Color.White,
+                    tint = c.textPrimary,
                     modifier = Modifier.size(20.dp)
                 )
             }
@@ -5398,7 +6972,7 @@ private fun VideoMusicMiniBar(
                 Icon(
                     Icons.Rounded.Close,
                     contentDescription = "Dismiss",
-                    tint = Color.White.copy(alpha = 0.6f),
+                    tint = c.textSecondary,
                     modifier = Modifier.size(16.dp)
                 )
             }
@@ -5410,16 +6984,17 @@ private fun VideoMusicMiniBar(
 @Composable
 private fun ResumePlaybackPrompt(
     resumePosition: Long,
-    onResume: () -> Unit,
+    onStartOver: () -> Unit,
     onDismiss: () -> Unit,
     primaryAccent: Color,
     modifier: Modifier = Modifier
 ) {
+    val c = LocalAppColors.current
     Box(
         modifier = modifier
             .shadow(16.dp, RoundedCornerShape(16.dp), ambientColor = Color.Black.copy(0.7f), spotColor = primaryAccent.copy(0.5f))
             .clip(RoundedCornerShape(16.dp))
-            .background(Color(0xFF141724))
+            .background(c.dropdownBg)
             .border(1.2.dp, primaryAccent.copy(alpha = 0.65f), RoundedCornerShape(16.dp))
             .padding(horizontal = 14.dp, vertical = 8.dp)
     ) {
@@ -5435,32 +7010,32 @@ private fun ResumePlaybackPrompt(
             )
             Column(modifier = Modifier.weight(1f, fill = false)) {
                 Text(
-                    text = "Resume playback?",
-                    color = Color.White,
+                    text = "Resumed playback",
+                    color = c.textPrimary,
                     fontSize = 12.5.sp,
                     fontWeight = FontWeight.Bold
                 )
                 Text(
                     text = "At ${formatTime(resumePosition)}",
-                    color = Color.White.copy(alpha = 0.65f),
+                    color = c.textSecondary,
                     fontSize = 11.sp,
                     fontFamily = FontFamily.Monospace
                 )
             }
             Button(
-                onClick = onResume,
+                onClick = onStartOver,
                 colors = ButtonDefaults.buttonColors(containerColor = primaryAccent, contentColor = Color.White),
                 shape = RoundedCornerShape(8.dp),
                 contentPadding = PaddingValues(horizontal = 10.dp, vertical = 2.dp),
                 modifier = Modifier.height(30.dp)
             ) {
-                Text("Resume", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                Text("Start Over", fontSize = 11.sp, fontWeight = FontWeight.Bold)
             }
             IconButton(
                 onClick = onDismiss,
                 modifier = Modifier.size(24.dp)
             ) {
-                Icon(Icons.Rounded.Close, contentDescription = "Dismiss", tint = Color.White.copy(alpha = 0.6f), modifier = Modifier.size(14.dp))
+                Icon(Icons.Rounded.Close, contentDescription = "Dismiss", tint = c.textSecondary, modifier = Modifier.size(14.dp))
             }
         }
     }
@@ -5475,11 +7050,12 @@ private fun ResolutionBadgeIntroCard(
     primaryAccent: Color,
     modifier: Modifier = Modifier
 ) {
+    val c = LocalAppColors.current
     Box(
         modifier = modifier
             .shadow(12.dp, RoundedCornerShape(12.dp), ambientColor = Color.Black)
             .clip(RoundedCornerShape(12.dp))
-            .background(Color(0xFF10121C).copy(alpha = 0.88f))
+            .background(c.dropdownBg.copy(alpha = 0.92f))
             .border(1.dp, primaryAccent.copy(alpha = 0.6f), RoundedCornerShape(12.dp))
             .padding(horizontal = 12.dp, vertical = 6.dp)
     ) {
@@ -5501,7 +7077,7 @@ private fun ResolutionBadgeIntroCard(
             }
             Text(
                 text = "${width}×${height}",
-                color = Color.White,
+                color = c.textPrimary,
                 fontSize = 11.sp,
                 fontWeight = FontWeight.SemiBold,
                 fontFamily = FontFamily.Monospace
@@ -5509,4 +7085,5 @@ private fun ResolutionBadgeIntroCard(
         }
     }
 }
+
 

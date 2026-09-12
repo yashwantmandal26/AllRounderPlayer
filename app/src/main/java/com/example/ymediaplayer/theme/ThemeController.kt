@@ -10,22 +10,25 @@ import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.platform.LocalContext
 
 enum class ThemeMode(val displayName: String) {
-    DARK_GREY("Dark Grey"),
-    SOLID_BLACK("Solid Black & Grey"),
-    MILK_WHITE("Solid Milk White"),
-    LESS_WHITE("Less White");
+    SOLID_DARK("Solid Dark (Matte)"),
+    SOLID_WHITE("Solid White (Matte)"),
+    DARK_GREY("Dark Grey (Glass)"),
+    LESS_WHITE("Less White (Soft)");
 
     companion object {
+        val SOLID_BLACK get() = SOLID_DARK
+        val MILK_WHITE get() = SOLID_WHITE
+
         fun fromString(name: String?): ThemeMode {
             return when (name?.uppercase()) {
+                "SOLID_DARK", "SOLID_BLACK" -> SOLID_DARK
+                "SOLID_WHITE", "MILK_WHITE" -> SOLID_WHITE
                 "DARK_GREY" -> DARK_GREY
-                "SOLID_BLACK" -> SOLID_BLACK
-                "MILK_WHITE" -> MILK_WHITE
                 "LESS_WHITE" -> LESS_WHITE
-                "DARK" -> DARK_GREY
-                "LIGHT" -> LESS_WHITE
-                "SYSTEM" -> DARK_GREY
-                else -> DARK_GREY
+                "DARK" -> SOLID_DARK
+                "LIGHT" -> SOLID_WHITE
+                "SYSTEM" -> SOLID_DARK
+                else -> SOLID_DARK
             }
         }
     }
@@ -40,7 +43,7 @@ class ThemeController(context: Context) {
         .getSharedPreferences("ymedia_prefs", Context.MODE_PRIVATE)
 
     var mode by mutableStateOf(
-        ThemeMode.fromString(prefs.getString(KEY, ThemeMode.DARK_GREY.name))
+        ThemeMode.fromString(prefs.getString(KEY, ThemeMode.SOLID_DARK.name))
     )
         private set
 
