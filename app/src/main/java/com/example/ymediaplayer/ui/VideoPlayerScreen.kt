@@ -26,6 +26,7 @@ import androidx.activity.compose.BackHandler
 import androidx.compose.animation.*
 import androidx.compose.animation.core.*
 import androidx.compose.foundation.*
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
@@ -299,6 +300,38 @@ fun VideoPlayerScreen(
     var isSpeedHolding by remember { mutableStateOf(false) }
     var speedHoldDisplaySpeed by remember { mutableFloatStateOf(1.5f) }
     var preHoldSpeed by remember { mutableFloatStateOf(1.0f) }
+
+    // ─── Resume Playback Prompt State ─────────────────────────────────────────
+    var resumePromptPosition by remember(currentUrl) {
+        val saved = appPreferences.getVideoProgress(currentUrl)
+        mutableLongStateOf(if (saved > 5000L) saved else 0L)
+    }
+
+    LaunchedEffect(resumePromptPosition) {
+        if (resumePromptPosition > 0L) {
+            delay(7000L)
+            resumePromptPosition = 0L
+        }
+    }
+
+    // ─── A-B Looping State ───────────────────────────────────────────────────
+    var loopStartMs by remember { mutableStateOf<Long?>(null) }
+    var loopEndMs by remember { mutableStateOf<Long?>(null) }
+
+    // ─── Bookmarks State ─────────────────────────────────────────────────────
+    var bookmarksList by remember(currentUrl) { mutableStateOf(appPreferences.getBookmarks(currentUrl)) }
+
+    // ─── Resolution Badge Intro Overlay ──────────────────────────────────────
+    var showResolutionBadgeIntro by remember(currentUrl) { mutableStateOf(true) }
+    LaunchedEffect(currentUrl) {
+        showResolutionBadgeIntro = true
+        delay(3500L)
+        showResolutionBadgeIntro = false
+    }
+
+    var lastSeekMilestone by remember { mutableIntStateOf(-1) }
+    var showRewindJumpMenu by remember { mutableStateOf(false) }
+    var showForwardJumpMenu by remember { mutableStateOf(false) }
 
     // ─── Seek Thumbnail Preview State (High-Performance Instant Peek) ─────────
     var seekThumbnail by remember { mutableStateOf<android.graphics.Bitmap?>(null) }
@@ -629,6 +662,17 @@ fun VideoPlayerScreen(
                     videoHeight = effectiveH
                 }
             }
+
+            override fun onPlaybackStateChanged(playbackState: Int) {
+                if (playbackState == Player.STATE_ENDED) {
+                    if (repeatMode == Player.REPEAT_MODE_ONE) {
+                        exoPlayer.seekTo(0)
+                        exoPlayer.play()
+                    } else if (repeatMode == Player.REPEAT_MODE_ALL || (playlistVideos.isNotEmpty() && currentVideoIndex < playlistVideos.size - 1)) {
+                        playNextVideo()
+                    }
+                }
+            }
         }
         exoPlayer.addListener(listener)
         onDispose {
@@ -894,8 +938,8 @@ fun VideoPlayerScreen(
         }
     }
 
-    // ─── Progress Loop ────────────────────────────────────────────────────────
-    LaunchedEffect(exoPlayer) {
+    // ─── Progress Loop & A-B Looping Check ─────────────────────────────────────
+    LaunchedEffect(exoPlayer, loopStartMs, loopEndMs) {
         while (true) {
             if (!isDraggingSeek) {
                 currentPosition = exoPlayer.currentPosition
@@ -903,6 +947,11 @@ fun VideoPlayerScreen(
             }
             bufferedPosition = exoPlayer.bufferedPosition.coerceAtLeast(0L)
             isPlaying = exoPlayer.isPlaying
+            val lStart = loopStartMs
+            val lEnd = loopEndMs
+            if (lStart != null && lEnd != null && lEnd > lStart && currentPosition >= lEnd) {
+                safeSeek(lStart)
+            }
             delay(200.milliseconds)
         }
     }
@@ -1210,14 +1259,28 @@ fun VideoPlayerScreen(
                                 activeGestureMode = gestureMode
                                 change.consume()
                                 break
-                            } else if (abs(diffX) > 22f && abs(diffX) > abs(diffY)) {
-                                // Horizontal swipe on screen disabled for seek; progress bar is used
-                                gestureMode = PlayerGestureMode.IGNORED_DRAG
+                            } else if (abs(diffX) > 35f && abs(diffX) > abs(diffY) * 1.3f) {
+                                // Horizontal swipe in portrait = Next / Previous Video
+                                gestureMode = PlayerGestureMode.VIDEO_SWITCH_SWIPE
+                                activeGestureMode = gestureMode
                                 change.consume()
-                            } else if (diffY > 30f && abs(diffY) > abs(diffX)) {
-                                // Downward drag in portrait is ignored
-                                gestureMode = PlayerGestureMode.IGNORED_DRAG
+                            } else if (diffY > 40f && abs(diffY) > abs(diffX)) {
+                                // Downward swipe in portrait = enter PiP!
+                                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                                    try {
+                                        val params = buildPipParams()
+                                        if (params != null) {
+                                            activity?.enterPictureInPictureMode(params)
+                                        } else {
+                                            @Suppress("DEPRECATION")
+                                            activity?.enterPictureInPictureMode()
+                                        }
+                                    } catch (_: Exception) {}
+                                }
+                                gestureMode = PlayerGestureMode.ORIENTATION_SWIPE
+                                activeGestureMode = gestureMode
                                 change.consume()
+                                break
                             }
                         } else {
                             // ─── FULL-SCREEN VIDEO PLAYER MODE ───
@@ -1672,62 +1735,55 @@ fun VideoPlayerScreen(
             }
         }
 
-        // ─── 6b. Press-Hold Speed HUD ─────────────────────────────────────────
+        // ─── 6b. Press-Hold Speed HUD (Transparent, Zero Background) ─────────
         AnimatedVisibility(
             visible = isSpeedHolding && !isInPiP,
             enter = fadeIn(tween(120)) + scaleIn(initialScale = 0.85f, animationSpec = spring(stiffness = Spring.StiffnessMediumLow)),
             exit = fadeOut(tween(200)) + scaleOut(targetScale = 0.90f),
-            modifier = Modifier.align(Alignment.Center)
+            modifier = Modifier
+                .align(Alignment.TopCenter)
+                .padding(top = 36.dp)
         ) {
-            Box(
-                modifier = Modifier
-                    .clip(RoundedCornerShape(28.dp))
-                    .background(Color.Black.copy(alpha = 0.18f))
-                    .blur(24.dp)
-            )
             Column(
                 horizontalAlignment = Alignment.CenterHorizontally,
-                modifier = Modifier
-                    .clip(RoundedCornerShape(28.dp))
-                    .background(
-                        Brush.verticalGradient(
-                            listOf(
-                                primaryAccent.copy(alpha = 0.28f),
-                                Color.Black.copy(alpha = 0.82f)
-                            )
-                        )
-                    )
-                    .border(
-                        1.5.dp,
-                        Brush.verticalGradient(
-                            listOf(primaryAccent.copy(0.7f), primaryAccent.copy(0.25f), Color.Transparent)
-                        ),
-                        RoundedCornerShape(28.dp)
-                    )
-                    .padding(horizontal = 40.dp, vertical = 20.dp)
+                modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp)
             ) {
-                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     Icon(
                         Icons.Rounded.Speed,
                         contentDescription = null,
                         tint = primaryAccent,
-                        modifier = Modifier.size(32.dp)
+                        modifier = Modifier.size(30.dp)
                     )
                     Text(
-                        text = String.format("%.2f", speedHoldDisplaySpeed) + "×",
+                        text = String.format(Locale.getDefault(), "%.2f", speedHoldDisplaySpeed) + "×",
                         color = Color.White,
                         fontSize = 32.sp,
                         fontWeight = FontWeight.ExtraBold,
-                        fontFamily = FontFamily.Monospace
+                        fontFamily = FontFamily.Monospace,
+                        style = androidx.compose.ui.text.TextStyle(
+                            shadow = androidx.compose.ui.graphics.Shadow(
+                                color = Color.Black.copy(alpha = 0.95f),
+                                offset = Offset(2f, 2f),
+                                blurRadius = 8f
+                            )
+                        )
                     )
                 }
-                Spacer(Modifier.height(8.dp))
+                Spacer(Modifier.height(3.dp))
                 Text(
-                    text = "Hold & Slide ←→ to adjust",
-                    color = Color.White.copy(alpha = 0.70f),
+                    text = "Slide ←→ to adjust",
+                    color = Color.White.copy(alpha = 0.85f),
                     fontSize = 12.sp,
-                    fontWeight = FontWeight.Medium,
-                    letterSpacing = 0.5.sp
+                    fontWeight = FontWeight.SemiBold,
+                    letterSpacing = 0.5.sp,
+                    style = androidx.compose.ui.text.TextStyle(
+                        shadow = androidx.compose.ui.graphics.Shadow(
+                            color = Color.Black.copy(alpha = 0.95f),
+                            offset = Offset(1f, 1f),
+                            blurRadius = 6f
+                        )
+                    )
                 )
             }
         }
@@ -1750,6 +1806,43 @@ fun VideoPlayerScreen(
                 onPrevious = { MusicService.playPrevious() },
                 onNext = { MusicService.playNext() },
                 onClose = { isMusicDismissed = true }
+            )
+        }
+
+        // ─── 6d. Resume Playback Floating Prompt ─────────────────────────────
+        AnimatedVisibility(
+            visible = resumePromptPosition > 0L && !isInPiP,
+            enter = slideInVertically(initialOffsetY = { it }) + fadeIn(),
+            exit = slideOutVertically(targetOffsetY = { it }) + fadeOut(),
+            modifier = Modifier
+                .align(Alignment.BottomCenter)
+                .padding(bottom = if (showControls) 130.dp else 30.dp, start = 16.dp, end = 16.dp)
+        ) {
+            ResumePlaybackPrompt(
+                resumePosition = resumePromptPosition,
+                onResume = {
+                    safeSeek(resumePromptPosition)
+                    resumePromptPosition = 0L
+                },
+                onDismiss = { resumePromptPosition = 0L },
+                primaryAccent = primaryAccent
+            )
+        }
+
+        // ─── 6e. Resolution Badge Intro Card ─────────────────────────────────
+        AnimatedVisibility(
+            visible = showResolutionBadgeIntro && resolutionBadge != null && !isInPiP && !showControls,
+            enter = slideInVertically(initialOffsetY = { -it }) + fadeIn(),
+            exit = slideOutVertically(targetOffsetY = { -it }) + fadeOut(),
+            modifier = Modifier
+                .align(Alignment.TopCenter)
+                .padding(top = 24.dp)
+        ) {
+            ResolutionBadgeIntroCard(
+                badge = resolutionBadge ?: "",
+                width = videoWidth,
+                height = videoHeight,
+                primaryAccent = primaryAccent
             )
         }
 
@@ -1992,6 +2085,30 @@ fun VideoPlayerScreen(
                                     Toast.makeText(context, if (isBackgroundAudio) "Background audio ON" else "Background audio OFF", Toast.LENGTH_SHORT).show()
                                 },
                                 onOpenVideoInfo = { showVideoInfoSheet = true },
+                                loopStartMs = loopStartMs,
+                                loopEndMs = loopEndMs,
+                                onToggleLoop = {
+                                    if (loopStartMs == null) {
+                                        loopStartMs = currentPosition
+                                        Toast.makeText(context, "Loop Point A set at ${formatTime(currentPosition)}", Toast.LENGTH_SHORT).show()
+                                    } else if (loopEndMs == null) {
+                                        if (currentPosition > loopStartMs!!) {
+                                            loopEndMs = currentPosition
+                                            Toast.makeText(context, "Loop Point B set. Looping A-B", Toast.LENGTH_SHORT).show()
+                                        } else {
+                                            Toast.makeText(context, "Point B must be after Point A", Toast.LENGTH_SHORT).show()
+                                        }
+                                    } else {
+                                        loopStartMs = null
+                                        loopEndMs = null
+                                        Toast.makeText(context, "A-B Loop cleared", Toast.LENGTH_SHORT).show()
+                                    }
+                                },
+                                onAddBookmark = {
+                                    appPreferences.saveBookmark(currentUrl, currentPosition, "")
+                                    bookmarksList = appPreferences.getBookmarks(currentUrl)
+                                    Toast.makeText(context, "Bookmark saved at ${formatTime(currentPosition)}", Toast.LENGTH_SHORT).show()
+                                },
                                 primaryAccent = primaryAccent,
                                 modifier = Modifier.fillMaxWidth().padding(horizontal = 4.dp)
                             )
@@ -2079,6 +2196,12 @@ fun VideoPlayerScreen(
                                     onValueChange = {
                                         isDraggingSeek = true
                                         scrubPosition = it
+                                        val dur = duration.toFloat().coerceAtLeast(1f)
+                                        val milestone = ((it / dur) * 4).toInt()
+                                        if (milestone != lastSeekMilestone) {
+                                            lastSeekMilestone = milestone
+                                            try { haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove) } catch (_: Exception) {}
+                                        }
                                     },
                                     onValueChangeFinished = {
                                         isDraggingSeek = false
@@ -2098,12 +2221,12 @@ fun VideoPlayerScreen(
                                                 .clip(RoundedCornerShape(2.dp))
                                                 .background(Color.White.copy(alpha = 0.22f))
                                         ) {
-                                            // Buffered progress layer
+                                            // Buffered progress layer with theme accent
                                             Box(
                                                 modifier = Modifier
                                                     .fillMaxWidth(buffFraction)
                                                     .fillMaxHeight()
-                                                    .background(Color.White.copy(alpha = 0.48f))
+                                                    .background(primaryAccent.copy(alpha = 0.38f))
                                             )
                                             // Active played layer
                                             Box(
@@ -2629,32 +2752,36 @@ fun VideoPlayerScreen(
                     }
                 }
 
-                // 5. Speed Hold HUD
+                // 5. Speed Hold HUD (Transparent, Zero Background)
                 androidx.compose.animation.AnimatedVisibility(
                     visible = isSpeedHolding && !isInPiP,
                     enter = fadeIn(tween(120)),
                     exit = fadeOut(tween(200)),
-                    modifier = Modifier.align(Alignment.Center)
+                    modifier = Modifier
+                        .align(Alignment.TopCenter)
+                        .padding(top = 16.dp)
                 ) {
                     Column(
                         horizontalAlignment = Alignment.CenterHorizontally,
-                        modifier = Modifier
-                            .clip(RoundedCornerShape(20.dp))
-                            .background(Color.Black.copy(alpha = 0.82f))
-                            .border(1.dp, primaryAccent, RoundedCornerShape(20.dp))
-                            .padding(horizontal = 20.dp, vertical = 10.dp)
+                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp)
                     ) {
-                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                             Icon(Icons.Rounded.Speed, contentDescription = null, tint = primaryAccent, modifier = Modifier.size(22.dp))
                             Text(
-                                text = String.format("%.2f", speedHoldDisplaySpeed) + "×",
+                                text = String.format(Locale.getDefault(), "%.2f", speedHoldDisplaySpeed) + "×",
                                 color = Color.White,
                                 fontSize = 20.sp,
                                 fontWeight = FontWeight.ExtraBold,
-                                fontFamily = FontFamily.Monospace
+                                fontFamily = FontFamily.Monospace,
+                                style = androidx.compose.ui.text.TextStyle(
+                                    shadow = androidx.compose.ui.graphics.Shadow(
+                                        color = Color.Black.copy(alpha = 0.95f),
+                                        offset = Offset(2f, 2f),
+                                        blurRadius = 6f
+                                    )
+                                )
                             )
                         }
-                        Text("Hold & Slide to adjust", color = Color.White.copy(alpha = 0.7f), fontSize = 10.sp)
                     }
                 }
 
@@ -2857,6 +2984,12 @@ fun VideoPlayerScreen(
                                 onValueChange = {
                                     isDraggingSeek = true
                                     scrubPosition = it
+                                    val dur = duration.toFloat().coerceAtLeast(1f)
+                                    val milestone = ((it / dur) * 4).toInt()
+                                    if (milestone != lastSeekMilestone) {
+                                        lastSeekMilestone = milestone
+                                        try { haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove) } catch (_: Exception) {}
+                                    }
                                 },
                                 onValueChangeFinished = {
                                     isDraggingSeek = false
@@ -2876,12 +3009,12 @@ fun VideoPlayerScreen(
                                             .clip(RoundedCornerShape(1.75.dp))
                                             .background(Color.White.copy(alpha = 0.22f))
                                     ) {
-                                        // Buffered progress layer
+                                        // Buffered progress layer with theme accent
                                         Box(
                                             modifier = Modifier
                                                 .fillMaxWidth(buffFraction)
                                                 .fillMaxHeight()
-                                                .background(Color.White.copy(alpha = 0.48f))
+                                                .background(primaryAccent.copy(alpha = 0.38f))
                                         )
                                         // Active played layer
                                         Box(
@@ -2962,6 +3095,26 @@ fun VideoPlayerScreen(
                 )
             }
 
+            // ─── Resume Playback Floating Prompt in Portrait ─────────
+            AnimatedVisibility(
+                visible = resumePromptPosition > 0L && !isInPiP,
+                enter = expandVertically() + fadeIn(),
+                exit = shrinkVertically() + fadeOut()
+            ) {
+                ResumePlaybackPrompt(
+                    resumePosition = resumePromptPosition,
+                    onResume = {
+                        safeSeek(resumePromptPosition)
+                        resumePromptPosition = 0L
+                    },
+                    onDismiss = { resumePromptPosition = 0L },
+                    primaryAccent = primaryAccent,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp, vertical = 4.dp)
+                )
+            }
+
             // Bottom Section: Portrait App Explorer (Explore while video plays!)
             PortraitAppExplorer(
                 currentUrl = currentUrl,
@@ -3031,13 +3184,14 @@ fun VideoPlayerScreen(
                         .fillMaxWidth()
                         .padding(horizontal = 20.dp, vertical = 12.dp)
                 ) {
+                    var playlistSheetTab by remember { mutableIntStateOf(0) }
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Text(
-                            text = "Playlist (${playlistVideos.size} Videos)",
+                            text = if (playlistSheetTab == 0) "Playlist (${playlistVideos.size})" else "Bookmarks (${bookmarksList.size})",
                             color = Color.White,
                             fontSize = 18.sp,
                             fontWeight = FontWeight.Bold
@@ -3046,65 +3200,191 @@ fun VideoPlayerScreen(
                             Icon(Icons.Rounded.Close, contentDescription = "Close", tint = Color.White)
                         }
                     }
+
+                    Spacer(Modifier.height(10.dp))
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(10.dp))
+                                .background(if (playlistSheetTab == 0) primaryAccent else Color.White.copy(alpha = 0.08f))
+                                .clickable { playlistSheetTab = 0 }
+                                .padding(horizontal = 14.dp, vertical = 6.dp)
+                        ) {
+                            Text(
+                                text = "Videos (${playlistVideos.size})",
+                                color = if (playlistSheetTab == 0) Color.White else Color.White.copy(alpha = 0.7f),
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
+                        Box(
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(10.dp))
+                                .background(if (playlistSheetTab == 1) primaryAccent else Color.White.copy(alpha = 0.08f))
+                                .clickable { playlistSheetTab = 1 }
+                                .padding(horizontal = 14.dp, vertical = 6.dp)
+                        ) {
+                            Text(
+                                text = "Bookmarks (${bookmarksList.size})",
+                                color = if (playlistSheetTab == 1) Color.White else Color.White.copy(alpha = 0.7f),
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
+                    }
+
                     Spacer(Modifier.height(12.dp))
+
                     LazyColumn(
                         modifier = Modifier
                             .fillMaxWidth()
                             .heightIn(max = 380.dp),
                         verticalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
-                        itemsIndexed(playlistVideos) { index, item ->
-                            val isCurrent = item.uri.toString() == currentUrl
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .clip(RoundedCornerShape(12.dp))
-                                    .background(if (isCurrent) primaryAccent.copy(alpha = 0.20f) else Color.White.copy(alpha = 0.06f))
-                                    .border(
-                                        width = 1.dp,
-                                        color = if (isCurrent) primaryAccent else Color.Transparent,
-                                        shape = RoundedCornerShape(12.dp)
-                                    )
-                                    .clickable {
-                                        currentVideoIndex = index
-                                        currentUrl = item.uri.toString()
-                                        videoTitle = item.title.substringBeforeLast(".")
-                                        exoPlayer.setMediaItem(MediaItem.fromUri(item.uri))
-                                        exoPlayer.prepare()
-                                        exoPlayer.play()
-                                        showPlaylistSheet = false
-                                    }
-                                    .padding(12.dp),
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Box(
+                        if (playlistSheetTab == 0) {
+                            itemsIndexed(playlistVideos) { index, item ->
+                                val isCurrent = item.uri.toString() == currentUrl
+                                Row(
                                     modifier = Modifier
-                                        .size(34.dp)
-                                        .clip(CircleShape)
-                                        .background(if (isCurrent) primaryAccent else Color.White.copy(alpha = 0.12f)),
-                                    contentAlignment = Alignment.Center
+                                        .fillMaxWidth()
+                                        .clip(RoundedCornerShape(12.dp))
+                                        .background(if (isCurrent) primaryAccent.copy(alpha = 0.20f) else Color.White.copy(alpha = 0.06f))
+                                        .border(
+                                            width = 1.dp,
+                                            color = if (isCurrent) primaryAccent else Color.Transparent,
+                                            shape = RoundedCornerShape(12.dp)
+                                        )
+                                        .clickable {
+                                            currentVideoIndex = index
+                                            currentUrl = item.uri.toString()
+                                            videoTitle = item.title.substringBeforeLast(".")
+                                            exoPlayer.setMediaItem(MediaItem.fromUri(item.uri))
+                                            exoPlayer.prepare()
+                                            exoPlayer.play()
+                                            showPlaylistSheet = false
+                                        }
+                                        .padding(12.dp),
+                                    verticalAlignment = Alignment.CenterVertically
                                 ) {
-                                    if (isCurrent) {
-                                        Icon(Icons.Rounded.PlayArrow, contentDescription = null, tint = Color.White, modifier = Modifier.size(20.dp))
-                                    } else {
-                                        Text("${index + 1}", color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                                    Box(
+                                        modifier = Modifier
+                                            .size(34.dp)
+                                            .clip(CircleShape)
+                                            .background(if (isCurrent) primaryAccent else Color.White.copy(alpha = 0.12f)),
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        if (isCurrent) {
+                                            Icon(Icons.Rounded.PlayArrow, contentDescription = null, tint = Color.White, modifier = Modifier.size(20.dp))
+                                        } else {
+                                            Text("${index + 1}", color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                                        }
+                                    }
+                                    Spacer(Modifier.width(12.dp))
+                                    Column(modifier = Modifier.weight(1f)) {
+                                        Text(
+                                            text = item.title,
+                                            color = if (isCurrent) primaryAccent else Color.White,
+                                            fontSize = 14.sp,
+                                            fontWeight = if (isCurrent) FontWeight.Bold else FontWeight.Normal,
+                                            maxLines = 1,
+                                            overflow = TextOverflow.Ellipsis
+                                        )
+                                        Text(
+                                            text = formatTime(item.duration),
+                                            color = Color.White.copy(alpha = 0.60f),
+                                            fontSize = 12.sp
+                                        )
+                                        if (isCurrent && duration > 0) {
+                                            Spacer(Modifier.height(4.dp))
+                                            val prog = (currentPosition.toFloat() / duration).coerceIn(0f, 1f)
+                                            Box(
+                                                modifier = Modifier
+                                                    .fillMaxWidth()
+                                                    .height(2.5.dp)
+                                                    .clip(RoundedCornerShape(1.2.dp))
+                                                    .background(Color.White.copy(alpha = 0.15f))
+                                            ) {
+                                                Box(
+                                                    modifier = Modifier
+                                                        .fillMaxWidth(prog)
+                                                        .fillMaxHeight()
+                                                        .background(primaryAccent)
+                                                )
+                                            }
+                                        }
                                     }
                                 }
-                                Spacer(Modifier.width(12.dp))
-                                Column(modifier = Modifier.weight(1f)) {
-                                    Text(
-                                        text = item.title,
-                                        color = if (isCurrent) primaryAccent else Color.White,
-                                        fontSize = 14.sp,
-                                        fontWeight = if (isCurrent) FontWeight.Bold else FontWeight.Normal,
-                                        maxLines = 1,
-                                        overflow = TextOverflow.Ellipsis
-                                    )
-                                    Text(
-                                        text = formatTime(item.duration),
-                                        color = Color.White.copy(alpha = 0.60f),
-                                        fontSize = 12.sp
-                                    )
+                            }
+                        } else {
+                            item {
+                                Button(
+                                    onClick = {
+                                        appPreferences.saveBookmark(currentUrl, currentPosition, "")
+                                        bookmarksList = appPreferences.getBookmarks(currentUrl)
+                                        Toast.makeText(context, "Bookmark added at ${formatTime(currentPosition)}", Toast.LENGTH_SHORT).show()
+                                    },
+                                    colors = ButtonDefaults.buttonColors(containerColor = primaryAccent, contentColor = Color.White),
+                                    shape = RoundedCornerShape(10.dp),
+                                    modifier = Modifier.fillMaxWidth()
+                                ) {
+                                    Icon(Icons.Rounded.BookmarkAdd, contentDescription = null, modifier = Modifier.size(18.dp))
+                                    Spacer(Modifier.width(8.dp))
+                                    Text("+ Add Bookmark at ${formatTime(currentPosition)}", fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                                }
+                            }
+                            if (bookmarksList.isEmpty()) {
+                                item {
+                                    Box(
+                                        modifier = Modifier.fillMaxWidth().padding(vertical = 32.dp),
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        Text("No bookmarks saved yet", color = Color.White.copy(alpha = 0.5f), fontSize = 13.sp)
+                                    }
+                                }
+                            } else {
+                                items(bookmarksList) { bookmark ->
+                                    Row(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .clip(RoundedCornerShape(12.dp))
+                                            .background(Color.White.copy(alpha = 0.06f))
+                                            .clickable {
+                                                safeSeek(bookmark.first)
+                                                showPlaylistSheet = false
+                                            }
+                                            .padding(horizontal = 14.dp, vertical = 10.dp),
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Icon(Icons.Rounded.Bookmark, contentDescription = null, tint = primaryAccent, modifier = Modifier.size(20.dp))
+                                        Spacer(Modifier.width(10.dp))
+                                        Column(modifier = Modifier.weight(1f)) {
+                                            Text(
+                                                text = bookmark.second.ifBlank { "Bookmark" },
+                                                color = Color.White,
+                                                fontSize = 13.sp,
+                                                fontWeight = FontWeight.SemiBold
+                                            )
+                                            Text(
+                                                text = formatTime(bookmark.first),
+                                                color = primaryAccent,
+                                                fontSize = 12.sp,
+                                                fontFamily = FontFamily.Monospace
+                                            )
+                                        }
+                                        IconButton(
+                                            onClick = {
+                                                appPreferences.deleteBookmark(currentUrl, bookmark.first)
+                                                bookmarksList = appPreferences.getBookmarks(currentUrl)
+                                            },
+                                            modifier = Modifier.size(30.dp)
+                                        ) {
+                                            Icon(Icons.Rounded.DeleteOutline, contentDescription = "Delete", tint = Color.White.copy(alpha = 0.5f), modifier = Modifier.size(18.dp))
+                                        }
+                                    }
                                 }
                             }
                         }
@@ -3520,6 +3800,10 @@ private fun FloatingPlayerControlsBar(
     isBackgroundAudio: Boolean,
     onToggleBackgroundAudio: () -> Unit,
     onOpenVideoInfo: () -> Unit,
+    loopStartMs: Long? = null,
+    loopEndMs: Long? = null,
+    onToggleLoop: () -> Unit = {},
+    onAddBookmark: () -> Unit = {},
     primaryAccent: Color,
     modifier: Modifier = Modifier
 ) {
@@ -3561,7 +3845,31 @@ private fun FloatingPlayerControlsBar(
             onClick = onOpenSpeedDialog
         )
 
-        // 4. Sleep Timer (Opens Mini Popup Dialog)
+        // 4. A-B Loop Button
+        val isLoopActive = loopStartMs != null
+        val loopLabel = when {
+            loopStartMs != null && loopEndMs != null -> "A-B [${formatTime(loopStartMs)}-${formatTime(loopEndMs)}]"
+            loopStartMs != null -> "Set B [${formatTime(loopStartMs)}]"
+            else -> "A-B Loop"
+        }
+        QuickActionButton(
+            icon = Icons.Rounded.AllInclusive,
+            label = loopLabel,
+            isActive = isLoopActive,
+            activeColor = primaryAccent,
+            onClick = onToggleLoop
+        )
+
+        // 5. Bookmark Button
+        QuickActionButton(
+            icon = Icons.Rounded.BookmarkAdd,
+            label = "Bookmark",
+            isActive = false,
+            activeColor = primaryAccent,
+            onClick = onAddBookmark
+        )
+
+        // 6. Sleep Timer (Opens Mini Popup Dialog)
         QuickActionButton(
             icon = Icons.Rounded.Timer,
             label = if (sleepTimerMinutes > 0) "${sleepTimerMinutes}m" else "Timer",
@@ -3570,7 +3878,7 @@ private fun FloatingPlayerControlsBar(
             onClick = onOpenSleepTimerDialog
         )
 
-        // 5. Repeat / Loop Mode
+        // 7. Repeat / Loop Mode
         QuickActionButton(
             icon = when (repeatMode) {
                 Player.REPEAT_MODE_ONE -> Icons.Rounded.RepeatOne
@@ -3587,7 +3895,7 @@ private fun FloatingPlayerControlsBar(
             onClick = onCycleRepeatMode
         )
 
-        // 6. Night Cinema Tint
+        // 8. Night Cinema Tint
         QuickActionButton(
             icon = Icons.Rounded.Bedtime,
             label = if (isNightMode) "Night ON" else "Night",
@@ -3596,7 +3904,7 @@ private fun FloatingPlayerControlsBar(
             onClick = onToggleNightMode
         )
 
-        // 7. Background Audio Playback
+        // 9. Background Audio Playback
         QuickActionButton(
             icon = Icons.Rounded.Headphones,
             label = if (isBackgroundAudio) "BG ON" else "BG Play",
@@ -3605,7 +3913,7 @@ private fun FloatingPlayerControlsBar(
             onClick = onToggleBackgroundAudio
         )
 
-        // 8. Video Details (Moved at last position)
+        // 10. Video Details
         QuickActionButton(
             icon = Icons.Rounded.Info,
             label = "Details",
@@ -5097,3 +5405,108 @@ private fun VideoMusicMiniBar(
         }
     }
 }
+
+// ─── Resume Playback Floating Prompt ─────────────────────────────────────────
+@Composable
+private fun ResumePlaybackPrompt(
+    resumePosition: Long,
+    onResume: () -> Unit,
+    onDismiss: () -> Unit,
+    primaryAccent: Color,
+    modifier: Modifier = Modifier
+) {
+    Box(
+        modifier = modifier
+            .shadow(16.dp, RoundedCornerShape(16.dp), ambientColor = Color.Black.copy(0.7f), spotColor = primaryAccent.copy(0.5f))
+            .clip(RoundedCornerShape(16.dp))
+            .background(Color(0xFF141724))
+            .border(1.2.dp, primaryAccent.copy(alpha = 0.65f), RoundedCornerShape(16.dp))
+            .padding(horizontal = 14.dp, vertical = 8.dp)
+    ) {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            Icon(
+                Icons.Rounded.History,
+                contentDescription = null,
+                tint = primaryAccent,
+                modifier = Modifier.size(20.dp)
+            )
+            Column(modifier = Modifier.weight(1f, fill = false)) {
+                Text(
+                    text = "Resume playback?",
+                    color = Color.White,
+                    fontSize = 12.5.sp,
+                    fontWeight = FontWeight.Bold
+                )
+                Text(
+                    text = "At ${formatTime(resumePosition)}",
+                    color = Color.White.copy(alpha = 0.65f),
+                    fontSize = 11.sp,
+                    fontFamily = FontFamily.Monospace
+                )
+            }
+            Button(
+                onClick = onResume,
+                colors = ButtonDefaults.buttonColors(containerColor = primaryAccent, contentColor = Color.White),
+                shape = RoundedCornerShape(8.dp),
+                contentPadding = PaddingValues(horizontal = 10.dp, vertical = 2.dp),
+                modifier = Modifier.height(30.dp)
+            ) {
+                Text("Resume", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+            }
+            IconButton(
+                onClick = onDismiss,
+                modifier = Modifier.size(24.dp)
+            ) {
+                Icon(Icons.Rounded.Close, contentDescription = "Dismiss", tint = Color.White.copy(alpha = 0.6f), modifier = Modifier.size(14.dp))
+            }
+        }
+    }
+}
+
+// ─── Resolution Badge Intro Floating Card ────────────────────────────────────
+@Composable
+private fun ResolutionBadgeIntroCard(
+    badge: String,
+    width: Int,
+    height: Int,
+    primaryAccent: Color,
+    modifier: Modifier = Modifier
+) {
+    Box(
+        modifier = modifier
+            .shadow(12.dp, RoundedCornerShape(12.dp), ambientColor = Color.Black)
+            .clip(RoundedCornerShape(12.dp))
+            .background(Color(0xFF10121C).copy(alpha = 0.88f))
+            .border(1.dp, primaryAccent.copy(alpha = 0.6f), RoundedCornerShape(12.dp))
+            .padding(horizontal = 12.dp, vertical = 6.dp)
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            Box(
+                modifier = Modifier
+                    .clip(RoundedCornerShape(4.dp))
+                    .background(primaryAccent.copy(alpha = 0.25f))
+                    .border(0.6.dp, primaryAccent, RoundedCornerShape(4.dp))
+                    .padding(horizontal = 5.dp, vertical = 1.dp)
+            ) {
+                Text(
+                    text = badge,
+                    color = primaryAccent,
+                    fontSize = 10.sp,
+                    fontWeight = FontWeight.Bold,
+                    fontFamily = FontFamily.Monospace
+                )
+            }
+            Text(
+                text = "${width}×${height}",
+                color = Color.White,
+                fontSize = 11.sp,
+                fontWeight = FontWeight.SemiBold,
+                fontFamily = FontFamily.Monospace
+            )
+        }
+    }
+}
+

@@ -306,6 +306,54 @@ enum class PlayerTheme(
         ),
         glowColor = Color(0xFFE5E5EA),
         previewGradient = listOf(Color(0xFFFFFFFF), Color(0xFF48484A))
+    ),
+    SAKURA(
+        id = "SAKURA",
+        displayName = "Sakura Blossom",
+        description = "Blush Rose, Soft Coral & Pastel Petals",
+        primaryAccent = Color(0xFFFF6584),
+        secondaryAccent = Color(0xFFFF85A1),
+        highlightColor = Color(0xFFFFAAC9),
+        orbBrush = Brush.radialGradient(
+            listOf(Color(0xFFFFAAC9), Color(0xFFFF6584), Color(0xFFC9184A))
+        ),
+        gestureBrush = Brush.verticalGradient(
+            listOf(Color(0xFFFFAAC9), Color(0xFFFF6584), Color(0xFFFF4D6D))
+        ),
+        glowColor = Color(0xFFFF6584),
+        previewGradient = listOf(Color(0xFFFF6584), Color(0xFFC9184A))
+    ),
+    SUNSET_GOLD(
+        id = "SUNSET_GOLD",
+        displayName = "Sunset Gold",
+        description = "Warm Amber, Honey Gold & Radiant Orange",
+        primaryAccent = Color(0xFFFFB703),
+        secondaryAccent = Color(0xFFFB8500),
+        highlightColor = Color(0xFFFFEE70),
+        orbBrush = Brush.radialGradient(
+            listOf(Color(0xFFFFEE70), Color(0xFFFFB703), Color(0xFFD46000))
+        ),
+        gestureBrush = Brush.verticalGradient(
+            listOf(Color(0xFFFFEE70), Color(0xFFFFB703), Color(0xFFFB8500))
+        ),
+        glowColor = Color(0xFFFFB703),
+        previewGradient = listOf(Color(0xFFFFB703), Color(0xFFFB8500))
+    ),
+    MATRIX(
+        id = "MATRIX",
+        displayName = "Cyber Matrix",
+        description = "Matrix Hacker Green, Neon Lime & Forest Shadow",
+        primaryAccent = Color(0xFF00FF66),
+        secondaryAccent = Color(0xFF00E676),
+        highlightColor = Color(0xFF69F0AE),
+        orbBrush = Brush.radialGradient(
+            listOf(Color(0xFF69F0AE), Color(0xFF00FF66), Color(0xFF004D20))
+        ),
+        gestureBrush = Brush.verticalGradient(
+            listOf(Color(0xFF69F0AE), Color(0xFF00FF66), Color(0xFF007A33))
+        ),
+        glowColor = Color(0xFF00FF66),
+        previewGradient = listOf(Color(0xFF00FF66), Color(0xFF004D20))
     );
 
     companion object {

@@ -234,6 +234,177 @@ class AppPreferences(private val prefs: SharedPreferences) {
     fun saveMediaViewType(type: MediaViewType) {
         prefs.edit().putString("media_view_type", type.name).apply()
     }
+
+    // ─── Equalizer & Audio Effects Persistence ────────────────────────────
+    fun saveEqSettings(preset: String, bands: List<Float>, bassBoost: Float, virt: Float, enabled: Boolean = true) {
+        prefs.edit()
+            .putString("eq_preset", preset)
+            .putString("eq_bands", bands.joinToString(","))
+            .putFloat("eq_bass_boost", bassBoost)
+            .putFloat("eq_virtualizer", virt)
+            .putBoolean("eq_enabled", enabled)
+            .apply()
+    }
+
+    fun getEqPreset(): String = prefs.getString("eq_preset", "Flat") ?: "Flat"
+
+    fun getEqBands(): List<Float> {
+        val raw = prefs.getString("eq_bands", null) ?: return listOf(0f, 0f, 0f, 0f, 0f)
+        return try {
+            raw.split(",").map { it.toFloat() }
+        } catch (_: Exception) {
+            listOf(0f, 0f, 0f, 0f, 0f)
+        }
+    }
+
+    fun getEqBassBoost(): Float = prefs.getFloat("eq_bass_boost", 0.4f)
+
+    fun getEqVirtualizer(): Float = prefs.getFloat("eq_virtualizer", 0.25f)
+
+    fun isEqEnabled(): Boolean = prefs.getBoolean("eq_enabled", true)
+
+    // ─── Custom Playlists Persistence ──────────────────────────────────────
+    fun getPlaylists(): Map<String, List<String>> {
+        val raw = prefs.getString("custom_playlists_json", null) ?: return emptyMap()
+        val result = mutableMapOf<String, List<String>>()
+        try {
+            val json = org.json.JSONObject(raw)
+            val keys = json.keys()
+            while (keys.hasNext()) {
+                val key = keys.next()
+                val array = json.getJSONArray(key)
+                val list = mutableListOf<String>()
+                for (i in 0 until array.length()) {
+                    list.add(array.getString(i))
+                }
+                result[key] = list
+            }
+        } catch (_: Exception) {}
+        return result
+    }
+
+    fun savePlaylists(map: Map<String, List<String>>) {
+        try {
+            val json = org.json.JSONObject()
+            map.forEach { (name, songs) ->
+                val array = org.json.JSONArray()
+                songs.forEach { array.put(it) }
+                json.put(name, array)
+            }
+            prefs.edit().putString("custom_playlists_json", json.toString()).apply()
+        } catch (_: Exception) {}
+    }
+
+    fun createPlaylist(name: String): Boolean {
+        val trimmed = name.trim()
+        if (trimmed.isEmpty()) return false
+        val current = getPlaylists().toMutableMap()
+        if (current.containsKey(trimmed)) return false
+        current[trimmed] = emptyList()
+        savePlaylists(current)
+        return true
+    }
+
+    fun deletePlaylist(name: String) {
+        val current = getPlaylists().toMutableMap()
+        current.remove(name)
+        savePlaylists(current)
+    }
+
+    fun addSongToPlaylist(name: String, songUri: String) {
+        val current = getPlaylists().toMutableMap()
+        val list = current[name]?.toMutableList() ?: mutableListOf()
+        if (!list.contains(songUri)) {
+            list.add(songUri)
+            current[name] = list
+            savePlaylists(current)
+        }
+    }
+
+    fun removeSongFromPlaylist(name: String, songUri: String) {
+        val current = getPlaylists().toMutableMap()
+        val list = current[name]?.toMutableList() ?: return
+        if (list.remove(songUri)) {
+            current[name] = list
+            savePlaylists(current)
+        }
+    }
+
+    // ─── Play Count & Most Played Tracking ────────────────────────────────
+    fun incrementPlayCount(songUri: String) {
+        val current = prefs.getInt("play_count_$songUri", 0)
+        prefs.edit().putInt("play_count_$songUri", current + 1).apply()
+
+        // Track tracked URIs
+        val allTracked = prefs.getStringSet("played_songs_uris", emptySet())?.toMutableSet() ?: mutableSetOf()
+        allTracked.add(songUri)
+        prefs.edit().putStringSet("played_songs_uris", allTracked).apply()
+    }
+
+    fun getPlayCount(songUri: String): Int {
+        return prefs.getInt("play_count_$songUri", 0)
+    }
+
+    fun getTopPlayedUris(limit: Int = 10): List<String> {
+        val allTracked = prefs.getStringSet("played_songs_uris", emptySet()) ?: return emptyList()
+        return allTracked.map { uri -> uri to getPlayCount(uri) }
+            .filter { it.second > 0 }
+            .sortedByDescending { it.second }
+            .take(limit)
+            .map { it.first }
+    }
+
+    // ─── Video Bookmarks Persistence ──────────────────────────────────────
+    fun getBookmarks(videoUri: String): List<Pair<Long, String>> {
+        val raw = prefs.getString("bookmarks_$videoUri", null) ?: return emptyList()
+        val result = mutableListOf<Pair<Long, String>>()
+        try {
+            val array = org.json.JSONArray(raw)
+            for (i in 0 until array.length()) {
+                val obj = array.getJSONObject(i)
+                result.add(obj.getLong("pos") to obj.getString("label"))
+            }
+        } catch (_: Exception) {}
+        return result.sortedBy { it.first }
+    }
+
+    fun saveBookmark(videoUri: String, positionMs: Long, label: String) {
+        val current = getBookmarks(videoUri).toMutableList()
+        current.removeAll { kotlin.math.abs(it.first - positionMs) < 1000L } // Remove duplicate within 1 sec
+        current.add(positionMs to label.ifBlank { "Bookmark at ${formatBookmarkTime(positionMs)}" })
+        try {
+            val array = org.json.JSONArray()
+            current.forEach {
+                val obj = org.json.JSONObject()
+                obj.put("pos", it.first)
+                obj.put("label", it.second)
+                array.put(obj)
+            }
+            prefs.edit().putString("bookmarks_$videoUri", array.toString()).apply()
+        } catch (_: Exception) {}
+    }
+
+    fun deleteBookmark(videoUri: String, positionMs: Long) {
+        val current = getBookmarks(videoUri).toMutableList()
+        current.removeAll { it.first == positionMs }
+        try {
+            val array = org.json.JSONArray()
+            current.forEach {
+                val obj = org.json.JSONObject()
+                obj.put("pos", it.first)
+                obj.put("label", it.second)
+                array.put(obj)
+            }
+            prefs.edit().putString("bookmarks_$videoUri", array.toString()).apply()
+        } catch (_: Exception) {}
+    }
+
+    private fun formatBookmarkTime(ms: Long): String {
+        val s = ms / 1000
+        val m = s / 60
+        val sec = s % 60
+        return String.format(java.util.Locale.getDefault(), "%02d:%02d", m, sec)
+    }
 }
 
 /** Comprehensive sort options for media files (videos, folders, music). */
