@@ -105,6 +105,9 @@ private const val VIDEO_NOTIFICATION_ID = 2001
 private const val ACTION_VIDEO_PLAY_PAUSE = "com.example.ymediaplayer.ACTION_VIDEO_PLAY_PAUSE"
 private const val ACTION_VIDEO_REWIND = "com.example.ymediaplayer.ACTION_VIDEO_REWIND"
 private const val ACTION_VIDEO_FORWARD = "com.example.ymediaplayer.ACTION_VIDEO_FORWARD"
+private const val ACTION_PIP_PLAY_PAUSE = "com.example.ymediaplayer.ACTION_PIP_PLAY_PAUSE"
+private const val ACTION_PIP_REWIND = "com.example.ymediaplayer.ACTION_PIP_REWIND"
+private const val ACTION_PIP_FORWARD = "com.example.ymediaplayer.ACTION_PIP_FORWARD"
 
 private val QuickActionBg = Color(0x33FFFFFF)       // Circular quick action button background
 private val QuickActionBorder = Color(0x44FFFFFF)   // Circular quick action border
@@ -360,6 +363,7 @@ fun VideoPlayerScreen(
 
     // Picture in Picture
     var isInPiP by remember { mutableStateOf(false) }
+    var prePipSubtitleFlags by remember { mutableIntStateOf(-1) } // stores subtitle flags before PiP entry
 
     // Repeat Mode (0: Off, 1: One, 2: All)
     var repeatMode by remember { mutableIntStateOf(Player.REPEAT_MODE_OFF) }
@@ -574,14 +578,123 @@ fun VideoPlayerScreen(
         }
     }
 
-    // ─── PiP Callback ─────────────────────────────────────────────────────────
+    // ─── PiP Callback (Subtitle disable/restore + remote actions) ──────────────
     DisposableEffect(componentActivity) {
         val listener = Consumer<PictureInPictureModeChangedInfo> { info ->
             isInPiP = info.isInPictureInPictureMode
+            if (info.isInPictureInPictureMode) {
+                // Entering PiP: save subtitle state and disable subtitles
+                prePipSubtitleFlags = exoPlayer.trackSelectionParameters.ignoredTextSelectionFlags
+                exoPlayer.trackSelectionParameters = exoPlayer.trackSelectionParameters
+                    .buildUpon()
+                    .setIgnoredTextSelectionFlags(C.SELECTION_FLAG_DEFAULT)
+                    .build()
+            } else {
+                // Exiting PiP: restore subtitle state
+                if (prePipSubtitleFlags >= 0) {
+                    exoPlayer.trackSelectionParameters = exoPlayer.trackSelectionParameters
+                        .buildUpon()
+                        .setIgnoredTextSelectionFlags(prePipSubtitleFlags)
+                        .build()
+                    prePipSubtitleFlags = -1
+                }
+            }
         }
         componentActivity?.addOnPictureInPictureModeChangedListener(listener)
+
+        // PiP remote action receiver
+        val pipReceiver = object : BroadcastReceiver() {
+            override fun onReceive(ctx: Context?, intent: Intent?) {
+                when (intent?.action) {
+                    ACTION_PIP_PLAY_PAUSE -> {
+                        if (exoPlayer.isPlaying) exoPlayer.pause() else exoPlayer.play()
+                    }
+                    ACTION_PIP_REWIND -> {
+                        val target = (exoPlayer.currentPosition - 10000L).coerceAtLeast(0L)
+                        exoPlayer.seekTo(target)
+                    }
+                    ACTION_PIP_FORWARD -> {
+                        val target = (exoPlayer.currentPosition + 10000L).coerceAtMost(exoPlayer.duration.coerceAtLeast(0L))
+                        exoPlayer.seekTo(target)
+                    }
+                }
+            }
+        }
+        val pipFilter = IntentFilter().apply {
+            addAction(ACTION_PIP_PLAY_PAUSE)
+            addAction(ACTION_PIP_REWIND)
+            addAction(ACTION_PIP_FORWARD)
+        }
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            context.registerReceiver(pipReceiver, pipFilter, Context.RECEIVER_NOT_EXPORTED)
+        } else {
+            context.registerReceiver(pipReceiver, pipFilter)
+        }
+
         onDispose {
             componentActivity?.removeOnPictureInPictureModeChangedListener(listener)
+            try { context.unregisterReceiver(pipReceiver) } catch (_: Exception) {}
+        }
+    }
+
+    // ─── PiP Params Builder (auto aspect, remote actions, auto-enter) ─────────
+    LaunchedEffect(videoWidth, videoHeight, isPlaying) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            val act = activity ?: return@LaunchedEffect
+            try {
+                val aspectW = if (videoWidth > 0) videoWidth else 16
+                val aspectH = if (videoHeight > 0) videoHeight else 9
+                val rational = android.util.Rational(aspectW, aspectH)
+
+                val rewindPendingIntent = PendingIntent.getBroadcast(
+                    context, 201,
+                    Intent(ACTION_PIP_REWIND).setPackage(context.packageName),
+                    PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+                )
+                val playPausePendingIntent = PendingIntent.getBroadcast(
+                    context, 202,
+                    Intent(ACTION_PIP_PLAY_PAUSE).setPackage(context.packageName),
+                    PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+                )
+                val forwardPendingIntent = PendingIntent.getBroadcast(
+                    context, 203,
+                    Intent(ACTION_PIP_FORWARD).setPackage(context.packageName),
+                    PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+                )
+
+                val remoteActions = listOf(
+                    android.app.RemoteAction(
+                        android.graphics.drawable.Icon.createWithResource(context, android.R.drawable.ic_media_rew),
+                        "-10s", "Rewind 10 seconds",
+                        rewindPendingIntent
+                    ),
+                    android.app.RemoteAction(
+                        android.graphics.drawable.Icon.createWithResource(
+                            context,
+                            if (isPlaying) android.R.drawable.ic_media_pause else android.R.drawable.ic_media_play
+                        ),
+                        if (isPlaying) "Pause" else "Play",
+                        if (isPlaying) "Pause playback" else "Resume playback",
+                        playPausePendingIntent
+                    ),
+                    android.app.RemoteAction(
+                        android.graphics.drawable.Icon.createWithResource(context, android.R.drawable.ic_media_ff),
+                        "+10s", "Forward 10 seconds",
+                        forwardPendingIntent
+                    )
+                )
+
+                val paramsBuilder = android.app.PictureInPictureParams.Builder()
+                    .setAspectRatio(rational)
+                    .setActions(remoteActions)
+
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                    paramsBuilder.setAutoEnterEnabled(true)
+                    paramsBuilder.setSeamlessResizeEnabled(true)
+                }
+
+                act.setPictureInPictureParams(paramsBuilder.build())
+            } catch (_: Exception) {}
         }
     }
 
@@ -898,9 +1011,9 @@ fun VideoPlayerScreen(
                             // ─── FULL-SCREEN VIDEO PLAYER MODE ───
                             // Extreme side areas have brightness (left) and volume (right).
                             // Screen center area has swipe down to return to windowed mode.
-                            val isExtremeLeft = startX <= screenWidth * 0.22f
-                            val isExtremeRight = startX >= screenWidth * 0.78f
-                            val isCenterArea = startX in (screenWidth * 0.22f)..(screenWidth * 0.78f)
+                            val isExtremeLeft = startX <= screenWidth * 0.45f
+                            val isExtremeRight = startX >= screenWidth * 0.55f
+                            val isCenterArea = startX in (screenWidth * 0.45f)..(screenWidth * 0.55f)
 
                             if (isExtremeLeft && abs(diffY) > abs(diffX)) {
                                 gestureMode = PlayerGestureMode.BRIGHTNESS
@@ -1019,12 +1132,16 @@ fun VideoPlayerScreen(
                         // Quick stationary tap!
                         if (isDoubleTap) {
                             lastTapTime = 0L // consume double tap
-                            if (isPlaying) {
-                                exoPlayer.pause()
+                            // Double-tap left half = seek backward 10s, right half = seek forward 10s
+                            val isRightSide = startX > screenWidth / 2f
+                            if (isRightSide) {
+                                seekBy(10000L)
+                                doubleTapIsForward = true
                             } else {
-                                exoPlayer.play()
+                                seekBy(-10000L)
+                                doubleTapIsForward = false
                             }
-                            showControls = true
+                            doubleTapSeekSeconds += 10
                         } else {
                             lastTapTime = downTime
                             lastTapX = startX
@@ -2231,8 +2348,11 @@ fun VideoPlayerScreen(
                 onPiPClick = {
                     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
                         try {
+                            // Params already set via setPictureInPictureParams (auto aspect ratio + remote actions)
+                            val aspectW = if (videoWidth > 0) videoWidth else 16
+                            val aspectH = if (videoHeight > 0) videoHeight else 9
                             val params = android.app.PictureInPictureParams.Builder()
-                                .setAspectRatio(android.util.Rational(16, 9))
+                                .setAspectRatio(android.util.Rational(aspectW, aspectH))
                                 .build()
                             activity?.enterPictureInPictureMode(params)
                         } catch (_: Exception) {
