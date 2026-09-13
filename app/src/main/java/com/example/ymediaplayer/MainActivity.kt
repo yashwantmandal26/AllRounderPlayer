@@ -29,12 +29,14 @@ import androidx.navigation3.ui.NavDisplay
 import androidx.compose.animation.*
 import androidx.compose.animation.core.*
 import androidx.compose.runtime.CompositionLocalProvider
+import com.example.ymediaplayer.player.VideoPlaybackManager
 import com.example.ymediaplayer.theme.LocalThemeController
 import com.example.ymediaplayer.theme.ThemeMode
 import com.example.ymediaplayer.theme.YMediaPlayerTheme
 import com.example.ymediaplayer.theme.rememberThemeController
 import com.example.ymediaplayer.ui.FolderDetailScreen
 import com.example.ymediaplayer.ui.FolderListScreen
+import com.example.ymediaplayer.ui.InAppMiniPlayer
 import com.example.ymediaplayer.ui.VideoPlayerScreen
 import com.example.ymediaplayer.ui.SettingsScreen
 import java.net.URLDecoder
@@ -229,6 +231,9 @@ fun MainApp() {
             if (currentTop is VideoPlayer && currentTop.videoUri == encoded) {
                 // Already viewing this video
             } else {
+                com.example.ymediaplayer.data.VideoRepository.getVideoDimensions(target)?.let { (w, h) ->
+                    VideoPlaybackManager.setInitialDimensions(w, h)
+                }
                 while (backStack.size > 1) {
                     backStack.removeLastOrNull()
                 }
@@ -238,60 +243,19 @@ fun MainApp() {
         }
     }
 
-    NavDisplay(
+    val currentTop = backStack.lastOrNull()
+    val isMiniPlayerActive by VideoPlaybackManager.isMiniPlayerActive
+    val currentVideoUrl by VideoPlaybackManager.currentVideoUrl
+
+    Box(modifier = Modifier.fillMaxSize()) {
+        NavDisplay(
             backStack = backStack,
             onBack = { if (backStack.size > 1) backStack.removeLastOrNull() },
             transitionSpec = {
-                val targetKey = targetState.key
-                if (targetKey is VideoPlayer) {
-                    // VideoPlayer slides up smoothly from bottom with quick fade, background stays stationary to prevent GPU jank
-                    (slideIntoContainer(
-                        towards = AnimatedContentTransitionScope.SlideDirection.Up,
-                        animationSpec = tween(260, easing = FastOutSlowInEasing)
-                    ) + fadeIn(animationSpec = tween(180, easing = FastOutSlowInEasing)))
-                    .togetherWith(
-                        fadeOut(animationSpec = tween(180))
-                    )
-                } else {
-                    // Forward navigation (FolderDetail, Settings): Fluid snappy slide with subtle parallax
-                    (slideIntoContainer(
-                        towards = AnimatedContentTransitionScope.SlideDirection.Start,
-                        animationSpec = tween(240, easing = FastOutSlowInEasing)
-                    ) + fadeIn(animationSpec = tween(180, easing = FastOutSlowInEasing)))
-                    .togetherWith(
-                        slideOutOfContainer(
-                            towards = AnimatedContentTransitionScope.SlideDirection.Start,
-                            targetOffset = { (it * 0.12f).toInt() },
-                            animationSpec = tween(240, easing = FastOutSlowInEasing)
-                        ) + fadeOut(animationSpec = tween(160))
-                    )
-                }
+                EnterTransition.None.togetherWith(ExitTransition.None)
             },
             popTransitionSpec = {
-                val initialKey = initialState.key
-                if (initialKey is VideoPlayer) {
-                    // Exiting VideoPlayer: Slides down to bottom, stationary background screen fades in
-                    fadeIn(animationSpec = tween(200, easing = FastOutSlowInEasing))
-                    .togetherWith(
-                        slideOutOfContainer(
-                            towards = AnimatedContentTransitionScope.SlideDirection.Down,
-                            animationSpec = tween(240, easing = FastOutSlowInEasing)
-                        ) + fadeOut(animationSpec = tween(180))
-                    )
-                } else {
-                    // Popping back (FolderDetail, Settings): Reverse snappy horizontal slide
-                    (slideIntoContainer(
-                        towards = AnimatedContentTransitionScope.SlideDirection.End,
-                        initialOffset = { -(it * 0.12f).toInt() },
-                        animationSpec = tween(220, easing = FastOutSlowInEasing)
-                    ) + fadeIn(animationSpec = tween(180, easing = FastOutSlowInEasing)))
-                    .togetherWith(
-                        slideOutOfContainer(
-                            towards = AnimatedContentTransitionScope.SlideDirection.End,
-                            animationSpec = tween(220, easing = FastOutSlowInEasing)
-                        ) + fadeOut(animationSpec = tween(160))
-                    )
-                }
+                EnterTransition.None.togetherWith(ExitTransition.None)
             },
             entryProvider = entryProvider {
                 entry<FolderList> {
@@ -310,7 +274,7 @@ fun MainApp() {
                                     android.app.PictureInPictureParams.Builder()
                                         .setAutoEnterEnabled(false)
                                         .build()
-                                )
+                                    )
                             } catch (_: Exception) {}
                         }
                     }
@@ -323,6 +287,10 @@ fun MainApp() {
                                 backStack.add(FolderDetail(id, name))
                             },
                             onVideoClick = { uri -> 
+                                VideoPlaybackManager.expandFromMiniPlayer()
+                                com.example.ymediaplayer.data.VideoRepository.getVideoDimensions(uri)?.let { (w, h) ->
+                                    VideoPlaybackManager.setInitialDimensions(w, h)
+                                }
                                 val encodedUri = URLEncoder.encode(uri, "UTF-8")
                                 backStack.add(VideoPlayer(encodedUri)) 
                             },
@@ -357,6 +325,10 @@ fun MainApp() {
                         folderName = navKey.folderName,
                         onBack = { if (backStack.size > 1) backStack.removeLastOrNull() },
                         onVideoClick = { uri ->
+                            VideoPlaybackManager.expandFromMiniPlayer()
+                            com.example.ymediaplayer.data.VideoRepository.getVideoDimensions(uri)?.let { (w, h) ->
+                                VideoPlaybackManager.setInitialDimensions(w, h)
+                            }
                             val encodedUri = URLEncoder.encode(uri, "UTF-8")
                             backStack.add(VideoPlayer(encodedUri))
                         }
@@ -401,6 +373,40 @@ fun MainApp() {
                 }
             }
         )
+
+        // ─── Floating YouTube-Style In-App Picture-in-Picture Miniplayer ───
+        androidx.compose.animation.AnimatedVisibility(
+            visible = isMiniPlayerActive && currentTop !is VideoPlayer && !currentVideoUrl.isNullOrEmpty(),
+            enter = androidx.compose.animation.scaleIn(initialScale = 0.85f, animationSpec = androidx.compose.animation.core.tween(180)) + androidx.compose.animation.fadeIn(animationSpec = androidx.compose.animation.core.tween(150)),
+            exit = androidx.compose.animation.scaleOut(targetScale = 0.85f, animationSpec = androidx.compose.animation.core.tween(150)) + androidx.compose.animation.fadeOut(animationSpec = androidx.compose.animation.core.tween(120)),
+            modifier = Modifier.align(Alignment.BottomEnd)
+        ) {
+            LaunchedEffect(isMiniPlayerActive, currentVideoUrl) {
+                MainActivity.onUserLeaveHintListener = {
+                    val url = currentVideoUrl
+                    if (!url.isNullOrEmpty()) {
+                        VideoPlaybackManager.expandFromMiniPlayer()
+                        val encoded = URLEncoder.encode(url, "UTF-8")
+                        backStack.add(VideoPlayer(encoded))
+                    }
+                }
+            }
+
+            InAppMiniPlayer(
+                onExpand = {
+                    val url = currentVideoUrl
+                    if (!url.isNullOrEmpty()) {
+                        VideoPlaybackManager.expandFromMiniPlayer()
+                        val encoded = URLEncoder.encode(url, "UTF-8")
+                        backStack.add(VideoPlayer(encoded))
+                    }
+                },
+                onClose = {
+                    VideoPlaybackManager.closeMiniPlayer()
+                }
+            )
+        }
+    }
 }
 
 @Composable

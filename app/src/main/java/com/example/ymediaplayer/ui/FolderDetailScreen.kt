@@ -53,7 +53,9 @@ import coil3.compose.AsyncImage
 import com.example.ymediaplayer.data.*
 import com.example.ymediaplayer.service.MusicService
 import com.example.ymediaplayer.theme.LocalAppColors
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -133,25 +135,30 @@ fun FolderDetailScreen(
 
     // Load folder content
     LaunchedEffect(folderId, refreshTrigger, progressVersion) {
-        isLoading = true
-        val allFolders = repository.getFoldersWithVideos()
-        if (folderId == "all_videos") {
-            val allVideos = allFolders.flatMap { it.videos }.distinctBy { it.uri.toString() }
-            folder = VideoFolder(id = "all_videos", name = "All Videos", videos = allVideos)
-        } else if (folderId == "recently_added") {
-            val recentVideos = allFolders.flatMap { it.videos }
-                .distinctBy { it.uri.toString() }
-                .sortedWith(compareByDescending<VideoItem> { it.dateAdded }.thenByDescending { it.id })
-                .take(50)
-            folder = VideoFolder(id = "recently_added", name = "Recent Added", videos = recentVideos)
-        } else if (folderId == "last_played") {
-            val playedUris = appPreferences.getPlayedUris()
-            val allVideosMap = allFolders.flatMap { it.videos }.distinctBy { it.uri.toString() }.associateBy { it.uri.toString() }
-            val playedVideos = playedUris.mapNotNull { allVideosMap[it] }
-            folder = VideoFolder(id = "last_played", name = "Last Played", videos = playedVideos)
-        } else {
-            folder = allFolders.find { it.id == folderId }
+        if (folder == null) {
+            isLoading = true
         }
+        val allFolders = repository.getFoldersWithVideos()
+        val loadedFolder = withContext(Dispatchers.Default) {
+            if (folderId == "all_videos") {
+                val allVideos = allFolders.flatMap { it.videos }.distinctBy { it.uri.toString() }
+                VideoFolder(id = "all_videos", name = "All Videos", videos = allVideos)
+            } else if (folderId == "recently_added") {
+                val recentVideos = allFolders.flatMap { it.videos }
+                    .distinctBy { it.uri.toString() }
+                    .sortedWith(compareByDescending<VideoItem> { it.dateAdded }.thenByDescending { it.id })
+                    .take(50)
+                VideoFolder(id = "recently_added", name = "Recent Added", videos = recentVideos)
+            } else if (folderId == "last_played") {
+                val playedUris = appPreferences.getPlayedUris()
+                val allVideosMap = allFolders.flatMap { it.videos }.distinctBy { it.uri.toString() }.associateBy { it.uri.toString() }
+                val playedVideos = playedUris.mapNotNull { allVideosMap[it] }
+                VideoFolder(id = "last_played", name = "Last Played", videos = playedVideos)
+            } else {
+                allFolders.find { it.id == folderId }
+            }
+        }
+        folder = loadedFolder
         isLoading = false
     }
 
@@ -195,30 +202,46 @@ fun FolderDetailScreen(
 
     Box(modifier = Modifier.fillMaxSize()) {
         // Dynamic Ambient Background (Draw-phase only to prevent 60fps recomposition)
+        val glowVersion = appPreferences.lastProgressUpdate.longValue
+        val glowStrength = remember(glowVersion) { appPreferences.getAmbientGlowStrength() }
+        val coreAlpha = when {
+            c.isDark && c.baseBackground == Color(0xFF000000) -> 0.45f * glowStrength
+            c.isDark -> 0.38f * glowStrength
+            else -> 0.28f * glowStrength
+        }.coerceIn(0f, 0.95f)
+        val midAlpha = (coreAlpha * 0.42f).coerceIn(0f, 0.55f)
+        val edgeAlpha = (coreAlpha * 0.12f).coerceIn(0f, 0.20f)
+        val secAlpha = (coreAlpha * 0.25f).coerceIn(0f, 0.30f)
+
         Box(
             modifier = Modifier
                 .fillMaxSize()
-                .background(
-                    if (c.isDark) Brush.verticalGradient(listOf(Color(0xFF22242D), Color(0xFF181921), Color(0xFF14151B)))
-                    else Brush.verticalGradient(listOf(c.baseBackground, c.baseBackground))
-                )
+                .background(c.baseBackground)
                 .drawBehind {
-                    val offset = gradientOffset.value
-                    // Lil theme colours in the background (delicate ambient glow, preserving the dark grey base!)
-                    drawRect(
-                        brush = Brush.radialGradient(
-                            colors = listOf(c.gradientBlob1.copy(alpha = 0.09f), Color.Transparent),
-                            center = Offset(offset * 0.4f, 150f),
-                            radius = 650f
+                    if (coreAlpha > 0.01f) {
+                        drawRect(
+                            brush = Brush.radialGradient(
+                                colors = listOf(
+                                    c.accentBlue.copy(alpha = coreAlpha),
+                                    c.accentBlue.copy(alpha = midAlpha),
+                                    c.accentBlue.copy(alpha = edgeAlpha),
+                                    Color.Transparent
+                                ),
+                                center = Offset(size.width * 0.5f, size.height * 0.25f),
+                                radius = size.width * 0.92f
+                            )
                         )
-                    )
-                    drawRect(
-                        brush = Brush.radialGradient(
-                            colors = listOf(c.gradientBlob2.copy(alpha = 0.07f), Color.Transparent),
-                            center = Offset(size.width - 80f, size.height * 0.65f),
-                            radius = 700f
+                        drawRect(
+                            brush = Brush.radialGradient(
+                                colors = listOf(
+                                    c.accentGreen.copy(alpha = secAlpha),
+                                    Color.Transparent
+                                ),
+                                center = Offset(size.width * 0.88f, size.height * 0.75f),
+                                radius = size.width * 0.75f
+                            )
                         )
-                    )
+                    }
                 }
         )
 
@@ -465,7 +488,7 @@ fun FolderDetailScreen(
                 }
             }
         ) { paddingValues ->
-            if (isLoading) {
+            if (isLoading && folder == null) {
                 Box(modifier = Modifier.fillMaxSize().padding(paddingValues), contentAlignment = Alignment.Center) {
                     CircularProgressIndicator(color = c.accentBlue, strokeWidth = 3.dp)
                 }

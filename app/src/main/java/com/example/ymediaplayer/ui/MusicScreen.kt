@@ -36,7 +36,10 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.draw.scale
 import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
@@ -129,6 +132,13 @@ fun MusicScreen(
     // Library Filtering & Search
     var searchQuery by remember { mutableStateOf("") }
     var isSearching by remember { mutableStateOf(false) }
+    val searchFocusRequester = remember { FocusRequester() }
+    LaunchedEffect(isSearching) {
+        if (isSearching) {
+            kotlinx.coroutines.delay(150)
+            try { searchFocusRequester.requestFocus() } catch (_: Exception) {}
+        }
+    }
     var selectedCategory by remember { mutableStateOf("Tracks") } // "Explore", "Tracks", "Artists", "Albums", "Favorites"
     var selectedArtist by remember { mutableStateOf<String?>(null) }
     var selectedAlbum by remember { mutableStateOf<Long?>(null) }
@@ -142,11 +152,19 @@ fun MusicScreen(
     var sortOrder by remember { mutableStateOf("TITLE") } // "TITLE", "ARTIST", "DURATION"
     var showSortMenu by remember { mutableStateOf(false) }
 
-    // Handle back button when viewing an artist, album, or playlist drilldown
-    BackHandler(enabled = selectedArtist != null || selectedAlbum != null || selectedPlaylist != null) {
-        selectedArtist = null
-        selectedAlbum = null
-        selectedPlaylist = null
+    // Handle back button when searching or viewing an artist, album, or playlist drilldown
+    BackHandler(enabled = isSearching || searchQuery.isNotEmpty() || selectedArtist != null || selectedAlbum != null || selectedPlaylist != null) {
+        if (selectedArtist != null) {
+            selectedArtist = null
+        } else if (selectedAlbum != null) {
+            selectedAlbum = null
+        } else if (selectedPlaylist != null) {
+            selectedPlaylist = null
+        } else if (searchQuery.isNotEmpty()) {
+            searchQuery = ""
+        } else if (isSearching) {
+            isSearching = false
+        }
     }
 
     // Sheets & Dialogs
@@ -512,6 +530,27 @@ fun MusicScreen(
         }
     }
 
+    val searchMatchingSongs = remember(allSongs, searchQuery) {
+        if (searchQuery.isBlank()) emptyList()
+        else allSongs.filter {
+            it.title.contains(searchQuery, ignoreCase = true) ||
+            it.artist.contains(searchQuery, ignoreCase = true) ||
+            it.album.contains(searchQuery, ignoreCase = true)
+        }
+    }
+    val searchMatchingArtists = remember(topArtists, searchQuery) {
+        if (searchQuery.isBlank()) emptyList()
+        else topArtists.filter { it.first.contains(searchQuery, ignoreCase = true) }
+    }
+    val searchMatchingAlbums = remember(featuredAlbums, searchQuery) {
+        if (searchQuery.isBlank()) emptyList()
+        else featuredAlbums.filter { (_, songs) ->
+            val albumName = songs.firstOrNull()?.album ?: ""
+            val artistName = songs.firstOrNull()?.artist ?: ""
+            albumName.contains(searchQuery, ignoreCase = true) || artistName.contains(searchQuery, ignoreCase = true)
+        }
+    }
+
     Box(modifier = modifier.fillMaxSize()) {
         Column(modifier = Modifier.fillMaxSize()) {
             // ─── Top Bar & Navigation ───────────────────────────────────────
@@ -582,6 +621,14 @@ fun MusicScreen(
                             onValueChange = { searchQuery = it },
                             placeholder = { Text("Search songs, artists, albums...", color = c.textHint) },
                             singleLine = true,
+                            leadingIcon = {
+                                Icon(
+                                    Icons.Rounded.Search,
+                                    contentDescription = "Search",
+                                    tint = c.accentBlue,
+                                    modifier = Modifier.size(20.dp)
+                                )
+                            },
                             colors = TextFieldDefaults.colors(
                                 focusedContainerColor = c.glassBg,
                                 unfocusedContainerColor = c.glassBg,
@@ -592,15 +639,24 @@ fun MusicScreen(
                                 unfocusedIndicatorColor = Color.Transparent
                             ),
                             trailingIcon = {
-                                IconButton(onClick = {
-                                    if (searchQuery.isNotEmpty()) searchQuery = "" else isSearching = false
-                                }) {
-                                    Icon(Icons.Rounded.Close, contentDescription = "Close", tint = c.textSecondary)
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    if (searchQuery.isNotEmpty()) {
+                                        IconButton(onClick = { searchQuery = "" }) {
+                                            Icon(Icons.Rounded.Close, contentDescription = "Clear", tint = c.textSecondary, modifier = Modifier.size(18.dp))
+                                        }
+                                    }
+                                    IconButton(onClick = {
+                                        searchQuery = ""
+                                        isSearching = false
+                                    }) {
+                                        Icon(Icons.AutoMirrored.Rounded.ArrowForward, contentDescription = "Close", tint = c.textSecondary, modifier = Modifier.size(18.dp))
+                                    }
                                 }
                             },
                             shape = RoundedCornerShape(14.dp),
                             modifier = Modifier
                                 .weight(1f)
+                                .focusRequester(searchFocusRequester)
                                 .shadow(elevation = 6.dp, shape = RoundedCornerShape(14.dp), ambientColor = c.cardShadowColor, spotColor = c.cardShadowColor)
                                 .clip(RoundedCornerShape(14.dp))
                                 .background(Brush.verticalGradient(listOf(c.cardBgElevated, c.cardBg)))
@@ -707,60 +763,62 @@ fun MusicScreen(
                 }
 
                 // ─── 6 Modern Online Category Pills ───────────────────────────
-                val categories = listOf(
-                    "Explore" to Icons.Rounded.AutoAwesome,
-                    "Tracks" to Icons.Rounded.MusicNote,
-                    "Artists" to Icons.Rounded.Person,
-                    "Albums" to Icons.Rounded.Album,
-                    "Playlists" to Icons.AutoMirrored.Rounded.PlaylistPlay,
-                    "Favorites" to Icons.Rounded.Favorite
-                )
-                LazyRow(
-                    contentPadding = PaddingValues(horizontal = 16.dp, vertical = 6.dp),
-                    horizontalArrangement = Arrangement.spacedBy(10.dp)
-                ) {
-                    items(categories) { (cat, icon) ->
-                        val selected = selectedCategory == cat
-                        val chipShape = RoundedCornerShape(16.dp)
-                        val countLabel = when (cat) {
-                            "Tracks" -> " (${allSongs.size})"
-                            "Artists" -> " (${artistsMap.size})"
-                            "Albums" -> " (${albumsMap.size})"
-                            "Playlists" -> " (${playlists.size})"
-                            "Favorites" -> " (${favorites.size})"
-                            else -> ""
-                        }
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            modifier = Modifier
-                                .shadow(if (selected) 6.dp else 2.dp, chipShape, ambientColor = c.cardShadowColor, spotColor = c.cardShadowColor)
-                                .clip(chipShape)
-                                .background(
-                                    if (selected) Brush.verticalGradient(listOf(c.accentBlue, c.accentBlue.copy(0.85f)))
-                                    else Brush.verticalGradient(listOf(c.cardBgElevated, c.cardBg))
+                if (!isSearching && searchQuery.isEmpty()) {
+                    val categories = listOf(
+                        "Explore" to Icons.Rounded.AutoAwesome,
+                        "Tracks" to Icons.Rounded.MusicNote,
+                        "Artists" to Icons.Rounded.Person,
+                        "Albums" to Icons.Rounded.Album,
+                        "Playlists" to Icons.AutoMirrored.Rounded.PlaylistPlay,
+                        "Favorites" to Icons.Rounded.Favorite
+                    )
+                    LazyRow(
+                        contentPadding = PaddingValues(horizontal = 16.dp, vertical = 6.dp),
+                        horizontalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        items(categories) { (cat, icon) ->
+                            val selected = selectedCategory == cat
+                            val chipShape = RoundedCornerShape(16.dp)
+                            val countLabel = when (cat) {
+                                "Tracks" -> " (${allSongs.size})"
+                                "Artists" -> " (${artistsMap.size})"
+                                "Albums" -> " (${albumsMap.size})"
+                                "Playlists" -> " (${playlists.size})"
+                                "Favorites" -> " (${favorites.size})"
+                                else -> ""
+                            }
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                modifier = Modifier
+                                    .shadow(if (selected) 6.dp else 2.dp, chipShape, ambientColor = c.cardShadowColor, spotColor = c.cardShadowColor)
+                                    .clip(chipShape)
+                                    .background(
+                                        if (selected) Brush.verticalGradient(listOf(c.accentBlue, c.accentBlue.copy(0.85f)))
+                                        else Brush.verticalGradient(listOf(c.cardBgElevated, c.cardBg))
+                                    )
+                                    .border(
+                                        1.3.dp,
+                                        if (selected) Brush.verticalGradient(listOf(Color.White.copy(0.45f), Color.White.copy(0.12f)))
+                                        else Brush.verticalGradient(listOf(c.cardBorderHighlight, c.cardBorderShadow)),
+                                        chipShape
+                                    )
+                                    .bounceClick { selectedCategory = cat }
+                                    .padding(horizontal = 14.dp, vertical = 8.dp)
+                            ) {
+                                Icon(
+                                    icon,
+                                    contentDescription = null,
+                                    tint = if (selected) c.onAccent else if (cat == "Favorites") Color(0xFFFF4D6D) else c.textSecondary,
+                                    modifier = Modifier.size(16.dp)
                                 )
-                                .border(
-                                    1.3.dp,
-                                    if (selected) Brush.verticalGradient(listOf(Color.White.copy(0.45f), Color.White.copy(0.12f)))
-                                    else Brush.verticalGradient(listOf(c.cardBorderHighlight, c.cardBorderShadow)),
-                                    chipShape
+                                Spacer(Modifier.width(6.dp))
+                                Text(
+                                    "$cat$countLabel",
+                                    color = if (selected) c.onAccent else c.textPrimary,
+                                    fontSize = 13.sp,
+                                    fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium
                                 )
-                                .bounceClick { selectedCategory = cat }
-                                .padding(horizontal = 14.dp, vertical = 8.dp)
-                        ) {
-                            Icon(
-                                icon,
-                                contentDescription = null,
-                                tint = if (selected) c.onAccent else if (cat == "Favorites") Color(0xFFFF4D6D) else c.textSecondary,
-                                modifier = Modifier.size(16.dp)
-                            )
-                            Spacer(Modifier.width(6.dp))
-                            Text(
-                                "$cat$countLabel",
-                                color = if (selected) c.onAccent else c.textPrimary,
-                                fontSize = 13.sp,
-                                fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium
-                            )
+                            }
                         }
                     }
                 }
@@ -940,6 +998,295 @@ fun MusicScreen(
                                 else if (isPlaying) mediaController?.pause() else mediaController?.play()
                             }
                         )
+                    }
+                }
+            } else if (searchQuery.isNotBlank()) {
+                // ─── INSTANT SEARCH RESULTS VIEW ─────────────────────────────
+                val totalResults = searchMatchingSongs.size + searchMatchingArtists.size + searchMatchingAlbums.size
+                if (totalResults == 0) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .padding(bottom = if (currentlyPlaying != null) 175.dp else 120.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Column(
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            modifier = Modifier.padding(32.dp)
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .size(72.dp)
+                                    .clip(CircleShape)
+                                    .background(c.cardBgElevated)
+                                    .border(1.2.dp, c.glassBorder, CircleShape),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Icon(Icons.Rounded.SearchOff, contentDescription = null, tint = c.textSecondary, modifier = Modifier.size(36.dp))
+                            }
+                            Spacer(Modifier.height(16.dp))
+                            Text(
+                                "No results for \"$searchQuery\"",
+                                color = c.textPrimary,
+                                fontSize = 18.sp,
+                                fontWeight = FontWeight.SemiBold,
+                                textAlign = TextAlign.Center
+                            )
+                            Spacer(Modifier.height(8.dp))
+                            Text(
+                                "Check your spelling or try searching for another track, artist, or album",
+                                color = c.textSecondary,
+                                fontSize = 13.sp,
+                                textAlign = TextAlign.Center
+                            )
+                            Spacer(Modifier.height(20.dp))
+                            Button(
+                                onClick = {
+                                    searchQuery = ""
+                                    isSearching = false
+                                },
+                                colors = ButtonDefaults.buttonColors(containerColor = c.accentBlue, contentColor = Color.White),
+                                shape = RoundedCornerShape(12.dp)
+                            ) {
+                                Text("Clear Search", fontWeight = FontWeight.SemiBold)
+                            }
+                        }
+                    }
+                } else {
+                    LazyColumn(
+                        modifier = Modifier.fillMaxSize(),
+                        contentPadding = PaddingValues(bottom = if (currentlyPlaying != null) 175.dp else 120.dp)
+                    ) {
+                        // Header summary + Play / Shuffle actions
+                        item {
+                            Column(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(horizontal = 16.dp, vertical = 8.dp)
+                            ) {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.SpaceBetween
+                                ) {
+                                    Column {
+                                        Text(
+                                            "Search Results",
+                                            color = c.textPrimary,
+                                            fontSize = 18.sp,
+                                            fontWeight = FontWeight.Bold
+                                        )
+                                        Text(
+                                            "${searchMatchingSongs.size} tracks · ${searchMatchingArtists.size} artists · ${searchMatchingAlbums.size} albums",
+                                            color = c.textSecondary,
+                                            fontSize = 12.sp
+                                        )
+                                    }
+                                    if (searchMatchingSongs.isNotEmpty()) {
+                                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                            Button(
+                                                onClick = {
+                                                    searchMatchingSongs.firstOrNull()?.let { playSongForce(it) }
+                                                },
+                                                colors = ButtonDefaults.buttonColors(containerColor = c.accentBlue, contentColor = Color.White),
+                                                shape = RoundedCornerShape(12.dp),
+                                                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp),
+                                                modifier = Modifier.height(34.dp)
+                                            ) {
+                                                Icon(Icons.Rounded.PlayArrow, contentDescription = null, modifier = Modifier.size(16.dp))
+                                                Spacer(Modifier.width(4.dp))
+                                                Text("Play", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                                            }
+                                            OutlinedButton(
+                                                onClick = {
+                                                    searchMatchingSongs.shuffled().firstOrNull()?.let { playSongForce(it) }
+                                                },
+                                                border = BorderStroke(1.dp, c.accentBlue.copy(0.4f)),
+                                                shape = RoundedCornerShape(12.dp),
+                                                colors = ButtonDefaults.outlinedButtonColors(contentColor = c.accentBlue),
+                                                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp),
+                                                modifier = Modifier.height(34.dp)
+                                            ) {
+                                                Icon(Icons.Rounded.Shuffle, contentDescription = null, tint = c.accentBlue, modifier = Modifier.size(16.dp))
+                                                Spacer(Modifier.width(4.dp))
+                                                Text("Shuffle", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+
+                        // 1. Matching Artists Section (Horizontal Shelf)
+                        if (searchMatchingArtists.isNotEmpty()) {
+                            item {
+                                Spacer(Modifier.height(6.dp))
+                                Text(
+                                    "ARTISTS (${searchMatchingArtists.size})",
+                                    color = c.accentBlue,
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    letterSpacing = 1.sp,
+                                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp)
+                                )
+                            }
+                            item {
+                                LazyRow(
+                                    contentPadding = PaddingValues(horizontal = 16.dp, vertical = 6.dp),
+                                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+                                ) {
+                                    items(searchMatchingArtists, key = { "srch_art_${it.first}" }) { (artistName, songs) ->
+                                        val firstArt = songs.firstOrNull()?.albumArtUri
+                                        val cardShape = RoundedCornerShape(16.dp)
+                                        Column(
+                                            horizontalAlignment = Alignment.CenterHorizontally,
+                                            modifier = Modifier
+                                                .width(100.dp)
+                                                .shadow(4.dp, cardShape, ambientColor = c.cardShadowColor, spotColor = c.cardShadowColor)
+                                                .clip(cardShape)
+                                                .background(Brush.verticalGradient(listOf(c.cardBgElevated, c.cardBg)))
+                                                .border(1.2.dp, Brush.verticalGradient(listOf(c.cardBorderHighlight, c.glassBorder, c.cardBorderShadow)), cardShape)
+                                                .clickable { selectedArtist = artistName }
+                                                .padding(10.dp)
+                                        ) {
+                                            Box(
+                                                modifier = Modifier
+                                                    .size(56.dp)
+                                                    .shadow(4.dp, CircleShape)
+                                                    .clip(CircleShape)
+                                                    .background(Color(0xFF141520))
+                                                    .border(1.2.dp, c.cardBorderHighlight, CircleShape),
+                                                contentAlignment = Alignment.Center
+                                            ) {
+                                                MusicAlbumArtImage(artUri = firstArt, iconSize = 28.dp, modifier = Modifier.fillMaxSize())
+                                            }
+                                            Spacer(Modifier.height(8.dp))
+                                            Text(
+                                                artistName,
+                                                color = c.textPrimary,
+                                                fontSize = 12.sp,
+                                                fontWeight = FontWeight.Bold,
+                                                maxLines = 1,
+                                                overflow = TextOverflow.Ellipsis,
+                                                textAlign = TextAlign.Center
+                                            )
+                                            Text(
+                                                "${songs.size} songs",
+                                                color = c.textSecondary,
+                                                fontSize = 10.sp,
+                                                maxLines = 1,
+                                                textAlign = TextAlign.Center
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+                        }
+
+                        // 2. Matching Albums Section (Horizontal Shelf)
+                        if (searchMatchingAlbums.isNotEmpty()) {
+                            item {
+                                Spacer(Modifier.height(8.dp))
+                                Text(
+                                    "ALBUMS (${searchMatchingAlbums.size})",
+                                    color = c.accentBlue,
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    letterSpacing = 1.sp,
+                                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp)
+                                )
+                            }
+                            item {
+                                LazyRow(
+                                    contentPadding = PaddingValues(horizontal = 16.dp, vertical = 6.dp),
+                                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+                                ) {
+                                    items(searchMatchingAlbums, key = { "srch_alb_${it.first}" }) { (albumId, songs) ->
+                                        val firstSong = songs.firstOrNull()
+                                        val albumTitle = firstSong?.album?.ifBlank { "Unknown Album" } ?: "Unknown Album"
+                                        val artistName = firstSong?.artist?.ifBlank { "Unknown Artist" } ?: "Unknown Artist"
+                                        val cardShape = RoundedCornerShape(16.dp)
+                                        Column(
+                                            modifier = Modifier
+                                                .width(130.dp)
+                                                .shadow(4.dp, cardShape, ambientColor = c.cardShadowColor, spotColor = c.cardShadowColor)
+                                                .clip(cardShape)
+                                                .background(Brush.verticalGradient(listOf(c.cardBgElevated, c.cardBg)))
+                                                .border(1.2.dp, Brush.verticalGradient(listOf(c.cardBorderHighlight, c.glassBorder, c.cardBorderShadow)), cardShape)
+                                                .clickable { selectedAlbum = albumId }
+                                                .padding(8.dp)
+                                        ) {
+                                            Box(
+                                                modifier = Modifier
+                                                    .fillMaxWidth()
+                                                    .aspectRatio(1f)
+                                                    .clip(RoundedCornerShape(12.dp))
+                                                    .background(Color(0xFF141520)),
+                                                contentAlignment = Alignment.Center
+                                            ) {
+                                                MusicAlbumArtImage(artUri = firstSong?.albumArtUri, iconSize = 36.dp, modifier = Modifier.fillMaxSize())
+                                            }
+                                            Spacer(Modifier.height(8.dp))
+                                            Text(
+                                                albumTitle,
+                                                color = c.textPrimary,
+                                                fontSize = 12.sp,
+                                                fontWeight = FontWeight.Bold,
+                                                maxLines = 1,
+                                                overflow = TextOverflow.Ellipsis
+                                            )
+                                            Text(
+                                                artistName,
+                                                color = c.textSecondary,
+                                                fontSize = 11.sp,
+                                                maxLines = 1,
+                                                overflow = TextOverflow.Ellipsis
+                                            )
+                                            Text(
+                                                "${songs.size} tracks",
+                                                color = c.accentBlue,
+                                                fontSize = 10.sp
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+                        }
+
+                        // 3. Matching Songs Section (Vertical List)
+                        if (searchMatchingSongs.isNotEmpty()) {
+                            item {
+                                Spacer(Modifier.height(8.dp))
+                                Text(
+                                    "SONGS (${searchMatchingSongs.size})",
+                                    color = c.accentBlue,
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    letterSpacing = 1.sp,
+                                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp)
+                                )
+                            }
+                            items(searchMatchingSongs, key = { "srch_song_${it.id}" }) { song ->
+                                val isCurrent = currentlyPlaying?.id == song.id
+                                val isFav = favorites.contains(song.uri.toString())
+                                MusicListItem(
+                                    song = song,
+                                    isCurrentlyPlaying = isCurrent,
+                                    isPlaying = isPlaying && isCurrent,
+                                    isFavorite = isFav,
+                                    onFavoriteToggle = {
+                                        appPreferences.toggleMusicFavorite(song.uri.toString())
+                                        favorites = appPreferences.getMusicFavorites()
+                                    },
+                                    onLongClick = { songForContextMenu = song },
+                                    onMoreClick = { songForContextMenu = song },
+                                    onClick = {
+                                        if (!isCurrent) playSongForce(song)
+                                        else if (isPlaying) mediaController?.pause() else mediaController?.play()
+                                    }
+                                )
+                            }
+                        }
                     }
                 }
             } else when (selectedCategory) {
@@ -1586,14 +1933,8 @@ fun MusicScreen(
         // ─── Floating Mini Player ───────────────────────────────────────────
         AnimatedVisibility(
             visible = currentlyPlaying != null && !showFullScreenPlayer,
-            enter = slideInVertically(
-                initialOffsetY = { it },
-                animationSpec = spring(dampingRatio = Spring.DampingRatioLowBouncy, stiffness = Spring.StiffnessMediumLow)
-            ) + fadeIn(animationSpec = tween(250)) + scaleIn(initialScale = 0.92f, animationSpec = tween(250)),
-            exit = slideOutVertically(
-                targetOffsetY = { it },
-                animationSpec = tween(220, easing = FastOutSlowInEasing)
-            ) + fadeOut(animationSpec = tween(180)) + scaleOut(targetScale = 0.92f, animationSpec = tween(180)),
+            enter = fadeIn(animationSpec = tween(220)) + scaleIn(initialScale = 0.96f, animationSpec = tween(220)),
+            exit = fadeOut(animationSpec = tween(180)) + scaleOut(targetScale = 0.96f, animationSpec = tween(180)),
             modifier = Modifier
                 .align(Alignment.BottomCenter)
                 .navigationBarsPadding()
@@ -1616,14 +1957,8 @@ fun MusicScreen(
         // ─── Full Screen Music Player ───────────────────────────────────────
         AnimatedVisibility(
             visible = showFullScreenPlayer,
-            enter = slideInVertically(
-                initialOffsetY = { it },
-                animationSpec = spring(dampingRatio = Spring.DampingRatioNoBouncy, stiffness = Spring.StiffnessMediumLow)
-            ) + fadeIn(animationSpec = tween(300, easing = FastOutSlowInEasing)),
-            exit = slideOutVertically(
-                targetOffsetY = { it },
-                animationSpec = tween(280, easing = FastOutSlowInEasing)
-            ) + fadeOut(animationSpec = tween(220))
+            enter = fadeIn(animationSpec = tween(250)),
+            exit = fadeOut(animationSpec = tween(200))
         ) {
             currentlyPlaying?.let { song ->
                 FullScreenMusicPlayer(
@@ -2520,13 +2855,52 @@ fun FullScreenMusicPlayer(
                 )
             }
     ) {
-        // High-blur album art background mesh
-        MusicAlbumArtImage(
-            artUri = song.albumArtUri,
-            iconSize = 64.dp,
-            modifier = Modifier.fillMaxSize().blur(85.dp)
-        )
-        Box(modifier = Modifier.fillMaxSize().background(Color(0xFF1A1B22).copy(alpha = 0.72f)))
+        // ─── Immersive Ambient Blurred Album Art Canvas ─────────────────────
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(Color(0xFF090A10))
+        ) {
+            // Layer 1: Overscaled Album Art with Ultra-Smooth Gaussian Blur
+            MusicAlbumArtImage(
+                artUri = song.albumArtUri,
+                iconSize = 72.dp,
+                modifier = Modifier
+                    .fillMaxSize()
+                    .scale(1.25f)
+                    .blur(56.dp)
+            )
+
+            // Layer 2: Radial vignette focusing light toward center-bottom
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(
+                        Brush.radialGradient(
+                            colors = listOf(
+                                Color.Transparent,
+                                Color(0x6608090F),
+                                Color(0xDD08090F)
+                            )
+                        )
+                    )
+            )
+
+            // Layer 3: Vertical gradient for crystal-clear readability of top/bottom controls
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(
+                        Brush.verticalGradient(
+                            listOf(
+                                Color(0xB308090F),
+                                Color(0x3308090F),
+                                Color(0xCC08090F)
+                            )
+                        )
+                    )
+            )
+        }
 
         Column(
             modifier = Modifier
@@ -3650,27 +4024,116 @@ private fun MusicVerticalGestureBar(
             },
         contentAlignment = Alignment.Center
     ) {
-        // Visual Glassmorphic Bar (42.dp wide, 190.dp tall - sleek capsule)
+        // 1. Soft Ambient Blur Bloom behind Capsule
+        if (animatedPct > 0.03f) {
+            Box(
+                modifier = Modifier
+                    .width(46.dp)
+                    .height(194.dp)
+                    .blur(18.dp)
+                    .clip(RoundedCornerShape(23.dp))
+                    .background(glowColor.copy(alpha = 0.40f * animatedPct))
+            )
+        }
+
+        // 2. Main Frosted Glass Capsule (44.dp wide, 192.dp tall)
         Box(
             modifier = Modifier
-                .width(42.dp)
-                .height(190.dp)
-                .shadow(16.dp, RoundedCornerShape(21.dp), ambientColor = glowColor.copy(alpha = 0.4f), spotColor = glowColor.copy(alpha = 0.4f))
-                .clip(RoundedCornerShape(21.dp))
-                .background(Color(0xD90E0F17))
-                .border(1.2.dp, Color.White.copy(alpha = 0.22f), RoundedCornerShape(21.dp)),
-            contentAlignment = Alignment.BottomCenter
+                .width(44.dp)
+                .height(192.dp)
+                .shadow(
+                    elevation = 16.dp,
+                    shape = RoundedCornerShape(22.dp),
+                    ambientColor = Color.Black.copy(alpha = 0.65f),
+                    spotColor = glowColor.copy(alpha = 0.45f)
+                )
+                .clip(RoundedCornerShape(22.dp))
+                // Dark tinted acrylic base
+                .background(Color(0xDD0B0C13))
+                // Frosted glass micro-gradient
+                .background(
+                    Brush.verticalGradient(
+                        listOf(
+                            Color.White.copy(alpha = 0.16f),
+                            Color.White.copy(alpha = 0.04f),
+                            Color.Black.copy(alpha = 0.20f),
+                            Color.Black.copy(alpha = 0.35f)
+                        )
+                    )
+                )
+                // Specular Glass Rim Border
+                .border(
+                    width = 1.3.dp,
+                    brush = Brush.verticalGradient(
+                        listOf(
+                            Color.White.copy(alpha = 0.45f), // Top glass specular rim
+                            glowColor.copy(alpha = 0.65f),   // Mid accent rim
+                            Color.White.copy(alpha = 0.12f)  // Bottom subtle rim
+                        )
+                    ),
+                    shape = RoundedCornerShape(22.dp)
+                )
         ) {
-            // Vertical Fill Capsule
+            // 3. Neon Blur Underglow beneath the fluid track
+            if (animatedPct > 0.02f) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .fillMaxHeight(animatedPct)
+                        .align(Alignment.BottomCenter)
+                        .blur(12.dp)
+                        .background(gradient)
+                )
+            }
+
+            // 4. Crisp Fluid Track
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
                     .fillMaxHeight(animatedPct)
-                    .clip(RoundedCornerShape(21.dp))
+                    .align(Alignment.BottomCenter)
+                    .clip(RoundedCornerShape(bottomStart = 22.dp, bottomEnd = 22.dp, topStart = 8.dp, topEnd = 8.dp))
                     .background(gradient)
             )
 
-            // Inside Indicator: Top Icon and Bottom Percentage Label (No +/-)
+            // 5. Glowing Fluid Meniscus (Top surface line of liquid)
+            if (animatedPct in 0.02f..0.98f) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(2.5.dp)
+                        .align(Alignment.BottomCenter)
+                        .offset(y = (-192.dp * animatedPct) + 2.dp)
+                        .clip(RoundedCornerShape(1.dp))
+                        .background(
+                            Brush.horizontalGradient(
+                                listOf(
+                                    Color.White.copy(alpha = 0.3f),
+                                    Color.White.copy(alpha = 0.95f),
+                                    Color.White.copy(alpha = 0.3f)
+                                )
+                            )
+                        )
+                )
+            }
+
+            // 6. Top Specular Glass Reflection
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(44.dp)
+                    .align(Alignment.TopCenter)
+                    .background(
+                        Brush.verticalGradient(
+                            listOf(
+                                Color.White.copy(alpha = 0.18f),
+                                Color.Transparent
+                            )
+                        )
+                    )
+            )
+
+            // 7. High-Contrast Inner Icons & Typography
             Column(
                 modifier = Modifier
                     .fillMaxSize()
@@ -3678,23 +4141,39 @@ private fun MusicVerticalGestureBar(
                 horizontalAlignment = Alignment.CenterHorizontally,
                 verticalArrangement = Arrangement.SpaceBetween
             ) {
-                // Top Icon
-                Icon(
-                    imageVector = icon,
-                    contentDescription = null,
-                    tint = Color.White,
-                    modifier = Modifier.size(22.dp)
-                )
+                // Top Icon with subtle frosted circular backing for contrast
+                Box(
+                    modifier = Modifier
+                        .size(30.dp)
+                        .clip(CircleShape)
+                        .background(Color.Black.copy(alpha = 0.28f)),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        imageVector = icon,
+                        contentDescription = null,
+                        tint = Color.White,
+                        modifier = Modifier.size(19.dp)
+                    )
+                }
 
-                // Bottom Percentage Label
-                Text(
-                    text = label,
-                    color = Color.White,
-                    fontSize = 11.sp,
-                    fontWeight = FontWeight.Bold,
-                    fontFamily = FontFamily.Monospace,
-                    textAlign = TextAlign.Center
-                )
+                // Bottom Percentage Label with frosted badge
+                Box(
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(8.dp))
+                        .background(Color.Black.copy(alpha = 0.35f))
+                        .padding(horizontal = 4.dp, vertical = 1.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(
+                        text = label,
+                        color = Color.White,
+                        fontSize = 10.sp,
+                        fontWeight = FontWeight.ExtraBold,
+                        fontFamily = FontFamily.Monospace,
+                        maxLines = 1
+                    )
+                }
             }
         }
     }

@@ -186,20 +186,20 @@ class PreferencesAndResumeTest {
     }
 
     @Test
-    fun playlistSettings_defaultsOnAndResetRestoresTrue() {
-        // Defaults must be true (ON)
-        assertTrue(appPreferences.isAutoPlayNextEnabled())
+    fun playlistSettings_defaultsAndResetRestoresDefaults() {
+        // AutoPlay default is false (by default OFF), RememberPlaylistQueue default is true
+        assertFalse(appPreferences.isAutoPlayNextEnabled())
         assertTrue(appPreferences.isRememberPlaylistQueue())
 
-        // Can be toggled to false
-        appPreferences.setAutoPlayNextEnabled(false)
+        // Can be toggled
+        appPreferences.setAutoPlayNextEnabled(true)
         appPreferences.setRememberPlaylistQueue(false)
-        assertFalse(appPreferences.isAutoPlayNextEnabled())
+        assertTrue(appPreferences.isAutoPlayNextEnabled())
         assertFalse(appPreferences.isRememberPlaylistQueue())
 
-        // Reset to defaults must restore both to true
+        // Reset to defaults must restore both
         appPreferences.resetAllSettingsToDefaults()
-        assertTrue(appPreferences.isAutoPlayNextEnabled())
+        assertFalse(appPreferences.isAutoPlayNextEnabled())
         assertTrue(appPreferences.isRememberPlaylistQueue())
     }
 }

@@ -28,10 +28,33 @@ class MediaStoreVideoFetcher(
     override suspend fun fetch(): FetchResult? {
         if (uri.scheme != ContentResolver.SCHEME_CONTENT) return null
 
+        val cacheKey = uri.lastPathSegment ?: uri.hashCode().toString()
+        val thumbCacheDir = java.io.File(context.cacheDir, "video_thumbs").apply {
+            if (!exists()) mkdirs()
+        }
+        val cacheFile = java.io.File(thumbCacheDir, "$cacheKey.webp")
+
+        // 1. FAST PATH: Check persistent WebP disk cache (< 1ms read, 0 IPC overhead)
+        if (cacheFile.exists() && cacheFile.length() > 0) {
+            try {
+                val cachedBmp = android.graphics.BitmapFactory.decodeFile(cacheFile.absolutePath)
+                if (cachedBmp != null) {
+                    return ImageFetchResult(
+                        image = cachedBmp.asImage(),
+                        isSampled = false,
+                        dataSource = DataSource.DISK
+                    )
+                }
+            } catch (_: Exception) {}
+        }
+
+        // 2. FETCH FROM SYSTEM: MediaStore pre-computed hardware thumbnail
         try {
-            val bitmap: Bitmap? = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            var bitmap: Bitmap? = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
                 // Android 10+ (API 29+): Instant hardware-accelerated MediaStore thumbnail
-                context.contentResolver.loadThumbnail(uri, Size(360, 240), null)
+                try {
+                    context.contentResolver.loadThumbnail(uri, Size(360, 240), null)
+                } catch (_: Exception) { null }
             } else {
                 // Android 9 and below: MediaStore.Video.Thumbnails
                 val id = uri.lastPathSegment?.toLongOrNull()
@@ -46,7 +69,40 @@ class MediaStoreVideoFetcher(
                 } else null
             }
 
+            // 3. FALLBACK: Quick keyframe sync decode if system thumbnail hasn't been generated yet
+            if (bitmap == null) {
+                bitmap = try {
+                    val retriever = android.media.MediaMetadataRetriever()
+                    retriever.setDataSource(context, uri)
+                    val frame = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O_MR1) {
+                        retriever.getScaledFrameAtTime(
+                            1_000_000L,
+                            android.media.MediaMetadataRetriever.OPTION_CLOSEST_SYNC,
+                            360, 240
+                        ) ?: retriever.getFrameAtTime(1_000_000L, android.media.MediaMetadataRetriever.OPTION_CLOSEST_SYNC)
+                    } else {
+                        retriever.getFrameAtTime(1_000_000L, android.media.MediaMetadataRetriever.OPTION_CLOSEST_SYNC)
+                    }
+                    try { retriever.release() } catch (_: Exception) {}
+                    frame
+                } catch (_: Exception) { null }
+            }
+
+            // 4. PERSIST TO DISK: Write compressed WebP so subsequent loads are instantaneous
             if (bitmap != null) {
+                try {
+                    val tempFile = java.io.File(thumbCacheDir, "${cacheKey}_tmp.webp")
+                    java.io.FileOutputStream(tempFile).use { out ->
+                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                            bitmap.compress(Bitmap.CompressFormat.WEBP_LOSSY, 82, out)
+                        } else {
+                            @Suppress("DEPRECATION")
+                            bitmap.compress(Bitmap.CompressFormat.WEBP, 82, out)
+                        }
+                    }
+                    tempFile.renameTo(cacheFile)
+                } catch (_: Exception) {}
+
                 return ImageFetchResult(
                     image = bitmap.asImage(),
                     isSampled = false,
@@ -54,7 +110,7 @@ class MediaStoreVideoFetcher(
                 )
             }
         } catch (_: Exception) {
-            // Fall through to other decoders (e.g. VideoFrameDecoder) if system thumbnail is not yet generated
+            // Fall through to other decoders if all fail
         }
         return null
     }

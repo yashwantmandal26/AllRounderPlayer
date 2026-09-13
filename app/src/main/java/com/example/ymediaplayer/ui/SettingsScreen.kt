@@ -6,6 +6,10 @@ import androidx.compose.animation.*
 import androidx.compose.foundation.*
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -40,6 +44,17 @@ import com.example.ymediaplayer.theme.LocalAppColors
 import com.example.ymediaplayer.theme.LocalThemeController
 import com.example.ymediaplayer.theme.ThemeMode
 
+enum class SettingsCategory(val displayName: String, val icon: ImageVector) {
+    ALL("All", Icons.Rounded.Apps),
+    PLAYBACK("Playback", Icons.Rounded.PlayCircleOutline),
+    GESTURES("Gestures", Icons.Rounded.TouchApp),
+    SUBTITLES("Subtitles", Icons.Rounded.Subtitles),
+    APPEARANCE("Appearance", Icons.Rounded.ColorLens),
+    LIBRARY("Library", Icons.Rounded.FolderOpen),
+    MUSIC("Music", Icons.Rounded.MusicNote),
+    STORAGE("Storage", Icons.Rounded.Storage)
+}
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SettingsScreen(
@@ -71,6 +86,7 @@ fun SettingsScreen(
     var defaultResizeMode by remember { mutableIntStateOf(appPreferences.getDefaultResizeMode()) }
     var hwAcceleration by remember { mutableStateOf(appPreferences.isHwAccelerationEnabled()) }
     var keepScreenAwake by remember { mutableStateOf(appPreferences.isKeepScreenAwake()) }
+    var playDuringCalls by remember { mutableStateOf(appPreferences.isPlayDuringCallsEnabled()) }
 
     // ─── Gestures States ──────────────────────────────────────────────────────
     var brightnessGesture by remember { mutableStateOf(appPreferences.isBrightnessGestureEnabled()) }
@@ -80,17 +96,25 @@ fun SettingsScreen(
     var doubleTapCenterPlayPause by remember { mutableStateOf(appPreferences.isDoubleTapCenterPlayPauseEnabled()) }
     var pressHoldSpeed by remember { mutableFloatStateOf(appPreferences.getPressHoldSpeed()) }
     var hapticsEnabled by remember { mutableStateOf(appPreferences.isHapticsEnabled()) }
+    var hdrEnabled by remember { mutableStateOf(appPreferences.isHdrEnabled()) }
 
     // ─── Subtitles & Audio States ─────────────────────────────────────────────
     var subFontSize by remember { mutableIntStateOf(appPreferences.getSubtitleFontSize()) }
     var subColor by remember { mutableLongStateOf(appPreferences.getSubtitleColor()) }
+    var subBgEnabled by remember { mutableStateOf(appPreferences.isSubtitleBackgroundEnabled()) }
     var subBgStyle by remember { mutableIntStateOf(appPreferences.getSubtitleBackgroundStyle()) }
     var subOutlineStyle by remember { mutableIntStateOf(appPreferences.getSubtitleOutlineStyle()) }
     var pauseHeadsetDisconnect by remember { mutableStateOf(appPreferences.isPauseOnHeadsetDisconnect()) }
 
+    // ─── Search & Category Navigation States ──────────────────────────────────
+    var searchQuery by remember { mutableStateOf("") }
+    var selectedCategory by remember { mutableStateOf(SettingsCategory.ALL) }
+
     // ─── Appearance States ────────────────────────────────────────────────────
     var currentThemeMode by remember { mutableStateOf(themeController.mode) }
     var currentColorTheme by remember { mutableStateOf(themeController.colorTheme) }
+    var ambientGlowStrength by remember { mutableFloatStateOf(appPreferences.getAmbientGlowStrength()) }
+    var uiCornerStyle by remember { mutableStateOf(appPreferences.getUiCornerStyle()) }
     var signatureViewEnabled by remember { mutableStateOf(appPreferences.isSignatureViewEnabled()) }
     var signatureSaturation by remember { mutableFloatStateOf(appPreferences.getSignatureSaturation()) }
     var ambientGlowEnabled by remember { mutableStateOf(appPreferences.isAmbientGlowEnabled()) }
@@ -109,32 +133,43 @@ fun SettingsScreen(
     var musicArtworkStyle by remember { mutableStateOf(appPreferences.getMusicArtworkStyle()) }
     var gaplessPlayback by remember { mutableStateOf(appPreferences.isGaplessPlaybackEnabled()) }
 
+    val glowVersion = appPreferences.lastProgressUpdate.longValue
+    val glowStrength = remember(glowVersion) { appPreferences.getAmbientGlowStrength() }
+    val coreAlpha = when {
+        c.isDark && c.baseBackground == Color(0xFF000000) -> 0.45f * glowStrength
+        c.isDark -> 0.38f * glowStrength
+        else -> 0.28f * glowStrength
+    }.coerceIn(0f, 0.95f)
+    val midAlpha = (coreAlpha * 0.42f).coerceIn(0f, 0.55f)
+    val edgeAlpha = (coreAlpha * 0.12f).coerceIn(0f, 0.20f)
+    val secAlpha = (coreAlpha * 0.25f).coerceIn(0f, 0.30f)
+
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .background(
-                if (c.isDark) Brush.verticalGradient(
-                    listOf(
-                        Color(0xFF22242D),
-                        Color(0xFF181921),
-                        Color(0xFF14151B)
-                    )
-                ) else Brush.verticalGradient(listOf(c.baseBackground, c.baseBackground))
-            )
+            .background(c.baseBackground)
             .drawBehind {
-                if (c.isDark) {
+                if (coreAlpha > 0.01f) {
                     drawRect(
                         brush = Brush.radialGradient(
-                            colors = listOf(c.gradientBlob1.copy(alpha = 0.09f), Color.Transparent),
-                            center = Offset(150f, 150f),
-                            radius = 650f
+                            colors = listOf(
+                                c.accentBlue.copy(alpha = coreAlpha),
+                                c.accentBlue.copy(alpha = midAlpha),
+                                c.accentBlue.copy(alpha = edgeAlpha),
+                                Color.Transparent
+                            ),
+                            center = Offset(size.width * 0.5f, size.height * 0.25f),
+                            radius = size.width * 0.92f
                         )
                     )
                     drawRect(
                         brush = Brush.radialGradient(
-                            colors = listOf(c.gradientBlob2.copy(alpha = 0.07f), Color.Transparent),
-                            center = Offset(size.width - 80f, size.height * 0.65f),
-                            radius = 700f
+                            colors = listOf(
+                                c.accentGreen.copy(alpha = secAlpha),
+                                Color.Transparent
+                            ),
+                            center = Offset(size.width * 0.88f, size.height * 0.75f),
+                            radius = size.width * 0.75f
                         )
                     )
                 }
@@ -143,65 +178,267 @@ fun SettingsScreen(
         Scaffold(
             containerColor = Color.Transparent,
         topBar = {
-            Box(
+            Column(
                 modifier = Modifier
                     .fillMaxWidth()
                     .statusBarsPadding()
-                    .padding(horizontal = 16.dp, vertical = 8.dp)
+                    .padding(top = 8.dp, bottom = 4.dp)
             ) {
-                Row(
+                // Row 1: Header Bar
+                Box(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .then(if (c.isMatte) Modifier else Modifier.shadow(12.dp, RoundedCornerShape(24.dp), ambientColor = c.cardShadowColor, spotColor = c.cardShadowColor))
-                        .clip(RoundedCornerShape(24.dp))
-                        .background(c.glassBg)
-                        .border(1.2.dp, c.glassBorder, RoundedCornerShape(24.dp))
-                        .padding(horizontal = 8.dp, vertical = 6.dp),
-                    verticalAlignment = Alignment.CenterVertically
+                        .padding(horizontal = 16.dp, vertical = 2.dp)
                 ) {
-                    IconButton(
-                        onClick = onBack,
+                    Row(
                         modifier = Modifier
-                            .size(40.dp)
-                            .clip(CircleShape)
-                            .background(if (c.isMatte) c.cardBgElevated else Color.White.copy(alpha = 0.08f))
+                            .fillMaxWidth()
+                            .then(if (c.isMatte) Modifier else Modifier.shadow(12.dp, RoundedCornerShape(24.dp), ambientColor = c.cardShadowColor, spotColor = c.cardShadowColor))
+                            .clip(RoundedCornerShape(24.dp))
+                            .background(c.glassBg)
+                            .border(1.2.dp, c.glassBorder, RoundedCornerShape(24.dp))
+                            .padding(horizontal = 8.dp, vertical = 6.dp),
+                        verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Icon(
-                            Icons.AutoMirrored.Rounded.ArrowBack,
-                            contentDescription = "Back",
-                            tint = c.textPrimary,
-                            modifier = Modifier.size(20.dp)
+                        IconButton(
+                            onClick = onBack,
+                            modifier = Modifier
+                                .size(40.dp)
+                                .clip(CircleShape)
+                                .background(if (c.isMatte) c.cardBgElevated else Color.White.copy(alpha = 0.08f))
+                        ) {
+                            Icon(
+                                Icons.AutoMirrored.Rounded.ArrowBack,
+                                contentDescription = "Back",
+                                tint = c.textPrimary,
+                                modifier = Modifier.size(20.dp)
+                            )
+                        }
+
+                        Spacer(Modifier.width(12.dp))
+
+                        Text(
+                            text = "Settings",
+                            fontSize = 18.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = c.textPrimary,
+                            modifier = Modifier.weight(1f)
                         )
+
+                        IconButton(
+                            onClick = { showResetAllConfirm = true },
+                            modifier = Modifier
+                                .size(40.dp)
+                                .clip(CircleShape)
+                                .background(if (c.isMatte) c.cardBgElevated else Color.White.copy(alpha = 0.08f))
+                        ) {
+                            Icon(
+                                Icons.Rounded.RestartAlt,
+                                contentDescription = "Reset Defaults",
+                                tint = Color(0xFFFF5252),
+                                modifier = Modifier.size(20.dp)
+                            )
+                        }
                     }
+                }
 
-                    Spacer(Modifier.width(12.dp))
+                Spacer(Modifier.height(4.dp))
 
-                    Text(
-                        text = "Settings",
-                        fontSize = 18.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = c.textPrimary,
-                        modifier = Modifier.weight(1f)
-                    )
-
-                    IconButton(
-                        onClick = { showResetAllConfirm = true },
-                        modifier = Modifier
-                            .size(40.dp)
-                            .clip(CircleShape)
-                            .background(if (c.isMatte) c.cardBgElevated else Color.White.copy(alpha = 0.08f))
+                // Row 2: Search Input Bar
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp, vertical = 2.dp)
+                        .clip(RoundedCornerShape(16.dp))
+                        .background(if (c.isMatte) c.cardBgElevated else c.glassBg)
+                        .border(
+                            1.dp,
+                            if (searchQuery.isNotBlank()) primaryAccent.copy(alpha = 0.7f) else c.glassBorder,
+                            RoundedCornerShape(16.dp)
+                        )
+                        .padding(horizontal = 12.dp, vertical = 8.dp)
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier.fillMaxWidth()
                     ) {
                         Icon(
-                            Icons.Rounded.RestartAlt,
-                            contentDescription = "Reset Defaults",
-                            tint = Color(0xFFFF5252),
-                            modifier = Modifier.size(20.dp)
+                            imageVector = Icons.Rounded.Search,
+                            contentDescription = "Search",
+                            tint = if (searchQuery.isNotBlank()) primaryAccent else c.textSecondary,
+                            modifier = Modifier.size(18.dp)
                         )
+                        Spacer(Modifier.width(10.dp))
+                        BasicTextField(
+                            value = searchQuery,
+                            onValueChange = { searchQuery = it },
+                            singleLine = true,
+                            cursorBrush = SolidColor(primaryAccent),
+                            textStyle = TextStyle(
+                                color = c.textPrimary,
+                                fontSize = 13.5.sp,
+                                fontWeight = FontWeight.Medium
+                            ),
+                            modifier = Modifier.weight(1f),
+                            decorationBox = { innerTextField ->
+                                if (searchQuery.isEmpty()) {
+                                    Text(
+                                        text = "Search settings, features, gestures...",
+                                        color = c.textSecondary.copy(alpha = 0.65f),
+                                        fontSize = 13.sp
+                                    )
+                                }
+                                innerTextField()
+                            }
+                        )
+                        if (searchQuery.isNotEmpty()) {
+                            IconButton(
+                                onClick = { searchQuery = "" },
+                                modifier = Modifier.size(24.dp)
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Rounded.Close,
+                                    contentDescription = "Clear",
+                                    tint = c.textSecondary,
+                                    modifier = Modifier.size(16.dp)
+                                )
+                            }
+                        }
+                    }
+                }
+
+                // Row 3: Horizontal Category Navigation Chips
+                LazyRow(
+                    modifier = Modifier.fillMaxWidth(),
+                    contentPadding = PaddingValues(horizontal = 16.dp, vertical = 4.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    items(SettingsCategory.entries) { cat ->
+                        val isSelected = selectedCategory == cat && searchQuery.isBlank()
+                        val chipBg = if (isSelected) primaryAccent.copy(alpha = 0.22f) else if (c.isMatte) c.cardBgElevated else c.glassBg
+                        val chipBorder = if (isSelected) primaryAccent else c.glassBorder
+                        val textColor = if (isSelected) primaryAccent else c.textSecondary
+
+                        Row(
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(12.dp))
+                                .background(chipBg)
+                                .border(1.dp, chipBorder, RoundedCornerShape(12.dp))
+                                .clickable {
+                                    selectedCategory = cat
+                                    if (searchQuery.isNotEmpty()) searchQuery = ""
+                                }
+                                .padding(horizontal = 11.dp, vertical = 7.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(5.dp)
+                        ) {
+                            Icon(
+                                imageVector = cat.icon,
+                                contentDescription = null,
+                                tint = if (isSelected) primaryAccent else c.textSecondary,
+                                modifier = Modifier.size(14.dp)
+                            )
+                            Text(
+                                text = cat.displayName,
+                                fontSize = 12.sp,
+                                fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
+                                color = textColor
+                            )
+                        }
                     }
                 }
             }
         }
     ) { paddingValues ->
+        val q = searchQuery.trim()
+
+        fun itemMatches(title: String, subtitle: String = ""): Boolean {
+            if (q.isBlank()) return true
+            return title.contains(q, ignoreCase = true) || subtitle.contains(q, ignoreCase = true)
+        }
+
+        val showPlayback = (q.isBlank() && (selectedCategory == SettingsCategory.ALL || selectedCategory == SettingsCategory.PLAYBACK)) ||
+                (q.isNotBlank() && (
+                    "Playback & Video Engine".contains(q, ignoreCase = true) ||
+                    itemMatches("Resume Playback", "Always auto-resume Start Over") ||
+                    itemMatches("Remember Playback Speed", "Preserve custom playback speed") ||
+                    itemMatches("Double-Tap Seek Step", "seconds") ||
+                    itemMatches("Auto Picture-in-Picture", "floating PiP window") ||
+                    itemMatches("Background Audio Play", "audio app minimized") ||
+                    itemMatches("Auto-Play Next in Playlist", "next video finishes") ||
+                    itemMatches("Remember Playlist Queue", "queue order remember") ||
+                    itemMatches("Controls Auto-Hide Timeout", "seconds Never auto-hide") ||
+                    itemMatches("Default Video Fit Mode", "Fit to Screen Zoom Crop Fixed Width Stretch Fill") ||
+                    itemMatches("Hardware Acceleration", "GPU decoders 4K 60fps") ||
+                    itemMatches("Keep Screen Awake", "display sleeping") ||
+                    itemMatches("Play During Phone Calls", "video music phone calls")
+                ))
+
+        val showGestures = (q.isBlank() && (selectedCategory == SettingsCategory.ALL || selectedCategory == SettingsCategory.GESTURES)) ||
+                (q.isNotBlank() && (
+                    "Gestures & Touch Controls".contains(q, ignoreCase = true) ||
+                    itemMatches("Left Swipe: Screen Brightness", "brightness") ||
+                    itemMatches("Right Swipe: Media Volume", "volume") ||
+                    itemMatches("Horizontal Seek Swipe", "scrub timeline preview") ||
+                    itemMatches("Center Double-Tap: Play / Pause", "toggles playback") ||
+                    itemMatches("Press & Hold Speed Boost", "speed boost hold 2x") ||
+                    itemMatches("Haptic Vibration Feedback", "Tactile feedback sliders vibration") ||
+                    itemMatches("HDR Video Playback", "High Dynamic Range HDR10 HLG Dolby Vision")
+                ))
+
+        val showSubtitles = (q.isBlank() && (selectedCategory == SettingsCategory.ALL || selectedCategory == SettingsCategory.SUBTITLES)) ||
+                (q.isNotBlank() && (
+                    "Subtitles & Audio Engine".contains(q, ignoreCase = true) ||
+                    itemMatches("Subtitle Font Size", "size sp") ||
+                    itemMatches("Subtitle Text Color", "color text White Yellow Cyan Neon") ||
+                    itemMatches("Subtitle Background Box", "background box overlay toggle without") ||
+                    itemMatches("Subtitle Background Style", "Semi-transparent Solid Deep Black Frosted Dark Glass Blur Slate Blue Amber") ||
+                    itemMatches("Text Outline & Shadow", "Drop Shadow Bold Outline") ||
+                    itemMatches("Pause on Headset Disconnect", "headphones Bluetooth disconnect")
+                ))
+
+        val showAppearance = (q.isBlank() && (selectedCategory == SettingsCategory.ALL || selectedCategory == SettingsCategory.APPEARANCE)) ||
+                (q.isNotBlank() && (
+                    "Appearance & Themes".contains(q, ignoreCase = true) ||
+                    itemMatches("Theme Mode", "Dark Light OLED Black System") ||
+                    itemMatches("Color Accent Theme", "Cyber Neon Amber Emerald Rose Sapphire") ||
+                    itemMatches("Ambient Gradient Glow", "Subtle Vibrant Neon Boost glow gradient") ||
+                    itemMatches("Card Corner Style", "Sleek Modern Extra corners") ||
+                    itemMatches("Signature Video Enhancement", "Vibrance Saturation color boost dynamic range") ||
+                    itemMatches("Dynamic Video Ambient Mode", "soft lighting halo video")
+                ))
+
+        val showLibrary = (q.isBlank() && (selectedCategory == SettingsCategory.ALL || selectedCategory == SettingsCategory.LIBRARY)) ||
+                (q.isNotBlank() && (
+                    "Library & Folders".contains(q, ignoreCase = true) ||
+                    itemMatches("Default Media View", "Grid List Detailed") ||
+                    itemMatches("Default Sort Order", "Sort Name Date Size") ||
+                    itemMatches("Show Continue Watching", "in-progress videos carousel") ||
+                    itemMatches("Continue Watching Limit", "limit videos") ||
+                    itemMatches("Show Recently Added Feed", "newest added videos") ||
+                    itemMatches("Exclude Short Clips", "Hide clips shorter than") ||
+                    itemMatches("Exclude Hidden Folders", "nomedia hidden dot") ||
+                    itemMatches("Confirm File Deletions", "warning dialog delete bin")
+                ))
+
+        val showMusic = (q.isBlank() && (selectedCategory == SettingsCategory.ALL || selectedCategory == SettingsCategory.MUSIC)) ||
+                (q.isNotBlank() && (
+                    "Music Player".contains(q, ignoreCase = true) ||
+                    itemMatches("Now Playing Screen Style", "Vinyl Card Sonic Reactor Cassette Cyber Orb Wave") ||
+                    itemMatches("Gapless Playback", "silence songs zero preload")
+                ))
+
+        val showStorage = (q.isBlank() && (selectedCategory == SettingsCategory.ALL || selectedCategory == SettingsCategory.STORAGE)) ||
+                (q.isNotBlank() && (
+                    "Data, Storage & About".contains(q, ignoreCase = true) ||
+                    itemMatches("Clear Continue Watching History", "progress timestamps") ||
+                    itemMatches("Clear Video Bookmarks", "bookmarks") ||
+                    itemMatches("Clear Image & Thumbnail Cache", "cache storage memory") ||
+                    itemMatches("Reset All Settings to Defaults", "restore factory defaults")
+                ))
+
+        val anySectionVisible = showPlayback || showGestures || showSubtitles || showAppearance || showLibrary || showMusic || showStorage
+
         LazyColumn(
             modifier = Modifier
                 .fillMaxSize()
@@ -209,23 +446,26 @@ fun SettingsScreen(
             contentPadding = PaddingValues(horizontal = 16.dp, vertical = 12.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
-            // ─── Header Profile Banner ────────────────────────────────────────
-            item {
-                SettingsHeaderCard(
-                    themeName = currentColorTheme.displayName,
-                    themeMode = currentThemeMode.displayName,
-                    primaryAccent = primaryAccent,
-                    secondaryAccent = secondaryAccent
-                )
+            // ─── Header Profile Banner (Shown when browsing 'All' and not searching) ───
+            if (q.isBlank() && selectedCategory == SettingsCategory.ALL) {
+                item {
+                    SettingsHeaderCard(
+                        themeName = currentColorTheme.displayName,
+                        themeMode = currentThemeMode.displayName,
+                        primaryAccent = primaryAccent,
+                        secondaryAccent = secondaryAccent
+                    )
+                }
             }
 
             // ─── 1. Playback & Video Engine ───────────────────────────────────
-            item {
-                SettingsCategorySection(
-                    title = "Playback & Video Engine",
-                    icon = Icons.Rounded.PlayCircleOutline,
-                    accentColor = primaryAccent
-                ) {
+            if (showPlayback) {
+                item {
+                    SettingsCategorySection(
+                        title = "Playback & Video Engine",
+                        icon = Icons.Rounded.PlayCircleOutline,
+                        accentColor = primaryAccent
+                    ) {
                     SettingsItemPicker(
                         title = "Resume Playback",
                         subtitle = when (resumeMode) {
@@ -359,10 +599,25 @@ fun SettingsScreen(
                             appPreferences.setKeepScreenAwake(it)
                         }
                     )
+
+                    SettingsDivider()
+
+                    SettingsItemToggle(
+                        title = "Play During Phone Calls",
+                        subtitle = "Keep video and music playing fully during phone calls",
+                        icon = Icons.Rounded.PhoneInTalk,
+                        checked = playDuringCalls,
+                        onCheckedChange = {
+                            playDuringCalls = it
+                            appPreferences.setPlayDuringCallsEnabled(it)
+                        }
+                    )
                 }
             }
+        }
 
-            // ─── 2. Gestures & Touch Controls ─────────────────────────────────
+        // ─── 2. Gestures & Touch Controls ─────────────────────────────────
+        if (showGestures) {
             item {
                 SettingsCategorySection(
                     title = "Gestures & Touch Controls",
@@ -397,25 +652,12 @@ fun SettingsScreen(
 
                     SettingsItemToggle(
                         title = "Horizontal Seek Swipe",
-                        subtitle = "Swipe anywhere left or right to scrub timeline",
+                        subtitle = "Swipe left or right anywhere to scrub timeline with preview",
                         icon = Icons.Rounded.SwapHoriz,
                         checked = seekGesture,
                         onCheckedChange = {
                             seekGesture = it
                             appPreferences.setSeekGestureEnabled(it)
-                        }
-                    )
-
-                    SettingsDivider()
-
-                    SettingsItemToggle(
-                        title = "Center Swipe: Video Switch",
-                        subtitle = "Swipe up or down in middle to switch next/prev video",
-                        icon = Icons.Rounded.SwapVert,
-                        checked = videoSwitchGesture,
-                        onCheckedChange = {
-                            videoSwitchGesture = it
-                            appPreferences.setVideoSwitchGestureEnabled(it)
                         }
                     )
 
@@ -445,7 +687,7 @@ fun SettingsScreen(
 
                     SettingsItemToggle(
                         title = "Haptic Vibration Feedback",
-                        subtitle = "Tactile feedback when seeking or switching controls",
+                        subtitle = "Tactile feedback for sliders, gestures, and controls across the player",
                         icon = Icons.Rounded.Vibration,
                         checked = hapticsEnabled,
                         onCheckedChange = {
@@ -453,10 +695,25 @@ fun SettingsScreen(
                             appPreferences.setHapticsEnabled(it)
                         }
                     )
+
+                    SettingsDivider()
+
+                    SettingsItemToggle(
+                        title = "HDR Video Playback",
+                        subtitle = "High Dynamic Range (HDR10, HLG, Dolby Vision) with wide color gamut",
+                        icon = Icons.Rounded.HighQuality,
+                        checked = hdrEnabled,
+                        onCheckedChange = {
+                            hdrEnabled = it
+                            appPreferences.setHdrEnabled(it)
+                        }
+                    )
                 }
             }
+        }
 
-            // ─── 3. Subtitles & Audio Engine ──────────────────────────────────
+        // ─── 3. Subtitles & Audio Engine ──────────────────────────────────
+        if (showSubtitles) {
             item {
                 SettingsCategorySection(
                     title = "Subtitles & Audio Engine",
@@ -484,16 +741,22 @@ fun SettingsScreen(
                                 color = primaryAccent.copy(alpha = 0.85f),
                                 modifier = Modifier.padding(bottom = 12.dp)
                             )
+                            val previewBgColor = if (!subBgEnabled) {
+                                Color.Transparent
+                            } else {
+                                when (subBgStyle) {
+                                    0 -> Color.Black.copy(alpha = 0.65f)
+                                    1 -> Color.Black
+                                    2 -> Color(0xD9141826) // Frosted Dark Glass
+                                    3 -> Color(0xD90F172A) // Slate Blue Glass
+                                    4 -> Color(0xD9241A12) // Warm Amber Mist
+                                    else -> Color.Black.copy(alpha = 0.65f)
+                                }
+                            }
                             Box(
                                 modifier = Modifier
                                     .clip(RoundedCornerShape(6.dp))
-                                    .background(
-                                        when (subBgStyle) {
-                                            0 -> Color.Transparent
-                                            2 -> Color.Black
-                                            else -> Color.Black.copy(alpha = 0.65f)
-                                        }
-                                    )
+                                    .background(previewBgColor)
                                     .padding(horizontal = 10.dp, vertical = 4.dp)
                             ) {
                                 Text(
@@ -540,14 +803,30 @@ fun SettingsScreen(
 
                     SettingsDivider()
 
-                    SettingsItemPicker(
+                    SettingsItemToggle(
                         title = "Subtitle Background Box",
-                        subtitle = when (subBgStyle) {
-                            0 -> "None (Transparent)"
-                            2 -> "Solid Black"
+                        subtitle = if (subBgEnabled) "Show background box behind subtitle text" else "No background (clean overlay text)",
+                        icon = Icons.Rounded.CheckBoxOutlineBlank,
+                        checked = subBgEnabled,
+                        onCheckedChange = {
+                            subBgEnabled = it
+                            appPreferences.setSubtitleBackgroundEnabled(it)
+                        }
+                    )
+
+                    SettingsDivider()
+
+                    SettingsItemPicker(
+                        title = "Subtitle Background Style",
+                        subtitle = if (!subBgEnabled) "Disabled (Toggle background above)" else when (subBgStyle) {
+                            0 -> "Semi-transparent Black (Default)"
+                            1 -> "Solid Deep Black Box"
+                            2 -> "Frosted Dark Glass (Blur BG)"
+                            3 -> "Slate Blue Glass"
+                            4 -> "Warm Amber Mist"
                             else -> "Semi-transparent Black"
                         },
-                        icon = Icons.Rounded.CheckBoxOutlineBlank,
+                        icon = Icons.Rounded.Layers,
                         onClick = { activeDialog = SettingsDialogType.SUB_BG_STYLE }
                     )
 
@@ -578,8 +857,10 @@ fun SettingsScreen(
                     )
                 }
             }
+        }
 
-            // ─── 4. Appearance & UI Themes ────────────────────────────────────
+        // ─── 4. Appearance & UI Themes ────────────────────────────────────
+        if (showAppearance) {
             item {
                 SettingsCategorySection(
                     title = "Appearance & Themes",
@@ -660,6 +941,99 @@ fun SettingsScreen(
                                 }
                             }
                         }
+
+                        Spacer(Modifier.height(16.dp))
+
+                        // Ambient Glow Intensity Selector
+                        Text(
+                            text = "Ambient Gradient Glow",
+                            fontSize = 14.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            color = c.textPrimary
+                        )
+                        Spacer(Modifier.height(8.dp))
+                        val glowLevels = listOf(
+                            "Off" to 0.0f,
+                            "Subtle" to 0.5f,
+                            "Vibrant" to 1.0f,
+                            "Neon Boost" to 1.4f
+                        )
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            glowLevels.forEach { (label, strength) ->
+                                val isSelected = kotlin.math.abs(ambientGlowStrength - strength) < 0.1f
+                                Box(
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .clip(RoundedCornerShape(12.dp))
+                                        .background(if (isSelected) primaryAccent.copy(0.2f) else Color.White.copy(0.06f))
+                                        .border(1.2.dp, if (isSelected) primaryAccent else Color.Transparent, RoundedCornerShape(12.dp))
+                                        .clickable {
+                                            ambientGlowStrength = strength
+                                            appPreferences.setAmbientGlowStrength(strength)
+                                        }
+                                        .padding(vertical = 10.dp, horizontal = 2.dp),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Text(
+                                        text = label,
+                                        fontSize = 11.sp,
+                                        fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
+                                        color = if (isSelected) primaryAccent else c.textSecondary,
+                                        textAlign = TextAlign.Center,
+                                        maxLines = 1
+                                    )
+                                }
+                            }
+                        }
+
+                        Spacer(Modifier.height(16.dp))
+
+                        // UI Corner Style Selector
+                        Text(
+                            text = "Card Corner Style",
+                            fontSize = 14.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            color = c.textPrimary
+                        )
+                        Spacer(Modifier.height(8.dp))
+                        val cornerStyles = listOf(
+                            "Sleek (16dp)" to "SLEEK",
+                            "Modern (22dp)" to "MODERN",
+                            "Extra (28dp)" to "EXTRA"
+                        )
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            cornerStyles.forEach { (label, style) ->
+                                val isSelected = uiCornerStyle == style
+                                Box(
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .clip(RoundedCornerShape(12.dp))
+                                        .background(if (isSelected) primaryAccent.copy(0.2f) else Color.White.copy(0.06f))
+                                        .border(1.2.dp, if (isSelected) primaryAccent else Color.Transparent, RoundedCornerShape(12.dp))
+                                        .clickable {
+                                            uiCornerStyle = style
+                                            appPreferences.setUiCornerStyle(style)
+                                        }
+                                        .padding(vertical = 10.dp, horizontal = 2.dp),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Text(
+                                        text = label,
+                                        fontSize = 11.sp,
+                                        fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
+                                        color = if (isSelected) primaryAccent else c.textSecondary,
+                                        textAlign = TextAlign.Center,
+                                        maxLines = 1
+                                    )
+                                }
+                            }
+                        }
                     }
 
                     SettingsDivider()
@@ -710,8 +1084,10 @@ fun SettingsScreen(
                     )
                 }
             }
+        }
 
-            // ─── 5. Library, Folders & Storage ────────────────────────────────
+        // ─── 5. Library, Folders & Storage ────────────────────────────────
+        if (showLibrary) {
             item {
                 SettingsCategorySection(
                     title = "Library & Folders",
@@ -806,8 +1182,10 @@ fun SettingsScreen(
                     )
                 }
             }
+        }
 
-            // ─── 6. Music Player Preferences ──────────────────────────────────
+        // ─── 6. Music Player Preferences ──────────────────────────────────
+        if (showMusic) {
             item {
                 SettingsCategorySection(
                     title = "Music Player",
@@ -843,8 +1221,10 @@ fun SettingsScreen(
                     )
                 }
             }
+        }
 
-            // ─── 7. Data, Storage & About ─────────────────────────────────────
+        // ─── 7. Data, Storage & About ─────────────────────────────────────
+        if (showStorage) {
             item {
                 SettingsCategorySection(
                     title = "Data, Storage & About",
@@ -893,8 +1273,63 @@ fun SettingsScreen(
                     )
                 }
             }
+        }
 
-            // ─── App Info Card ────────────────────────────────────────────────
+        // ─── Empty Search State (No results found) ────────────────────────
+        if (q.isNotBlank() && !anySectionVisible) {
+            item {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(vertical = 40.dp, horizontal = 16.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Box(
+                            modifier = Modifier
+                                .size(60.dp)
+                                .clip(CircleShape)
+                                .background(c.cardBg)
+                                .border(1.dp, c.glassBorder, CircleShape),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(
+                                Icons.Rounded.SearchOff,
+                                contentDescription = null,
+                                tint = c.textSecondary,
+                                modifier = Modifier.size(28.dp)
+                            )
+                        }
+                        Spacer(Modifier.height(14.dp))
+                        Text(
+                            text = "No settings found for \"$q\"",
+                            fontSize = 15.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            color = c.textPrimary,
+                            textAlign = TextAlign.Center
+                        )
+                        Spacer(Modifier.height(6.dp))
+                        Text(
+                            text = "Try searching for a different keyword or browse categories above.",
+                            fontSize = 12.5.sp,
+                            color = c.textSecondary,
+                            textAlign = TextAlign.Center
+                        )
+                        Spacer(Modifier.height(16.dp))
+                        OutlinedButton(
+                            onClick = { searchQuery = "" },
+                            shape = RoundedCornerShape(12.dp),
+                            border = BorderStroke(1.dp, primaryAccent.copy(alpha = 0.6f))
+                        ) {
+                            Text("Clear Search", color = primaryAccent, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                        }
+                    }
+                }
+            }
+        }
+
+        // ─── App Info Card ────────────────────────────────────────────────
+        if (q.isBlank() && (selectedCategory == SettingsCategory.ALL || selectedCategory == SettingsCategory.STORAGE)) {
             item {
                 Box(
                     modifier = Modifier
@@ -929,6 +1364,7 @@ fun SettingsScreen(
                     }
                 }
             }
+        }
         }
     }
 
@@ -1064,11 +1500,13 @@ fun SettingsScreen(
         }
         SettingsDialogType.SUB_BG_STYLE -> {
             SettingsOptionDialog(
-                title = "Subtitle Background Box",
+                title = "Subtitle Background Style",
                 options = listOf(
-                    0 to "None (Transparent)",
-                    1 to "Semi-transparent Black (Default)",
-                    2 to "Solid Black Box"
+                    0 to "Semi-transparent Black (Default)",
+                    1 to "Solid Deep Black Box",
+                    2 to "Frosted Dark Glass (Blur Effect)",
+                    3 to "Slate Blue Glass",
+                    4 to "Warm Amber Mist"
                 ),
                 selectedKey = subBgStyle,
                 onSelect = {
@@ -1246,7 +1684,7 @@ fun SettingsScreen(
                 TextButton(
                     onClick = {
                         appPreferences.resetAllSettingsToDefaults()
-                        themeController.updateMode(ThemeMode.DARK_GREY)
+                        themeController.updateMode(ThemeMode.OLED_BLACK)
                         themeController.updateColorTheme(PlayerTheme.CYBER)
                         resumeMode = appPreferences.getResumeMode()
                         rememberPlaybackSpeed = appPreferences.isRememberPlaybackSpeed()
@@ -1259,6 +1697,7 @@ fun SettingsScreen(
                         defaultResizeMode = appPreferences.getDefaultResizeMode()
                         hwAcceleration = appPreferences.isHwAccelerationEnabled()
                         keepScreenAwake = appPreferences.isKeepScreenAwake()
+                        playDuringCalls = appPreferences.isPlayDuringCallsEnabled()
                         brightnessGesture = appPreferences.isBrightnessGestureEnabled()
                         volumeGesture = appPreferences.isVolumeGestureEnabled()
                         seekGesture = appPreferences.isSeekGestureEnabled()
@@ -1266,12 +1705,14 @@ fun SettingsScreen(
                         doubleTapCenterPlayPause = appPreferences.isDoubleTapCenterPlayPauseEnabled()
                         pressHoldSpeed = appPreferences.getPressHoldSpeed()
                         hapticsEnabled = appPreferences.isHapticsEnabled()
+                        hdrEnabled = appPreferences.isHdrEnabled()
                         subFontSize = appPreferences.getSubtitleFontSize()
                         subColor = appPreferences.getSubtitleColor()
+                        subBgEnabled = appPreferences.isSubtitleBackgroundEnabled()
                         subBgStyle = appPreferences.getSubtitleBackgroundStyle()
                         subOutlineStyle = appPreferences.getSubtitleOutlineStyle()
                         pauseHeadsetDisconnect = appPreferences.isPauseOnHeadsetDisconnect()
-                        currentThemeMode = ThemeMode.DARK_GREY
+                        currentThemeMode = ThemeMode.OLED_BLACK
                         currentColorTheme = PlayerTheme.CYBER
                         signatureViewEnabled = false
                         signatureSaturation = 1.25f

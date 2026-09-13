@@ -66,7 +66,9 @@ import com.example.ymediaplayer.data.*
 import com.example.ymediaplayer.theme.LocalAppColors
 import com.example.ymediaplayer.theme.LocalThemeController
 import com.example.ymediaplayer.service.MusicService
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -182,6 +184,7 @@ fun FolderListScreen(
     DisposableEffect(Unit) {
         val observer = object : android.database.ContentObserver(android.os.Handler(android.os.Looper.getMainLooper())) {
             override fun onChange(selfChange: Boolean) {
+                VideoRepository.invalidateCache()
                 refreshTrigger++
             }
         }
@@ -211,7 +214,9 @@ fun FolderListScreen(
 
     // Load data
     LaunchedEffect(refreshTrigger) {
-        isLoading = true
+        if (allFolders.isEmpty()) {
+            isLoading = true
+        }
         allFolders = repository.getFoldersWithVideos()
         isLoading = false
     }
@@ -229,47 +234,59 @@ fun FolderListScreen(
         favorites = appPreferences.getFavorites()
     }
 
-    // Computed display folders
-    val displayFolders = remember(allFolders, searchQuery, sortOrder, activeChip, favorites) {
-        var filteredFolders = allFolders
-        if (activeChip == "Downloader") {
-            filteredFolders = filteredFolders.filter { it.name.contains("Download", ignoreCase = true) }
-        } else if (activeChip == "Favorites") {
-            filteredFolders = filteredFolders.mapNotNull { folder ->
-                val favVideos = folder.videos.filter { favorites.contains(it.uri.toString()) }
-                if (favVideos.isNotEmpty()) folder.copy(videos = favVideos) else null
-            }
-        }
-        var processed = filteredFolders.mapNotNull { folder ->
-            val filteredVideos = folder.videos.filter {
-                it.title.contains(searchQuery, ignoreCase = true)
-            }.sortVideosWithOrder(sortOrder)
-            if (filteredVideos.isNotEmpty() || folder.name.contains(searchQuery, ignoreCase = true)) {
-                folder.copy(videos = filteredVideos)
-            } else null
-        }.sortFoldersWithOrder(sortOrder)
+    // Computed display folders (processed in Dispatchers.Default to prevent main-thread jank)
+    var displayFolders by remember { mutableStateOf<List<VideoFolder>>(emptyList()) }
+    var allUniqueVideos by remember { mutableStateOf<List<VideoItem>>(emptyList()) }
 
-        if (searchQuery.isEmpty() && activeChip == null) {
-            val allVideosList = allFolders.flatMap { it.videos }.distinctBy { it.id }.sortVideosWithOrder(sortOrder)
-            if (allVideosList.isNotEmpty()) {
-                val allVideosFolder = VideoFolder(id = "all_videos", name = "All Videos", videos = allVideosList)
-                processed = listOf(allVideosFolder) + processed
+    LaunchedEffect(allFolders, searchQuery, sortOrder, activeChip, favorites) {
+        withContext(Dispatchers.Default) {
+            var filteredFolders = allFolders
+            if (activeChip == "Downloader") {
+                filteredFolders = filteredFolders.filter { it.name.contains("Download", ignoreCase = true) }
+            } else if (activeChip == "Favorites") {
+                filteredFolders = filteredFolders.mapNotNull { folder ->
+                    val favVideos = folder.videos.filter { favorites.contains(it.uri.toString()) }
+                    if (favVideos.isNotEmpty()) folder.copy(videos = favVideos) else null
+                }
+            }
+            var processed = filteredFolders.mapNotNull { folder ->
+                val filteredVideos = folder.videos.filter {
+                    it.title.contains(searchQuery, ignoreCase = true)
+                }.sortVideosWithOrder(sortOrder)
+                if (filteredVideos.isNotEmpty() || folder.name.contains(searchQuery, ignoreCase = true)) {
+                    folder.copy(videos = filteredVideos)
+                } else null
+            }.sortFoldersWithOrder(sortOrder)
+
+            if (searchQuery.isEmpty() && activeChip == null) {
+                val allVideosList = allFolders.flatMap { it.videos }.distinctBy { it.id }.sortVideosWithOrder(sortOrder)
+                if (allVideosList.isNotEmpty()) {
+                    val allVideosFolder = VideoFolder(id = "all_videos", name = "All Videos", videos = allVideosList)
+                    processed = listOf(allVideosFolder) + processed
+                }
+            }
+            // Pinned folders float to top right under All Videos
+            val pinnedIds = appPreferences.getPinnedFolders()
+            if (pinnedIds.isNotEmpty()) {
+                val allVideosF = processed.filter { it.id == "all_videos" }
+                val otherF = processed.filter { it.id != "all_videos" }
+                val pinned = otherF.filter { pinnedIds.contains(it.id) }
+                val unpinned = otherF.filter { !pinnedIds.contains(it.id) }
+                processed = allVideosF + pinned + unpinned
+            }
+            withContext(Dispatchers.Main) {
+                displayFolders = processed
             }
         }
-        // Pinned folders float to top right under All Videos
-        val pinnedIds = appPreferences.getPinnedFolders()
-        if (pinnedIds.isNotEmpty()) {
-            val allVideosF = processed.filter { it.id == "all_videos" }
-            val otherF = processed.filter { it.id != "all_videos" }
-            val pinned = otherF.filter { pinnedIds.contains(it.id) }
-            val unpinned = otherF.filter { !pinnedIds.contains(it.id) }
-            processed = allVideosF + pinned + unpinned
-        }
-        processed
     }
 
-    val allUniqueVideos = remember(allFolders) {
-        allFolders.flatMap { it.videos }.distinctBy { it.uri.toString() }
+    LaunchedEffect(allFolders) {
+        withContext(Dispatchers.Default) {
+            val unique = allFolders.flatMap { it.videos }.distinctBy { it.uri.toString() }
+            withContext(Dispatchers.Main) {
+                allUniqueVideos = unique
+            }
+        }
     }
 
     val searchMatchingVideos = remember(allUniqueVideos, searchQuery, sortOrder) {
@@ -457,26 +474,42 @@ fun FolderListScreen(
                                         horizontalArrangement = Arrangement.spacedBy(2.dp),
                                         verticalAlignment = Alignment.CenterVertically
                                     ) {
-                                        // 1. Color Theme Palette button (reverted, clean icon button, 7% larger)
-                                        IconButton(
-                                            onClick = {
-                                                view.performHaptic(HapticType.LIGHT)
-                                                val nextTheme = themeController.cycleColorTheme()
-                                                Toast.makeText(context, "Theme: ${nextTheme.displayName}", Toast.LENGTH_SHORT).show()
-                                            },
-                                            modifier = Modifier.size(39.dp)
+                                        // 1. Color Theme Palette button
+                                        Box(
+                                            modifier = Modifier
+                                                .size(39.dp)
+                                                .clip(CircleShape)
+                                                .combinedClickable(
+                                                    onClick = {
+                                                        view.performHaptic(HapticType.LIGHT)
+                                                        themeController.cycleColorTheme()
+                                                    },
+                                                    onLongClick = {
+                                                        haptic.performHapticFeedback(androidx.compose.ui.hapticfeedback.HapticFeedbackType.LongPress)
+                                                        Toast.makeText(context, "Color Theme Palette", Toast.LENGTH_SHORT).show()
+                                                    }
+                                                ),
+                                            contentAlignment = Alignment.Center
                                         ) {
                                             Icon(Icons.Rounded.Palette, contentDescription = "Theme", tint = c.accentBlue, modifier = Modifier.size(22.dp))
                                         }
 
-                                        // 2. Light / Dark Mode button (reverted, clean icon button, 7% larger)
-                                        IconButton(
-                                            onClick = {
-                                                view.performHaptic(HapticType.LIGHT)
-                                                val nextMode = themeController.cycleThemeMode()
-                                                Toast.makeText(context, "Theme: ${nextMode.displayName}", Toast.LENGTH_SHORT).show()
-                                            },
-                                            modifier = Modifier.size(39.dp)
+                                        // 2. Light / Dark Mode button
+                                        Box(
+                                            modifier = Modifier
+                                                .size(39.dp)
+                                                .clip(CircleShape)
+                                                .combinedClickable(
+                                                    onClick = {
+                                                        view.performHaptic(HapticType.LIGHT)
+                                                        themeController.cycleThemeMode()
+                                                    },
+                                                    onLongClick = {
+                                                        haptic.performHapticFeedback(androidx.compose.ui.hapticfeedback.HapticFeedbackType.LongPress)
+                                                        Toast.makeText(context, "Light / Dark Mode", Toast.LENGTH_SHORT).show()
+                                                    }
+                                                ),
+                                            contentAlignment = Alignment.Center
                                         ) {
                                             Icon(
                                                 imageVector = if (c.isDark) Icons.Rounded.LightMode else Icons.Rounded.DarkMode,
@@ -486,26 +519,44 @@ fun FolderListScreen(
                                             )
                                         }
 
-                                        // 3. Search button (clean icon button, 7% larger)
+                                        // 3. Search button
                                         if (currentTab == "Video") {
-                                            IconButton(
-                                                onClick = {
-                                                    view.performHaptic(HapticType.LIGHT)
-                                                    isSearching = true
-                                                },
-                                                modifier = Modifier.size(39.dp)
+                                            Box(
+                                                modifier = Modifier
+                                                    .size(39.dp)
+                                                    .clip(CircleShape)
+                                                    .combinedClickable(
+                                                        onClick = {
+                                                            view.performHaptic(HapticType.LIGHT)
+                                                            isSearching = true
+                                                        },
+                                                        onLongClick = {
+                                                            haptic.performHapticFeedback(androidx.compose.ui.hapticfeedback.HapticFeedbackType.LongPress)
+                                                            Toast.makeText(context, "Search Videos", Toast.LENGTH_SHORT).show()
+                                                        }
+                                                    ),
+                                                contentAlignment = Alignment.Center
                                             ) {
                                                 Icon(Icons.Filled.Search, contentDescription = "Search", tint = c.textPrimary, modifier = Modifier.size(22.dp))
                                             }
                                         }
 
-                                        // 4. Settings button (clean icon button, 7% larger)
-                                        IconButton(
-                                            onClick = {
-                                                view.performHaptic(HapticType.LIGHT)
-                                                onOpenSettings()
-                                            },
-                                            modifier = Modifier.size(39.dp)
+                                        // 4. Settings button
+                                        Box(
+                                            modifier = Modifier
+                                                .size(39.dp)
+                                                .clip(CircleShape)
+                                                .combinedClickable(
+                                                    onClick = {
+                                                        view.performHaptic(HapticType.LIGHT)
+                                                        onOpenSettings()
+                                                    },
+                                                    onLongClick = {
+                                                        haptic.performHapticFeedback(androidx.compose.ui.hapticfeedback.HapticFeedbackType.LongPress)
+                                                        Toast.makeText(context, "Settings", Toast.LENGTH_SHORT).show()
+                                                    }
+                                                ),
+                                            contentAlignment = Alignment.Center
                                         ) {
                                             Icon(Icons.Rounded.Settings, contentDescription = "Settings", tint = c.textPrimary, modifier = Modifier.size(22.dp))
                                         }
@@ -521,7 +572,7 @@ fun FolderListScreen(
         ) { paddingValues ->
             Crossfade(
                 targetState = currentTab,
-                animationSpec = tween(180),
+                animationSpec = snap(),
                 label = "TabCrossfade",
                 modifier = Modifier.fillMaxSize()
             ) { tab ->
@@ -530,7 +581,7 @@ fun FolderListScreen(
                         modifier = Modifier.fillMaxSize().padding(top = paddingValues.calculateTopPadding()),
                         onFullScreenChanged = { musicPlayerExpanded = it }
                     )
-                } else if (isLoading) {
+                } else if (isLoading && allFolders.isEmpty()) {
                 Box(modifier = Modifier.fillMaxSize().padding(paddingValues), contentAlignment = Alignment.Center) {
                     CircularProgressIndicator(color = c.accentBlue, strokeWidth = 3.dp)
                 }
@@ -557,7 +608,7 @@ fun FolderListScreen(
             } else {
                 LazyColumn(
                     modifier = Modifier.fillMaxSize().padding(top = paddingValues.calculateTopPadding()),
-                    contentPadding = PaddingValues(bottom = 140.dp)
+                    contentPadding = PaddingValues(bottom = 160.dp)
                 ) {
 
                     if (isSearching) {
@@ -1294,20 +1345,22 @@ fun FolderListScreen(
                     }
                 }
 
-                // Refined Grey Nav Pill
+                // Adaptive Theme Nav Pill
                 Box(
                     modifier = Modifier
-                        .then(if (c.isMatte) Modifier else Modifier.shadow(16.dp, CircleShape, ambientColor = c.cardShadowColor, spotColor = c.cardShadowColor))
+                        .then(if (c.isMatte) Modifier.shadow(10.dp, CircleShape, ambientColor = c.cardShadowColor, spotColor = c.cardShadowColor) else Modifier.shadow(16.dp, CircleShape, ambientColor = c.cardShadowColor, spotColor = c.cardShadowColor))
                         .clip(CircleShape)
-                        .background(Color(0xFF1E202A))
-                        .border(1.dp, Color.White.copy(alpha = 0.12f), CircleShape)
+                        .background(c.cardBgElevated)
+                        .border(1.dp, c.glassBorder, CircleShape)
                 ) {
                     Row(modifier = Modifier.padding(5.dp), horizontalArrangement = Arrangement.spacedBy(4.dp), verticalAlignment = Alignment.CenterVertically) {
                         val view = androidx.compose.ui.platform.LocalView.current
                         listOf("Video" to Icons.Rounded.Movie, "Music" to Icons.Rounded.MusicNote).forEach { (label, icon) ->
                             val selected = currentTab == label
                             val pillBgColor by animateColorAsState(
-                                targetValue = if (selected) Color(0xFF2E3140) else Color.Transparent,
+                                targetValue = if (selected) {
+                                    if (c.isDark) c.accentBlue.copy(alpha = 0.22f) else c.accentBlue.copy(alpha = 0.14f)
+                                } else Color.Transparent,
                                 animationSpec = spring(
                                     dampingRatio = Spring.DampingRatioNoBouncy,
                                     stiffness = Spring.StiffnessMediumLow
@@ -1320,7 +1373,7 @@ fun FolderListScreen(
                                 label = "pillTextColor"
                             )
                             val pillElevation by animateDpAsState(
-                                targetValue = if (selected) 6.dp else 0.dp,
+                                targetValue = if (selected && !c.isMatte) 6.dp else 0.dp,
                                 animationSpec = tween(250),
                                 label = "pillElevation"
                             )
@@ -1332,7 +1385,7 @@ fun FolderListScreen(
                                     .background(pillBgColor)
                                     .then(
                                         if (selected) {
-                                            Modifier.border(1.dp, Color.White.copy(0.35f), CircleShape)
+                                            Modifier.border(1.dp, c.accentBlue.copy(alpha = 0.45f), CircleShape)
                                         } else {
                                             Modifier
                                         }
@@ -1618,55 +1671,56 @@ fun FolderListScreen(
 // BACKGROUND
 // ═══════════════════════════════════════════════════════════════════════════════
 @Composable
-internal fun CanvasBg(offsetProvider: () -> Float) {
+internal fun CanvasBg(offsetProvider: () -> Float = { 0f }) {
     val c = LocalAppColors.current
-    if (c.isDark) {
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .background(
-                    Brush.verticalGradient(
-                        colors = listOf(
-                            Color(0xFF22242D), // Clean dark grey at top
-                            Color(0xFF181921), // Dark slate-grey in middle
-                            Color(0xFF14151B)  // Deep rich dark grey at bottom
-                        )
-                    )
-                )
-                .drawBehind {
-                    val offset = offsetProvider()
-                    // Lil theme colours in the background (delicate ambient glow, preserving the dark grey base!)
+    val context = LocalContext.current
+    val appPreferences = remember(context) { AppPreferences(context) }
+    val glowVersion = appPreferences.lastProgressUpdate.longValue
+    val glowStrength = remember(glowVersion) { appPreferences.getAmbientGlowStrength() }
+
+    // Enhanced vivid core & falloff for all 3 modes
+    val coreAlpha = when {
+        c.isDark && c.baseBackground == Color(0xFF000000) -> 0.45f * glowStrength // OLED Black (rich vibrant halo)
+        c.isDark -> 0.38f * glowStrength                                          // Slate Grey
+        else -> 0.28f * glowStrength                                              // Clean Light
+    }.coerceIn(0f, 0.95f)
+    val midAlpha = (coreAlpha * 0.42f).coerceIn(0f, 0.55f)
+    val edgeAlpha = (coreAlpha * 0.12f).coerceIn(0f, 0.20f)
+    val secAlpha = (coreAlpha * 0.25f).coerceIn(0f, 0.30f)
+
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(c.baseBackground)
+            .drawBehind {
+                if (coreAlpha > 0.01f) {
+                    // Centered circular radial ambient glow based on the theme color, softly fading outwards
                     drawRect(
                         brush = Brush.radialGradient(
-                            colors = listOf(c.gradientBlob1.copy(alpha = 0.09f), Color.Transparent),
-                            center = Offset(offset * 0.4f, 150f),
-                            radius = 650f
+                            colors = listOf(
+                                c.accentBlue.copy(alpha = coreAlpha),
+                                c.accentBlue.copy(alpha = midAlpha),
+                                c.accentBlue.copy(alpha = edgeAlpha),
+                                Color.Transparent
+                            ),
+                            center = Offset(size.width * 0.5f, size.height * 0.25f),
+                            radius = size.width * 0.92f
                         )
                     )
+                    // Secondary corner ambient accent for rich dual-tone depth
                     drawRect(
                         brush = Brush.radialGradient(
-                            colors = listOf(c.gradientBlob2.copy(alpha = 0.07f), Color.Transparent),
-                            center = Offset(size.width - 80f, size.height * 0.65f),
-                            radius = 700f
+                            colors = listOf(
+                                c.accentGreen.copy(alpha = secAlpha),
+                                Color.Transparent
+                            ),
+                            center = Offset(size.width * 0.88f, size.height * 0.75f),
+                            radius = size.width * 0.75f
                         )
                     )
                 }
-        )
-    } else {
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .background(
-                    Brush.verticalGradient(
-                        colors = listOf(
-                            Color(0xFFF2EDFC),
-                            Color(0xFFE4EDF8),
-                            Color(0xFFDAE6F5)
-                        )
-                    )
-                )
-        )
-    }
+            }
+    )
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -1828,45 +1882,6 @@ private fun ContinueWatchingCard(
                 Text("$pct%", color = c.accentBlue, fontSize = 9.sp, fontWeight = FontWeight.Bold)
             }
         }
-        // Top left remove button
-        if (onRemove != null) {
-            Box(
-                modifier = Modifier
-                    .align(Alignment.TopStart)
-                    .padding(6.dp)
-                    .size(22.dp)
-                    .clip(CircleShape)
-                    .background(Color.Black.copy(alpha = 0.70f))
-                    .border(0.8.dp, Color.White.copy(alpha = 0.35f), CircleShape)
-                    .clickable { onRemove() },
-                contentAlignment = Alignment.Center
-            ) {
-                Icon(
-                    Icons.Rounded.Close,
-                    contentDescription = "Remove",
-                    tint = Color.White.copy(alpha = 0.90f),
-                    modifier = Modifier.size(13.dp)
-                )
-            }
-        }
-        // Center resume play button with 3D embossed accent ring
-        Box(
-            modifier = Modifier
-                .align(Alignment.Center)
-                .size(36.dp)
-                .then(if (c.isMatte) Modifier else Modifier.shadow(6.dp, CircleShape, ambientColor = c.accentBlue.copy(0.6f)))
-                .clip(CircleShape)
-                .background(if (c.isMatte) SolidColor(Color(0xFF19191E)) else Brush.radialGradient(listOf(Color(0xE6141520), Color(0xFA0B0C10))))
-                .border(1.6.dp, if (c.isMatte) SolidColor(c.accentBlue) else Brush.verticalGradient(listOf(Color.White.copy(0.7f), c.accentBlue)), CircleShape),
-            contentAlignment = Alignment.Center
-        ) {
-            Icon(
-                Icons.Rounded.PlayArrow,
-                contentDescription = "Resume",
-                tint = Color.White,
-                modifier = Modifier.size(20.dp).padding(start = 1.dp)
-            )
-        }
         // Bottom scrim & title
         Box(
             modifier = Modifier.align(Alignment.BottomCenter).fillMaxWidth().height(44.dp)
@@ -1998,31 +2013,33 @@ fun FolderItem(
         append(formatSize(totalFolderSize))
     }
 
+    val appPreferences = remember(context) { AppPreferences(context) }
+    val cornerRadius = when (appPreferences.getUiCornerStyle()) {
+        "SLEEK" -> 16.dp
+        "EXTRA" -> 28.dp
+        else -> 22.dp
+    }
+
     Box(
         modifier = Modifier
             .fillMaxWidth()
             .padding(horizontal = 16.dp, vertical = 2.5.dp)
             .then(if (c.isMatte) Modifier else Modifier.shadow(
                 elevation = 8.dp,
-                shape = RoundedCornerShape(22.dp),
+                shape = RoundedCornerShape(cornerRadius),
                 ambientColor = c.cardShadowColor,
                 spotColor = c.cardShadowColor
             ))
-            .clip(RoundedCornerShape(22.dp))
+            .clip(RoundedCornerShape(cornerRadius))
             .background(
-                Brush.verticalGradient(
-                    listOf(Color(0xFF282A36), Color(0xFF22242E))
-                )
+                if (c.isMatte) SolidColor(c.cardBg)
+                else Brush.verticalGradient(listOf(c.cardBgElevated, c.cardBg))
             )
             .border(
                 width = 1.dp,
-                brush = Brush.verticalGradient(
-                    listOf(
-                        Color.White.copy(alpha = 0.12f),
-                        Color.White.copy(alpha = 0.04f)
-                    )
-                ),
-                shape = RoundedCornerShape(22.dp)
+                brush = if (c.isMatte) SolidColor(c.glassBorder)
+                else Brush.verticalGradient(listOf(c.cardBorderHighlight, c.glassBorder)),
+                shape = RoundedCornerShape(cornerRadius)
             )
             .bounceClick(
                 scaleDown = 0.965f,
@@ -2041,10 +2058,10 @@ fun FolderItem(
                 modifier = Modifier
                     .size(46.dp)
                     .clip(RoundedCornerShape(14.dp))
-                    .background(Color(0xFF2C2F3D))
+                    .background(c.cardBgElevated)
                     .border(
                         width = 1.dp,
-                        brush = SolidColor(Color.White.copy(alpha = 0.12f)),
+                        brush = SolidColor(c.glassBorder),
                         shape = RoundedCornerShape(14.dp)
                     ),
                 contentAlignment = Alignment.Center
@@ -2083,8 +2100,8 @@ fun FolderItem(
             Box(
                 modifier = Modifier
                     .clip(RoundedCornerShape(10.dp))
-                    .background(Color(0xFF2D303D))
-                    .border(1.dp, Color.White.copy(alpha = 0.10f), RoundedCornerShape(10.dp))
+                    .background(c.cardBgElevated)
+                    .border(1.dp, c.glassBorder, RoundedCornerShape(10.dp))
                     .padding(horizontal = 10.dp, vertical = 5.dp)
             ) {
                 Text(folder.videos.size.toString(), fontSize = 13.sp, fontWeight = FontWeight.Bold, color = c.accentBlue)
@@ -2100,8 +2117,8 @@ fun FolderItem(
                     .padding(start = 7.dp, top = 7.dp)
                     .size(18.dp)
                     .clip(CircleShape)
-                    .background(Color(0xFF20222C))
-                    .border(0.8.dp, Color.White.copy(alpha = 0.18f), CircleShape),
+                    .background(c.cardBgElevated)
+                    .border(0.8.dp, c.glassBorder, CircleShape),
                 contentAlignment = Alignment.Center
             ) {
                 Icon(
@@ -2131,25 +2148,31 @@ fun FolderGridItem(
     val context = LocalContext.current
     val previewVideos = folder.videos.take(4)
 
+    val appPreferences = remember(context) { AppPreferences(context) }
+    val gridCornerRadius = when (appPreferences.getUiCornerStyle()) {
+        "SLEEK" -> 14.dp
+        "EXTRA" -> 26.dp
+        else -> 20.dp
+    }
+
     Box(
         modifier = Modifier.fillMaxWidth().padding(vertical = 3.dp)
             .then(if (c.isMatte) Modifier else Modifier.shadow(
                 elevation = 8.dp,
-                shape = RoundedCornerShape(20.dp),
+                shape = RoundedCornerShape(gridCornerRadius),
                 ambientColor = c.cardShadowColor,
                 spotColor = c.cardShadowColor
             ))
-            .clip(RoundedCornerShape(20.dp))
-            .background(Brush.verticalGradient(listOf(Color(0xFF282A36), Color(0xFF20222C))))
+            .clip(RoundedCornerShape(gridCornerRadius))
+            .background(
+                if (c.isMatte) SolidColor(c.cardBg)
+                else Brush.verticalGradient(listOf(c.cardBgElevated, c.cardBg))
+            )
             .border(
                 width = 1.dp,
-                brush = Brush.verticalGradient(
-                    listOf(
-                        Color.White.copy(alpha = 0.12f),
-                        Color.White.copy(alpha = 0.04f)
-                    )
-                ),
-                shape = RoundedCornerShape(20.dp)
+                brush = if (c.isMatte) SolidColor(c.glassBorder)
+                else Brush.verticalGradient(listOf(c.cardBorderHighlight, c.glassBorder)),
+                shape = RoundedCornerShape(gridCornerRadius)
             )
             .bounceClick(scaleDown = 0.95f, onLongClick = onLongPress, onClick = onClick)
     ) {
@@ -2212,8 +2235,8 @@ fun FolderGridItem(
                     .padding(start = 7.dp, top = 7.dp)
                     .size(18.dp)
                     .clip(CircleShape)
-                    .background(Color(0xFF20222C))
-                    .border(0.8.dp, Color.White.copy(alpha = 0.18f), CircleShape),
+                    .background(c.cardBgElevated)
+                    .border(0.8.dp, c.glassBorder, CircleShape),
                 contentAlignment = Alignment.Center
             ) {
                 Icon(

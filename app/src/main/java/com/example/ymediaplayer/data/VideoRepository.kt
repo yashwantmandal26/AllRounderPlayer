@@ -17,7 +17,9 @@ data class VideoItem(
     val bucketId: String,
     val bucketName: String,
     val relativePath: String = "",   // e.g. "DCIM/Camera/"
-    val dateAdded: Long = 0L         // epoch seconds
+    val dateAdded: Long = 0L,        // epoch seconds
+    val width: Int = 0,
+    val height: Int = 0
 )
 
 data class VideoFolder(
@@ -28,7 +30,36 @@ data class VideoFolder(
 
 class VideoRepository(private val context: Context) {
 
-    suspend fun getFoldersWithVideos(): List<VideoFolder> = withContext(Dispatchers.IO) {
+    companion object {
+        @Volatile
+        private var memoryCachedFolders: List<VideoFolder>? = null
+        @Volatile
+        private var lastCacheTime: Long = 0L
+
+        val videoDimensionsCache = java.util.concurrent.ConcurrentHashMap<String, Pair<Int, Int>>()
+
+        fun getVideoDimensions(uriString: String): Pair<Int, Int>? = videoDimensionsCache[uriString]
+
+        fun cacheVideoDimensions(uriString: String, width: Int, height: Int) {
+            if (width > 0 && height > 0) {
+                videoDimensionsCache[uriString] = Pair(width, height)
+            }
+        }
+
+        fun invalidateCache() {
+            memoryCachedFolders = null
+            lastCacheTime = 0L
+        }
+    }
+
+    suspend fun getFoldersWithVideos(forceRefresh: Boolean = false): List<VideoFolder> = withContext(Dispatchers.IO) {
+        val cached = memoryCachedFolders
+        val now = System.currentTimeMillis()
+        // Serve from memory if fresh within 15 seconds, unless explicitly invalidated
+        if (!forceRefresh && cached != null && (now - lastCacheTime < 15_000L)) {
+            return@withContext cached
+        }
+
         val videos = mutableListOf<VideoItem>()
 
         val projection = buildList {
@@ -39,6 +70,8 @@ class VideoRepository(private val context: Context) {
             add(MediaStore.Video.Media.BUCKET_ID)
             add(MediaStore.Video.Media.BUCKET_DISPLAY_NAME)
             add(MediaStore.Video.Media.DATE_ADDED)
+            add(MediaStore.Video.Media.WIDTH)
+            add(MediaStore.Video.Media.HEIGHT)
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
                 add(MediaStore.Video.Media.RELATIVE_PATH)
             }
@@ -60,6 +93,8 @@ class VideoRepository(private val context: Context) {
             val bucketIdColumn = cursor.getColumnIndexOrThrow(MediaStore.Video.Media.BUCKET_ID)
             val bucketNameColumn = cursor.getColumnIndexOrThrow(MediaStore.Video.Media.BUCKET_DISPLAY_NAME)
             val dateAddedColumn = cursor.getColumnIndexOrThrow(MediaStore.Video.Media.DATE_ADDED)
+            val widthColumn = cursor.getColumnIndex(MediaStore.Video.Media.WIDTH)
+            val heightColumn = cursor.getColumnIndex(MediaStore.Video.Media.HEIGHT)
             val relativePathColumn = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q)
                 cursor.getColumnIndex(MediaStore.Video.Media.RELATIVE_PATH) else -1
 
@@ -71,6 +106,8 @@ class VideoRepository(private val context: Context) {
                 val bucketId = cursor.getString(bucketIdColumn) ?: "0"
                 val bucketName = cursor.getString(bucketNameColumn) ?: "Unknown Folder"
                 val dateAdded = cursor.getLong(dateAddedColumn)
+                val width = if (widthColumn >= 0) cursor.getInt(widthColumn) else 0
+                val height = if (heightColumn >= 0) cursor.getInt(heightColumn) else 0
                 val relativePath = if (relativePathColumn >= 0)
                     cursor.getString(relativePathColumn) ?: "" else ""
 
@@ -78,6 +115,10 @@ class VideoRepository(private val context: Context) {
                     MediaStore.Video.Media.EXTERNAL_CONTENT_URI,
                     id
                 )
+
+                if (width > 0 && height > 0) {
+                    videoDimensionsCache[contentUri.toString()] = Pair(width, height)
+                }
 
                 videos.add(
                     VideoItem(
@@ -89,7 +130,9 @@ class VideoRepository(private val context: Context) {
                         bucketId = bucketId,
                         bucketName = bucketName,
                         relativePath = relativePath,
-                        dateAdded = dateAdded
+                        dateAdded = dateAdded,
+                        width = width,
+                        height = height
                     )
                 )
             }
@@ -106,7 +149,19 @@ class VideoRepository(private val context: Context) {
             }
             .sortedBy { it.name }
 
+        memoryCachedFolders = folders
+        lastCacheTime = now
         folders
+    }
+
+    suspend fun getFolderById(folderId: String): VideoFolder? {
+        val folders = getFoldersWithVideos(forceRefresh = false)
+        return folders.find { it.id == folderId }
+    }
+
+    suspend fun getAllVideos(): List<VideoItem> {
+        val folders = getFoldersWithVideos(forceRefresh = false)
+        return folders.flatMap { it.videos }
     }
 }
 

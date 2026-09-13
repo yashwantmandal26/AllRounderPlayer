@@ -10,25 +10,26 @@ import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.platform.LocalContext
 
 enum class ThemeMode(val displayName: String) {
-    SOLID_DARK("Solid Dark (Matte)"),
-    SOLID_WHITE("Solid White (Matte)"),
-    DARK_GREY("Dark Grey (Glass)"),
-    LESS_WHITE("Less White (Soft)");
+    OLED_BLACK("OLED Black"),
+    SLATE_GREY("Slate Grey"),
+    CLEAN_LIGHT("Clean Light");
 
     companion object {
-        val SOLID_BLACK get() = SOLID_DARK
-        val MILK_WHITE get() = SOLID_WHITE
+        val SOLID_DARK get() = OLED_BLACK
+        val SOLID_BLACK get() = OLED_BLACK
+        val DARK_GREY get() = SLATE_GREY
+        val SOLID_WHITE get() = CLEAN_LIGHT
+        val MILK_WHITE get() = CLEAN_LIGHT
+        val LESS_WHITE get() = CLEAN_LIGHT
 
         fun fromString(name: String?): ThemeMode {
             return when (name?.uppercase()) {
-                "SOLID_DARK", "SOLID_BLACK" -> SOLID_DARK
-                "SOLID_WHITE", "MILK_WHITE" -> SOLID_WHITE
-                "DARK_GREY" -> DARK_GREY
-                "LESS_WHITE" -> LESS_WHITE
-                "DARK" -> SOLID_DARK
-                "LIGHT" -> SOLID_WHITE
-                "SYSTEM" -> SOLID_DARK
-                else -> SOLID_DARK
+                "OLED_BLACK", "SOLID_BLACK", "SOLID_DARK" -> OLED_BLACK
+                "SLATE_GREY", "DARK_GREY" -> SLATE_GREY
+                "CLEAN_LIGHT", "SOLID_WHITE", "MILK_WHITE", "LESS_WHITE", "LIGHT" -> CLEAN_LIGHT
+                "DARK" -> OLED_BLACK
+                "SYSTEM" -> SLATE_GREY
+                else -> OLED_BLACK
             }
         }
     }
@@ -43,7 +44,7 @@ class ThemeController(context: Context) {
         .getSharedPreferences("ymedia_prefs", Context.MODE_PRIVATE)
 
     var mode by mutableStateOf(
-        ThemeMode.fromString(prefs.getString(KEY, ThemeMode.SOLID_DARK.name))
+        ThemeMode.fromString(prefs.getString(KEY, ThemeMode.OLED_BLACK.name))
     )
         private set
 
@@ -59,7 +60,7 @@ class ThemeController(context: Context) {
         prefs.edit().putString(KEY, newMode.name).apply()
     }
 
-    /** Cycle through the 4 theme modes one by one: Dark Grey -> Solid Black & Grey -> Solid Milk White -> Less White */
+    /** Cycle through the 3 theme modes one by one: OLED Black -> Slate Grey -> Clean Light */
     fun cycleThemeMode(): ThemeMode {
         val allModes = ThemeMode.entries
         val currentIndex = allModes.indexOf(mode).takeIf { it >= 0 } ?: 0

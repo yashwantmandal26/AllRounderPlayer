@@ -113,13 +113,16 @@ class MusicService : MediaSessionService() {
             }
         }
 
+        val appPreferences = com.example.ymediaplayer.data.AppPreferences(this)
+        val handleAudioFocus = !appPreferences.isPlayDuringCallsEnabled()
+
         val player = ExoPlayer.Builder(this, renderersFactory)
             .setAudioAttributes(
                 AudioAttributes.Builder()
                     .setContentType(C.AUDIO_CONTENT_TYPE_MUSIC)
                     .setUsage(C.USAGE_MEDIA)
                     .build(),
-                true
+                handleAudioFocus
             )
             .build()
 

@@ -437,7 +437,7 @@ class AppPreferences(private val prefs: SharedPreferences) {
     fun getResumeMode(): String = prefs.getString("resume_mode", "AUTO") ?: "AUTO"
     fun setResumeMode(mode: String) { prefs.edit().putString("resume_mode", mode).apply() }
 
-    fun isRememberPlaybackSpeed(): Boolean = prefs.getBoolean("remember_playback_speed", true)
+    fun isRememberPlaybackSpeed(): Boolean = prefs.getBoolean("remember_playback_speed", false)
     fun setRememberPlaybackSpeed(remember: Boolean) { prefs.edit().putBoolean("remember_playback_speed", remember).apply() }
 
     fun getLastPlaybackSpeed(): Float = prefs.getFloat("last_playback_speed", 1.0f)
@@ -452,7 +452,7 @@ class AppPreferences(private val prefs: SharedPreferences) {
     fun isAutoPipEnabled(): Boolean = prefs.getBoolean("auto_pip_enabled", true)
     fun setAutoPipEnabled(enabled: Boolean) { prefs.edit().putBoolean("auto_pip_enabled", enabled).apply() }
 
-    fun isAutoPlayNextEnabled(): Boolean = prefs.getBoolean("auto_play_next_in_playlist", true)
+    fun isAutoPlayNextEnabled(): Boolean = prefs.getBoolean("auto_play_next_in_playlist", false)
     fun setAutoPlayNextEnabled(enabled: Boolean) { prefs.edit().putBoolean("auto_play_next_in_playlist", enabled).apply() }
 
     fun isRememberPlaylistQueue(): Boolean = prefs.getBoolean("remember_playlist_queue", true)
@@ -495,10 +495,13 @@ class AppPreferences(private val prefs: SharedPreferences) {
     fun isVolumeGestureEnabled(): Boolean = prefs.getBoolean("gesture_volume_enabled", true)
     fun setVolumeGestureEnabled(enabled: Boolean) { prefs.edit().putBoolean("gesture_volume_enabled", enabled).apply() }
 
-    fun isSeekGestureEnabled(): Boolean = prefs.getBoolean("gesture_seek_enabled", false)
+    fun isSeekGestureEnabled(): Boolean = prefs.getBoolean("gesture_seek_enabled", true)
     fun setSeekGestureEnabled(enabled: Boolean) { prefs.edit().putBoolean("gesture_seek_enabled", enabled).apply() }
 
-    fun isVideoSwitchGestureEnabled(): Boolean = prefs.getBoolean("gesture_video_switch_enabled", true)
+    fun isPlayDuringCallsEnabled(): Boolean = prefs.getBoolean("play_during_calls", true)
+    fun setPlayDuringCallsEnabled(enabled: Boolean) { prefs.edit().putBoolean("play_during_calls", enabled).apply() }
+
+    fun isVideoSwitchGestureEnabled(): Boolean = prefs.getBoolean("gesture_video_switch_enabled", false)
     fun setVideoSwitchGestureEnabled(enabled: Boolean) { prefs.edit().putBoolean("gesture_video_switch_enabled", enabled).apply() }
 
     fun isDoubleTapCenterPlayPauseEnabled(): Boolean = prefs.getBoolean("double_tap_center_play_pause", true)
@@ -510,6 +513,9 @@ class AppPreferences(private val prefs: SharedPreferences) {
     fun isHapticsEnabled(): Boolean = prefs.getBoolean("haptics_enabled", true)
     fun setHapticsEnabled(enabled: Boolean) { prefs.edit().putBoolean("haptics_enabled", enabled).apply() }
 
+    fun isHdrEnabled(): Boolean = prefs.getBoolean("hdr_playback_enabled", true)
+    fun setHdrEnabled(enabled: Boolean) { prefs.edit().putBoolean("hdr_playback_enabled", enabled).apply() }
+
     // ─── Subtitles & Audio Preferences ─────────────────────────────────────────
     fun getSubtitleFontSize(): Int = prefs.getInt("sub_font_size", 18)
     fun setSubtitleFontSize(size: Int) { prefs.edit().putInt("sub_font_size", size).apply() }
@@ -517,7 +523,10 @@ class AppPreferences(private val prefs: SharedPreferences) {
     fun getSubtitleColor(): Long = prefs.getLong("sub_color", 0xFFFFFFFFL)
     fun setSubtitleColor(color: Long) { prefs.edit().putLong("sub_color", color).apply() }
 
-    fun getSubtitleBackgroundStyle(): Int = prefs.getInt("sub_bg_style", 1) // 0: None, 1: Semi-transparent, 2: Solid black
+    fun isSubtitleBackgroundEnabled(): Boolean = prefs.getBoolean("sub_bg_enabled", true)
+    fun setSubtitleBackgroundEnabled(enabled: Boolean) { prefs.edit().putBoolean("sub_bg_enabled", enabled).apply() }
+
+    fun getSubtitleBackgroundStyle(): Int = prefs.getInt("sub_bg_style", 0) // 0: Semi-transparent Black, 1: Solid Black, 2: Frosted Dark Glass, 3: Slate Blue, 4: Warm Amber
     fun setSubtitleBackgroundStyle(style: Int) { prefs.edit().putInt("sub_bg_style", style).apply() }
 
     fun getSubtitleOutlineStyle(): Int = prefs.getInt("sub_outline_style", 2) // 0: None, 1: Shadow, 2: Bold outline
@@ -566,6 +575,19 @@ class AppPreferences(private val prefs: SharedPreferences) {
     // ─── Music Preferences ─────────────────────────────────────────────────────
     fun isGaplessPlaybackEnabled(): Boolean = prefs.getBoolean("gapless_playback_enabled", true)
     fun setGaplessPlaybackEnabled(enabled: Boolean) { prefs.edit().putBoolean("gapless_playback_enabled", enabled).apply() }
+
+    // ─── UI & Visual Customization Preferences ─────────────────────────────────
+    fun getAmbientGlowStrength(): Float = prefs.getFloat("ambient_glow_strength", 1.0f)
+    fun setAmbientGlowStrength(strength: Float) {
+        prefs.edit().putFloat("ambient_glow_strength", strength).apply()
+        lastProgressUpdate.longValue = System.currentTimeMillis()
+    }
+
+    fun getUiCornerStyle(): String = prefs.getString("ui_corner_style", "MODERN") ?: "MODERN"
+    fun setUiCornerStyle(style: String) {
+        prefs.edit().putString("ui_corner_style", style).apply()
+        lastProgressUpdate.longValue = System.currentTimeMillis()
+    }
 
     // ─── Maintenance & Clean-up ────────────────────────────────────────────────
     fun clearContinueWatchingHistory() {

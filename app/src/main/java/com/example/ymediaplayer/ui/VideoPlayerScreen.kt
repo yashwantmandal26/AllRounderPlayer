@@ -6,6 +6,7 @@ import android.app.NotificationManager
 import android.app.PendingIntent
 import androidx.core.app.NotificationCompat
 import com.example.ymediaplayer.MainActivity
+import com.example.ymediaplayer.player.VideoPlaybackManager
 import android.content.BroadcastReceiver
 import android.content.ClipData
 import android.content.ClipboardManager
@@ -57,12 +58,14 @@ import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.zIndex
 import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -104,6 +107,7 @@ import com.example.ymediaplayer.service.MusicService
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
 import java.util.concurrent.ConcurrentSkipListMap
@@ -137,7 +141,6 @@ private enum class PlayerGestureMode {
     SEEK,
     SPEED_HOLD,
     ORIENTATION_SWIPE,
-    VIDEO_SWITCH_SWIPE,
     PINCH_ZOOM,
     IGNORED_DRAG
 }
@@ -181,15 +184,29 @@ fun VideoPlayerScreen(
         withContext(Dispatchers.IO) {
             val folders = repository.getFoldersWithVideos()
             allFolders = folders
-            val parentFolder = folders.find { folder -> folder.videos.any { it.uri.toString() == videoUrl } }
-                ?: folders.firstOrNull()
+            val targetUri = try { android.net.Uri.parse(videoUrl) } catch (_: Exception) { null }
+            val parentFolder = folders.find { folder ->
+                folder.id != "all_videos" && folder.videos.any { v ->
+                    v.uri.toString() == videoUrl || (targetUri != null && v.uri == targetUri)
+                }
+            } ?: folders.find { folder ->
+                folder.videos.any { v ->
+                    v.uri.toString() == videoUrl || (targetUri != null && v.uri == targetUri)
+                }
+            } ?: folders.firstOrNull()
+
             if (parentFolder != null) {
                 playlistVideos = parentFolder.videos
-                val index = playlistVideos.indexOfFirst { it.uri.toString() == videoUrl }
-                currentVideoIndex = if (index >= 0) index else 0
-                if (index >= 0) {
-                    videoTitle = playlistVideos[index].title.substringBeforeLast(".")
-                }
+            } else {
+                playlistVideos = folders.flatMap { it.videos }.distinctBy { it.id }
+            }
+
+            val index = playlistVideos.indexOfFirst {
+                it.uri.toString() == videoUrl || (targetUri != null && it.uri == targetUri)
+            }
+            currentVideoIndex = if (index >= 0) index else 0
+            if (index >= 0) {
+                videoTitle = playlistVideos[index].title.substringBeforeLast(".")
             }
         }
     }
@@ -204,47 +221,21 @@ fun VideoPlayerScreen(
     val preferredSubLang = remember { appPreferences.getPreferredSubtitleLanguage() }
     val subtitlesEnabled = remember { appPreferences.isSubtitlesEnabled() }
 
-    val exoPlayer = remember {
+    val exoPlayer = remember(videoUrl) {
         val resumeMode = appPreferences.getResumeMode()
         val initialProgress = if (resumeMode != "START") appPreferences.getVideoProgress(videoUrl) else 0L
-        ExoPlayer.Builder(context)
-            .setAudioAttributes(
-                AudioAttributes.Builder()
-                    .setContentType(C.AUDIO_CONTENT_TYPE_MOVIE)
-                    .setUsage(C.USAGE_MEDIA)
-                    .build(),
-                true
-            )
-            .setHandleAudioBecomingNoisy(appPreferences.isPauseOnHeadsetDisconnect())
-            .build().apply {
-                var tspBuilder = trackSelectionParameters.buildUpon()
-                if (preferredAudioLang != "default" && preferredAudioLang.isNotEmpty()) {
-                    tspBuilder = tspBuilder.setPreferredAudioLanguage(preferredAudioLang)
-                }
-                if (!subtitlesEnabled) {
-                    tspBuilder = tspBuilder.setIgnoredTextSelectionFlags(C.SELECTION_FLAG_DEFAULT)
-                } else if (preferredSubLang.isNotEmpty()) {
-                    tspBuilder = tspBuilder.setPreferredTextLanguage(preferredSubLang)
-                }
-                trackSelectionParameters = tspBuilder.build()
-
-                if (initialPlaybackSpeed != 1.0f) {
-                    playbackParameters = PlaybackParameters(initialPlaybackSpeed)
-                }
-                if (initialRepeatMode != Player.REPEAT_MODE_OFF) {
-                    repeatMode = initialRepeatMode
-                }
-                if (initialMuted) {
-                    volume = 0f
-                }
-                if (initialProgress > 3000L) {
-                    setMediaItem(MediaItem.fromUri(videoUrl), initialProgress)
-                } else {
-                    setMediaItem(MediaItem.fromUri(videoUrl))
-                }
-                prepare()
-                playWhenReady = true
-            }
+        VideoPlaybackManager.getOrCreatePlayer(
+            context = context,
+            url = videoUrl,
+            title = videoTitle,
+            initialProgress = initialProgress,
+            playbackSpeed = initialPlaybackSpeed,
+            repeatMode = initialRepeatMode,
+            isMuted = initialMuted,
+            preferredAudioLang = preferredAudioLang,
+            preferredSubLang = preferredSubLang,
+            subtitlesEnabled = subtitlesEnabled
+        )
     }
 
     val allVideos = remember(allFolders) { allFolders.flatMap { it.videos } }
@@ -293,6 +284,11 @@ fun VideoPlayerScreen(
         }
     }
 
+    LaunchedEffect(currentUrl, videoTitle) {
+        VideoPlaybackManager.currentVideoUrl.value = currentUrl
+        VideoPlaybackManager.currentVideoTitle.value = videoTitle
+    }
+
     // ─── Player State ─────────────────────────────────────────────────────────
     var isPlaying by remember { mutableStateOf(true) }
     var currentPosition by remember { mutableLongStateOf(0L) }
@@ -307,6 +303,7 @@ fun VideoPlayerScreen(
     val configuration = LocalConfiguration.current
     val isLandscape = configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
     val c = LocalAppColors.current
+    val coroutineScope = rememberCoroutineScope()
     var isLocked by remember { mutableStateOf(false) }
     var isNightMode by remember { mutableStateOf(appPreferences.isNightMode()) }
     var isBackgroundAudio by remember { mutableStateOf(appPreferences.isBackgroundPlayEnabled()) }
@@ -318,11 +315,14 @@ fun VideoPlayerScreen(
         val newState = !isAmbientMode
         isAmbientMode = newState
         appPreferences.setAmbientModeEnabled(newState)
-        Toast.makeText(
-            context,
-            if (newState) "Ambient Mode: On" else "Ambient Mode: Off",
-            Toast.LENGTH_SHORT
-        ).show()
+    }
+
+    var isAutoPlayEnabled by remember { mutableStateOf(appPreferences.isAutoPlayNextEnabled()) }
+    val toggleAutoPlay: () -> Unit = {
+        view.performHaptic(HapticType.LIGHT)
+        val newState = !isAutoPlayEnabled
+        isAutoPlayEnabled = newState
+        appPreferences.setAutoPlayNextEnabled(newState)
     }
 
     // ─── Music Now Playing Overlay State in Video Player ─────────────────────
@@ -380,6 +380,7 @@ fun VideoPlayerScreen(
     var isSpeedHolding by remember { mutableStateOf(false) }
     var speedHoldDisplaySpeed by remember { mutableFloatStateOf(appPreferences.getPressHoldSpeed()) }
     var preHoldSpeed by remember { mutableFloatStateOf(1.0f) }
+    var lastCustomSpeedBeforeNormal by remember { mutableFloatStateOf(appPreferences.getPressHoldSpeed()) }
 
     // ─── Resume Playback Prompt State (Disabled - no prompt asking for Start Over) ───
     var resumePromptPosition by remember(currentUrl) { mutableLongStateOf(0L) }
@@ -508,10 +509,84 @@ fun VideoPlayerScreen(
     var doubleTapIsForward by remember { mutableStateOf(true) }
     var centerDoubleTapPlayPause by remember { mutableStateOf<Boolean?>(null) }
     var centerDoubleTapKey by remember { mutableLongStateOf(0L) }
-    var verticalSwipeSwitchHUD by remember { mutableStateOf<String?>(null) }
-    var verticalSwipeSwitchIsNext by remember { mutableStateOf(true) }
-    var verticalSwipeSwitchKey by remember { mutableLongStateOf(0L) }
+    var liveAmbientBitmap by remember { mutableStateOf<android.graphics.Bitmap?>(null) }
     var showRemainingTime by remember { mutableStateOf(false) }
+
+    // ─── Real-Time Ambient Lighting Frame Synchronizer ───────────────────────
+    LaunchedEffect(isAmbientMode, currentUrl) {
+        if (!isAmbientMode || currentUrl.isBlank()) {
+            liveAmbientBitmap = null
+            return@LaunchedEffect
+        }
+        withContext(Dispatchers.IO) {
+            val retriever = android.media.MediaMetadataRetriever()
+            try {
+                if (currentUrl.startsWith("content://")) {
+                    retriever.setDataSource(context, android.net.Uri.parse(currentUrl))
+                } else {
+                    retriever.setDataSource(currentUrl)
+                }
+            } catch (_: Exception) {
+                try { retriever.release() } catch (_: Exception) {}
+                return@withContext
+            }
+
+            try {
+                // Immediately seed with initial frame so ambient lights up right away
+                val initialPos = withContext(Dispatchers.Main) { exoPlayer.currentPosition }
+                val firstBmp = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O_MR1) {
+                    retriever.getScaledFrameAtTime(
+                        initialPos * 1000L,
+                        android.media.MediaMetadataRetriever.OPTION_CLOSEST_SYNC,
+                        120, 68
+                    ) ?: retriever.getFrameAtTime(initialPos * 1000L)
+                } else {
+                    retriever.getFrameAtTime(initialPos * 1000L)
+                }
+                if (firstBmp != null) {
+                    withContext(Dispatchers.Main) {
+                        liveAmbientBitmap = firstBmp
+                    }
+                }
+
+                while (isActive) {
+                    val pos = withContext(Dispatchers.Main) { exoPlayer.currentPosition }
+                    val playing = withContext(Dispatchers.Main) { exoPlayer.isPlaying }
+
+                    // 1. Fast path: check pre-cached keyframe from frameCache
+                    val cached = frameCache.floorEntry(pos)?.value ?: frameCache.ceilingEntry(pos)?.value
+                    if (cached != null) {
+                        withContext(Dispatchers.Main) {
+                            liveAmbientBitmap = cached
+                        }
+                    }
+
+                    // 2. Fetch fresh low-res keyframe for real-time ambient halo reflection (SYNC only to prevent CPU burn)
+                    if (playing) {
+                        try {
+                            val bmp = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O_MR1) {
+                                retriever.getScaledFrameAtTime(
+                                    pos * 1000L,
+                                    android.media.MediaMetadataRetriever.OPTION_CLOSEST_SYNC,
+                                    120, 68
+                                ) ?: retriever.getFrameAtTime(pos * 1000L)
+                            } else {
+                                retriever.getFrameAtTime(pos * 1000L)
+                            }
+                            if (bmp != null) {
+                                withContext(Dispatchers.Main) {
+                                    liveAmbientBitmap = bmp
+                                }
+                            }
+                        } catch (_: Exception) {}
+                    }
+                    delay(1500L) // 1.5s interval is visually smooth for ambient blur and cuts CPU load by >80%
+                }
+            } finally {
+                try { retriever.release() } catch (_: Exception) {}
+            }
+        }
+    }
 
     // Instant Peek Preview updater (Runs for both Portrait and Fullscreen Landscape)
     LaunchedEffect(scrubPosition, isDraggingSeek) {
@@ -528,7 +603,8 @@ fun VideoPlayerScreen(
             seekThumbnail = nearest
         }
 
-        // 2. Refine exact frame if not in cache
+        // 2. Refine exact frame if not in cache (with 60ms debounce to avoid spamming decoders during rapid swipe)
+        delay(60L)
         val bucket = (targetMs / 2000L) * 2000L
         if (!frameCache.containsKey(bucket)) {
             withContext(Dispatchers.IO) {
@@ -568,6 +644,13 @@ fun VideoPlayerScreen(
     var showVideoInfoSheet by remember { mutableStateOf(false) }
     var showQuickControlsBar by remember { mutableStateOf(false) }
     var subtitleDesign by remember { mutableIntStateOf(appPreferences.getSubtitleDesign()) }
+    var activeElementTooltip by remember { mutableStateOf<ElementTooltipData?>(null) }
+    LaunchedEffect(activeElementTooltip) {
+        if (activeElementTooltip != null) {
+            delay(1000L)
+            activeElementTooltip = null
+        }
+    }
 
     val playerView = remember(context) {
         PlayerView(context).apply {
@@ -582,10 +665,60 @@ fun VideoPlayerScreen(
         }
     }
 
+    DisposableEffect(playerView, exoPlayer) {
+        playerView.player = exoPlayer
+        onDispose {
+            playerView.player = null
+        }
+    }
+
     LaunchedEffect(subtitleDesign, playerView) {
         applySubtitleDesign(playerView, subtitleDesign, appPreferences)
         appPreferences.saveSubtitleDesign(subtitleDesign)
     }
+
+    // ─── HDR Video Stream Detection & Hardware Color Mode ─────────────────────
+    var currentVideoFormat by remember { mutableStateOf<Format?>(null) }
+    DisposableEffect(exoPlayer) {
+        val formatListener = object : Player.Listener {
+            override fun onTracksChanged(tracks: Tracks) {
+                currentVideoFormat = exoPlayer.videoFormat
+            }
+            override fun onEvents(player: Player, events: Player.Events) {
+                if (currentVideoFormat != exoPlayer.videoFormat) {
+                    currentVideoFormat = exoPlayer.videoFormat
+                }
+            }
+        }
+        exoPlayer.addListener(formatListener)
+        currentVideoFormat = exoPlayer.videoFormat
+        onDispose {
+            exoPlayer.removeListener(formatListener)
+        }
+    }
+
+    val isHdrVideo = remember(currentVideoFormat, appPreferences.isHdrEnabled()) {
+        if (!appPreferences.isHdrEnabled()) return@remember false
+        val format = currentVideoFormat ?: exoPlayer.videoFormat
+        val colorInfo = format?.colorInfo
+        val isTransferHdr = colorInfo != null && ColorInfo.isTransferHdr(colorInfo)
+        val isDolby = format?.sampleMimeType?.contains("dolby", ignoreCase = true) == true
+        val isHdrTransfer = colorInfo?.colorTransfer == C.COLOR_TRANSFER_ST2084 || colorInfo?.colorTransfer == C.COLOR_TRANSFER_HLG
+        isTransferHdr || isDolby || isHdrTransfer
+    }
+
+    val hdrTypeLabel = remember(currentVideoFormat) {
+        val format = currentVideoFormat ?: exoPlayer.videoFormat
+        val colorInfo = format?.colorInfo
+        when {
+            format?.sampleMimeType?.contains("dolby", ignoreCase = true) == true -> "Dolby Vision"
+            colorInfo?.colorTransfer == C.COLOR_TRANSFER_HLG -> "HLG"
+            colorInfo?.colorTransfer == C.COLOR_TRANSFER_ST2084 -> "HDR10"
+            colorInfo != null && ColorInfo.isTransferHdr(colorInfo) -> "HDR"
+            else -> null
+        }
+    }
+
 
     // Sleep Timer
     var sleepTimerMinutes by remember { mutableIntStateOf(0) }
@@ -608,7 +741,6 @@ fun VideoPlayerScreen(
         if (appPreferences.isRememberPlaybackSpeed()) {
             appPreferences.setLastPlaybackSpeed(1.0f)
         }
-        Toast.makeText(context, "Speed reset to 1.0x", Toast.LENGTH_SHORT).show()
     }
 
     // Repeat Mode (0: Off, 1: One, 2: All)
@@ -646,22 +778,38 @@ fun VideoPlayerScreen(
         safeSeek(exoPlayer.currentPosition + deltaMs)
     }
 
+    val togglePlayPause: () -> Unit = {
+        if (isPlaying) {
+            exoPlayer.pause()
+        } else {
+            if (exoPlayer.playbackState == Player.STATE_ENDED || (duration > 0L && exoPlayer.currentPosition >= duration - 500L)) {
+                safeSeek(0L)
+            }
+            exoPlayer.play()
+        }
+    }
+
     val playNextVideo: () -> Unit = {
-        if (playlistVideos.isNotEmpty() && currentVideoIndex < playlistVideos.size - 1) {
+        if (playlistVideos.isNotEmpty()) {
             val curPos = exoPlayer.currentPosition
             if (curPos > 1000L) {
                 appPreferences.saveVideoProgress(currentUrl, curPos, exoPlayer.duration.coerceAtLeast(0L))
             }
-            val nextIndex = currentVideoIndex + 1
+            val nextIndex = if (currentVideoIndex >= 0 && currentVideoIndex < playlistVideos.size - 1) {
+                currentVideoIndex + 1
+            } else {
+                0
+            }
             val nextVideo = playlistVideos[nextIndex]
             currentVideoIndex = nextIndex
             currentUrl = nextVideo.uri.toString()
             videoTitle = nextVideo.title.substringBeforeLast(".")
             val nextProgress = appPreferences.getVideoProgress(nextVideo.uri.toString())
-            if (nextProgress > 3000L) {
+            val isNextCompleted = appPreferences.isCompleted(nextVideo.uri.toString())
+            if (nextProgress > 3000L && !isNextCompleted) {
                 exoPlayer.setMediaItem(MediaItem.fromUri(nextVideo.uri), nextProgress)
             } else {
-                exoPlayer.setMediaItem(MediaItem.fromUri(nextVideo.uri))
+                exoPlayer.setMediaItem(MediaItem.fromUri(nextVideo.uri), 0L)
             }
             exoPlayer.prepare()
             exoPlayer.play()
@@ -669,21 +817,26 @@ fun VideoPlayerScreen(
     }
 
     val playPreviousVideo: () -> Unit = {
-        if (playlistVideos.isNotEmpty() && currentVideoIndex > 0) {
+        if (playlistVideos.isNotEmpty()) {
             val curPos = exoPlayer.currentPosition
             if (curPos > 1000L) {
                 appPreferences.saveVideoProgress(currentUrl, curPos, exoPlayer.duration.coerceAtLeast(0L))
             }
-            val prevIndex = currentVideoIndex - 1
+            val prevIndex = if (currentVideoIndex > 0) {
+                currentVideoIndex - 1
+            } else {
+                playlistVideos.size - 1
+            }
             val prevVideo = playlistVideos[prevIndex]
             currentVideoIndex = prevIndex
             currentUrl = prevVideo.uri.toString()
             videoTitle = prevVideo.title.substringBeforeLast(".")
             val prevProgress = appPreferences.getVideoProgress(prevVideo.uri.toString())
-            if (prevProgress > 3000L) {
+            val isPrevCompleted = appPreferences.isCompleted(prevVideo.uri.toString())
+            if (prevProgress > 3000L && !isPrevCompleted) {
                 exoPlayer.setMediaItem(MediaItem.fromUri(prevVideo.uri), prevProgress)
             } else {
-                exoPlayer.setMediaItem(MediaItem.fromUri(prevVideo.uri))
+                exoPlayer.setMediaItem(MediaItem.fromUri(prevVideo.uri), 0L)
             }
             exoPlayer.prepare()
             exoPlayer.play()
@@ -708,18 +861,16 @@ fun VideoPlayerScreen(
             else -> AspectRatioFrameLayout.RESIZE_MODE_FIT
         }
         appPreferences.setDefaultResizeMode(resizeMode)
-        val label = when (resizeMode) {
-            AspectRatioFrameLayout.RESIZE_MODE_FIT -> "Fit to Screen"
-            AspectRatioFrameLayout.RESIZE_MODE_ZOOM -> "Zoom / Crop"
-            AspectRatioFrameLayout.RESIZE_MODE_FILL -> "Stretch / Fill"
-            else -> "Original Aspect"
-        }
-        Toast.makeText(context, label, Toast.LENGTH_SHORT).show()
     }
 
     // ─── Video Ratio & Orientation Detection ──────────────────────────────────
-    var videoWidth by remember(currentUrl) { mutableIntStateOf(0) }
-    var videoHeight by remember(currentUrl) { mutableIntStateOf(0) }
+    val initialCachedDim = remember(currentUrl) {
+        VideoPlaybackManager.videoWidth.value.takeIf { it > 0 }?.let { w ->
+            Pair(w, VideoPlaybackManager.videoHeight.value)
+        } ?: VideoRepository.getVideoDimensions(currentUrl)
+    }
+    var videoWidth by remember(currentUrl) { mutableIntStateOf(initialCachedDim?.first ?: 0) }
+    var videoHeight by remember(currentUrl) { mutableIntStateOf(initialCachedDim?.second ?: 0) }
     val isVerticalVideo = remember(videoWidth, videoHeight) {
         videoHeight > 0 && videoWidth > 0 && videoHeight > videoWidth
     }
@@ -782,11 +933,14 @@ fun VideoPlayerScreen(
             override fun onPlaybackStateChanged(playbackState: Int) {
                 if (playbackState == Player.STATE_ENDED) {
                     appPreferences.markCompleted(currentUrl, true)
+                    isPlaying = false
                     if (repeatMode == Player.REPEAT_MODE_ONE) {
                         exoPlayer.seekTo(0)
                         exoPlayer.play()
-                    } else if (repeatMode == Player.REPEAT_MODE_ALL || (appPreferences.isAutoPlayNextEnabled() && playlistVideos.isNotEmpty() && currentVideoIndex < playlistVideos.size - 1)) {
-                        playNextVideo()
+                    } else if (isAutoPlayEnabled || repeatMode == Player.REPEAT_MODE_ALL) {
+                        if (playlistVideos.isNotEmpty()) {
+                            playNextVideo()
+                        }
                     }
                 }
             }
@@ -943,7 +1097,7 @@ fun VideoPlayerScreen(
             override fun onReceive(ctx: Context?, intent: Intent?) {
                 when (intent?.action) {
                     ACTION_PIP_PLAY_PAUSE -> {
-                        if (exoPlayer.isPlaying) exoPlayer.pause() else exoPlayer.play()
+                        togglePlayPause()
                     }
                     ACTION_PIP_PREV -> {
                         playPreviousVideo()
@@ -954,7 +1108,6 @@ fun VideoPlayerScreen(
                     ACTION_PIP_BG_PLAY -> {
                         isBackgroundAudio = true
                         appPreferences.setBackgroundPlayEnabled(true)
-                        Toast.makeText(context, "Background Audio enabled", Toast.LENGTH_SHORT).show()
                         try {
                             activity?.moveTaskToBack(true)
                         } catch (_: Exception) {}
@@ -995,14 +1148,18 @@ fun VideoPlayerScreen(
         {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
                 try {
-                    val aspectW = if (videoWidth > 0) videoWidth else (if (isVerticalVideo) 9 else 16)
-                    val aspectH = if (videoHeight > 0) videoHeight else (if (isVerticalVideo) 16 else 9)
+                    val vs = exoPlayer.videoSize
+                    val rot = vs.unappliedRotationDegrees
+                    val exoW = if (rot == 90 || rot == 270) vs.height else vs.width
+                    val exoH = if (rot == 90 || rot == 270) vs.width else vs.height
+                    val aspectW = if (videoWidth > 0) videoWidth else (exoW.takeIf { it > 0 } ?: (if (isVerticalVideo) 9 else 16))
+                    val aspectH = if (videoHeight > 0) videoHeight else (exoH.takeIf { it > 0 } ?: (if (isVerticalVideo) 16 else 9))
                     val rawRatio = aspectW.toFloat() / aspectH.toFloat()
                     val clampedRatio = rawRatio.coerceIn(0.41841f, 2.39f)
                     val rational = if (clampedRatio < 1f) {
-                        android.util.Rational((clampedRatio * 1000).toInt(), 1000)
+                        android.util.Rational((clampedRatio * 10000).toInt(), 10000)
                     } else {
-                        android.util.Rational(1000, (1000 / clampedRatio).toInt())
+                        android.util.Rational(10000, (10000 / clampedRatio).toInt())
                     }
 
                     val prevPendingIntent = PendingIntent.getBroadcast(
@@ -1093,15 +1250,17 @@ fun VideoPlayerScreen(
                         .setActions(actionsList.take(maxAllowed))
 
                     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-                        paramsBuilder.setAutoEnterEnabled(!isBackgroundAudio && !isMusicPlaying)
+                        paramsBuilder.setAutoEnterEnabled(!isBackgroundAudio && !isMusicPlaying && appPreferences.isAutoPipEnabled())
                         paramsBuilder.setSeamlessResizeEnabled(true)
                     }
 
-                    val rect = android.graphics.Rect()
-                    playerView.getGlobalVisibleRect(rect)
-                    if (!rect.isEmpty) {
-                        paramsBuilder.setSourceRectHint(rect)
-                    }
+                    try {
+                        val rect = android.graphics.Rect()
+                        playerView.getGlobalVisibleRect(rect)
+                        if (!rect.isEmpty) {
+                            paramsBuilder.setSourceRectHint(rect)
+                        }
+                    } catch (_: Exception) {}
 
                     paramsBuilder.build()
                 } catch (_: Exception) {
@@ -1172,31 +1331,20 @@ fun VideoPlayerScreen(
 
     val enterPiP: () -> Unit = {
         view.performHaptic(HapticType.MEDIUM)
-        playerView.subtitleView?.visibility = android.view.View.GONE
-        playerView.subtitleView?.setCues(emptyList())
-        playerView.subtitleView?.alpha = 0f
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            showControls = false
             try {
+                playerView.subtitleView?.visibility = android.view.View.GONE
+                playerView.subtitleView?.setCues(emptyList())
+                playerView.subtitleView?.alpha = 0f
                 val params = buildPipParams()
-                val entered: Boolean = if (params != null) {
-                    activity?.enterPictureInPictureMode(params) ?: false
+                if (params != null) {
+                    activity?.enterPictureInPictureMode(params)
                 } else {
                     @Suppress("DEPRECATION")
                     activity?.enterPictureInPictureMode()
-                    true
                 }
-                if (!entered) {
-                    @Suppress("DEPRECATION")
-                    activity?.enterPictureInPictureMode()
-                }
-            } catch (_: Exception) {
-                try {
-                    @Suppress("DEPRECATION")
-                    activity?.enterPictureInPictureMode()
-                } catch (_: Exception) {
-                    Toast.makeText(context, "Picture-in-Picture not supported on this device", Toast.LENGTH_SHORT).show()
-                }
+            } catch (e: Exception) {
+                Toast.makeText(context, "Could not enter Picture-in-Picture", Toast.LENGTH_SHORT).show()
             }
         } else {
             Toast.makeText(context, "Picture-in-Picture requires Android 8.0+", Toast.LENGTH_SHORT).show()
@@ -1251,7 +1399,6 @@ fun VideoPlayerScreen(
     val isControlsBusy = isDraggingSeek ||
             isTouchingControls ||
             optionsScrollState.isScrollInProgress ||
-            isQuickActionsExpanded ||
             isAnySheetOrMenuOpen
 
     val autoHideTimeoutMs = remember { appPreferences.getControlsAutoHideTimeoutMs() }
@@ -1263,14 +1410,17 @@ fun VideoPlayerScreen(
         isControlsBusy,
         controlsInteractionTimestamp
     ) {
-        if (!isPlaying && !isLocked) {
-            showControls = true
-        } else if (showControls && isPlaying && !isLocked && !isControlsBusy) {
-            if (autoHideTimeoutMs > 0L) {
-                delay(autoHideTimeoutMs.milliseconds)
-                showControls = false
-            }
+        if (isLocked || !showControls || isControlsBusy) {
+            return@LaunchedEffect
         }
+        val timeout = if (isPlaying) {
+            if (autoHideTimeoutMs > 0L) autoHideTimeoutMs else 3000L
+        } else {
+            3000L
+        }
+        delay(timeout.milliseconds)
+        isQuickActionsExpanded = false
+        showControls = false
     }
 
     // ─── Auto-hide Vertical Gesture Bars (1.6s auto-dismiss after touch ends) ──
@@ -1300,13 +1450,6 @@ fun VideoPlayerScreen(
         if (centerDoubleTapKey > 0L) {
             delay(750.milliseconds)
             centerDoubleTapPlayPause = null
-        }
-    }
-
-    LaunchedEffect(verticalSwipeSwitchKey) {
-        if (verticalSwipeSwitchKey > 0L) {
-            delay(1300.milliseconds)
-            verticalSwipeSwitchHUD = null
         }
     }
 
@@ -1342,7 +1485,7 @@ fun VideoPlayerScreen(
             override fun onReceive(ctx: Context?, intent: Intent?) {
                 when (intent?.action) {
                     ACTION_VIDEO_PLAY_PAUSE -> {
-                        if (exoPlayer.isPlaying) exoPlayer.pause() else exoPlayer.play()
+                        togglePlayPause()
                     }
                     ACTION_VIDEO_REWIND -> {
                         safeSeek((exoPlayer.currentPosition - configuredSeekStepMs).coerceAtLeast(0L))
@@ -1408,9 +1551,19 @@ fun VideoPlayerScreen(
         )
     }
 
-    // Live update notification progress (Throttled to 1s intervals instead of 200ms)
-    LaunchedEffect(isPlaying, duration, videoTitle, currentUrl) {
-        while (true) {
+    var isAppInBackground by remember { mutableStateOf(false) }
+    val shouldShowNotification = (isInPiP || isAppInBackground) && isPlaying
+
+    // Live update notification progress (Only shown when playing in PiP outside app or in background play)
+    LaunchedEffect(shouldShowNotification, isPlaying, duration, videoTitle, currentUrl) {
+        if (!shouldShowNotification) {
+            try {
+                notificationManager.cancel(VIDEO_NOTIFICATION_ID)
+            } catch (_: Exception) {}
+            return@LaunchedEffect
+        }
+
+        while (isActive) {
             val curPos = exoPlayer.currentPosition
             val curDur = duration.takeIf { it > 0L } ?: exoPlayer.duration.coerceAtLeast(0L)
             if (curDur > 0L || curPos > 0L) {
@@ -1418,18 +1571,29 @@ fun VideoPlayerScreen(
                     ((curPos.toFloat() / curDur.toFloat()) * 100).toInt().coerceIn(0, 100)
                 } else 0
 
+                val remainingMs = (curDur - curPos).coerceAtLeast(0L)
+                val remainingStr = "-${formatTime(remainingMs)}"
                 val title = videoTitle.ifEmpty { "Video Playing" }
-                val timeText = "${formatTime(curPos)} / ${formatTime(curDur)}"
+                val timeText = "${formatTime(curPos)} / ${formatTime(curDur)}  ($remainingStr)"
+                val subText = if (isInPiP) "Picture-in-Picture" else "Background Play"
 
                 val notification = NotificationCompat.Builder(context, VIDEO_NOTIFICATION_CHANNEL_ID)
                     .setSmallIcon(android.R.drawable.ic_media_play)
                     .setContentTitle(title)
-                    .setContentText("$timeText  ($progressPercent%)")
-                    .setSubText(if (isPlaying) "Playing" else "Paused")
+                    .setContentText(timeText)
+                    .setSubText(subText)
                     .setContentIntent(contentIntent)
                     .setOngoing(isPlaying)
                     .setOnlyAlertOnce(true)
+                    .setShowWhen(false)
+                    .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
                     .setProgress(100, progressPercent, false)
+                    .apply {
+                        val thumb = liveAmbientBitmap ?: frameCache.firstEntry()?.value
+                        if (thumb != null) {
+                            setLargeIcon(thumb)
+                        }
+                    }
                     .addAction(android.R.drawable.ic_media_rew, "-10s", rewindIntent)
                     .addAction(
                         if (isPlaying) android.R.drawable.ic_media_pause else android.R.drawable.ic_media_play,
@@ -1453,18 +1617,34 @@ fun VideoPlayerScreen(
     DisposableEffect(lifecycleOwner) {
         val observer = LifecycleEventObserver { _, event ->
             when (event) {
-                Lifecycle.Event.ON_PAUSE -> {
+                Lifecycle.Event.ON_PAUSE, Lifecycle.Event.ON_STOP -> {
+                    isAppInBackground = true
                     val pos = exoPlayer.currentPosition
                     if (pos > 1000L) {
                         appPreferences.saveVideoProgress(currentUrl, pos, exoPlayer.duration.coerceAtLeast(0L))
                     }
-                    val allowBg = isBackgroundAudio || appPreferences.isBackgroundPlayEnabled()
+                    val allowBg = isBackgroundAudio || appPreferences.isBackgroundPlayEnabled() || appPreferences.isPlayDuringCallsEnabled()
                     if (!allowBg && !isInPiP) {
                         exoPlayer.pause()
                     }
                 }
                 Lifecycle.Event.ON_RESUME -> {
-                    // Refresh current brightness & volume
+                    isAppInBackground = false
+                    try {
+                        if (!isInPiP) {
+                            notificationManager.cancel(VIDEO_NOTIFICATION_ID)
+                        }
+                    } catch (_: Exception) {}
+                    // Re-apply settings on resume
+                    isAmbientMode = appPreferences.isAmbientModeEnabled()
+                    isNightMode = appPreferences.isNightMode()
+                    isBackgroundAudio = appPreferences.isBackgroundPlayEnabled()
+                    resizeMode = appPreferences.getDefaultResizeMode()
+                    if (appPreferences.isKeepScreenAwake()) {
+                        activity?.window?.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+                    } else {
+                        activity?.window?.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+                    }
                     val lp = activity?.window?.attributes
                     val currentB = lp?.screenBrightness?.takeIf { it in 0.005f..1f }
                     brightnessPct = if (currentB != null) screenBrightnessToSlider(currentB) else getSystemBrightness(context)
@@ -1482,7 +1662,9 @@ fun VideoPlayerScreen(
             if (pos > 1000L) {
                 appPreferences.saveVideoProgress(currentUrl, pos, exoPlayer.duration.coerceAtLeast(0L))
             }
-            exoPlayer.release()
+            if (!VideoPlaybackManager.isMiniPlayerActive.value) {
+                VideoPlaybackManager.releasePlayer()
+            }
             val lp = activity?.window?.attributes
             if (lp != null && lp.screenBrightness != WindowManager.LayoutParams.BRIGHTNESS_OVERRIDE_NONE) {
                 lp.screenBrightness = WindowManager.LayoutParams.BRIGHTNESS_OVERRIDE_NONE
@@ -1491,7 +1673,27 @@ fun VideoPlayerScreen(
         }
     }
 
-    // ─── Back Press Handling ──────────────────────────────────────────────────
+    // ─── Back Press & Mini-Player Exit Handling ──────────────────────────────
+    var isExitingToMiniPlayer by remember { mutableStateOf(false) }
+
+    val handleExitToMiniPlayer: () -> Unit = {
+        if (!isExitingToMiniPlayer) {
+            isExitingToMiniPlayer = true
+            try {
+                (playerView.parent as? ViewGroup)?.removeView(playerView)
+                playerView.player = null
+            } catch (_: Exception) {}
+            val vs = exoPlayer.videoSize
+            val rot = vs.unappliedRotationDegrees
+            val exoW = if (rot == 90 || rot == 270) vs.height else vs.width
+            val exoH = if (rot == 90 || rot == 270) vs.width else vs.height
+            val curW = if (videoWidth > 0) videoWidth else exoW
+            val curH = if (videoHeight > 0) videoHeight else exoH
+            VideoPlaybackManager.minimizeToMiniPlayer(currentUrl, videoTitle, curW, curH)
+            onBack()
+        }
+    }
+
     BackHandler {
         if (isLocked) {
             isLocked = false
@@ -1499,10 +1701,8 @@ fun VideoPlayerScreen(
             manualOrientationOverrideTime = System.currentTimeMillis() + 3000L
             currentOrientationSetting = 0
             activity?.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_SENSOR_PORTRAIT
-        } else if (showControls) {
-            onBack()
         } else {
-            showControls = true
+            handleExitToMiniPlayer()
         }
     }
 
@@ -1551,6 +1751,9 @@ fun VideoPlayerScreen(
             val startVolume = audioManager.getStreamVolume(AudioManager.STREAM_MUSIC)
             val startPosition = exoPlayer.currentPosition
             currentDragSeekTarget = startPosition
+            var lastHapticBrightnessStep = (startBrightness * 20f).toInt()
+            var lastHapticVolume = startVolume
+            var lastHapticSeekStep = (startPosition / 5000L).toInt()
             var lastHoldX = startX
             var didActivateSpeedHold = false
             var speedHoldAccumulatorX = 0f
@@ -1558,6 +1761,7 @@ fun VideoPlayerScreen(
             var finalDiffY = 0f
             var currentX = startX
             var currentY = startY
+            var pendingOrientationAction: (() -> Unit)? = null
             var lastPinchDist = 0f
             var lastPinchCentroid = Offset.Zero
             var lastPanX = startX
@@ -1566,24 +1770,27 @@ fun VideoPlayerScreen(
             while (true) {
                 val elapsed = System.currentTimeMillis() - downTime
 
-                // ─── 1-Second Speed Hold Activation (Tapping & holding anywhere on screen) ───
-                if ((gestureMode == PlayerGestureMode.NONE || gestureMode == PlayerGestureMode.IGNORED_DRAG) && elapsed >= 1000L && !isDoubleTap) {
+                // ─── 0.5-Second Speed Hold Activation (Tapping & holding anywhere on screen) ───
+                if ((gestureMode == PlayerGestureMode.NONE || gestureMode == PlayerGestureMode.IGNORED_DRAG) && elapsed >= 450L && !isDoubleTap) {
                     gestureMode = PlayerGestureMode.SPEED_HOLD
                     activeGestureMode = gestureMode
                     didActivateSpeedHold = true
                     preHoldSpeed = playbackSpeed
-                    val targetHoldSpeed = appPreferences.getPressHoldSpeed()
+
+                    val targetHoldSpeed = appPreferences.getPressHoldSpeed().let { if (it > 0.1f) it else 2.0f }
+
                     speedHoldDisplaySpeed = targetHoldSpeed
                     speedHoldAccumulatorX = 0f
                     isSpeedHolding = true
                     showControls = false
+                    exoPlayer.playbackParameters = PlaybackParameters(targetHoldSpeed)
                     exoPlayer.setPlaybackSpeed(targetHoldSpeed)
                     lastHoldX = currentX
                     view.performHaptic(HapticType.HEAVY)
                 }
 
                 val remainingMs = if ((gestureMode == PlayerGestureMode.NONE || gestureMode == PlayerGestureMode.IGNORED_DRAG) && !isDoubleTap && !didActivateSpeedHold) {
-                    (1000L - elapsed).coerceAtLeast(1L)
+                    (500L - elapsed).coerceAtLeast(1L)
                 } else {
                     Long.MAX_VALUE
                 }
@@ -1599,7 +1806,7 @@ fun VideoPlayerScreen(
                 }
 
                 if (event == null) {
-                    // Exactly 1 second reached while finger is held stationary
+                    // Exactly 0.5 second reached while finger is held stationary
                     continue
                 }
 
@@ -1608,6 +1815,7 @@ fun VideoPlayerScreen(
                 if (pressedPointers.size >= 2) {
                     if (gestureMode == PlayerGestureMode.SPEED_HOLD && didActivateSpeedHold) {
                         isSpeedHolding = false
+                        exoPlayer.playbackParameters = PlaybackParameters(preHoldSpeed)
                         exoPlayer.setPlaybackSpeed(preHoldSpeed)
                         didActivateSpeedHold = false
                     }
@@ -1675,43 +1883,27 @@ fun VideoPlayerScreen(
                         if (!isLandscape && !isVerticalVideo) {
                             // ─── PORTRAIT / SMALL WINDOWED MODE ───
                             // No brightness or volume controls in small windowed mode
-                            if (diffY < -45f && moveDistY > moveDistX * 1.3f) {
-                                // Gesturing swipe up on the screen makes it full screen
-                                manualOrientationOverrideTime = System.currentTimeMillis() + 3000L
-                                currentOrientationSetting = 1
-                                activity?.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
+                            if (diffY < -50f && moveDistY > moveDistX * 1.3f) {
+                                // Gesturing swipe up on the screen makes it full screen upon finger release
                                 gestureMode = PlayerGestureMode.ORIENTATION_SWIPE
                                 activeGestureMode = gestureMode
+                                pendingOrientationAction = {
+                                    manualOrientationOverrideTime = System.currentTimeMillis() + 3000L
+                                    currentOrientationSetting = 1
+                                    activity?.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
+                                }
                                 change.consume()
-                                break
-                            } else if (moveDistX > 50f && moveDistX > moveDistY * 1.3f) {
-                                if (appPreferences.isVideoSwitchGestureEnabled()) {
-                                    gestureMode = PlayerGestureMode.VIDEO_SWITCH_SWIPE
+                            } else if (moveDistX > 45f && moveDistX > moveDistY * 1.2f) {
+                                if (appPreferences.isSeekGestureEnabled()) {
+                                    gestureMode = PlayerGestureMode.SEEK
                                     activeGestureMode = gestureMode
+                                    isDraggingSeek = true
+                                    scrubPosition = startPosition.toFloat()
                                     change.consume()
                                 }
-                            } else if (diffY > 50f && moveDistY > moveDistX * 1.3f) {
-                                // Downward swipe in portrait = enter PiP!
-                                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                                    try {
-                                        val params = buildPipParams()
-                                        if (params != null) {
-                                            activity?.enterPictureInPictureMode(params)
-                                        } else {
-                                            @Suppress("DEPRECATION")
-                                            activity?.enterPictureInPictureMode()
-                                        }
-                                    } catch (_: Exception) {}
-                                }
-                                gestureMode = PlayerGestureMode.ORIENTATION_SWIPE
-                                activeGestureMode = gestureMode
-                                change.consume()
-                                break
                             }
                         } else {
                             // ─── FULL-SCREEN VIDEO PLAYER MODE ───
-                            // Extreme side areas have brightness (left) and volume (right).
-                            // Screen center area has swipe down to return to windowed mode.
                             val isExtremeLeft = startX <= screenWidth * 0.35f
                             val isExtremeRight = startX >= screenWidth * 0.65f
                             val isCenterArea = startX in (screenWidth * 0.35f)..(screenWidth * 0.65f)
@@ -1728,16 +1920,12 @@ fun VideoPlayerScreen(
                                     activeGestureMode = gestureMode
                                     change.consume()
                                 }
-                            } else if (isVerticalVideo && moveDistX > 50f && moveDistX > moveDistY * 1.3f) {
-                                if (appPreferences.isVideoSwitchGestureEnabled()) {
-                                    gestureMode = PlayerGestureMode.VIDEO_SWITCH_SWIPE
-                                    activeGestureMode = gestureMode
-                                    change.consume()
-                                }
-                            } else if (isCenterArea) {
-                                if (diffY > 50f && moveDistY > moveDistX * 1.3f) {
-                                    if (isVerticalVideo) {
-                                        // Swipe down on vertical video = enter PiP!
+                            } else if (isCenterArea && diffY > 50f && moveDistY > moveDistX * 1.3f) {
+                                // Gesturing down at screen center area: returns to portrait or enters PiP upon release
+                                gestureMode = PlayerGestureMode.ORIENTATION_SWIPE
+                                activeGestureMode = gestureMode
+                                if (isVerticalVideo) {
+                                    pendingOrientationAction = {
                                         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
                                             try {
                                                 val params = buildPipParams()
@@ -1749,23 +1937,22 @@ fun VideoPlayerScreen(
                                                 }
                                             } catch (_: Exception) {}
                                         }
-                                        gestureMode = PlayerGestureMode.ORIENTATION_SWIPE
-                                        activeGestureMode = gestureMode
-                                        change.consume()
-                                        break
-                                    } else {
-                                        // Gesturing down at screen center area returns to windowed mode
+                                    }
+                                } else {
+                                    pendingOrientationAction = {
                                         manualOrientationOverrideTime = System.currentTimeMillis() + 3000L
                                         currentOrientationSetting = 0
                                         activity?.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_SENSOR_PORTRAIT
-                                        gestureMode = PlayerGestureMode.ORIENTATION_SWIPE
-                                        activeGestureMode = gestureMode
-                                        change.consume()
-                                        break
                                     }
-                                } else if (moveDistX > 45f && moveDistX > moveDistY) {
-                                    // Horizontal swipe on screen disabled for seek; progress bar is used
-                                    gestureMode = PlayerGestureMode.IGNORED_DRAG
+                                }
+                                change.consume()
+                            } else if (moveDistX > 45f && moveDistX > moveDistY * 1.2f) {
+                                // Horizontal swipe anywhere on the screen = SEEK with preview!
+                                if (appPreferences.isSeekGestureEnabled()) {
+                                    gestureMode = PlayerGestureMode.SEEK
+                                    activeGestureMode = gestureMode
+                                    isDraggingSeek = true
+                                    scrubPosition = startPosition.toFloat()
                                     change.consume()
                                 }
                             }
@@ -1783,6 +1970,16 @@ fun VideoPlayerScreen(
                         showBrightnessBar = true
                         showVolumeBar = false
                         brightnessTouchTrigger = System.currentTimeMillis()
+
+                        val bStep = (newB * 20f).toInt()
+                        if (bStep != lastHapticBrightnessStep) {
+                            lastHapticBrightnessStep = bStep
+                            if (newB <= 0.015f || newB >= 0.985f) {
+                                view.performHaptic(HapticType.MEDIUM)
+                            } else {
+                                view.performLevelHaptic(newB)
+                            }
+                        }
                         change.consume()
                     }
                     PlayerGestureMode.VOLUME -> {
@@ -1793,6 +1990,14 @@ fun VideoPlayerScreen(
                         if (newVol != audioManager.getStreamVolume(AudioManager.STREAM_MUSIC)) {
                             audioManager.setStreamVolume(AudioManager.STREAM_MUSIC, newVol, 0)
                         }
+                        if (newVol != lastHapticVolume) {
+                            lastHapticVolume = newVol
+                            if (newVol == 0 || newVol == maxVolume) {
+                                view.performHaptic(HapticType.MEDIUM)
+                            } else {
+                                view.performLevelHaptic(newVolRatio)
+                            }
+                        }
                         showVolumeBar = true
                         showBrightnessBar = false
                         volumeTouchTrigger = System.currentTimeMillis()
@@ -1800,10 +2005,21 @@ fun VideoPlayerScreen(
                     }
                     PlayerGestureMode.SEEK -> {
                         val dragRatio = diffX / screenWidth
-                        val delta = (dragRatio * 120000L).toLong()
+                        val fullScreenSeekMs = if (duration > 0L) (duration * 0.25f).toLong().coerceIn(60000L, 600000L) else 120000L
+                        val delta = (dragRatio * fullScreenSeekMs).toLong()
                         currentDragSeekTarget = (startPosition + delta).coerceIn(0L, duration.coerceAtLeast(0L))
+                        scrubPosition = currentDragSeekTarget.toFloat()
+                        isDraggingSeek = true
                         centerSeekIcon = if (delta >= 0) Icons.Rounded.FastForward else Icons.Rounded.FastRewind
-                        centerSeekText = formatTime(currentDragSeekTarget)
+                        val sign = if (delta >= 0) "+" else "-"
+                        val absDeltaSec = abs(delta) / 1000L
+                        centerSeekText = "${formatTime(currentDragSeekTarget)} (${sign}${absDeltaSec}s)"
+
+                        val seekStep = (currentDragSeekTarget / 5000L).toInt()
+                        if (seekStep != lastHapticSeekStep) {
+                            lastHapticSeekStep = seekStep
+                            view.performHaptic(HapticType.TICK)
+                        }
                         change.consume()
                     }
                     PlayerGestureMode.SPEED_HOLD -> {
@@ -1823,6 +2039,10 @@ fun VideoPlayerScreen(
 
                             if (kotlin.math.abs(newSpeed - speedHoldDisplaySpeed) >= 0.05f) {
                                 speedHoldDisplaySpeed = newSpeed
+                                if (kotlin.math.abs(newSpeed - 1.0f) > 0.05f) {
+                                    lastCustomSpeedBeforeNormal = newSpeed
+                                }
+                                exoPlayer.playbackParameters = PlaybackParameters(newSpeed)
                                 exoPlayer.setPlaybackSpeed(newSpeed)
                                 view.performHaptic(HapticType.LIGHT)
                             }
@@ -1836,9 +2056,6 @@ fun VideoPlayerScreen(
                         lastPanY = currentY
                         videoPanX += deltaX
                         videoPanY += deltaY
-                        change.consume()
-                    }
-                    PlayerGestureMode.VIDEO_SWITCH_SWIPE -> {
                         change.consume()
                     }
                     PlayerGestureMode.NONE, PlayerGestureMode.ORIENTATION_SWIPE, PlayerGestureMode.IGNORED_DRAG -> {
@@ -1866,45 +2083,23 @@ fun VideoPlayerScreen(
                 PlayerGestureMode.SPEED_HOLD -> {
                     if (didActivateSpeedHold) {
                         isSpeedHolding = false
+                        exoPlayer.playbackParameters = PlaybackParameters(preHoldSpeed)
                         exoPlayer.setPlaybackSpeed(preHoldSpeed)
+                        didActivateSpeedHold = false
                     }
                 }
                 PlayerGestureMode.SEEK -> {
                     safeSeek(currentDragSeekTarget)
+                    isDraggingSeek = false
                     centerSeekText = null
                     centerSeekIcon = null
                 }
-                PlayerGestureMode.VIDEO_SWITCH_SWIPE -> {
-                    if (finalDiffX < -50f) {
-                        // Swiped Left -> Next Video
-                        if (playlistVideos.isNotEmpty() && currentVideoIndex < playlistVideos.size - 1) {
-                            val nextIndex = currentVideoIndex + 1
-                            val nextItem = playlistVideos[nextIndex]
-                            playNextVideo()
-                            verticalSwipeSwitchHUD = "Next: ${nextItem.title.substringBeforeLast(".")}"
-                            verticalSwipeSwitchIsNext = true
-                            verticalSwipeSwitchKey = System.currentTimeMillis()
-                            view.performHaptic(HapticType.MEDIUM)
-                        } else {
-                            Toast.makeText(context, "End of playlist", Toast.LENGTH_SHORT).show()
-                        }
-                    } else if (finalDiffX > 50f) {
-                        // Swiped Right -> Previous Video
-                        if (playlistVideos.isNotEmpty() && currentVideoIndex > 0) {
-                            val prevIndex = currentVideoIndex - 1
-                            val prevItem = playlistVideos[prevIndex]
-                            playPreviousVideo()
-                            verticalSwipeSwitchHUD = "Previous: ${prevItem.title.substringBeforeLast(".")}"
-                            verticalSwipeSwitchIsNext = false
-                            verticalSwipeSwitchKey = System.currentTimeMillis()
-                            view.performHaptic(HapticType.MEDIUM)
-                        } else {
-                            Toast.makeText(context, "Beginning of playlist", Toast.LENGTH_SHORT).show()
-                        }
-                    }
+                PlayerGestureMode.ORIENTATION_SWIPE -> {
+                    pendingOrientationAction?.invoke()
+                    pendingOrientationAction = null
                 }
-                PlayerGestureMode.ORIENTATION_SWIPE, PlayerGestureMode.IGNORED_DRAG -> {
-                    // Swiped orientation or ignored drag - do not trigger tap
+                PlayerGestureMode.IGNORED_DRAG -> {
+                    // Ignored drag - do not trigger tap
                 }
                 PlayerGestureMode.NONE -> {
                     if (!hasMoved && !didActivateSpeedHold && !wasConsumed) {
@@ -1922,7 +2117,7 @@ fun VideoPlayerScreen(
                                 val isCenter = startX in (screenWidth * 0.35f)..(screenWidth * 0.65f)
                                 if (isCenter) {
                                     if (appPreferences.isDoubleTapCenterPlayPauseEnabled()) {
-                                        if (isPlaying) exoPlayer.pause() else exoPlayer.play()
+                                        togglePlayPause()
                                         centerDoubleTapPlayPause = !isPlaying
                                         centerDoubleTapKey = System.currentTimeMillis()
                                         if (appPreferences.isHapticsEnabled()) {
@@ -1966,6 +2161,12 @@ fun VideoPlayerScreen(
         }
     }
 
+    // ─── Fast Exit Check to Prevent Double Screen Overlay ─────────────────────
+    if (isExitingToMiniPlayer) {
+        Box(modifier = Modifier.fillMaxSize().background(c.baseBackground))
+        return
+    }
+
     // ─── PiP PURE VIDEO MODE: SHOW ONLY VIDEO SURFACE (NO SUBTITLES) ──────────
     if (isInPiP) {
         AndroidView(
@@ -1987,19 +2188,25 @@ fun VideoPlayerScreen(
         return
     }
 
-    // ─── ADAPTIVE ORIENTATION LAYOUT (Landscape vs Portrait YouTube Style) ───
-    if (isLandscape || isVerticalVideo) {
-        // ─── FULLSCREEN PLAYER MODE (Landscape or Fullscreen Vertical 9:16) ───
-        Box(
+    CompositionLocalProvider(
+        LocalElementTooltipHandler provides { name, icon ->
+            activeElementTooltip = ElementTooltipData(name, icon)
+        }
+    ) {
+        Box(modifier = Modifier.fillMaxSize()) {
+            // ─── ADAPTIVE ORIENTATION LAYOUT (Landscape vs Portrait YouTube Style) ───
+            if (isLandscape || isVerticalVideo) {
+                // ─── FULLSCREEN PLAYER MODE (Landscape or Fullscreen Vertical 9:16) ───
+                Box(
             modifier = Modifier
                 .fillMaxSize()
                 .background(Color.Black)
                 .then(playerGestureModifier)
         ) {
             // ─── 0. Ambient Blurred Backdrop (Atmospheric Halo Reflection) ────────
-            if (isVerticalVideo || isAmbientMode) {
+            if (isAmbientMode) {
                 Box(modifier = Modifier.fillMaxSize()) {
-                    val bgBmp = seekThumbnail
+                    val bgBmp = liveAmbientBitmap
                     if (bgBmp != null) {
                         androidx.compose.foundation.Image(
                             bitmap = bgBmp.asImageBitmap(),
@@ -2025,7 +2232,7 @@ fun VideoPlayerScreen(
                     Box(
                         modifier = Modifier
                             .fillMaxSize()
-                            .background(Color.Black.copy(alpha = if (isAmbientMode && !isVerticalVideo) 0.55f else 0.45f))
+                            .background(Color.Black.copy(alpha = 0.52f))
                     )
                 }
             }
@@ -2131,18 +2338,39 @@ fun VideoPlayerScreen(
                 horizontalAlignment = Alignment.CenterHorizontally,
                 modifier = Modifier
                     .clip(RoundedCornerShape(20.dp))
-                    .background(Color.Black.copy(alpha = 0.78f))
-                    .border(1.dp, Color.White.copy(alpha = 0.20f), RoundedCornerShape(20.dp))
-                    .padding(horizontal = 28.dp, vertical = 18.dp)
+                    .background(Color.Black.copy(alpha = 0.82f))
+                    .border(1.2.dp, primaryAccent.copy(alpha = 0.6f), RoundedCornerShape(20.dp))
+                    .padding(horizontal = 20.dp, vertical = 14.dp)
             ) {
-                centerSeekIcon?.let {
-                    Icon(it, contentDescription = null, tint = primaryAccent, modifier = Modifier.size(44.dp))
+                val bmp = seekThumbnail
+                if (bmp != null) {
+                    Box(
+                        modifier = Modifier
+                            .width(140.dp)
+                            .height(80.dp)
+                            .clip(RoundedCornerShape(10.dp))
+                            .background(Color.Black)
+                            .border(1.dp, Color.White.copy(alpha = 0.35f), RoundedCornerShape(10.dp)),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        androidx.compose.foundation.Image(
+                            bitmap = bmp.asImageBitmap(),
+                            contentDescription = "Seek preview",
+                            contentScale = ContentScale.Crop,
+                            modifier = Modifier.fillMaxSize()
+                        )
+                    }
                     Spacer(Modifier.height(8.dp))
+                } else {
+                    centerSeekIcon?.let {
+                        Icon(it, contentDescription = null, tint = primaryAccent, modifier = Modifier.size(40.dp))
+                        Spacer(Modifier.height(8.dp))
+                    }
                 }
                 Text(
                     text = centerSeekText ?: "",
                     color = Color.White,
-                    fontSize = 19.sp,
+                    fontSize = 17.sp,
                     fontWeight = FontWeight.Bold,
                     fontFamily = FontFamily.Monospace
                 )
@@ -2208,41 +2436,7 @@ fun VideoPlayerScreen(
             }
         }
 
-        // ─── 6b. Vertical Video Swipe-to-Switch HUD ───────────────────────────
-        AnimatedVisibility(
-            visible = verticalSwipeSwitchHUD != null && !isInPiP,
-            enter = fadeIn(tween(120)) + slideInVertically(initialOffsetY = { -it / 2 }),
-            exit = fadeOut(tween(220)) + slideOutVertically(targetOffsetY = { -it / 2 }),
-            modifier = Modifier
-                .align(Alignment.TopCenter)
-                .padding(top = 70.dp)
-        ) {
-            Box(
-                modifier = Modifier
-                    .clip(RoundedCornerShape(20.dp))
-                    .background(Color.Black.copy(alpha = 0.82f))
-                    .border(1.2.dp, primaryAccent, RoundedCornerShape(20.dp))
-                    .padding(horizontal = 20.dp, vertical = 10.dp)
-            ) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Icon(
-                        imageVector = if (verticalSwipeSwitchIsNext) Icons.Rounded.SkipNext else Icons.Rounded.SkipPrevious,
-                        contentDescription = null,
-                        tint = primaryAccent,
-                        modifier = Modifier.size(22.dp)
-                    )
-                    Spacer(Modifier.width(8.dp))
-                    Text(
-                        text = verticalSwipeSwitchHUD ?: "",
-                        color = Color.White,
-                        fontSize = 14.sp,
-                        fontWeight = FontWeight.Bold,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
-                    )
-                }
-            }
-        }
+
 
         // ─── 6b. Press-Hold Speed HUD (Small Pill with Animated ">>" Icon) ───
         AnimatedVisibility(
@@ -2285,8 +2479,8 @@ fun VideoPlayerScreen(
         // ─── 7. Main Controls Overlay ─────────────────────────────────────────
         AnimatedVisibility(
             visible = showControls && !isInPiP,
-            enter = fadeIn(tween(180)),
-            exit = fadeOut(tween(200)),
+            enter = fadeIn(animationSpec = tween(250, easing = LinearOutSlowInEasing)),
+            exit = fadeOut(animationSpec = tween(250, easing = FastOutLinearInEasing)),
             modifier = Modifier.fillMaxSize()
         ) {
             Box(Modifier.fillMaxSize().then(controlsTouchModifier)) {
@@ -2346,8 +2540,13 @@ fun VideoPlayerScreen(
                                     verticalAlignment = Alignment.CenterVertically,
                                     modifier = Modifier.weight(1f).padding(end = 8.dp)
                                 ) {
-                                    IconButton(
-                                        onClick = onBack,
+                                    PlayerIconButton(
+                                        name = "Back",
+                                        onClick = {
+                                            view.performHaptic(HapticType.LIGHT)
+                                            handleExitToMiniPlayer()
+                                        },
+                                        icon = Icons.AutoMirrored.Rounded.ArrowBack,
                                         modifier = Modifier
                                             .size(38.dp)
                                             .shadow(6.dp, CircleShape, ambientColor = Color.Black.copy(0.7f))
@@ -2364,14 +2563,35 @@ fun VideoPlayerScreen(
                                     }
                                     Spacer(Modifier.width(10.dp))
                                     Column(modifier = Modifier.weight(1f)) {
-                                        Text(
-                                            text = videoTitle,
-                                            color = Color.White,
-                                            fontSize = 15.sp,
-                                            fontWeight = FontWeight.Bold,
-                                            maxLines = 1,
-                                            overflow = TextOverflow.Ellipsis
-                                        )
+                                        Row(
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                        ) {
+                                            Text(
+                                                text = videoTitle,
+                                                color = Color.White,
+                                                fontSize = 15.sp,
+                                                fontWeight = FontWeight.Bold,
+                                                maxLines = 1,
+                                                overflow = TextOverflow.Ellipsis,
+                                                modifier = Modifier.weight(1f, fill = false)
+                                            )
+                                            if (isHdrVideo) {
+                                                Surface(
+                                                    shape = RoundedCornerShape(4.dp),
+                                                    color = Color(0xFFFF9800).copy(alpha = 0.22f),
+                                                    border = BorderStroke(0.8.dp, Color(0xFFFFB74D).copy(alpha = 0.8f))
+                                                ) {
+                                                    Text(
+                                                        text = hdrTypeLabel ?: "HDR",
+                                                        color = Color(0xFFFFCC80),
+                                                        fontSize = 10.sp,
+                                                        fontWeight = FontWeight.ExtraBold,
+                                                        modifier = Modifier.padding(horizontal = 5.dp, vertical = 1.dp)
+                                                    )
+                                                }
+                                            }
+                                        }
                                         Row(
                                             verticalAlignment = Alignment.CenterVertically,
                                             horizontalArrangement = Arrangement.spacedBy(6.dp)
@@ -2429,9 +2649,60 @@ fun VideoPlayerScreen(
                                 }
 
                                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                                    // Picture-in-Picture Button (Direct 1-Tap Entry)
-                                    IconButton(
+                                    // Autoplay Toggle Button (named "Autoplay" without icon)
+                                    Box(
+                                        modifier = Modifier
+                                            .height(34.dp)
+                                            .shadow(4.dp, RoundedCornerShape(17.dp), ambientColor = if (isAutoPlayEnabled) primaryAccent.copy(0.4f) else Color.Black.copy(0.6f))
+                                            .clip(RoundedCornerShape(17.dp))
+                                            .background(
+                                                if (isAutoPlayEnabled) Brush.horizontalGradient(listOf(primaryAccent, primaryAccent.copy(0.85f)))
+                                                else Brush.verticalGradient(listOf(Color(0xFF252636), Color(0xFF11121C)))
+                                            )
+                                            .border(
+                                                1.2.dp,
+                                                if (isAutoPlayEnabled) Color.White.copy(0.6f)
+                                                else Color.White.copy(0.20f),
+                                                RoundedCornerShape(17.dp)
+                                            )
+                                            .pointerInput(isAutoPlayEnabled) {
+                                                detectTapGestures(
+                                                    onPress = {
+                                                        var isHeld = false
+                                                        val job = coroutineScope.launch {
+                                                            delay(220L)
+                                                            isHeld = true
+                                                            view.performHaptic(HapticType.MEDIUM)
+                                                            activeElementTooltip = ElementTooltipData(
+                                                                if (isAutoPlayEnabled) "Autoplay ON" else "Autoplay OFF",
+                                                                Icons.Rounded.Autorenew
+                                                            )
+                                                        }
+                                                        val released = tryAwaitRelease()
+                                                        job.cancel()
+                                                        if (released && !isHeld) {
+                                                            toggleAutoPlay()
+                                                        }
+                                                    }
+                                                )
+                                            }
+                                            .padding(horizontal = 13.dp),
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        Text(
+                                            text = if (isAutoPlayEnabled) "Autoplay ON" else "Autoplay",
+                                            color = if (isAutoPlayEnabled) Color.White else Color.White.copy(alpha = 0.82f),
+                                            fontSize = 12.sp,
+                                            fontWeight = if (isAutoPlayEnabled) FontWeight.Bold else FontWeight.SemiBold,
+                                            letterSpacing = 0.2.sp
+                                        )
+                                    }
+
+                                    // Picture-in-Picture Button
+                                    PlayerIconButton(
+                                        name = "Picture-in-Picture",
                                         onClick = enterPiP,
+                                        icon = Icons.Rounded.PictureInPicture,
                                         modifier = Modifier
                                             .size(38.dp)
                                             .shadow(6.dp, CircleShape, ambientColor = Color.Black.copy(0.7f))
@@ -2447,12 +2718,11 @@ fun VideoPlayerScreen(
                                         )
                                     }
 
-                                    // Color Theme Palette Button (Instant 1-tap cycle)
-                                    // Theme button removed to declutter header
-
                                     // Playlist Button
-                                    IconButton(
+                                    PlayerIconButton(
+                                        name = "Playlist",
                                         onClick = { showPlaylistSheet = true },
+                                        icon = Icons.AutoMirrored.Rounded.QueueMusic,
                                         modifier = Modifier
                                             .size(38.dp)
                                             .shadow(6.dp, CircleShape, ambientColor = Color.Black.copy(0.7f))
@@ -2496,17 +2766,11 @@ fun VideoPlayerScreen(
                                     }
                                     exoPlayer.repeatMode = repeatMode
                                     appPreferences.setPlayerRepeatMode(repeatMode)
-                                    Toast.makeText(context, when(repeatMode) {
-                                        Player.REPEAT_MODE_ONE -> "Repeat: Loop 1"
-                                        Player.REPEAT_MODE_ALL -> "Repeat: Loop All"
-                                        else -> "Repeat: Off"
-                                    }, Toast.LENGTH_SHORT).show()
                                 },
                                 isNightMode = isNightMode,
                                 onToggleNightMode = {
                                     isNightMode = !isNightMode
                                     appPreferences.setNightMode(isNightMode)
-                                    Toast.makeText(context, if (isNightMode) "Night mode ON" else "Night mode OFF", Toast.LENGTH_SHORT).show()
                                 },
                                 sleepTimerMinutes = sleepTimerMinutes,
                                 onOpenSleepTimerDialog = { showSleepTimerSheet = true },
@@ -2514,7 +2778,6 @@ fun VideoPlayerScreen(
                                 onToggleBackgroundAudio = {
                                     isBackgroundAudio = !isBackgroundAudio
                                     appPreferences.setBackgroundPlayEnabled(isBackgroundAudio)
-                                    Toast.makeText(context, if (isBackgroundAudio) "Background audio ON" else "Background audio OFF", Toast.LENGTH_SHORT).show()
                                 },
                                 onOpenVideoInfo = { showVideoInfoSheet = true },
                                 loopStartMs = loopStartMs,
@@ -2522,24 +2785,18 @@ fun VideoPlayerScreen(
                                 onToggleLoop = {
                                     if (loopStartMs == null) {
                                         loopStartMs = currentPosition
-                                        Toast.makeText(context, "Loop Point A set at ${formatTime(currentPosition)}", Toast.LENGTH_SHORT).show()
                                     } else if (loopEndMs == null) {
                                         if (currentPosition > loopStartMs!!) {
                                             loopEndMs = currentPosition
-                                            Toast.makeText(context, "Loop Point B set. Looping A-B", Toast.LENGTH_SHORT).show()
-                                        } else {
-                                            Toast.makeText(context, "Point B must be after Point A", Toast.LENGTH_SHORT).show()
                                         }
                                     } else {
                                         loopStartMs = null
                                         loopEndMs = null
-                                        Toast.makeText(context, "A-B Loop cleared", Toast.LENGTH_SHORT).show()
                                     }
                                 },
                                 onAddBookmark = {
                                     appPreferences.saveBookmark(currentUrl, currentPosition, "")
                                     bookmarksList = appPreferences.getBookmarks(currentUrl)
-                                    Toast.makeText(context, "Bookmark saved at ${formatTime(currentPosition)}", Toast.LENGTH_SHORT).show()
                                 },
                                 primaryAccent = primaryAccent,
                                 onOpenSettings = {
@@ -2725,11 +2982,13 @@ fun VideoPlayerScreen(
                                         verticalAlignment = Alignment.CenterVertically,
                                         horizontalArrangement = Arrangement.spacedBy(10.dp)
                                     ) {
-                                        IconButton(
+                                        PlayerIconButton(
+                                            name = "Lock controls",
                                             onClick = { 
                                                 view.performHaptic(HapticType.MEDIUM)
                                                 isLocked = true 
                                             },
+                                            icon = Icons.Rounded.LockOpen,
                                             modifier = Modifier
                                                 .size(42.dp)
                                                 .clip(CircleShape)
@@ -2744,8 +3003,10 @@ fun VideoPlayerScreen(
                                             )
                                         }
 
-                                        IconButton(
+                                        PlayerIconButton(
+                                            name = if (isMuted || volumePct == 0f) "Unmute" else "Mute",
                                             onClick = toggleMute,
+                                            icon = if (isMuted || volumePct == 0f) Icons.AutoMirrored.Rounded.VolumeOff else Icons.AutoMirrored.Rounded.VolumeUp,
                                             modifier = Modifier
                                                 .size(42.dp)
                                                 .clip(CircleShape)
@@ -2768,8 +3029,10 @@ fun VideoPlayerScreen(
                                         verticalAlignment = Alignment.CenterVertically,
                                         horizontalArrangement = Arrangement.spacedBy(16.dp)
                                     ) {
-                                        IconButton(
+                                        PlayerIconButton(
+                                            name = "Rewind ${configuredSeekStepSec}s",
                                             onClick = { seekBy(-configuredSeekStepMs) },
+                                            icon = Icons.Rounded.Replay10,
                                             modifier = Modifier
                                                 .size(42.dp)
                                                 .clip(CircleShape)
@@ -2784,8 +3047,10 @@ fun VideoPlayerScreen(
                                             )
                                         }
 
-                                        IconButton(
+                                        PlayerIconButton(
+                                            name = "Previous video",
                                             onClick = playPreviousVideo,
+                                            icon = Icons.Rounded.SkipPrevious,
                                             enabled = currentVideoIndex > 0,
                                             modifier = Modifier
                                                 .size(42.dp)
@@ -2808,8 +3073,26 @@ fun VideoPlayerScreen(
                                                 .clip(CircleShape)
                                                 .background(Brush.radialGradient(listOf(primaryAccent, primaryAccent.copy(alpha = 0.85f))))
                                                 .border(2.dp, Color.White, CircleShape)
-                                                .clickable {
-                                                    if (isPlaying) exoPlayer.pause() else exoPlayer.play()
+                                                .pointerInput(isPlaying) {
+                                                    detectTapGestures(
+                                                        onPress = {
+                                                            var isHeld = false
+                                                            val job = coroutineScope.launch {
+                                                                delay(220L)
+                                                                isHeld = true
+                                                                view.performHaptic(HapticType.MEDIUM)
+                                                                activeElementTooltip = ElementTooltipData(
+                                                                    if (isPlaying) "Pause" else "Play",
+                                                                    if (isPlaying) Icons.Rounded.Pause else Icons.Rounded.PlayArrow
+                                                                )
+                                                            }
+                                                            val released = tryAwaitRelease()
+                                                            job.cancel()
+                                                            if (released && !isHeld) {
+                                                                togglePlayPause()
+                                                            }
+                                                        }
+                                                    )
                                                 },
                                             contentAlignment = Alignment.Center
                                         ) {
@@ -2821,8 +3104,10 @@ fun VideoPlayerScreen(
                                             )
                                         }
 
-                                        IconButton(
+                                        PlayerIconButton(
+                                            name = "Next video",
                                             onClick = playNextVideo,
+                                            icon = Icons.Rounded.SkipNext,
                                             enabled = currentVideoIndex >= 0 && currentVideoIndex < playlistVideos.size - 1,
                                             modifier = Modifier
                                                 .size(42.dp)
@@ -2839,8 +3124,10 @@ fun VideoPlayerScreen(
                                             )
                                         }
 
-                                        IconButton(
+                                        PlayerIconButton(
+                                            name = "Forward ${configuredSeekStepSec}s",
                                             onClick = { seekBy(configuredSeekStepMs) },
+                                            icon = Icons.Rounded.Forward10,
                                             modifier = Modifier
                                                 .size(42.dp)
                                                 .clip(CircleShape)
@@ -2862,8 +3149,10 @@ fun VideoPlayerScreen(
                                         verticalAlignment = Alignment.CenterVertically,
                                         horizontalArrangement = Arrangement.spacedBy(10.dp)
                                     ) {
-                                        IconButton(
+                                        PlayerIconButton(
+                                            name = "Aspect ratio",
                                             onClick = cycleResizeMode,
+                                            icon = Icons.Rounded.FitScreen,
                                             modifier = Modifier
                                                 .size(42.dp)
                                                 .clip(CircleShape)
@@ -2878,7 +3167,8 @@ fun VideoPlayerScreen(
                                             )
                                         }
 
-                                        IconButton(
+                                        PlayerIconButton(
+                                            name = "Rotate screen",
                                             onClick = {
                                                 manualOrientationOverrideTime = System.currentTimeMillis() + 3000L
                                                 currentOrientationSetting = if (isLandscape) 0 else 1
@@ -2888,6 +3178,7 @@ fun VideoPlayerScreen(
                                                     ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
                                                 }
                                             },
+                                            icon = Icons.Rounded.ScreenRotation,
                                             modifier = Modifier
                                                 .size(42.dp)
                                                 .clip(CircleShape)
@@ -2913,11 +3204,13 @@ fun VideoPlayerScreen(
                                     horizontalArrangement = Arrangement.SpaceEvenly
                                 ) {
                                     // 1. Lock Controls
-                                    IconButton(
+                                    PlayerIconButton(
+                                        name = "Lock controls",
                                         onClick = { 
                                             view.performHaptic(HapticType.MEDIUM)
                                             isLocked = true 
                                         },
+                                        icon = Icons.Rounded.LockOpen,
                                         modifier = Modifier
                                             .size(44.dp)
                                             .clip(CircleShape)
@@ -2933,8 +3226,10 @@ fun VideoPlayerScreen(
                                     }
 
                                     // 2. Previous Video
-                                    IconButton(
+                                    PlayerIconButton(
+                                        name = "Previous video",
                                         onClick = playPreviousVideo,
+                                        icon = Icons.Rounded.SkipPrevious,
                                         enabled = currentVideoIndex > 0,
                                         modifier = Modifier
                                             .size(44.dp)
@@ -2957,8 +3252,26 @@ fun VideoPlayerScreen(
                                             .clip(CircleShape)
                                             .background(Brush.radialGradient(listOf(primaryAccent, primaryAccent.copy(alpha = 0.85f))))
                                             .border(2.dp, Color.White, CircleShape)
-                                            .clickable {
-                                                if (isPlaying) exoPlayer.pause() else exoPlayer.play()
+                                            .pointerInput(isPlaying) {
+                                                detectTapGestures(
+                                                    onPress = {
+                                                        var isHeld = false
+                                                        val job = coroutineScope.launch {
+                                                            delay(220L)
+                                                            isHeld = true
+                                                            view.performHaptic(HapticType.MEDIUM)
+                                                            activeElementTooltip = ElementTooltipData(
+                                                                if (isPlaying) "Pause" else "Play",
+                                                                if (isPlaying) Icons.Rounded.Pause else Icons.Rounded.PlayArrow
+                                                            )
+                                                        }
+                                                        val released = tryAwaitRelease()
+                                                        job.cancel()
+                                                        if (released && !isHeld) {
+                                                            togglePlayPause()
+                                                        }
+                                                    }
+                                                )
                                             },
                                         contentAlignment = Alignment.Center
                                     ) {
@@ -2971,8 +3284,10 @@ fun VideoPlayerScreen(
                                     }
 
                                     // 4. Next Video
-                                    IconButton(
+                                    PlayerIconButton(
+                                        name = "Next video",
                                         onClick = playNextVideo,
+                                        icon = Icons.Rounded.SkipNext,
                                         enabled = currentVideoIndex >= 0 && currentVideoIndex < playlistVideos.size - 1,
                                         modifier = Modifier
                                             .size(44.dp)
@@ -2990,8 +3305,10 @@ fun VideoPlayerScreen(
                                     }
 
                                     // 5. Aspect Ratio / Resize Mode
-                                    IconButton(
+                                    PlayerIconButton(
+                                        name = "Aspect ratio",
                                         onClick = cycleResizeMode,
+                                        icon = Icons.Rounded.FitScreen,
                                         modifier = Modifier
                                             .size(44.dp)
                                             .clip(CircleShape)
@@ -3013,11 +3330,13 @@ fun VideoPlayerScreen(
 
                 // ─── Screen Locked Floating Unlock Button ─────────────────────
                 if (isLocked) {
-                    IconButton(
+                    PlayerIconButton(
+                        name = "Unlock controls",
                         onClick = { 
                             view.performHaptic(HapticType.MEDIUM)
                             isLocked = false 
                         },
+                        icon = Icons.Rounded.Lock,
                         modifier = Modifier
                             .align(Alignment.BottomStart)
                             .systemBarsPadding()
@@ -3063,7 +3382,7 @@ fun VideoPlayerScreen(
                 // 0. Ambient Blurred Backdrop for Portrait Video Box
                 if (isAmbientMode) {
                     Box(modifier = Modifier.fillMaxSize()) {
-                        val bgBmp = seekThumbnail
+                        val bgBmp = liveAmbientBitmap
                         if (bgBmp != null) {
                             androidx.compose.foundation.Image(
                                 bitmap = bgBmp.asImageBitmap(),
@@ -3140,18 +3459,39 @@ fun VideoPlayerScreen(
                         horizontalAlignment = Alignment.CenterHorizontally,
                         modifier = Modifier
                             .clip(RoundedCornerShape(16.dp))
-                            .background(Color.Black.copy(alpha = 0.78f))
-                            .border(1.dp, Color.White.copy(alpha = 0.20f), RoundedCornerShape(16.dp))
-                            .padding(horizontal = 20.dp, vertical = 12.dp)
+                            .background(Color.Black.copy(alpha = 0.82f))
+                            .border(1.2.dp, primaryAccent.copy(alpha = 0.6f), RoundedCornerShape(16.dp))
+                            .padding(horizontal = 16.dp, vertical = 10.dp)
                     ) {
-                        centerSeekIcon?.let {
-                            Icon(it, contentDescription = null, tint = primaryAccent, modifier = Modifier.size(36.dp))
-                            Spacer(Modifier.height(4.dp))
+                        val bmp = seekThumbnail
+                        if (bmp != null) {
+                            Box(
+                                modifier = Modifier
+                                    .width(110.dp)
+                                    .height(62.dp)
+                                    .clip(RoundedCornerShape(8.dp))
+                                    .background(Color.Black)
+                                    .border(1.dp, Color.White.copy(alpha = 0.35f), RoundedCornerShape(8.dp)),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                androidx.compose.foundation.Image(
+                                    bitmap = bmp.asImageBitmap(),
+                                    contentDescription = "Seek preview",
+                                    contentScale = ContentScale.Crop,
+                                    modifier = Modifier.fillMaxSize()
+                                )
+                            }
+                            Spacer(Modifier.height(6.dp))
+                        } else {
+                            centerSeekIcon?.let {
+                                Icon(it, contentDescription = null, tint = primaryAccent, modifier = Modifier.size(36.dp))
+                                Spacer(Modifier.height(4.dp))
+                            }
                         }
                         Text(
                             text = centerSeekText ?: "",
                             color = Color.White,
-                            fontSize = 16.sp,
+                            fontSize = 15.sp,
                             fontWeight = FontWeight.Bold,
                             fontFamily = FontFamily.Monospace
                         )
@@ -3264,8 +3604,8 @@ fun VideoPlayerScreen(
                 // 7. Portrait Controls Overlay
                 androidx.compose.animation.AnimatedVisibility(
                     visible = showControls && !isInPiP,
-                    enter = fadeIn(tween(180)),
-                    exit = fadeOut(tween(200)),
+                    enter = fadeIn(animationSpec = tween(250, easing = LinearOutSlowInEasing)),
+                    exit = fadeOut(animationSpec = tween(250, easing = FastOutLinearInEasing)),
                     modifier = Modifier.fillMaxSize()
                 ) {
                     Box(Modifier.fillMaxSize().then(controlsTouchModifier)) {
@@ -3299,7 +3639,15 @@ fun VideoPlayerScreen(
                                 verticalAlignment = Alignment.CenterVertically,
                                 modifier = Modifier.weight(1f).padding(end = 8.dp)
                             ) {
-                                IconButton(onClick = onBack, modifier = Modifier.size(32.dp)) {
+                                PlayerIconButton(
+                                    name = "Back",
+                                    onClick = {
+                                        VideoPlaybackManager.minimizeToMiniPlayer(currentUrl, videoTitle)
+                                        onBack()
+                                    },
+                                    icon = Icons.AutoMirrored.Rounded.ArrowBack,
+                                    modifier = Modifier.size(32.dp)
+                                ) {
                                     Icon(Icons.AutoMirrored.Rounded.ArrowBack, contentDescription = "Back", tint = Color.White, modifier = Modifier.size(20.dp))
                                 }
                                 Spacer(Modifier.width(6.dp))
@@ -3327,8 +3675,53 @@ fun VideoPlayerScreen(
                                 verticalAlignment = Alignment.CenterVertically,
                                 horizontalArrangement = Arrangement.spacedBy(6.dp)
                             ) {
-                                IconButton(
+                                // Autoplay Toggle Button (named "Autoplay" without icon, default off)
+                                Box(
+                                    modifier = Modifier
+                                        .height(28.dp)
+                                        .clip(RoundedCornerShape(14.dp))
+                                        .background(if (isAutoPlayEnabled) primaryAccent else Color.White.copy(alpha = 0.15f))
+                                        .border(
+                                            width = 1.dp,
+                                            color = if (isAutoPlayEnabled) primaryAccent else Color.White.copy(alpha = 0.3f),
+                                            shape = RoundedCornerShape(14.dp)
+                                        )
+                                        .pointerInput(isAutoPlayEnabled) {
+                                            detectTapGestures(
+                                                onPress = {
+                                                    var isHeld = false
+                                                    val job = coroutineScope.launch {
+                                                        delay(220L)
+                                                        isHeld = true
+                                                        view.performHaptic(HapticType.MEDIUM)
+                                                        activeElementTooltip = ElementTooltipData(
+                                                            if (isAutoPlayEnabled) "Autoplay ON" else "Autoplay OFF",
+                                                            Icons.Rounded.Autorenew
+                                                        )
+                                                    }
+                                                    val released = tryAwaitRelease()
+                                                    job.cancel()
+                                                    if (released && !isHeld) {
+                                                        toggleAutoPlay()
+                                                    }
+                                                }
+                                            )
+                                        }
+                                        .padding(horizontal = 10.dp),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Text(
+                                        text = "Autoplay",
+                                        color = if (isAutoPlayEnabled) Color.Black else Color.White,
+                                        fontSize = 11.sp,
+                                        fontWeight = FontWeight.SemiBold
+                                    )
+                                }
+
+                                PlayerIconButton(
+                                    name = "Picture-in-Picture",
                                     onClick = enterPiP,
+                                    icon = Icons.Rounded.PictureInPicture,
                                     modifier = Modifier.size(32.dp)
                                 ) {
                                     Icon(
@@ -3339,8 +3732,10 @@ fun VideoPlayerScreen(
                                     )
                                 }
 
-                                IconButton(
+                                PlayerIconButton(
+                                    name = "Playlist",
                                     onClick = { showPlaylistSheet = true },
+                                    icon = Icons.AutoMirrored.Rounded.QueueMusic,
                                     modifier = Modifier.size(32.dp)
                                 ) {
                                     Icon(
@@ -3369,8 +3764,10 @@ fun VideoPlayerScreen(
                             verticalAlignment = Alignment.CenterVertically,
                             horizontalArrangement = Arrangement.spacedBy(24.dp)
                         ) {
-                            IconButton(
+                            PlayerIconButton(
+                                name = "Rewind ${configuredSeekStepSec}s",
                                 onClick = { seekBy(-configuredSeekStepMs) },
+                                icon = Icons.Rounded.Replay10,
                                 modifier = Modifier.size(38.dp).clip(CircleShape).background(Color.Black.copy(alpha = 0.50f))
                             ) {
                                 Icon(Icons.Rounded.Replay10, contentDescription = "-${configuredSeekStepSec}s", tint = Color.White, modifier = Modifier.size(24.dp))
@@ -3382,8 +3779,26 @@ fun VideoPlayerScreen(
                                     .clip(CircleShape)
                                     .background(Brush.radialGradient(listOf(primaryAccent, primaryAccent.copy(alpha = 0.85f))))
                                     .border(2.dp, Color.White, CircleShape)
-                                    .clickable {
-                                        if (isPlaying) exoPlayer.pause() else exoPlayer.play()
+                                    .pointerInput(isPlaying) {
+                                        detectTapGestures(
+                                            onPress = {
+                                                var isHeld = false
+                                                val job = coroutineScope.launch {
+                                                    delay(220L)
+                                                    isHeld = true
+                                                    view.performHaptic(HapticType.MEDIUM)
+                                                    activeElementTooltip = ElementTooltipData(
+                                                        if (isPlaying) "Pause" else "Play",
+                                                        if (isPlaying) Icons.Rounded.Pause else Icons.Rounded.PlayArrow
+                                                    )
+                                                }
+                                                val released = tryAwaitRelease()
+                                                job.cancel()
+                                                if (released && !isHeld) {
+                                                    togglePlayPause()
+                                                }
+                                            }
+                                        )
                                     },
                                 contentAlignment = Alignment.Center
                             ) {
@@ -3395,8 +3810,10 @@ fun VideoPlayerScreen(
                                 )
                             }
 
-                            IconButton(
+                            PlayerIconButton(
+                                name = "Forward ${configuredSeekStepSec}s",
                                 onClick = { seekBy(configuredSeekStepMs) },
+                                icon = Icons.Rounded.Forward10,
                                 modifier = Modifier.size(38.dp).clip(CircleShape).background(Color.Black.copy(alpha = 0.50f))
                             ) {
                                 Icon(Icons.Rounded.Forward10, contentDescription = "+${configuredSeekStepSec}s", tint = Color.White, modifier = Modifier.size(24.dp))
@@ -3495,12 +3912,14 @@ fun VideoPlayerScreen(
 
                             Spacer(Modifier.width(4.dp))
 
-                            IconButton(
+                            PlayerIconButton(
+                                name = "Fullscreen",
                                 onClick = {
                                     manualOrientationOverrideTime = System.currentTimeMillis() + 3000L
                                     currentOrientationSetting = 1
                                     activity?.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
                                 },
+                                icon = Icons.Rounded.Fullscreen,
                                 modifier = Modifier.size(32.dp)
                             ) {
                                 Icon(
@@ -3584,6 +4003,54 @@ fun VideoPlayerScreen(
         }
     }
 
+            // ─── Sleek Instant Element Tooltip HUD Badge (Auto-Collapses in 1 Second) ───
+            AnimatedVisibility(
+                visible = activeElementTooltip != null,
+                enter = fadeIn(tween(140)) + scaleIn(initialScale = 0.85f, animationSpec = tween(140)),
+                exit = fadeOut(tween(180)) + scaleOut(targetScale = 0.85f, animationSpec = tween(180)),
+                modifier = Modifier
+                    .align(Alignment.TopCenter)
+                    .statusBarsPadding()
+                    .padding(top = 16.dp)
+                    .zIndex(9999f)
+            ) {
+                activeElementTooltip?.let { tooltip ->
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier
+                            .shadow(12.dp, CircleShape)
+                            .clip(CircleShape)
+                            .background(Color(0xF0181A24))
+                            .border(
+                                1.2.dp,
+                                Brush.horizontalGradient(
+                                    listOf(primaryAccent.copy(alpha = 0.8f), Color(0xFF00E5FF).copy(alpha = 0.6f))
+                                ),
+                                CircleShape
+                            )
+                            .padding(horizontal = 16.dp, vertical = 9.dp)
+                    ) {
+                        if (tooltip.icon != null) {
+                            Icon(
+                                imageVector = tooltip.icon,
+                                contentDescription = null,
+                                tint = Color(0xFFFFD54F),
+                                modifier = Modifier.size(19.dp)
+                            )
+                            Spacer(Modifier.width(8.dp))
+                        }
+                        Text(
+                            text = tooltip.name,
+                            color = Color.White,
+                            fontSize = 13.sp,
+                            fontWeight = FontWeight.Bold,
+                            letterSpacing = 0.2.sp
+                        )
+                    }
+                }
+            }
+        } // End of outer Box
+
     // ─── Settings In-Player Overlay (Preserves video playback & supports PiP anywhere) ───
     if (showSettingsOverlay && !isInPiP) {
         androidx.compose.ui.window.Dialog(
@@ -3597,6 +4064,22 @@ fun VideoPlayerScreen(
                 SettingsScreen(
                     onBack = { showSettingsOverlay = false }
                 )
+            }
+        }
+    }
+
+    LaunchedEffect(showSettingsOverlay) {
+        if (!showSettingsOverlay) {
+            isAmbientMode = appPreferences.isAmbientModeEnabled()
+            isNightMode = appPreferences.isNightMode()
+            isBackgroundAudio = appPreferences.isBackgroundPlayEnabled()
+            resizeMode = appPreferences.getDefaultResizeMode()
+            subtitleDesign = appPreferences.getSubtitleDesign()
+            applySubtitleDesign(playerView, subtitleDesign, appPreferences)
+            if (appPreferences.isKeepScreenAwake()) {
+                activity?.window?.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+            } else {
+                activity?.window?.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
             }
         }
     }
@@ -4029,7 +4512,6 @@ fun VideoPlayerScreen(
                 onSelectTimer = { mins ->
                     sleepTimerMinutes = mins
                     showSleepTimerSheet = false
-                    Toast.makeText(context, if (mins > 0) "Sleep timer set for ${mins}m" else "Sleep timer disabled", Toast.LENGTH_SHORT).show()
                 },
                 accentColor = primaryAccent,
                 onDismiss = { showSleepTimerSheet = false }
@@ -4125,6 +4607,7 @@ fun VideoPlayerScreen(
             )
         }
     }
+}
 
 // ─── FAT VERTICAL GESTURE BAR COMPONENT ───────────────────────────────────────
 @Composable
@@ -4149,13 +4632,17 @@ private fun VerticalGestureBar(
         label = "smoothGesturePct"
     )
 
-    var lastHapticMilestone by remember { mutableIntStateOf((clampedPct * 10).toInt()) }
+    var lastHapticMilestone by remember { mutableIntStateOf((clampedPct * 20).toInt()) }
     val updateValueWithHaptic: (Float) -> Unit = { newVal ->
         val cl = newVal.coerceIn(0f, 1f)
-        val milestone = (cl * 10).toInt()
+        val milestone = (cl * 20).toInt()
         if (milestone != lastHapticMilestone) {
             lastHapticMilestone = milestone
-            view.performHaptic(HapticType.LIGHT)
+            if (cl <= 0.015f || cl >= 0.985f) {
+                view.performHaptic(HapticType.MEDIUM)
+            } else {
+                view.performLevelHaptic(cl)
+            }
         }
         onValueChange(cl)
     }
@@ -4189,7 +4676,7 @@ private fun VerticalGestureBar(
 
                     if (!hasMoved) {
                         // Quick stationary tap on the bar
-                        view.performHaptic(HapticType.LIGHT)
+                        view.performHaptic(HapticType.TICK)
                         if (downY < barHeight * 0.5f) {
                             updateValueWithHaptic((clampedPct + 0.05f).coerceAtMost(1f))
                         } else {
@@ -4200,27 +4687,116 @@ private fun VerticalGestureBar(
             },
         contentAlignment = Alignment.Center
     ) {
-        // Visual Glassmorphic Bar (42.dp wide, 190.dp tall - sleek capsule)
+        // 1. Soft Ambient Blur Bloom behind Capsule
+        if (animatedPct > 0.03f) {
+            Box(
+                modifier = Modifier
+                    .width(46.dp)
+                    .height(194.dp)
+                    .blur(18.dp)
+                    .clip(RoundedCornerShape(23.dp))
+                    .background(glowColor.copy(alpha = 0.40f * animatedPct))
+            )
+        }
+
+        // 2. Main Frosted Glass Capsule (44.dp wide, 192.dp tall)
         Box(
             modifier = Modifier
-                .width(42.dp)
-                .height(190.dp)
-                .shadow(16.dp, RoundedCornerShape(21.dp), ambientColor = glowColor.copy(alpha = 0.4f), spotColor = glowColor.copy(alpha = 0.4f))
-                .clip(RoundedCornerShape(21.dp))
-                .background(Color(0xD90E0F17))
-                .border(1.2.dp, Color.White.copy(alpha = 0.22f), RoundedCornerShape(21.dp)),
-            contentAlignment = Alignment.BottomCenter
+                .width(44.dp)
+                .height(192.dp)
+                .shadow(
+                    elevation = 16.dp,
+                    shape = RoundedCornerShape(22.dp),
+                    ambientColor = Color.Black.copy(alpha = 0.65f),
+                    spotColor = glowColor.copy(alpha = 0.45f)
+                )
+                .clip(RoundedCornerShape(22.dp))
+                // Dark tinted acrylic base
+                .background(Color(0xDD0B0C13))
+                // Frosted glass micro-gradient
+                .background(
+                    Brush.verticalGradient(
+                        listOf(
+                            Color.White.copy(alpha = 0.16f),
+                            Color.White.copy(alpha = 0.04f),
+                            Color.Black.copy(alpha = 0.20f),
+                            Color.Black.copy(alpha = 0.35f)
+                        )
+                    )
+                )
+                // Specular Glass Rim Border
+                .border(
+                    width = 1.3.dp,
+                    brush = Brush.verticalGradient(
+                        listOf(
+                            Color.White.copy(alpha = 0.45f), // Top glass specular rim
+                            glowColor.copy(alpha = 0.65f),   // Mid accent rim
+                            Color.White.copy(alpha = 0.12f)  // Bottom subtle rim
+                        )
+                    ),
+                    shape = RoundedCornerShape(22.dp)
+                )
         ) {
-            // Vertical Fill Capsule
+            // 3. Neon Blur Underglow beneath the fluid track
+            if (animatedPct > 0.02f) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .fillMaxHeight(animatedPct)
+                        .align(Alignment.BottomCenter)
+                        .blur(12.dp)
+                        .background(gradient)
+                )
+            }
+
+            // 4. Crisp Fluid Track
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
                     .fillMaxHeight(animatedPct)
-                    .clip(RoundedCornerShape(21.dp))
+                    .align(Alignment.BottomCenter)
+                    .clip(RoundedCornerShape(bottomStart = 22.dp, bottomEnd = 22.dp, topStart = 8.dp, topEnd = 8.dp))
                     .background(gradient)
             )
 
-            // Inside Indicator: Top Icon and Bottom Percentage Label (No +/-)
+            // 5. Glowing Fluid Meniscus (Top surface line of liquid)
+            if (animatedPct in 0.02f..0.98f) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(2.5.dp)
+                        .align(Alignment.BottomCenter)
+                        .offset(y = (-192.dp * animatedPct) + 2.dp)
+                        .clip(RoundedCornerShape(1.dp))
+                        .background(
+                            Brush.horizontalGradient(
+                                listOf(
+                                    Color.White.copy(alpha = 0.3f),
+                                    Color.White.copy(alpha = 0.95f),
+                                    Color.White.copy(alpha = 0.3f)
+                                )
+                            )
+                        )
+                )
+            }
+
+            // 6. Top Specular Glass Reflection
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(44.dp)
+                    .align(Alignment.TopCenter)
+                    .background(
+                        Brush.verticalGradient(
+                            listOf(
+                                Color.White.copy(alpha = 0.18f),
+                                Color.Transparent
+                            )
+                        )
+                    )
+            )
+
+            // 7. High-Contrast Inner Icons & Typography
             Column(
                 modifier = Modifier
                     .fillMaxSize()
@@ -4228,100 +4804,148 @@ private fun VerticalGestureBar(
                 horizontalAlignment = Alignment.CenterHorizontally,
                 verticalArrangement = Arrangement.SpaceBetween
             ) {
-                // Top Icon
-                Icon(
-                    imageVector = icon,
-                    contentDescription = null,
-                    tint = Color.White,
-                    modifier = Modifier.size(22.dp)
-                )
+                // Top Icon with subtle frosted circular backing for contrast
+                Box(
+                    modifier = Modifier
+                        .size(30.dp)
+                        .clip(CircleShape)
+                        .background(Color.Black.copy(alpha = 0.28f)),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        imageVector = icon,
+                        contentDescription = null,
+                        tint = Color.White,
+                        modifier = Modifier.size(19.dp)
+                    )
+                }
 
-                // Bottom Percentage Label
-                Text(
-                    text = label,
-                    color = Color.White,
-                    fontSize = 11.sp,
-                    fontWeight = FontWeight.Bold,
-                    fontFamily = FontFamily.Monospace,
-                    textAlign = TextAlign.Center
-                )
+                // Bottom Percentage Label with frosted badge
+                Box(
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(8.dp))
+                        .background(Color.Black.copy(alpha = 0.35f))
+                        .padding(horizontal = 4.dp, vertical = 1.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(
+                        text = label,
+                        color = Color.White,
+                        fontSize = 10.sp,
+                        fontWeight = FontWeight.ExtraBold,
+                        fontFamily = FontFamily.Monospace,
+                        maxLines = 1
+                    )
+                }
             }
         }
     }
 }
 
-// ─── Temporary Press-Hold Speed Badge (Small Capsule with Animated ">>" Icon) ───
+// ─── Temporary Press-Hold Speed Badge (Small Capsule with Bold Icon, No Animation) ───
 @Composable
 private fun TemporarySpeedHoldBadge(
     speed: Float,
     accentColor: Color,
     modifier: Modifier = Modifier
 ) {
-    val infiniteTransition = rememberInfiniteTransition(label = "speedChevron")
-    val chevronAlpha by infiniteTransition.animateFloat(
-        initialValue = 0.20f,
-        targetValue = 1.0f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(durationMillis = 380, easing = LinearEasing),
-            repeatMode = RepeatMode.Reverse
-        ),
-        label = "chevronBlink"
-    )
-
-    val speedText = if (abs(speed - speed.toInt().toFloat()) < 0.05f) {
-        "${speed.toInt()}X"
+    val isNormalSpeed = abs(speed - 1.0f) < 0.05f
+    val speedText = if (isNormalSpeed) {
+        "1.0X Normal"
+    } else if (abs(speed - speed.toInt().toFloat()) < 0.05f) {
+        "${speed.toInt()}X Fast"
     } else {
         String.format(Locale.getDefault(), "%.1fX", speed)
     }
 
+    val iconVector = when {
+        isNormalSpeed -> Icons.Rounded.PlayArrow
+        speed > 1.0f -> Icons.Rounded.FastForward
+        else -> Icons.Rounded.FastRewind
+    }
+
     Box(
         modifier = modifier
-            .shadow(6.dp, RoundedCornerShape(16.dp), ambientColor = Color.Black.copy(alpha = 0.5f), spotColor = Color.Black.copy(alpha = 0.5f))
-            .clip(RoundedCornerShape(16.dp))
-            .background(Color(0xD90E0F17))
-            .border(1.dp, Color.White.copy(alpha = 0.18f), RoundedCornerShape(16.dp))
-            .padding(horizontal = 12.dp, vertical = 5.dp),
+            .shadow(10.dp, RoundedCornerShape(18.dp), ambientColor = Color.Black.copy(alpha = 0.6f), spotColor = Color.Black.copy(alpha = 0.6f))
+            .clip(RoundedCornerShape(18.dp))
+            .background(Color(0xF00A0B10))
+            .border(1.2.dp, accentColor.copy(alpha = 0.5f), RoundedCornerShape(18.dp))
+            .padding(horizontal = 14.dp, vertical = 6.dp),
         contentAlignment = Alignment.Center
     ) {
         Row(
             verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(5.dp)
+            horizontalArrangement = Arrangement.spacedBy(7.dp)
         ) {
+            Icon(
+                imageVector = iconVector,
+                contentDescription = null,
+                tint = accentColor,
+                modifier = Modifier.size(16.dp)
+            )
             Text(
                 text = speedText,
                 color = Color.White,
-                fontSize = 12.5.sp,
-                fontWeight = FontWeight.Bold,
+                fontSize = 13.sp,
+                fontWeight = FontWeight.ExtraBold,
                 fontFamily = FontFamily.Monospace,
                 letterSpacing = 0.4.sp
             )
-
-            // Animated ">>" on / off chevrons
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                modifier = Modifier.graphicsLayer { alpha = chevronAlpha }
-            ) {
-                Icon(
-                    imageVector = Icons.AutoMirrored.Rounded.ArrowForwardIos,
-                    contentDescription = null,
-                    tint = accentColor,
-                    modifier = Modifier.size(9.5.dp)
-                )
-                Icon(
-                    imageVector = Icons.AutoMirrored.Rounded.ArrowForwardIos,
-                    contentDescription = null,
-                    tint = accentColor,
-                    modifier = Modifier
-                        .size(9.5.dp)
-                        .offset(x = (-3.5).dp)
-                )
-            }
         }
     }
 }
 
+// ─── Element Tooltip State & Provider ───────────────────────────────────────
+data class ElementTooltipData(
+    val name: String,
+    val icon: ImageVector? = null,
+    val timestamp: Long = System.currentTimeMillis()
+)
+
+val LocalElementTooltipHandler = staticCompositionLocalOf<((String, ImageVector?) -> Unit)?> { null }
+
+// ─── Reusable Icon Button with Instant Tap-and-Hold Tooltip / Name Display ────
+@Composable
+private fun PlayerIconButton(
+    name: String,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+    icon: ImageVector? = null,
+    enabled: Boolean = true,
+    content: @Composable () -> Unit
+) {
+    val view = LocalView.current
+    val tooltipHandler = LocalElementTooltipHandler.current
+    val coroutineScope = rememberCoroutineScope()
+    Box(
+        modifier = modifier
+            .clip(CircleShape)
+            .pointerInput(enabled, name, icon) {
+                if (!enabled) return@pointerInput
+                detectTapGestures(
+                    onPress = {
+                        var isHeld = false
+                        val job = coroutineScope.launch {
+                            delay(220L) // Instant tap-and-hold response (~220ms)
+                            isHeld = true
+                            view.performHaptic(HapticType.MEDIUM)
+                            tooltipHandler?.invoke(name, icon)
+                        }
+                        val released = tryAwaitRelease()
+                        job.cancel()
+                        if (released && !isHeld) {
+                            onClick()
+                        }
+                    }
+                )
+            },
+        contentAlignment = Alignment.Center
+    ) {
+        content()
+    }
+}
+
 // ─── Compact Quick Action Pill (Close together & space efficient) ────────────
-@OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun QuickActionButton(
     icon: ImageVector,
@@ -4331,6 +4955,9 @@ private fun QuickActionButton(
     onLongClick: (() -> Unit)? = null,
     onClick: () -> Unit
 ) {
+    val view = LocalView.current
+    val tooltipHandler = LocalElementTooltipHandler.current
+    val coroutineScope = rememberCoroutineScope()
     val contentColor = if (isActive) Color.White else Color.White.copy(alpha = 0.92f)
     Row(
         verticalAlignment = Alignment.CenterVertically,
@@ -4355,10 +4982,28 @@ private fun QuickActionButton(
                 color = if (isActive) activeColor.copy(alpha = 0.9f) else Color.White.copy(alpha = 0.14f),
                 shape = RoundedCornerShape(16.dp)
             )
-            .combinedClickable(
-                onClick = onClick,
-                onLongClick = onLongClick
-            )
+            .pointerInput(label, icon, onLongClick) {
+                detectTapGestures(
+                    onPress = {
+                        var isHeld = false
+                        val job = coroutineScope.launch {
+                            delay(220L)
+                            isHeld = true
+                            view.performHaptic(HapticType.MEDIUM)
+                            if (onLongClick != null) {
+                                onLongClick()
+                            } else {
+                                tooltipHandler?.invoke(label, icon)
+                            }
+                        }
+                        val released = tryAwaitRelease()
+                        job.cancel()
+                        if (released && !isHeld) {
+                            onClick()
+                        }
+                    }
+                )
+            }
             .padding(horizontal = 11.dp, vertical = 7.dp)
     ) {
         Icon(
@@ -4419,7 +5064,7 @@ private fun PlayerMenuItem(
     }
 }
 
-// ─── Subtitle Style Applicator (4 Distinct Designs) ──────────────────────────
+// ─── Subtitle Style Applicator (Expanded Designs & Custom BG) ────────────────
 fun applySubtitleDesign(playerView: PlayerView?, design: Int, appPreferences: AppPreferences? = null) {
     val subtitleView = playerView?.subtitleView ?: return
     subtitleView.setApplyEmbeddedStyles(false)
@@ -4427,24 +5072,35 @@ fun applySubtitleDesign(playerView: PlayerView?, design: Int, appPreferences: Ap
     val fontSize = appPreferences?.getSubtitleFontSize()?.toFloat() ?: 18f
     subtitleView.setFixedTextSize(android.util.TypedValue.COMPLEX_UNIT_SP, fontSize)
 
+    val isBgEnabled = appPreferences?.isSubtitleBackgroundEnabled() ?: true
+    val textColor = appPreferences?.getSubtitleColor()?.toInt() ?: android.graphics.Color.WHITE
+    val bgStyle = appPreferences?.getSubtitleBackgroundStyle() ?: 0
+    val outlineStyle = appPreferences?.getSubtitleOutlineStyle() ?: 2
+
+    val customBgColor = if (!isBgEnabled) {
+        android.graphics.Color.TRANSPARENT
+    } else {
+        when (bgStyle) {
+            0 -> android.graphics.Color.argb(165, 0, 0, 0) // Semi-transparent Black
+            1 -> android.graphics.Color.argb(255, 0, 0, 0) // Solid Deep Black
+            2 -> android.graphics.Color.argb(210, 20, 24, 38) // Frosted Dark Glass (Blur Effect)
+            3 -> android.graphics.Color.argb(215, 15, 23, 42) // Slate Blue Glass
+            4 -> android.graphics.Color.argb(215, 36, 26, 18) // Warm Amber Mist
+            else -> android.graphics.Color.argb(165, 0, 0, 0)
+        }
+    }
+
+    val edgeType = when (outlineStyle) {
+        1 -> CaptionStyleCompat.EDGE_TYPE_DROP_SHADOW
+        0 -> CaptionStyleCompat.EDGE_TYPE_NONE
+        else -> CaptionStyleCompat.EDGE_TYPE_OUTLINE
+    }
+    val edgeColor = if (outlineStyle == 0) android.graphics.Color.TRANSPARENT else android.graphics.Color.BLACK
+
     val captionStyle = if (appPreferences != null && design == 0) {
-        val textColor = appPreferences.getSubtitleColor().toInt()
-        val bgStyle = appPreferences.getSubtitleBackgroundStyle()
-        val bgColor = when (bgStyle) {
-            1 -> android.graphics.Color.argb(180, 0, 0, 0)
-            2 -> android.graphics.Color.argb(255, 0, 0, 0)
-            else -> android.graphics.Color.TRANSPARENT
-        }
-        val outlineStyle = appPreferences.getSubtitleOutlineStyle()
-        val edgeType = when (outlineStyle) {
-            1 -> CaptionStyleCompat.EDGE_TYPE_DROP_SHADOW
-            0 -> CaptionStyleCompat.EDGE_TYPE_NONE
-            else -> CaptionStyleCompat.EDGE_TYPE_OUTLINE
-        }
-        val edgeColor = if (outlineStyle == 0) android.graphics.Color.TRANSPARENT else android.graphics.Color.BLACK
         CaptionStyleCompat(
             textColor,
-            bgColor,
+            customBgColor,
             android.graphics.Color.TRANSPARENT,
             edgeType,
             edgeColor,
@@ -4455,16 +5111,16 @@ fun applySubtitleDesign(playerView: PlayerView?, design: Int, appPreferences: Ap
             // Design 0: Classic Cinema - Crisp white text, transparent bg, bold black outline
             0 -> CaptionStyleCompat(
                 android.graphics.Color.WHITE,
+                customBgColor,
                 android.graphics.Color.TRANSPARENT,
-                android.graphics.Color.TRANSPARENT,
-                CaptionStyleCompat.EDGE_TYPE_OUTLINE,
-                android.graphics.Color.BLACK,
+                edgeType,
+                edgeColor,
                 Typeface.DEFAULT_BOLD
             )
             // Design 1: Dark Box - Clean white text on translucent dark-grey box backing
             1 -> CaptionStyleCompat(
                 android.graphics.Color.WHITE,
-                android.graphics.Color.argb(215, 26, 27, 34),
+                if (isBgEnabled) android.graphics.Color.argb(215, 26, 27, 34) else android.graphics.Color.TRANSPARENT,
                 android.graphics.Color.TRANSPARENT,
                 CaptionStyleCompat.EDGE_TYPE_NONE,
                 android.graphics.Color.TRANSPARENT,
@@ -4473,7 +5129,7 @@ fun applySubtitleDesign(playerView: PlayerView?, design: Int, appPreferences: Ap
             // Design 2: Golden Film - Warm golden-yellow text with drop shadow
             2 -> CaptionStyleCompat(
                 android.graphics.Color.rgb(255, 215, 0),
-                android.graphics.Color.TRANSPARENT,
+                if (isBgEnabled) customBgColor else android.graphics.Color.TRANSPARENT,
                 android.graphics.Color.TRANSPARENT,
                 CaptionStyleCompat.EDGE_TYPE_DROP_SHADOW,
                 android.graphics.Color.argb(220, 0, 0, 0),
@@ -4482,18 +5138,18 @@ fun applySubtitleDesign(playerView: PlayerView?, design: Int, appPreferences: Ap
             // Design 3: Cyber Neon - High-contrast cyan text with deep backing and cyan neon outline
             3 -> CaptionStyleCompat(
                 android.graphics.Color.rgb(0, 240, 255),
-                android.graphics.Color.argb(220, 16, 18, 25),
+                if (isBgEnabled) android.graphics.Color.argb(220, 16, 18, 25) else android.graphics.Color.TRANSPARENT,
                 android.graphics.Color.TRANSPARENT,
                 CaptionStyleCompat.EDGE_TYPE_OUTLINE,
                 android.graphics.Color.rgb(0, 130, 160),
                 Typeface.MONOSPACE
             )
             else -> CaptionStyleCompat(
-                android.graphics.Color.WHITE,
+                textColor,
+                customBgColor,
                 android.graphics.Color.TRANSPARENT,
-                android.graphics.Color.TRANSPARENT,
-                CaptionStyleCompat.EDGE_TYPE_OUTLINE,
-                android.graphics.Color.BLACK,
+                edgeType,
+                edgeColor,
                 Typeface.DEFAULT_BOLD
             )
         }
@@ -4548,6 +5204,7 @@ private fun FloatingPlayerControlsBar(
 
     Row(
         modifier = modifier
+            .animateContentSize(animationSpec = tween(240, easing = FastOutSlowInEasing))
             .horizontalScroll(scrollState)
             .pointerInput(Unit) { detectTapGestures { } }
             .padding(horizontal = 4.dp, vertical = 2.dp),
@@ -5164,7 +5821,6 @@ private fun AudioTracksDialog(
                                                     .setOverrideForType(TrackSelectionOverride(group.mediaTrackGroup, i))
                                                     .build()
                                                 format.language?.let { appPreferences.setPreferredAudioLanguage(it) }
-                                                Toast.makeText(context, "Audio: ${meta.title}", Toast.LENGTH_SHORT).show()
                                                 onDismiss()
                                             }
                                             .padding(horizontal = 14.dp, vertical = 10.dp),
@@ -5410,7 +6066,6 @@ private fun SubtitlesDialog(
                                                 .clearOverridesOfType(C.TRACK_TYPE_TEXT)
                                                 .build()
                                             appPreferences.setSubtitlesEnabled(false)
-                                            Toast.makeText(context, "Subtitles turned off", Toast.LENGTH_SHORT).show()
                                             onDismiss()
                                         }
                                         .padding(horizontal = 14.dp, vertical = 10.dp),
@@ -5474,7 +6129,6 @@ private fun SubtitlesDialog(
                                                     .build()
                                                 appPreferences.setSubtitlesEnabled(true)
                                                 format.language?.let { appPreferences.setPreferredSubtitleLanguage(it) }
-                                                Toast.makeText(context, "Subtitles: ${meta.title}", Toast.LENGTH_SHORT).show()
                                                 onDismiss()
                                             }
                                             .padding(horizontal = 14.dp, vertical = 10.dp),
@@ -6025,6 +6679,15 @@ private fun MiniVideoDetailsDialog(
                                 val resText = videoFormat?.let { "${it.width} × ${it.height}" } ?: "Hardware Adapted"
                                 val fpsText = videoFormat?.frameRate?.takeIf { it > 0 }?.let { "${it.roundToInt()} fps" } ?: "Auto"
                                 val vCodec = videoFormat?.sampleMimeType?.substringAfterLast("/")?.uppercase() ?: "Hardware Decoded"
+                                val colorInfo = videoFormat?.colorInfo
+                                val isHdr = colorInfo != null && (ColorInfo.isTransferHdr(colorInfo) || colorInfo.colorTransfer == C.COLOR_TRANSFER_ST2084 || colorInfo.colorTransfer == C.COLOR_TRANSFER_HLG) || videoFormat?.sampleMimeType?.contains("dolby", ignoreCase = true) == true
+                                val hdrText = when {
+                                    videoFormat?.sampleMimeType?.contains("dolby", ignoreCase = true) == true -> "Dolby Vision"
+                                    colorInfo?.colorTransfer == C.COLOR_TRANSFER_HLG -> "HLG (BT.2020)"
+                                    colorInfo?.colorTransfer == C.COLOR_TRANSFER_ST2084 -> "HDR10 (ST2084 / BT.2020)"
+                                    isHdr -> "HDR (Wide Color Gamut)"
+                                    else -> "SDR (Standard Dynamic Range)"
+                                }
                                 val aCodec = audioFormat?.sampleMimeType?.substringAfterLast("/")?.uppercase() ?: "AAC / Auto"
                                 val channels = audioFormat?.channelCount?.let { if (it == 2) "Stereo (2ch)" else "$it Channels" } ?: "Stereo"
                                 val sampleRate = audioFormat?.sampleRate?.takeIf { it > 0 }?.let { "${it} Hz" } ?: "48,000 Hz"
@@ -6035,6 +6698,7 @@ private fun MiniVideoDetailsDialog(
                                     appendLine("Resolution: $resText")
                                     appendLine("Frame Rate: $fpsText")
                                     appendLine("Video Codec: $vCodec")
+                                    appendLine("Dynamic Range: $hdrText")
                                     appendLine("Audio Codec: $aCodec")
                                     appendLine("Audio Channels: $channels")
                                     appendLine("Sample Rate: $sampleRate")
@@ -6079,6 +6743,16 @@ private fun MiniVideoDetailsDialog(
                     DetailItemRow("Frame Rate", fpsText, accentColor)
                     val vCodec = videoFormat?.sampleMimeType?.substringAfterLast("/")?.uppercase() ?: "Hardware Decoded"
                     DetailItemRow("Video Codec", vCodec, accentColor)
+                    val colorInfo = videoFormat?.colorInfo
+                    val isHdr = colorInfo != null && (ColorInfo.isTransferHdr(colorInfo) || colorInfo.colorTransfer == C.COLOR_TRANSFER_ST2084 || colorInfo.colorTransfer == C.COLOR_TRANSFER_HLG) || videoFormat?.sampleMimeType?.contains("dolby", ignoreCase = true) == true
+                    val hdrText = when {
+                        videoFormat?.sampleMimeType?.contains("dolby", ignoreCase = true) == true -> "Dolby Vision"
+                        colorInfo?.colorTransfer == C.COLOR_TRANSFER_HLG -> "HLG (BT.2020)"
+                        colorInfo?.colorTransfer == C.COLOR_TRANSFER_ST2084 -> "HDR10 (ST2084 / BT.2020)"
+                        isHdr -> "HDR (Wide Color Gamut)"
+                        else -> "SDR (Standard Dynamic Range)"
+                    }
+                    DetailItemRow("Dynamic Range", hdrText, accentColor)
                     val aCodec = audioFormat?.sampleMimeType?.substringAfterLast("/")?.uppercase() ?: "AAC / Auto"
                     DetailItemRow("Audio Codec", aCodec, accentColor)
                     val channels = audioFormat?.channelCount?.let { if (it == 2) "Stereo (2ch)" else "$it Channels" } ?: "Stereo"

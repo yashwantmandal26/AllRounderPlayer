@@ -26,7 +26,27 @@ data class MusicItem(
 
 class MusicRepository(private val context: Context) {
 
-    suspend fun getMusicFiles(): List<MusicItem> = withContext(Dispatchers.IO) {
+    companion object {
+        @Volatile
+        private var memoryCachedMusic: List<MusicItem>? = null
+        @Volatile
+        private var lastFetchTime: Long = 0L
+
+        fun invalidateCache() {
+            memoryCachedMusic = null
+            lastFetchTime = 0L
+        }
+    }
+
+    suspend fun getMusicFiles(forceRefresh: Boolean = false): List<MusicItem> = getAllMusic(forceRefresh)
+
+    suspend fun getAllMusic(forceRefresh: Boolean = false): List<MusicItem> = withContext(Dispatchers.IO) {
+        val cached = memoryCachedMusic
+        val now = System.currentTimeMillis()
+        if (!forceRefresh && cached != null && (now - lastFetchTime < 15_000L)) {
+            return@withContext cached
+        }
+
         val musicList = mutableListOf<MusicItem>()
 
         val projection = arrayOf(
@@ -41,7 +61,8 @@ class MusicRepository(private val context: Context) {
         )
 
         val sortOrder = "${MediaStore.Audio.Media.TITLE} ASC"
-        val selection = "(${MediaStore.Audio.Media.IS_MUSIC} != 0 OR ${MediaStore.Audio.Media.MIME_TYPE} LIKE 'audio/%' OR ${MediaStore.Audio.Media.DATA} LIKE '%.mp3' OR ${MediaStore.Audio.Media.DATA} LIKE '%.m4a' OR ${MediaStore.Audio.Media.DATA} LIKE '%.flac' OR ${MediaStore.Audio.Media.DATA} LIKE '%.wav' OR ${MediaStore.Audio.Media.DATA} LIKE '%.ogg' OR ${MediaStore.Audio.Media.DATA} LIKE '%.opus' OR ${MediaStore.Audio.Media.DATA} LIKE '%.aac' OR ${MediaStore.Audio.Media.DATA} LIKE '%.wma') AND ${MediaStore.Audio.Media.DURATION} > 1000"
+        // High-performance indexed selection: uses B-tree index on IS_MUSIC and MIME_TYPE instead of full table scans
+        val selection = "(${MediaStore.Audio.Media.IS_MUSIC} != 0 OR ${MediaStore.Audio.Media.MIME_TYPE} LIKE 'audio/%') AND ${MediaStore.Audio.Media.DURATION} >= 1000"
 
         context.contentResolver.query(
             MediaStore.Audio.Media.EXTERNAL_CONTENT_URI,
@@ -93,6 +114,8 @@ class MusicRepository(private val context: Context) {
                 )
             }
         }
+        memoryCachedMusic = musicList
+        lastFetchTime = now
         musicList
     }
 }
