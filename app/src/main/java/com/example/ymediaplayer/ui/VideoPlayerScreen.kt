@@ -734,12 +734,20 @@ fun VideoPlayerScreen(
     var showZoomHUD by remember { mutableStateOf(false) }
     var zoomHUDText by remember { mutableStateOf("") }
 
+    var speedBeforeReset by remember(currentUrl) { mutableStateOf<Float?>(null) }
+
     val resetSpeedToOne: () -> Unit = {
         view.performHaptic(HapticType.MEDIUM)
-        playbackSpeed = 1.0f
-        exoPlayer.playbackParameters = PlaybackParameters(1.0f)
+        if (speedBeforeReset == null) {
+            speedBeforeReset = playbackSpeed
+            playbackSpeed = 1.0f
+        } else {
+            playbackSpeed = speedBeforeReset!!
+            speedBeforeReset = null
+        }
+        exoPlayer.playbackParameters = PlaybackParameters(playbackSpeed)
         if (appPreferences.isRememberPlaybackSpeed()) {
-            appPreferences.setLastPlaybackSpeed(1.0f)
+            appPreferences.setLastPlaybackSpeed(playbackSpeed)
         }
     }
 
@@ -1734,7 +1742,7 @@ fun VideoPlayerScreen(
         var lastTapY = 0f
 
         awaitEachGesture {
-            val down = awaitFirstDown(requireUnconsumed = false)
+            val down = awaitFirstDown(requireUnconsumed = true)
             var wasConsumed = down.isConsumed
             val downTime = System.currentTimeMillis()
             val startX = down.position.x
@@ -1751,8 +1759,8 @@ fun VideoPlayerScreen(
             val startVolume = audioManager.getStreamVolume(AudioManager.STREAM_MUSIC)
             val startPosition = exoPlayer.currentPosition
             currentDragSeekTarget = startPosition
-            var lastHapticBrightnessStep = (startBrightness * 20f).toInt()
-            var lastHapticVolume = startVolume
+            var lastHapticBrightnessStep = ((startBrightness * 100f) / 5f).roundToInt().coerceIn(0, 20)
+            var lastHapticVolumeStep = (((startVolume.toFloat() / maxVolume.toFloat()) * 100f) / 5f).roundToInt().coerceIn(0, 20)
             var lastHapticSeekStep = (startPosition / 5000L).toInt()
             var lastHoldX = startX
             var didActivateSpeedHold = false
@@ -1872,7 +1880,23 @@ fun VideoPlayerScreen(
                     val moveDistX = abs(diffX)
                     val moveDistY = abs(diffY)
 
-                    if (videoZoomScale > 1.1f && (moveDistX > 15f || moveDistY > 15f)) {
+                    val isExtremeLeft = startX <= screenWidth * 0.35f
+                    val isExtremeRight = startX >= screenWidth * 0.65f
+                    val isCenterArea = startX in (screenWidth * 0.35f)..(screenWidth * 0.65f)
+
+                    // 1. Edge vertical swipe for Brightness & Volume (Allowed even when pinch-zoomed!)
+                    if ((isLandscape || isVerticalVideo) && isExtremeLeft && moveDistY > 45f && moveDistY > moveDistX * 1.3f && appPreferences.isBrightnessGestureEnabled()) {
+                        hasMoved = true
+                        gestureMode = PlayerGestureMode.BRIGHTNESS
+                        activeGestureMode = gestureMode
+                        change.consume()
+                    } else if ((isLandscape || isVerticalVideo) && isExtremeRight && moveDistY > 45f && moveDistY > moveDistX * 1.3f && appPreferences.isVolumeGestureEnabled()) {
+                        hasMoved = true
+                        gestureMode = PlayerGestureMode.VOLUME
+                        activeGestureMode = gestureMode
+                        change.consume()
+                    } else if (videoZoomScale > 1.1f && (moveDistX > 15f || moveDistY > 15f)) {
+                        // 2. Pan zoomed video when dragging across screen or horizontally
                         hasMoved = true
                         gestureMode = PlayerGestureMode.PINCH_ZOOM
                         activeGestureMode = gestureMode
@@ -1904,48 +1928,18 @@ fun VideoPlayerScreen(
                             }
                         } else {
                             // ─── FULL-SCREEN VIDEO PLAYER MODE ───
-                            val isExtremeLeft = startX <= screenWidth * 0.35f
-                            val isExtremeRight = startX >= screenWidth * 0.65f
-                            val isCenterArea = startX in (screenWidth * 0.35f)..(screenWidth * 0.65f)
-
-                            if (isExtremeLeft && moveDistY > moveDistX * 1.3f) {
-                                if (appPreferences.isBrightnessGestureEnabled()) {
-                                    gestureMode = PlayerGestureMode.BRIGHTNESS
+                            if (isCenterArea && diffY > 50f && moveDistY > moveDistX * 1.3f) {
+                                // Gesturing down at screen center area: returns to portrait upon release (ignore for vertical videos)
+                                if (!isVerticalVideo) {
+                                    gestureMode = PlayerGestureMode.ORIENTATION_SWIPE
                                     activeGestureMode = gestureMode
-                                    change.consume()
-                                }
-                            } else if (isExtremeRight && moveDistY > moveDistX * 1.3f) {
-                                if (appPreferences.isVolumeGestureEnabled()) {
-                                    gestureMode = PlayerGestureMode.VOLUME
-                                    activeGestureMode = gestureMode
-                                    change.consume()
-                                }
-                            } else if (isCenterArea && diffY > 50f && moveDistY > moveDistX * 1.3f) {
-                                // Gesturing down at screen center area: returns to portrait or enters PiP upon release
-                                gestureMode = PlayerGestureMode.ORIENTATION_SWIPE
-                                activeGestureMode = gestureMode
-                                if (isVerticalVideo) {
-                                    pendingOrientationAction = {
-                                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                                            try {
-                                                val params = buildPipParams()
-                                                if (params != null) {
-                                                    activity?.enterPictureInPictureMode(params)
-                                                } else {
-                                                    @Suppress("DEPRECATION")
-                                                    activity?.enterPictureInPictureMode()
-                                                }
-                                            } catch (_: Exception) {}
-                                        }
-                                    }
-                                } else {
                                     pendingOrientationAction = {
                                         manualOrientationOverrideTime = System.currentTimeMillis() + 3000L
                                         currentOrientationSetting = 0
                                         activity?.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_SENSOR_PORTRAIT
                                     }
+                                    change.consume()
                                 }
-                                change.consume()
                             } else if (moveDistX > 45f && moveDistX > moveDistY * 1.2f) {
                                 // Horizontal swipe anywhere on the screen = SEEK with preview!
                                 if (appPreferences.isSeekGestureEnabled()) {
@@ -1971,13 +1965,13 @@ fun VideoPlayerScreen(
                         showVolumeBar = false
                         brightnessTouchTrigger = System.currentTimeMillis()
 
-                        val bStep = (newB * 20f).toInt()
+                        val bStep = ((newB * 100f) / 5f).roundToInt().coerceIn(0, 20)
                         if (bStep != lastHapticBrightnessStep) {
                             lastHapticBrightnessStep = bStep
-                            if (newB <= 0.015f || newB >= 0.985f) {
+                            if (bStep == 0 || bStep == 20) {
                                 view.performHaptic(HapticType.MEDIUM)
                             } else {
-                                view.performLevelHaptic(newB)
+                                view.performLevelHaptic(bStep / 20f)
                             }
                         }
                         change.consume()
@@ -1990,12 +1984,13 @@ fun VideoPlayerScreen(
                         if (newVol != audioManager.getStreamVolume(AudioManager.STREAM_MUSIC)) {
                             audioManager.setStreamVolume(AudioManager.STREAM_MUSIC, newVol, 0)
                         }
-                        if (newVol != lastHapticVolume) {
-                            lastHapticVolume = newVol
-                            if (newVol == 0 || newVol == maxVolume) {
+                        val vStep = ((newVolRatio * 100f) / 5f).roundToInt().coerceIn(0, 20)
+                        if (vStep != lastHapticVolumeStep) {
+                            lastHapticVolumeStep = vStep
+                            if (vStep == 0 || vStep == 20) {
                                 view.performHaptic(HapticType.MEDIUM)
                             } else {
-                                view.performLevelHaptic(newVolRatio)
+                                view.performLevelHaptic(vStep / 20f)
                             }
                         }
                         showVolumeBar = true
@@ -2603,46 +2598,48 @@ fun VideoPlayerScreen(
                                                 fontWeight = FontWeight.Medium,
                                                 fontFamily = FontFamily.Monospace
                                             )
-                                            Text(
-                                                text = "•",
-                                                color = Color.White.copy(alpha = 0.40f),
-                                                fontSize = 11.sp
-                                            )
-                                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                                Icon(
-                                                    imageVector = when {
-                                                        isCharging -> Icons.Rounded.BatteryChargingFull
-                                                        batteryPct >= 85 -> Icons.Rounded.BatteryFull
-                                                        batteryPct >= 50 -> Icons.Rounded.Battery5Bar
-                                                        batteryPct >= 20 -> Icons.Rounded.Battery3Bar
-                                                        else -> Icons.Rounded.BatteryAlert
-                                                    },
-                                                    contentDescription = null,
-                                                    tint = if (isCharging) Color(0xFF4CAF50) else if (batteryPct <= 15) Color(0xFFFF5252) else primaryAccent,
-                                                    modifier = Modifier.size(13.dp)
-                                                )
-                                                Spacer(Modifier.width(3.dp))
-                                                Text(
-                                                    text = "$batteryPct%",
-                                                    color = Color.White.copy(alpha = 0.75f),
-                                                    fontSize = 11.sp,
-                                                    fontWeight = FontWeight.Medium,
-                                                    fontFamily = FontFamily.Monospace
-                                                )
-                                            }
-                                            if (resolutionBadge != null) {
+                                            if (!isVerticalVideo) {
                                                 Text(
                                                     text = "•",
                                                     color = Color.White.copy(alpha = 0.40f),
                                                     fontSize = 11.sp
                                                 )
-                                                Text(
-                                                    text = resolutionBadge,
-                                                    color = Color.White.copy(alpha = 0.75f),
-                                                    fontSize = 11.sp,
-                                                    fontWeight = FontWeight.Medium,
-                                                    fontFamily = FontFamily.Monospace
-                                                )
+                                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                                    Icon(
+                                                        imageVector = when {
+                                                            isCharging -> Icons.Rounded.BatteryChargingFull
+                                                            batteryPct >= 85 -> Icons.Rounded.BatteryFull
+                                                            batteryPct >= 50 -> Icons.Rounded.Battery5Bar
+                                                            batteryPct >= 20 -> Icons.Rounded.Battery3Bar
+                                                            else -> Icons.Rounded.BatteryAlert
+                                                        },
+                                                        contentDescription = null,
+                                                        tint = if (isCharging) Color(0xFF4CAF50) else if (batteryPct <= 15) Color(0xFFFF5252) else primaryAccent,
+                                                        modifier = Modifier.size(13.dp)
+                                                    )
+                                                    Spacer(Modifier.width(3.dp))
+                                                    Text(
+                                                        text = "$batteryPct%",
+                                                        color = Color.White.copy(alpha = 0.75f),
+                                                        fontSize = 11.sp,
+                                                        fontWeight = FontWeight.Medium,
+                                                        fontFamily = FontFamily.Monospace
+                                                    )
+                                                }
+                                                if (resolutionBadge != null) {
+                                                    Text(
+                                                        text = "•",
+                                                        color = Color.White.copy(alpha = 0.40f),
+                                                        fontSize = 11.sp
+                                                    )
+                                                    Text(
+                                                        text = resolutionBadge,
+                                                        color = Color.White.copy(alpha = 0.75f),
+                                                        fontSize = 11.sp,
+                                                        fontWeight = FontWeight.Medium,
+                                                        fontFamily = FontFamily.Monospace
+                                                    )
+                                                }
                                             }
                                         }
                                     }
@@ -3665,8 +3662,10 @@ fun VideoPlayerScreen(
                                         horizontalArrangement = Arrangement.spacedBy(4.dp)
                                     ) {
                                         Text(text = currentTimeStr, color = Color.White.copy(alpha = 0.70f), fontSize = 10.sp, fontFamily = FontFamily.Monospace)
-                                        Text(text = "•", color = Color.White.copy(alpha = 0.35f), fontSize = 10.sp)
-                                        Text(text = "$batteryPct%", color = Color.White.copy(alpha = 0.70f), fontSize = 10.sp, fontFamily = FontFamily.Monospace)
+                                        if (!isVerticalVideo) {
+                                            Text(text = "•", color = Color.White.copy(alpha = 0.35f), fontSize = 10.sp)
+                                            Text(text = "$batteryPct%", color = Color.White.copy(alpha = 0.70f), fontSize = 10.sp, fontFamily = FontFamily.Monospace)
+                                        }
                                     }
                                 }
                             }
@@ -4632,16 +4631,16 @@ private fun VerticalGestureBar(
         label = "smoothGesturePct"
     )
 
-    var lastHapticMilestone by remember { mutableIntStateOf((clampedPct * 20).toInt()) }
+    var lastHapticMilestone by remember { mutableIntStateOf(((clampedPct * 100f) / 5f).roundToInt().coerceIn(0, 20)) }
     val updateValueWithHaptic: (Float) -> Unit = { newVal ->
         val cl = newVal.coerceIn(0f, 1f)
-        val milestone = (cl * 20).toInt()
+        val milestone = ((cl * 100f) / 5f).roundToInt().coerceIn(0, 20)
         if (milestone != lastHapticMilestone) {
             lastHapticMilestone = milestone
-            if (cl <= 0.015f || cl >= 0.985f) {
+            if (milestone == 0 || milestone == 20) {
                 view.performHaptic(HapticType.MEDIUM)
             } else {
-                view.performLevelHaptic(cl)
+                view.performLevelHaptic(milestone / 20f)
             }
         }
         onValueChange(cl)
@@ -4687,19 +4686,7 @@ private fun VerticalGestureBar(
             },
         contentAlignment = Alignment.Center
     ) {
-        // 1. Soft Ambient Blur Bloom behind Capsule
-        if (animatedPct > 0.03f) {
-            Box(
-                modifier = Modifier
-                    .width(46.dp)
-                    .height(194.dp)
-                    .blur(18.dp)
-                    .clip(RoundedCornerShape(23.dp))
-                    .background(glowColor.copy(alpha = 0.40f * animatedPct))
-            )
-        }
-
-        // 2. Main Frosted Glass Capsule (44.dp wide, 192.dp tall)
+        // Main Frosted Glass Capsule (44.dp wide, 192.dp tall) with native rounded shadow
         Box(
             modifier = Modifier
                 .width(44.dp)
@@ -4708,7 +4695,7 @@ private fun VerticalGestureBar(
                     elevation = 16.dp,
                     shape = RoundedCornerShape(22.dp),
                     ambientColor = Color.Black.copy(alpha = 0.65f),
-                    spotColor = glowColor.copy(alpha = 0.45f)
+                    spotColor = glowColor.copy(alpha = 0.50f)
                 )
                 .clip(RoundedCornerShape(22.dp))
                 // Dark tinted acrylic base
@@ -4737,25 +4724,13 @@ private fun VerticalGestureBar(
                     shape = RoundedCornerShape(22.dp)
                 )
         ) {
-            // 3. Neon Blur Underglow beneath the fluid track
-            if (animatedPct > 0.02f) {
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .fillMaxHeight(animatedPct)
-                        .align(Alignment.BottomCenter)
-                        .blur(12.dp)
-                        .background(gradient)
-                )
-            }
-
-            // 4. Crisp Fluid Track
+            // Fluid Track Fill
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
                     .fillMaxHeight(animatedPct)
                     .align(Alignment.BottomCenter)
-                    .clip(RoundedCornerShape(bottomStart = 22.dp, bottomEnd = 22.dp, topStart = 8.dp, topEnd = 8.dp))
+                    .clip(RoundedCornerShape(bottomStart = 22.dp, bottomEnd = 22.dp, topStart = if (animatedPct > 0.95f) 22.dp else 6.dp, topEnd = if (animatedPct > 0.95f) 22.dp else 6.dp))
                     .background(gradient)
             )
 

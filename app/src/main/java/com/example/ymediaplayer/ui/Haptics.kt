@@ -77,7 +77,18 @@ fun Context.performHaptic(type: HapticType) {
 
 fun View.performLevelHaptic(level: Float) {
     if (!AppPreferences(context).isHapticsEnabled()) return
-    context.performLevelHaptic(level)
+    val flag = HapticFeedbackConstants.FLAG_IGNORE_VIEW_SETTING
+    val constant = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+        HapticFeedbackConstants.SEGMENT_TICK
+    } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O_MR1) {
+        HapticFeedbackConstants.TEXT_HANDLE_MOVE
+    } else {
+        HapticFeedbackConstants.CLOCK_TICK
+    }
+    val performed = try { performHapticFeedback(constant, flag) } catch (_: Exception) { false }
+    if (!performed) {
+        context.performLevelHaptic(level)
+    }
 }
 
 fun Context.performLevelHaptic(level: Float) {

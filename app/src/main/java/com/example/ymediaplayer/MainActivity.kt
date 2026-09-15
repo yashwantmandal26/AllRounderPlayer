@@ -214,6 +214,11 @@ fun MainApp() {
     val window = (context as? ComponentActivity)?.window
     val insetsController = window?.let { WindowCompat.getInsetsController(it, it.decorView) }
     val appColors = com.example.ymediaplayer.theme.LocalAppColors.current
+    val appPreferences = remember { com.example.ymediaplayer.data.AppPreferences(context) }
+
+    LaunchedEffect(Unit) {
+        com.example.ymediaplayer.update.UpdateManager.checkForUpdates(context, appPreferences, isManual = false)
+    }
 
     LaunchedEffect(MainActivity.openMusicTrigger.value) {
         if (MainActivity.openMusicTrigger.value) {
@@ -404,6 +409,15 @@ fun MainApp() {
                 onClose = {
                     VideoPlaybackManager.closeMiniPlayer()
                 }
+            )
+        }
+
+        // ─── In-App Auto-Updater Dialog ──────────────────────────────────────
+        val availableUpdate = com.example.ymediaplayer.update.UpdateManager.availableUpdate.value
+        if (availableUpdate != null) {
+            com.example.ymediaplayer.ui.UpdateDialog(
+                release = availableUpdate,
+                onDismiss = { com.example.ymediaplayer.update.UpdateManager.dismissUpdate() }
             )
         }
     }

@@ -3962,7 +3962,7 @@ private fun MusicVerticalGestureBar(
     onValueChange: (Float) -> Unit,
     modifier: Modifier = Modifier
 ) {
-    val haptic = LocalHapticFeedback.current
+    val view = androidx.compose.ui.platform.LocalView.current
     val clampedPct = percentage.coerceIn(0f, 1f)
     val animatedPct by animateFloatAsState(
         targetValue = clampedPct,
@@ -3973,13 +3973,17 @@ private fun MusicVerticalGestureBar(
         label = "smoothMusicGesturePct"
     )
 
-    var lastHapticMilestone by remember { mutableIntStateOf((clampedPct * 10).toInt()) }
+    var lastHapticMilestone by remember { mutableIntStateOf(((clampedPct * 100f) / 5f).roundToInt().coerceIn(0, 20)) }
     val updateValueWithHaptic: (Float) -> Unit = { newVal ->
         val cl = newVal.coerceIn(0f, 1f)
-        val milestone = (cl * 10).toInt()
+        val milestone = ((cl * 100f) / 5f).roundToInt().coerceIn(0, 20)
         if (milestone != lastHapticMilestone) {
             lastHapticMilestone = milestone
-            try { haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove) } catch (_: Exception) {}
+            if (milestone == 0 || milestone == 20) {
+                view.performHaptic(HapticType.MEDIUM)
+            } else {
+                view.performLevelHaptic(milestone / 20f)
+            }
         }
         onValueChange(cl)
     }
@@ -4013,7 +4017,7 @@ private fun MusicVerticalGestureBar(
 
                     if (!hasMoved) {
                         // Quick stationary tap on the bar
-                        try { haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove) } catch (_: Exception) {}
+                        view.performHaptic(HapticType.TICK)
                         if (downY < barHeight * 0.5f) {
                             updateValueWithHaptic((clampedPct + 0.05f).coerceAtMost(1f))
                         } else {
@@ -4024,19 +4028,7 @@ private fun MusicVerticalGestureBar(
             },
         contentAlignment = Alignment.Center
     ) {
-        // 1. Soft Ambient Blur Bloom behind Capsule
-        if (animatedPct > 0.03f) {
-            Box(
-                modifier = Modifier
-                    .width(46.dp)
-                    .height(194.dp)
-                    .blur(18.dp)
-                    .clip(RoundedCornerShape(23.dp))
-                    .background(glowColor.copy(alpha = 0.40f * animatedPct))
-            )
-        }
-
-        // 2. Main Frosted Glass Capsule (44.dp wide, 192.dp tall)
+        // Main Frosted Glass Capsule (44.dp wide, 192.dp tall) with native rounded shadow
         Box(
             modifier = Modifier
                 .width(44.dp)
@@ -4045,7 +4037,7 @@ private fun MusicVerticalGestureBar(
                     elevation = 16.dp,
                     shape = RoundedCornerShape(22.dp),
                     ambientColor = Color.Black.copy(alpha = 0.65f),
-                    spotColor = glowColor.copy(alpha = 0.45f)
+                    spotColor = glowColor.copy(alpha = 0.50f)
                 )
                 .clip(RoundedCornerShape(22.dp))
                 // Dark tinted acrylic base
@@ -4074,25 +4066,13 @@ private fun MusicVerticalGestureBar(
                     shape = RoundedCornerShape(22.dp)
                 )
         ) {
-            // 3. Neon Blur Underglow beneath the fluid track
-            if (animatedPct > 0.02f) {
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .fillMaxHeight(animatedPct)
-                        .align(Alignment.BottomCenter)
-                        .blur(12.dp)
-                        .background(gradient)
-                )
-            }
-
-            // 4. Crisp Fluid Track
+            // Fluid Track Fill
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
                     .fillMaxHeight(animatedPct)
                     .align(Alignment.BottomCenter)
-                    .clip(RoundedCornerShape(bottomStart = 22.dp, bottomEnd = 22.dp, topStart = 8.dp, topEnd = 8.dp))
+                    .clip(RoundedCornerShape(bottomStart = 22.dp, bottomEnd = 22.dp, topStart = if (animatedPct > 0.95f) 22.dp else 6.dp, topEnd = if (animatedPct > 0.95f) 22.dp else 6.dp))
                     .background(gradient)
             )
 

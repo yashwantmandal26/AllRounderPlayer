@@ -43,6 +43,8 @@ import com.example.ymediaplayer.data.SortOrder
 import com.example.ymediaplayer.theme.LocalAppColors
 import com.example.ymediaplayer.theme.LocalThemeController
 import com.example.ymediaplayer.theme.ThemeMode
+import com.example.ymediaplayer.update.UpdateManager
+import kotlinx.coroutines.launch
 
 enum class SettingsCategory(val displayName: String, val icon: ImageVector) {
     ALL("All", Icons.Rounded.Apps),
@@ -64,6 +66,8 @@ fun SettingsScreen(
     val appPreferences = remember { AppPreferences(context) }
     val themeController = LocalThemeController.current
     val c = LocalAppColors.current
+    val scope = rememberCoroutineScope()
+    val currentVersionName = remember { UpdateManager.getCurrentVersionName(context) }
 
     val primaryAccent = themeController.colorTheme.primaryAccent
     val secondaryAccent = themeController.colorTheme.secondaryAccent
@@ -224,21 +228,6 @@ fun SettingsScreen(
                             color = c.textPrimary,
                             modifier = Modifier.weight(1f)
                         )
-
-                        IconButton(
-                            onClick = { showResetAllConfirm = true },
-                            modifier = Modifier
-                                .size(40.dp)
-                                .clip(CircleShape)
-                                .background(if (c.isMatte) c.cardBgElevated else Color.White.copy(alpha = 0.08f))
-                        ) {
-                            Icon(
-                                Icons.Rounded.RestartAlt,
-                                contentDescription = "Reset Defaults",
-                                tint = Color(0xFFFF5252),
-                                modifier = Modifier.size(20.dp)
-                            )
-                        }
                     }
                 }
 
@@ -434,6 +423,8 @@ fun SettingsScreen(
                     itemMatches("Clear Continue Watching History", "progress timestamps") ||
                     itemMatches("Clear Video Bookmarks", "bookmarks") ||
                     itemMatches("Clear Image & Thumbnail Cache", "cache storage memory") ||
+                    itemMatches("Check for Updates", "update version release latest github") ||
+                    itemMatches("Auto-Check for Updates", "automatic update notify") ||
                     itemMatches("Reset All Settings to Defaults", "restore factory defaults")
                 ))
 
@@ -455,6 +446,123 @@ fun SettingsScreen(
                         primaryAccent = primaryAccent,
                         secondaryAccent = secondaryAccent
                     )
+                }
+            }
+
+            // ─── 0. Top Check For Updates Banner ──────────────────────────────
+            if ((q.isBlank() && (selectedCategory == SettingsCategory.ALL || selectedCategory == SettingsCategory.STORAGE)) ||
+                (q.isNotBlank() && itemMatches("Check for Updates", "update version release latest github"))
+            ) {
+                item {
+                    val isCheckingUpdates = UpdateManager.isChecking.value
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .shadow(8.dp, RoundedCornerShape(20.dp), ambientColor = c.cardShadowColor, spotColor = c.cardShadowColor)
+                            .clip(RoundedCornerShape(20.dp))
+                            .background(c.cardBg)
+                            .border(1.2.dp, primaryAccent.copy(alpha = 0.40f), RoundedCornerShape(20.dp))
+                            .clickable {
+                                if (!isCheckingUpdates) {
+                                    scope.launch {
+                                        val res = UpdateManager.checkForUpdates(context, appPreferences, isManual = true)
+                                        if (res.isSuccess && res.getOrNull() == null) {
+                                            Toast.makeText(context, "You are on the latest version (v$currentVersionName)", Toast.LENGTH_SHORT).show()
+                                        }
+                                    }
+                                }
+                            }
+                            .padding(16.dp)
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .size(46.dp)
+                                    .clip(CircleShape)
+                                    .background(primaryAccent.copy(alpha = 0.18f))
+                                    .border(1.dp, primaryAccent.copy(alpha = 0.45f), CircleShape),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                if (isCheckingUpdates) {
+                                    CircularProgressIndicator(
+                                        modifier = Modifier.size(22.dp),
+                                        color = primaryAccent,
+                                        strokeWidth = 2.5.dp
+                                    )
+                                } else {
+                                    Icon(
+                                        imageVector = Icons.Rounded.SystemUpdate,
+                                        contentDescription = "Check for Updates",
+                                        tint = primaryAccent,
+                                        modifier = Modifier.size(24.dp)
+                                    )
+                                }
+                            }
+
+                            Spacer(Modifier.width(14.dp))
+
+                            Column(modifier = Modifier.weight(1f)) {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Text(
+                                        text = "Check for Updates",
+                                        fontSize = 15.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = c.textPrimary
+                                    )
+                                    Spacer(Modifier.width(6.dp))
+                                    Box(
+                                        modifier = Modifier
+                                            .clip(RoundedCornerShape(6.dp))
+                                            .background(primaryAccent.copy(alpha = 0.15f))
+                                            .padding(horizontal = 6.dp, vertical = 2.dp)
+                                    ) {
+                                        Text(
+                                            text = "v$currentVersionName",
+                                            fontSize = 11.sp,
+                                            fontWeight = FontWeight.SemiBold,
+                                            fontFamily = FontFamily.Monospace,
+                                            color = primaryAccent
+                                        )
+                                    }
+                                }
+                                Spacer(Modifier.height(2.dp))
+                                Text(
+                                    text = if (isCheckingUpdates) "Checking GitHub for latest release..." else "Tap to check for new updates",
+                                    fontSize = 12.sp,
+                                    color = c.textSecondary
+                                )
+                            }
+
+                            Spacer(Modifier.width(8.dp))
+
+                            Button(
+                                onClick = {
+                                    if (!isCheckingUpdates) {
+                                        scope.launch {
+                                            val res = UpdateManager.checkForUpdates(context, appPreferences, isManual = true)
+                                            if (res.isSuccess && res.getOrNull() == null) {
+                                                Toast.makeText(context, "You are on the latest version (v$currentVersionName)", Toast.LENGTH_SHORT).show()
+                                            }
+                                        }
+                                    }
+                                },
+                                shape = RoundedCornerShape(12.dp),
+                                colors = ButtonDefaults.buttonColors(containerColor = primaryAccent),
+                                contentPadding = PaddingValues(horizontal = 14.dp, vertical = 6.dp),
+                                modifier = Modifier.height(36.dp)
+                            ) {
+                                Text(
+                                    text = if (isCheckingUpdates) "Checking..." else "Check",
+                                    fontSize = 12.5.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = Color.White
+                                )
+                            }
+                        }
+                    }
                 }
             }
 
@@ -1264,6 +1372,40 @@ fun SettingsScreen(
 
                     SettingsDivider()
 
+                    val isCheckingUpdates = UpdateManager.isChecking.value
+                    SettingsItemAction(
+                        title = "Check for Updates",
+                        subtitle = if (isCheckingUpdates) "Checking GitHub for latest release..." else "Version $currentVersionName • Tap to check latest release",
+                        icon = Icons.Rounded.SystemUpdate,
+                        iconTint = primaryAccent,
+                        onClick = {
+                            if (!isCheckingUpdates) {
+                                scope.launch {
+                                    val res = UpdateManager.checkForUpdates(context, appPreferences, isManual = true)
+                                    if (res.isSuccess && res.getOrNull() == null) {
+                                        Toast.makeText(context, "You are using the latest version (v$currentVersionName)", Toast.LENGTH_SHORT).show()
+                                    }
+                                }
+                            }
+                        }
+                    )
+
+                    SettingsDivider()
+
+                    var autoCheckUpdates by remember { mutableStateOf(appPreferences.isAutoCheckUpdatesEnabled()) }
+                    SettingsItemToggle(
+                        title = "Auto-Check for Updates",
+                        subtitle = "Automatically notify when a new release is available",
+                        icon = Icons.Rounded.CloudDownload,
+                        checked = autoCheckUpdates,
+                        onCheckedChange = {
+                            autoCheckUpdates = it
+                            appPreferences.setAutoCheckUpdatesEnabled(it)
+                        }
+                    )
+
+                    SettingsDivider()
+
                     SettingsItemAction(
                         title = "Reset All Settings to Defaults",
                         subtitle = "Restore default settings across the entire player",
@@ -1350,7 +1492,7 @@ fun SettingsScreen(
                         )
                         Spacer(Modifier.height(4.dp))
                         Text(
-                            text = "Version 1.3.0 • Built with Jetpack Compose & Media3",
+                            text = "Version $currentVersionName • Built with Jetpack Compose & Media3",
                             fontSize = 12.sp,
                             color = c.textSecondary
                         )
@@ -1739,6 +1881,14 @@ fun SettingsScreen(
                     Text("Cancel")
                 }
             }
+        )
+    }
+
+    val updateToDisplay = UpdateManager.availableUpdate.value
+    if (updateToDisplay != null) {
+        UpdateDialog(
+            release = updateToDisplay,
+            onDismiss = { UpdateManager.dismissUpdate() }
         )
     }
     }

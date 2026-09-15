@@ -668,6 +668,22 @@ class AppPreferences(private val prefs: SharedPreferences) {
         val sec = s % 60
         return String.format(java.util.Locale.getDefault(), "%02d:%02d", m, sec)
     }
+
+    // ─── In-App Auto-Updater Settings ──────────────────────────────────────────
+    fun isAutoCheckUpdatesEnabled(): Boolean = prefs.getBoolean("auto_check_updates", true)
+    fun setAutoCheckUpdatesEnabled(enabled: Boolean) {
+        prefs.edit().putBoolean("auto_check_updates", enabled).apply()
+    }
+
+    fun getLastUpdateCheckTime(): Long = prefs.getLong("last_update_check_time", 0L)
+    fun setLastUpdateCheckTime(time: Long) {
+        prefs.edit().putLong("last_update_check_time", time).apply()
+    }
+
+    fun getSkippedUpdateTag(): String? = prefs.getString("skipped_update_tag", null)
+    fun setSkippedUpdateTag(tag: String?) {
+        prefs.edit().putString("skipped_update_tag", tag).apply()
+    }
 }
 
 /** Comprehensive sort options for media files (videos, folders, music). */
