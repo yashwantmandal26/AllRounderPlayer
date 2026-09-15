@@ -1,4 +1,4 @@
-﻿package com.example.ymediaplayer.update
+package com.example.ymediaplayer.update
 
 import android.content.Context
 import android.content.Intent
@@ -35,7 +35,7 @@ object UpdateManager {
 
     private const val GITHUB_REPO_OWNER = "yashwantmandal26"
     private const val GITHUB_REPO_NAME = "AllRounderPlayer"
-    private const val LATEST_RELEASE_API = "https://api.github.com/repos///releases/latest"
+    private const val LATEST_RELEASE_API = "https://api.github.com/repos/yashwantmandal26/AllRounderPlayer/releases/latest"
 
     // ─── Reactive Compose State ───────────────────────────────────────────────
     val availableUpdate = mutableStateOf<ReleaseInfo?>(null)
@@ -91,7 +91,7 @@ object UpdateManager {
             }
 
             if (responseCode !in 200..299) {
-                val err = "GitHub API returned status "
+                val err = "GitHub API returned status $responseCode"
                 withContext(Dispatchers.Main) {
                     isChecking.value = false
                     if (isManual) errorMessage.value = err
@@ -132,8 +132,9 @@ object UpdateManager {
             appPreferences.setLastUpdateCheckTime(now)
 
             if (apkUrl.isNullOrBlank()) {
-                withContext(Dispatchers.Main) { isChecking.value = false }
-                return@withContext Result.success(null)
+                // Fallback: Download the committed app-release.apk directly from the GitHub repository
+                apkUrl = "https://github.com/yashwantmandal26/AllRounderPlayer/raw/main/app-release.apk"
+                apkName = "YMedia_${cleanVersion(tagName)}.apk"
             }
 
             val currentVersionName = getCurrentVersionName(context)
@@ -150,10 +151,10 @@ object UpdateManager {
                 val release = ReleaseInfo(
                     tagName = tagName,
                     versionName = remoteVersionName,
-                    title = title.ifBlank { "Version " },
+                    title = title.ifBlank { "Version $remoteVersionName" },
                     changelog = body,
                     apkDownloadUrl = apkUrl,
-                    apkFileName = apkName ?: "YMedia_v.apk",
+                    apkFileName = apkName ?: "YMedia_v${remoteVersionName}.apk",
                     fileSize = apkSize,
                     publishedAt = publishedAt
                 )
@@ -195,7 +196,7 @@ object UpdateManager {
         }
 
         val targetDir = context.getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS) ?: context.cacheDir
-        val apkFile = File(targetDir, "YMedia_.apk")
+        val apkFile = File(targetDir, "YMedia_${release.versionName}.apk")
 
         try {
             if (apkFile.exists()) {
@@ -276,7 +277,7 @@ object UpdateManager {
         } catch (e: Exception) {
             withContext(Dispatchers.Main) {
                 isDownloading.value = false
-                errorMessage.value = "Download failed: "
+                errorMessage.value = "Download failed: ${e.message ?: "Network error"}"
             }
         }
     }
@@ -294,7 +295,7 @@ object UpdateManager {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             if (!context.packageManager.canRequestPackageInstalls()) {
                 val permissionIntent = Intent(Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES).apply {
-                    data = Uri.parse("package:")
+                    data = Uri.parse("package:${context.packageName}")
                     addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
                 }
                 context.startActivity(permissionIntent)
@@ -305,7 +306,7 @@ object UpdateManager {
         try {
             val apkUri: Uri = FileProvider.getUriForFile(
                 context,
-                ".provider",
+                "${context.packageName}.provider",
                 apkFile
             )
 
@@ -316,7 +317,7 @@ object UpdateManager {
             }
             context.startActivity(installIntent)
         } catch (e: Exception) {
-            errorMessage.value = "Failed to launch installer: "
+            errorMessage.value = "Failed to launch installer: ${e.message}"
         }
     }
 
