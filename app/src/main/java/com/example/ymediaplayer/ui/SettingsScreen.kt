@@ -1375,7 +1375,7 @@ fun SettingsScreen(
                     val isCheckingUpdates = UpdateManager.isChecking.value
                     SettingsItemAction(
                         title = "Check for Updates",
-                        subtitle = if (isCheckingUpdates) "Checking GitHub for latest release..." else "Version $currentVersionName • Tap to check latest release",
+                        subtitle = if (isCheckingUpdates) "Checking GitHub for latest release..." else "v$currentVersionName • Tap to check latest release",
                         icon = Icons.Rounded.SystemUpdate,
                         iconTint = primaryAccent,
                         onClick = {

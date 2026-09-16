@@ -964,7 +964,9 @@ fun VideoPlayerScreen(
     // ─── Auto-Orientation Sensor (Follows Phone Orientation When Enabled) ─────
     var manualOrientationOverrideTime by remember { mutableLongStateOf(0L) }
     var currentOrientationSetting by remember { mutableIntStateOf(-1) } // 0: portrait, 1: landscape
-    var hasSetInitialOrientation by remember(currentUrl) { mutableStateOf(false) }
+    // Pick an initial orientation once for this player session.  A following video
+    // must not rotate the device merely because it has a different aspect ratio.
+    var hasSetInitialOrientation by remember { mutableStateOf(false) }
 
     val orientationEventListener = remember(context, activity) {
         object : android.view.OrientationEventListener(context, android.hardware.SensorManager.SENSOR_DELAY_NORMAL) {
@@ -1032,6 +1034,15 @@ fun VideoPlayerScreen(
     }
 
     DisposableEffect(Unit) {
+        // Android 12+ can keep the video surface attached during device rotation,
+        // avoiding the abrupt black flash of the default rotation transition.
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            activity?.window?.let { window ->
+                window.attributes = window.attributes.apply {
+                    rotationAnimation = WindowManager.LayoutParams.ROTATION_ANIMATION_SEAMLESS
+                }
+            }
+        }
         if (orientationEventListener.canDetectOrientation()) {
             orientationEventListener.enable()
         }
@@ -1408,8 +1419,6 @@ fun VideoPlayerScreen(
             showForwardJumpMenu
 
     val isControlsBusy = isDraggingSeek ||
-            isTouchingControls ||
-            optionsScrollState.isScrollInProgress ||
             isAnySheetOrMenuOpen
 
     val autoHideTimeoutMs = remember { appPreferences.getControlsAutoHideTimeoutMs() }

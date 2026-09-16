@@ -2,6 +2,9 @@
 
 package com.example.ymediaplayer.ui
 
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -35,6 +38,7 @@ import androidx.compose.ui.viewinterop.AndroidView
 import androidx.media3.ui.PlayerView
 import com.example.ymediaplayer.player.VideoPlaybackManager
 import com.example.ymediaplayer.theme.LocalThemeController
+import kotlinx.coroutines.delay
 import kotlin.math.roundToInt
 
 /**
@@ -61,6 +65,15 @@ fun InAppMiniPlayer(
 
     var offsetX by remember { mutableFloatStateOf(0f) }
     var offsetY by remember { mutableFloatStateOf(0f) }
+    var showControls by remember { mutableStateOf(true) }
+    var controlsInteractionKey by remember { mutableIntStateOf(0) }
+
+    LaunchedEffect(showControls, controlsInteractionKey) {
+        if (showControls) {
+            delay(3_000)
+            showControls = false
+        }
+    }
 
     // Dynamic sizing strictly matching video's native aspect ratio (supports vertical 9:16, 4:3, 16:9, 21:9)
     val (miniWidth, miniHeight) = remember(vWidth, vHeight) {
@@ -101,7 +114,12 @@ fun InAppMiniPlayer(
                     offsetY = (offsetY + dragAmount.y).coerceIn(minOffsetY, 0f)
                 }
             }
-            .clickable { onExpand() }
+            .clickable {
+                if (showControls) onExpand() else {
+                    showControls = true
+                    controlsInteractionKey++
+                }
+            }
     ) {
         // ── Video Frame View (TextureView clips cleanly to rounded corners) ──
         if (player != null) {
@@ -141,14 +159,19 @@ fun InAppMiniPlayer(
         )
 
         // ── Top Bar: Title & Close ('X') button ──
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .align(Alignment.TopStart)
-                .padding(horizontal = 8.dp, vertical = 6.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.SpaceBetween
+        AnimatedVisibility(
+            visible = showControls,
+            enter = fadeIn(),
+            exit = fadeOut(),
+            modifier = Modifier.align(Alignment.TopStart)
         ) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 8.dp, vertical = 6.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
             Text(
                 text = title ?: "Playing Video",
                 color = Color.White,
@@ -176,25 +199,35 @@ fun InAppMiniPlayer(
                     modifier = Modifier.size(15.dp)
                 )
             }
+            }
         }
 
         // ── Center Controls: Play / Pause Button ──
-        Box(
-            modifier = Modifier
-                .align(Alignment.Center)
-                .size(48.dp)
-                .clip(CircleShape)
-                .background(Color.Black.copy(alpha = 0.65f))
-                .border(1.2.dp, primaryAccent, CircleShape)
-                .clickable { VideoPlaybackManager.togglePlayPause() },
-            contentAlignment = Alignment.Center
+        AnimatedVisibility(
+            visible = showControls,
+            enter = fadeIn(),
+            exit = fadeOut(),
+            modifier = Modifier.align(Alignment.Center)
         ) {
-            Icon(
-                imageVector = if (isPlaying) Icons.Rounded.Pause else Icons.Rounded.PlayArrow,
-                contentDescription = if (isPlaying) "Pause" else "Play",
-                tint = Color.White,
-                modifier = Modifier.size(22.dp)
-            )
+            Box(
+                modifier = Modifier
+                    .size(48.dp)
+                    .clip(CircleShape)
+                    .background(Color.Black.copy(alpha = 0.65f))
+                    .border(1.2.dp, primaryAccent, CircleShape)
+                    .clickable {
+                        VideoPlaybackManager.togglePlayPause()
+                        controlsInteractionKey++
+                    },
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    imageVector = if (isPlaying) Icons.Rounded.Pause else Icons.Rounded.PlayArrow,
+                    contentDescription = if (isPlaying) "Pause" else "Play",
+                    tint = Color.White,
+                    modifier = Modifier.size(22.dp)
+                )
+            }
         }
     }
 }

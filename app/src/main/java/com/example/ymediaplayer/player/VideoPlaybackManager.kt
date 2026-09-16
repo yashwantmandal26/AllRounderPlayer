@@ -78,7 +78,9 @@ object VideoPlaybackManager {
 
         val newPlayer = ExoPlayer.Builder(context, renderersFactory)
             .setLoadControl(loadControl)
-            .setSeekParameters(androidx.media3.exoplayer.SeekParameters.CLOSEST_SYNC)
+            // Seeking only to sync frames can send a short video back to 0 when it
+            // has no later keyframe. Exact seeking honours the point the user taps.
+            .setSeekParameters(androidx.media3.exoplayer.SeekParameters.EXACT)
             .setAudioAttributes(
                 AudioAttributes.Builder()
                     .setContentType(C.AUDIO_CONTENT_TYPE_MOVIE)
