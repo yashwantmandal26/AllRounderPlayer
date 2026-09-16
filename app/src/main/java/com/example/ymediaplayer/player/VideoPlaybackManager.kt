@@ -47,6 +47,9 @@ object VideoPlaybackManager {
         preferredSubLang: String = "",
         subtitlesEnabled: Boolean = true
     ): ExoPlayer {
+        // Stop/pause background music playback immediately when video starts
+        com.example.ymediaplayer.service.MusicService.pauseMusic()
+
         val current = player
         if (current != null && currentVideoUrl.value == url) {
             currentVideoTitle.value = title
@@ -190,6 +193,7 @@ object VideoPlaybackManager {
         if (p.isPlaying) {
             p.pause()
         } else {
+            com.example.ymediaplayer.service.MusicService.pauseMusic()
             if (p.playbackState == Player.STATE_ENDED) {
                 p.seekTo(0)
             }

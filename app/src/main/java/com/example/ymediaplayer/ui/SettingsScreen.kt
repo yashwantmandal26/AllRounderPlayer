@@ -16,6 +16,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.*
 import androidx.compose.material.icons.rounded.*
+import androidx.compose.material.icons.rounded.History
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -75,6 +76,7 @@ fun SettingsScreen(
     // ─── Dialog States ────────────────────────────────────────────────────────
     var activeDialog by remember { mutableStateOf<SettingsDialogType?>(null) }
     var showResetAllConfirm by remember { mutableStateOf(false) }
+    var showUpdateHistoryDialog by remember { mutableStateOf(false) }
     var showClearHistoryConfirm by remember { mutableStateOf(false) }
     var showClearBookmarksConfirm by remember { mutableStateOf(false) }
 
@@ -478,25 +480,28 @@ fun SettingsScreen(
                             verticalAlignment = Alignment.CenterVertically,
                             modifier = Modifier.fillMaxWidth()
                         ) {
+                            val detectedUpdate = UpdateManager.availableUpdate.value
+                            val cardAccent = if (detectedUpdate != null) Color(0xFF10B981) else primaryAccent
+
                             Box(
                                 modifier = Modifier
                                     .size(46.dp)
                                     .clip(CircleShape)
-                                    .background(primaryAccent.copy(alpha = 0.18f))
-                                    .border(1.dp, primaryAccent.copy(alpha = 0.45f), CircleShape),
+                                    .background(cardAccent.copy(alpha = 0.18f))
+                                    .border(1.dp, cardAccent.copy(alpha = 0.45f), CircleShape),
                                 contentAlignment = Alignment.Center
                             ) {
                                 if (isCheckingUpdates) {
                                     CircularProgressIndicator(
                                         modifier = Modifier.size(22.dp),
-                                        color = primaryAccent,
+                                        color = cardAccent,
                                         strokeWidth = 2.5.dp
                                     )
                                 } else {
                                     Icon(
                                         imageVector = Icons.Rounded.SystemUpdate,
                                         contentDescription = "Check for Updates",
-                                        tint = primaryAccent,
+                                        tint = cardAccent,
                                         modifier = Modifier.size(24.dp)
                                     )
                                 }
@@ -505,34 +510,45 @@ fun SettingsScreen(
                             Spacer(Modifier.width(14.dp))
 
                             Column(modifier = Modifier.weight(1f)) {
-                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                ) {
                                     Text(
-                                        text = "Check for Updates",
+                                        text = if (detectedUpdate != null) "Update Available!" else "Check for Updates",
                                         fontSize = 15.sp,
                                         fontWeight = FontWeight.Bold,
-                                        color = c.textPrimary
+                                        color = c.textPrimary,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis,
+                                        modifier = Modifier.weight(1f, fill = false)
                                     )
-                                    Spacer(Modifier.width(6.dp))
                                     Box(
                                         modifier = Modifier
                                             .clip(RoundedCornerShape(6.dp))
-                                            .background(primaryAccent.copy(alpha = 0.15f))
+                                            .background(cardAccent.copy(alpha = 0.15f))
                                             .padding(horizontal = 6.dp, vertical = 2.dp)
                                     ) {
                                         Text(
-                                            text = "v$currentVersionName",
+                                            text = if (detectedUpdate != null) "v${detectedUpdate.versionName}" else "v$currentVersionName",
                                             fontSize = 11.sp,
                                             fontWeight = FontWeight.SemiBold,
                                             fontFamily = FontFamily.Monospace,
-                                            color = primaryAccent
+                                            color = cardAccent,
+                                            maxLines = 1,
+                                            softWrap = false
                                         )
                                     }
                                 }
                                 Spacer(Modifier.height(2.dp))
                                 Text(
-                                    text = if (isCheckingUpdates) "Checking GitHub for latest release..." else "Tap to check for new updates",
+                                    text = if (isCheckingUpdates) "Checking GitHub for latest release..."
+                                           else if (detectedUpdate != null) "New version is ready to install • Tap to update"
+                                           else "v$currentVersionName • Tap to check for new updates",
                                     fontSize = 12.sp,
-                                    color = c.textSecondary
+                                    color = c.textSecondary,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
                                 )
                             }
 
@@ -540,7 +556,9 @@ fun SettingsScreen(
 
                             Button(
                                 onClick = {
-                                    if (!isCheckingUpdates) {
+                                    if (detectedUpdate != null) {
+                                        UpdateManager.openUpdateDialog()
+                                    } else if (!isCheckingUpdates) {
                                         scope.launch {
                                             val res = UpdateManager.checkForUpdates(context, appPreferences, isManual = true)
                                             if (res.isSuccess && res.getOrNull() == null) {
@@ -550,12 +568,12 @@ fun SettingsScreen(
                                     }
                                 },
                                 shape = RoundedCornerShape(12.dp),
-                                colors = ButtonDefaults.buttonColors(containerColor = primaryAccent),
+                                colors = ButtonDefaults.buttonColors(containerColor = cardAccent),
                                 contentPadding = PaddingValues(horizontal = 14.dp, vertical = 6.dp),
                                 modifier = Modifier.height(36.dp)
                             ) {
                                 Text(
-                                    text = if (isCheckingUpdates) "Checking..." else "Check",
+                                    text = if (isCheckingUpdates) "Checking..." else if (detectedUpdate != null) "Update" else "Check",
                                     fontSize = 12.5.sp,
                                     fontWeight = FontWeight.Bold,
                                     color = Color.White
@@ -1407,6 +1425,18 @@ fun SettingsScreen(
                     SettingsDivider()
 
                     SettingsItemAction(
+                        title = "Update History",
+                        subtitle = "View past versions, changelogs and release notes",
+                        icon = Icons.Rounded.History,
+                        iconTint = Color(0xFF10B981),
+                        onClick = {
+                            showUpdateHistoryDialog = true
+                        }
+                    )
+
+                    SettingsDivider()
+
+                    SettingsItemAction(
                         title = "Reset All Settings to Defaults",
                         subtitle = "Restore default settings across the entire player",
                         icon = Icons.Rounded.RestartAlt,
@@ -1766,6 +1796,17 @@ fun SettingsScreen(
             )
         }
         null -> {}
+    }
+
+    // ─── Update History Dialog ──────────────────────────────────────────
+    if (showUpdateHistoryDialog) {
+        UpdateHistoryDialog(
+            onDismiss = { showUpdateHistoryDialog = false },
+            onInstallRelease = { release ->
+                UpdateManager.availableUpdate.value = release
+                UpdateManager.openUpdateDialog()
+            }
+        )
     }
 
     // ─── Confirmation Dialogs ─────────────────────────────────────────────────

@@ -423,7 +423,8 @@ fun MainApp(
 
         // ─── In-App Auto-Updater Dialog ──────────────────────────────────────
         val availableUpdate = com.example.ymediaplayer.update.UpdateManager.availableUpdate.value
-        if (availableUpdate != null) {
+        val showUpdateDialog = com.example.ymediaplayer.update.UpdateManager.showUpdateDialog.value
+        if (availableUpdate != null && showUpdateDialog) {
             com.example.ymediaplayer.ui.UpdateDialog(
                 release = availableUpdate,
                 onDismiss = { com.example.ymediaplayer.update.UpdateManager.dismissUpdate() }

@@ -39,8 +39,33 @@ class MusicService : MediaSessionService() {
         var onPlayNextAction: (() -> Unit)? = null
         var onPlayPrevAction: (() -> Unit)? = null
         var onTogglePlayPauseAction: (() -> Unit)? = null
+        var onPauseAction: (() -> Unit)? = null
+        var onStopAction: (() -> Unit)? = null
+
+        fun pauseMusic() {
+            onPauseAction?.invoke()
+            playerInstance?.let {
+                if (it.isPlaying) {
+                    it.pause()
+                }
+            }
+            isMusicPlaying.value = false
+        }
+
+        fun stopMusic() {
+            onStopAction?.invoke()
+            playerInstance?.let {
+                it.stop()
+            }
+            isMusicPlaying.value = false
+        }
 
         fun playSong(item: com.example.ymediaplayer.data.MusicItem) {
+            com.example.ymediaplayer.player.VideoPlaybackManager.player?.let { vPlayer ->
+                if (vPlayer.isPlaying) {
+                    vPlayer.pause()
+                }
+            }
             val player = playerInstance ?: return
             val metadata = androidx.media3.common.MediaMetadata.Builder()
                 .setTitle(item.title)

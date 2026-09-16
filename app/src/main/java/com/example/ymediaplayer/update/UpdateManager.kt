@@ -36,9 +36,13 @@ object UpdateManager {
     private const val GITHUB_REPO_OWNER = "yashwantmandal26"
     private const val GITHUB_REPO_NAME = "AllRounderPlayer"
     private const val LATEST_RELEASE_API = "https://api.github.com/repos/yashwantmandal26/AllRounderPlayer/releases/latest"
+    private const val ALL_RELEASES_API = "https://api.github.com/repos/yashwantmandal26/AllRounderPlayer/releases"
 
     // ─── Reactive Compose State ───────────────────────────────────────────────
     val availableUpdate = mutableStateOf<ReleaseInfo?>(null)
+    val showUpdateDialog = mutableStateOf(false)
+    val releaseHistory = mutableStateOf<List<ReleaseInfo>>(emptyList())
+    val isLoadingHistory = mutableStateOf(false)
     val isChecking = mutableStateOf(false)
     val isDownloading = mutableStateOf(false)
     val downloadProgress = mutableFloatStateOf(0f)
@@ -331,8 +335,12 @@ object UpdateManager {
         }
     }
 
+    fun openUpdateDialog() {
+        showUpdateDialog.value = true
+    }
+
     fun dismissUpdate() {
-        availableUpdate.value = null
+        showUpdateDialog.value = false
         isDownloading.value = false
         downloadProgress.floatValue = 0f
         errorMessage.value = null
@@ -341,6 +349,91 @@ object UpdateManager {
     fun skipVersion(appPreferences: AppPreferences, tagName: String) {
         appPreferences.setSkippedUpdateTag(tagName)
         dismissUpdate()
+    }
+
+    /**
+     * Fetches the complete release history from GitHub Releases API for Update History.
+     */
+    suspend fun fetchReleaseHistory(context: Context): Result<List<ReleaseInfo>> = withContext(Dispatchers.IO) {
+        withContext(Dispatchers.Main) {
+            isLoadingHistory.value = true
+        }
+        try {
+            val url = URL(ALL_RELEASES_API)
+            val connection = (url.openConnection() as HttpURLConnection).apply {
+                connectTimeout = 12000
+                readTimeout = 15000
+                requestMethod = "GET"
+                setRequestProperty("User-Agent", "YMedia-Player-Android")
+                setRequestProperty("Accept", "application/vnd.github.v3+json")
+            }
+
+            val responseCode = connection.responseCode
+            if (responseCode !in 200..299) {
+                withContext(Dispatchers.Main) { isLoadingHistory.value = false }
+                return@withContext Result.failure(Exception("GitHub API returned status $responseCode"))
+            }
+
+            val jsonStr = connection.inputStream.bufferedReader().use { it.readText() }
+            val jsonArray = org.json.JSONArray(jsonStr)
+            val list = mutableListOf<ReleaseInfo>()
+
+            for (i in 0 until jsonArray.length()) {
+                val json = jsonArray.getJSONObject(i)
+                val tagName = json.optString("tag_name", "")
+                val title = json.optString("name", tagName)
+                val body = json.optString("body", "Bug fixes and performance enhancements.")
+                val publishedAt = json.optString("published_at", "")
+                val remoteVersionName = cleanVersion(tagName)
+
+                var apkUrl: String? = null
+                var apkName: String? = null
+                var apkSize = 0L
+
+                val assets = json.optJSONArray("assets")
+                if (assets != null) {
+                    for (j in 0 until assets.length()) {
+                        val asset = assets.getJSONObject(j)
+                        val name = asset.optString("name", "")
+                        if (name.endsWith(".apk", ignoreCase = true)) {
+                            apkUrl = asset.optString("browser_download_url")
+                            apkName = name
+                            apkSize = asset.optLong("size", 0L)
+                            if (name.contains("release", ignoreCase = true)) break
+                        }
+                    }
+                }
+
+                if (apkUrl.isNullOrBlank()) {
+                    apkUrl = "https://github.com/yashwantmandal26/AllRounderPlayer/raw/main/app-release.apk"
+                    apkName = "YMedia_${remoteVersionName}.apk"
+                }
+
+                list.add(
+                    ReleaseInfo(
+                        tagName = tagName,
+                        versionName = remoteVersionName,
+                        title = title.ifBlank { "Version $remoteVersionName" },
+                        changelog = body,
+                        apkDownloadUrl = apkUrl,
+                        apkFileName = apkName ?: "YMedia_v${remoteVersionName}.apk",
+                        fileSize = apkSize,
+                        publishedAt = publishedAt
+                    )
+                )
+            }
+
+            withContext(Dispatchers.Main) {
+                releaseHistory.value = list
+                isLoadingHistory.value = false
+            }
+            Result.success(list)
+        } catch (e: Exception) {
+            withContext(Dispatchers.Main) {
+                isLoadingHistory.value = false
+            }
+            Result.failure(e)
+        }
     }
 
     fun getCurrentVersionName(context: Context): String {

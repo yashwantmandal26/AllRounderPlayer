@@ -327,15 +327,9 @@ fun VideoPlayerScreen(
         appPreferences.setAutoPlayNextEnabled(newState)
     }
 
-    // ─── Music Now Playing Overlay State in Video Player ─────────────────────
-    val isMusicPlaying by remember { MusicService.isMusicPlaying }
-    val nowPlayingTitle by remember { MusicService.nowPlayingTitle }
-    val nowPlayingArtist by remember { MusicService.nowPlayingArtist }
-    val nowPlayingArtUri by remember { MusicService.nowPlayingArtUri }
-    var isMusicDismissed by remember { mutableStateOf(false) }
-
-    LaunchedEffect(nowPlayingTitle) {
-        isMusicDismissed = false
+    // ─── Stop background music when video player is opened ─────────────────
+    LaunchedEffect(Unit) {
+        MusicService.pauseMusic()
     }
 
     // Ensure screen capture and flags are always cleared (Privacy Shield removed)
@@ -1272,7 +1266,7 @@ fun VideoPlayerScreen(
                         .setActions(actionsList.take(maxAllowed))
 
                     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-                        paramsBuilder.setAutoEnterEnabled(!isBackgroundAudio && !isMusicPlaying && appPreferences.isAutoPipEnabled())
+                        paramsBuilder.setAutoEnterEnabled(!isBackgroundAudio && appPreferences.isAutoPipEnabled())
                         paramsBuilder.setSeamlessResizeEnabled(true)
                     }
 
@@ -1295,11 +1289,11 @@ fun VideoPlayerScreen(
     }
 
     // Proactively set PiP params so auto-enter & mini controls are pre-registered
-    LaunchedEffect(videoWidth, videoHeight, isPlaying, isVerticalVideo, currentVideoIndex, isBackgroundAudio, isMusicPlaying) {
+    LaunchedEffect(videoWidth, videoHeight, isPlaying, isVerticalVideo, currentVideoIndex, isBackgroundAudio) {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             val act = activity ?: return@LaunchedEffect
-            if (isBackgroundAudio || isMusicPlaying) {
-                // For music / background audio, PiP should NOT be shown!
+            if (isBackgroundAudio) {
+                // For background audio, PiP should NOT be shown!
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
                     try {
                         val noPip = android.app.PictureInPictureParams.Builder()
@@ -1320,9 +1314,9 @@ fun VideoPlayerScreen(
     }
 
     // Connect to MainActivity.onUserLeaveHintListener so pressing Home button enters PiP on all Android versions
-    DisposableEffect(exoPlayer, isPlaying, buildPipParams, isBackgroundAudio, isMusicPlaying) {
+    DisposableEffect(exoPlayer, isPlaying, buildPipParams, isBackgroundAudio) {
         MainActivity.onUserLeaveHintListener = {
-            if (!isBackgroundAudio && !isMusicPlaying && appPreferences.isAutoPipEnabled() && Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            if (!isBackgroundAudio && appPreferences.isAutoPipEnabled() && Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
                 try {
                     playerView.subtitleView?.visibility = android.view.View.GONE
                     playerView.subtitleView?.setCues(emptyList())
@@ -2461,26 +2455,7 @@ fun VideoPlayerScreen(
             )
         }
 
-        // ─── 6c. Floating Music Mini Bar in Fullscreen (Opaque Background) ───
-        AnimatedVisibility(
-            visible = (isMusicPlaying || nowPlayingTitle.isNotBlank()) && !isMusicDismissed && !isInPiP,
-            enter = slideInVertically(initialOffsetY = { it }) + fadeIn(),
-            exit = slideOutVertically(targetOffsetY = { it }) + fadeOut(),
-            modifier = Modifier
-                .align(Alignment.BottomCenter)
-                .padding(bottom = if (showControls) 120.dp else 24.dp, start = 16.dp, end = 16.dp)
-        ) {
-            VideoMusicMiniBar(
-                title = nowPlayingTitle,
-                artist = nowPlayingArtist,
-                artUri = nowPlayingArtUri,
-                isPlaying = isMusicPlaying,
-                onTogglePlay = { MusicService.togglePlayPause() },
-                onPrevious = { MusicService.playPrevious() },
-                onNext = { MusicService.playNext() },
-                onClose = { isMusicDismissed = true }
-            )
-        }
+
 
 
 
@@ -3946,26 +3921,7 @@ fun VideoPlayerScreen(
                 }
             }
 
-            // ─── Floating Music Mini Bar in Portrait Video Section ───
-            AnimatedVisibility(
-                visible = (isMusicPlaying || nowPlayingTitle.isNotBlank()) && !isMusicDismissed && !isInPiP,
-                enter = expandVertically() + fadeIn(),
-                exit = shrinkVertically() + fadeOut()
-            ) {
-                VideoMusicMiniBar(
-                    title = nowPlayingTitle,
-                    artist = nowPlayingArtist,
-                    artUri = nowPlayingArtUri,
-                    isPlaying = isMusicPlaying,
-                    onTogglePlay = { MusicService.togglePlayPause() },
-                    onPrevious = { MusicService.playPrevious() },
-                    onNext = { MusicService.playNext() },
-                    onClose = { isMusicDismissed = true },
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 16.dp, vertical = 6.dp)
-                )
-            }
+
 
 
 
@@ -7503,143 +7459,6 @@ private fun ExplorerVideoRow(
         }
     }
     HorizontalDivider(color = c.glassBorder, thickness = 0.5.dp)
-}
-
-// ─── Floating Music Mini Bar in Video Section (100% Solid Opaque Background) ──
-@Composable
-private fun VideoMusicMiniBar(
-    title: String,
-    artist: String,
-    artUri: android.net.Uri?,
-    isPlaying: Boolean,
-    onTogglePlay: () -> Unit,
-    onPrevious: () -> Unit,
-    onNext: () -> Unit,
-    onClose: () -> Unit,
-    modifier: Modifier = Modifier
-) {
-    val c = LocalAppColors.current
-    Box(
-        modifier = modifier
-            .shadow(16.dp, RoundedCornerShape(18.dp), ambientColor = Color.Black.copy(alpha = 0.85f), spotColor = Color.Black)
-            .clip(RoundedCornerShape(18.dp))
-            .background(c.dropdownBg)
-            .border(
-                1.dp,
-                c.glassBorder,
-                RoundedCornerShape(18.dp)
-            )
-            .padding(horizontal = 10.dp, vertical = 6.dp)
-    ) {
-        Row(
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
-            // Album art or fallback
-            Box(
-                modifier = Modifier
-                    .size(36.dp)
-                    .clip(RoundedCornerShape(10.dp))
-                    .background(c.cardBgElevated)
-                    .border(0.8.dp, c.glassBorder, RoundedCornerShape(10.dp)),
-                contentAlignment = Alignment.Center
-            ) {
-                if (artUri != null) {
-                    AsyncImage(
-                        model = artUri,
-                        contentDescription = null,
-                        contentScale = ContentScale.Crop,
-                        modifier = Modifier.fillMaxSize()
-                    )
-                } else {
-                    Icon(
-                        Icons.Rounded.MusicNote,
-                        contentDescription = null,
-                        tint = c.accentBlue,
-                        modifier = Modifier.size(20.dp)
-                    )
-                }
-            }
-
-            // Title & Artist
-            Column(
-                modifier = Modifier
-                    .weight(1f, fill = false)
-                    .widthIn(max = 180.dp)
-            ) {
-                Text(
-                    text = title.ifBlank { "Music Playing" },
-                    color = c.textPrimary,
-                    fontSize = 12.sp,
-                    fontWeight = FontWeight.Bold,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
-                Text(
-                    text = artist.ifBlank { "Background Audio" },
-                    color = c.textSecondary,
-                    fontSize = 10.sp,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
-            }
-
-            // Prev Button
-            IconButton(
-                onClick = onPrevious,
-                modifier = Modifier.size(32.dp)
-            ) {
-                Icon(
-                    Icons.Rounded.SkipPrevious,
-                    contentDescription = "Previous Track",
-                    tint = c.textPrimary,
-                    modifier = Modifier.size(20.dp)
-                )
-            }
-
-            // Play / Pause Button
-            IconButton(
-                onClick = onTogglePlay,
-                modifier = Modifier
-                    .size(34.dp)
-                    .clip(CircleShape)
-                    .background(c.accentBlue)
-            ) {
-                Icon(
-                    imageVector = if (isPlaying) Icons.Rounded.Pause else Icons.Rounded.PlayArrow,
-                    contentDescription = "Play/Pause",
-                    tint = Color.White,
-                    modifier = Modifier.size(20.dp)
-                )
-            }
-
-            // Next Button
-            IconButton(
-                onClick = onNext,
-                modifier = Modifier.size(32.dp)
-            ) {
-                Icon(
-                    Icons.Rounded.SkipNext,
-                    contentDescription = "Next Track",
-                    tint = c.textPrimary,
-                    modifier = Modifier.size(20.dp)
-                )
-            }
-
-            // Dismiss X Button
-            IconButton(
-                onClick = onClose,
-                modifier = Modifier.size(28.dp)
-            ) {
-                Icon(
-                    Icons.Rounded.Close,
-                    contentDescription = "Dismiss",
-                    tint = c.textSecondary,
-                    modifier = Modifier.size(16.dp)
-                )
-            }
-        }
-    }
 }
 
 // ─── Resume Playback Floating Prompt ─────────────────────────────────────────

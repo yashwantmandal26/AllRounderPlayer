@@ -15,6 +15,7 @@ import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.compose.animation.*
 import androidx.compose.animation.core.*
 import androidx.compose.foundation.*
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.*
@@ -68,6 +69,7 @@ import com.example.ymediaplayer.data.*
 import com.example.ymediaplayer.theme.LocalAppColors
 import com.example.ymediaplayer.theme.LocalThemeController
 import com.example.ymediaplayer.service.MusicService
+import com.example.ymediaplayer.update.UpdateManager
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -476,9 +478,45 @@ fun FolderListScreen(
                                         }
                                     }
                                     Row(
-                                        horizontalArrangement = Arrangement.spacedBy(2.dp),
+                                        horizontalArrangement = Arrangement.spacedBy(4.dp),
                                         verticalAlignment = Alignment.CenterVertically
                                     ) {
+                                        // 0. Update Available Green Button / Indicator
+                                        val detectedUpdate = UpdateManager.availableUpdate.value
+                                        if (detectedUpdate != null) {
+                                            Surface(
+                                                onClick = {
+                                                    view.performHaptic(HapticType.LIGHT)
+                                                    UpdateManager.openUpdateDialog()
+                                                },
+                                                shape = RoundedCornerShape(14.dp),
+                                                color = Color(0xFF10B981).copy(alpha = 0.16f),
+                                                border = BorderStroke(1.2.dp, Color(0xFF10B981).copy(alpha = 0.65f)),
+                                                modifier = Modifier.height(36.dp)
+                                            ) {
+                                                Row(
+                                                    verticalAlignment = Alignment.CenterVertically,
+                                                    horizontalArrangement = Arrangement.spacedBy(5.dp),
+                                                    modifier = Modifier.padding(horizontal = 9.dp, vertical = 6.dp)
+                                                ) {
+                                                    Icon(
+                                                        imageVector = Icons.Rounded.SystemUpdate,
+                                                        contentDescription = "Update Available",
+                                                        tint = Color(0xFF10B981),
+                                                        modifier = Modifier.size(17.dp)
+                                                    )
+                                                    Text(
+                                                        text = "Update Available",
+                                                        color = Color(0xFF10B981),
+                                                        fontSize = 12.sp,
+                                                        fontWeight = FontWeight.Bold,
+                                                        maxLines = 1,
+                                                        softWrap = false
+                                                    )
+                                                }
+                                            }
+                                        }
+
                                         // 1. Color Theme Palette button
                                         Box(
                                             modifier = Modifier

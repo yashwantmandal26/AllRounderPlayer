@@ -355,6 +355,9 @@ fun MusicScreen(
     }
 
     val playSongForce = { song: MusicItem ->
+        com.example.ymediaplayer.player.VideoPlaybackManager.player?.let {
+            if (it.isPlaying) it.pause()
+        }
         currentlyPlaying = song
         appPreferences.incrementPlayCount(song.uri.toString())
         val metadata = MediaMetadata.Builder()
@@ -478,8 +481,21 @@ fun MusicScreen(
         }
         MusicService.onPlayNextAction = playNext
         MusicService.onPlayPrevAction = playPrev
+        MusicService.onPauseAction = {
+            mediaController?.pause()
+        }
+        MusicService.onStopAction = {
+            mediaController?.stop()
+        }
         MusicService.onTogglePlayPauseAction = {
-            if (mediaController?.isPlaying == true) mediaController?.pause() else mediaController?.play()
+            if (mediaController?.isPlaying == true) {
+                mediaController?.pause()
+            } else {
+                com.example.ymediaplayer.player.VideoPlaybackManager.player?.let {
+                    if (it.isPlaying) it.pause()
+                }
+                mediaController?.play()
+            }
         }
     }
 

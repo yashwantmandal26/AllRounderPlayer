@@ -11,6 +11,12 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.CheckCircle
 import androidx.compose.material.icons.rounded.Download
 import androidx.compose.material.icons.rounded.SystemUpdate
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
+import androidx.compose.material.icons.rounded.Close
+import androidx.compose.material.icons.rounded.History
+import androidx.compose.material.icons.rounded.Info
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
@@ -256,6 +262,306 @@ fun UpdateDialog(
                                 fontWeight = FontWeight.SemiBold,
                                 color = primaryAccent
                             )
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun UpdateHistoryDialog(
+    onDismiss: () -> Unit,
+    onInstallRelease: (ReleaseInfo) -> Unit = {}
+) {
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    val c = LocalAppColors.current
+    val primaryAccent = c.accentBlue
+    val emeraldGreen = Color(0xFF10B981)
+    val currentVersion = UpdateManager.getCurrentVersionName(context)
+
+    val history = UpdateManager.releaseHistory.value
+    val isLoading = UpdateManager.isLoadingHistory.value
+
+    androidx.compose.runtime.LaunchedEffect(Unit) {
+        if (history.isEmpty()) {
+            UpdateManager.fetchReleaseHistory(context)
+        }
+    }
+
+    Dialog(
+        onDismissRequest = onDismiss,
+        properties = DialogProperties(usePlatformDefaultWidth = false)
+    ) {
+        Box(
+            modifier = Modifier
+                .fillMaxWidth(0.94f)
+                .fillMaxHeight(0.85f)
+                .clip(RoundedCornerShape(24.dp))
+                .background(c.cardBg)
+                .border(1.2.dp, c.glassBorder, RoundedCornerShape(24.dp))
+                .padding(20.dp)
+        ) {
+            Column(modifier = Modifier.fillMaxSize()) {
+                // Header
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .size(40.dp)
+                                .clip(CircleShape)
+                                .background(emeraldGreen.copy(alpha = 0.15f))
+                                .border(1.dp, emeraldGreen.copy(alpha = 0.4f), CircleShape),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(
+                                Icons.Rounded.History,
+                                contentDescription = null,
+                                tint = emeraldGreen,
+                                modifier = Modifier.size(22.dp)
+                            )
+                        }
+                        Column {
+                            Text(
+                                text = "Update History",
+                                fontSize = 18.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = c.textPrimary
+                            )
+                            Text(
+                                text = "Currently installed: v$currentVersion",
+                                fontSize = 11.5.sp,
+                                color = c.textSecondary,
+                                fontFamily = FontFamily.Monospace
+                            )
+                        }
+                    }
+
+                    IconButton(
+                        onClick = onDismiss,
+                        modifier = Modifier.size(36.dp)
+                    ) {
+                        Icon(
+                            Icons.Rounded.Close,
+                            contentDescription = "Close",
+                            tint = c.textSecondary,
+                            modifier = Modifier.size(20.dp)
+                        )
+                    }
+                }
+
+                Spacer(Modifier.height(16.dp))
+                HorizontalDivider(color = c.glassBorder, thickness = 1.dp)
+                Spacer(Modifier.height(12.dp))
+
+                if (isLoading && history.isEmpty()) {
+                    Box(
+                        modifier = Modifier.fillMaxSize(),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            CircularProgressIndicator(
+                                modifier = Modifier.size(36.dp),
+                                color = emeraldGreen,
+                                strokeWidth = 3.dp
+                            )
+                            Spacer(Modifier.height(12.dp))
+                            Text(
+                                text = "Fetching release history...",
+                                color = c.textSecondary,
+                                fontSize = 13.sp
+                            )
+                        }
+                    }
+                } else if (history.isEmpty()) {
+                    Box(
+                        modifier = Modifier.fillMaxSize(),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            Icon(
+                                Icons.Rounded.Info,
+                                contentDescription = null,
+                                tint = c.textSecondary,
+                                modifier = Modifier.size(40.dp)
+                            )
+                            Spacer(Modifier.height(10.dp))
+                            Text(
+                                text = "No release history found",
+                                color = c.textPrimary,
+                                fontWeight = FontWeight.SemiBold,
+                                fontSize = 15.sp
+                            )
+                            Spacer(Modifier.height(4.dp))
+                            Text(
+                                text = "Current version: v$currentVersion",
+                                color = c.textSecondary,
+                                fontSize = 12.sp,
+                                fontFamily = FontFamily.Monospace
+                            )
+                            Spacer(Modifier.height(14.dp))
+                            Button(
+                                onClick = {
+                                    scope.launch {
+                                        UpdateManager.fetchReleaseHistory(context)
+                                    }
+                                },
+                                shape = RoundedCornerShape(12.dp),
+                                colors = ButtonDefaults.buttonColors(containerColor = emeraldGreen)
+                            ) {
+                                Text("Retry", color = Color.White)
+                            }
+                        }
+                    }
+                } else {
+                    LazyColumn(
+                        modifier = Modifier.weight(1f),
+                        verticalArrangement = Arrangement.spacedBy(14.dp)
+                    ) {
+                        items(history) { release ->
+                            val isCurrent = release.versionName == currentVersion
+                            val isNewer = UpdateManager.isNewer(release.versionName, currentVersion)
+
+                            Card(
+                                shape = RoundedCornerShape(16.dp),
+                                colors = CardDefaults.cardColors(containerColor = c.cardBgElevated),
+                                border = BorderStroke(
+                                    1.dp,
+                                    if (isNewer) emeraldGreen.copy(alpha = 0.5f)
+                                    else if (isCurrent) primaryAccent.copy(alpha = 0.45f)
+                                    else c.glassBorder
+                                ),
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Column(modifier = Modifier.padding(14.dp)) {
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.SpaceBetween
+                                    ) {
+                                        Row(
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                        ) {
+                                            Text(
+                                                text = "v${release.versionName}",
+                                                fontSize = 16.sp,
+                                                fontWeight = FontWeight.Bold,
+                                                fontFamily = FontFamily.Monospace,
+                                                color = if (isNewer) emeraldGreen else if (isCurrent) primaryAccent else c.textPrimary,
+                                                maxLines = 1,
+                                                softWrap = false
+                                            )
+
+                                            if (isNewer) {
+                                                Box(
+                                                    modifier = Modifier
+                                                        .clip(RoundedCornerShape(6.dp))
+                                                        .background(emeraldGreen.copy(alpha = 0.18f))
+                                                        .padding(horizontal = 6.dp, vertical = 2.dp)
+                                                ) {
+                                                    Text(
+                                                        text = "Update Available",
+                                                        fontSize = 10.sp,
+                                                        fontWeight = FontWeight.Bold,
+                                                        color = emeraldGreen
+                                                    )
+                                                }
+                                            } else if (isCurrent) {
+                                                Box(
+                                                    modifier = Modifier
+                                                        .clip(RoundedCornerShape(6.dp))
+                                                        .background(primaryAccent.copy(alpha = 0.18f))
+                                                        .padding(horizontal = 6.dp, vertical = 2.dp)
+                                                ) {
+                                                    Text(
+                                                        text = "Current",
+                                                        fontSize = 10.sp,
+                                                        fontWeight = FontWeight.Bold,
+                                                        color = primaryAccent
+                                                    )
+                                                }
+                                            }
+                                        }
+
+                                        if (release.publishedAt.isNotBlank()) {
+                                            val dateStr = release.publishedAt.take(10)
+                                            Text(
+                                                text = dateStr,
+                                                fontSize = 11.5.sp,
+                                                color = c.textSecondary,
+                                                fontFamily = FontFamily.Monospace
+                                            )
+                                        }
+                                    }
+
+                                    if (release.title.isNotBlank() && release.title != "Version ${release.versionName}" && release.title != release.tagName) {
+                                        Spacer(Modifier.height(4.dp))
+                                        Text(
+                                            text = release.title,
+                                            fontSize = 13.sp,
+                                            fontWeight = FontWeight.Medium,
+                                            color = c.textSecondary
+                                        )
+                                    }
+
+                                    if (release.changelog.isNotBlank()) {
+                                        Spacer(Modifier.height(8.dp))
+                                        Box(
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .clip(RoundedCornerShape(10.dp))
+                                                .background(c.cardBg)
+                                                .border(0.8.dp, c.glassBorder, RoundedCornerShape(10.dp))
+                                                .padding(10.dp)
+                                        ) {
+                                            Text(
+                                                text = release.changelog.trim(),
+                                                fontSize = 12.sp,
+                                                color = c.textPrimary.copy(alpha = 0.85f),
+                                                lineHeight = 16.sp
+                                            )
+                                        }
+                                    }
+
+                                    if (isNewer) {
+                                        Spacer(Modifier.height(10.dp))
+                                        Button(
+                                            onClick = {
+                                                onDismiss()
+                                                onInstallRelease(release)
+                                            },
+                                            shape = RoundedCornerShape(10.dp),
+                                            colors = ButtonDefaults.buttonColors(containerColor = emeraldGreen),
+                                            contentPadding = PaddingValues(horizontal = 14.dp, vertical = 6.dp),
+                                            modifier = Modifier.height(34.dp).align(Alignment.End)
+                                        ) {
+                                            Icon(
+                                                imageVector = Icons.Rounded.Download,
+                                                contentDescription = null,
+                                                tint = Color.White,
+                                                modifier = Modifier.size(15.dp)
+                                            )
+                                            Spacer(Modifier.width(6.dp))
+                                            Text(
+                                                text = "Install v${release.versionName}",
+                                                fontSize = 12.sp,
+                                                fontWeight = FontWeight.Bold,
+                                                color = Color.White
+                                            )
+                                        }
+                                    }
+                                }
+                            }
                         }
                     }
                 }
