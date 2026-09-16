@@ -35,6 +35,7 @@ import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.rounded.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.blur
@@ -56,6 +57,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
@@ -76,6 +78,9 @@ fun FolderListScreen(
     onFolderClick: (String, String) -> Unit,
     onVideoClick: (String) -> Unit,
     onOpenSettings: () -> Unit = {},
+    hasVideoPermission: Boolean = true,
+    hasAudioPermission: Boolean = true,
+    onRequestPermissions: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
@@ -95,20 +100,20 @@ fun FolderListScreen(
     var refreshTrigger by remember { mutableIntStateOf(0) }
 
     // Navigation state
-    var currentTab by remember { mutableStateOf("Video") }
-    var musicPlayerExpanded by remember { mutableStateOf(false) }
+    var currentTab by rememberSaveable { mutableStateOf("Video") }
+    var musicPlayerExpanded by rememberSaveable { mutableStateOf(false) }
 
     // Search & sort state
-    var isSearching by remember { mutableStateOf(false) }
-    var searchQuery by remember { mutableStateOf("") }
+    var isSearching by rememberSaveable { mutableStateOf(false) }
+    var searchQuery by rememberSaveable { mutableStateOf("") }
     var sortOrder by remember {
         mutableStateOf(runCatching { SortOrder.valueOf(appPreferences.getSortOrder()) }.getOrDefault(SortOrder.DATE))
     }
     var showSortMenu by remember { mutableStateOf(false) }
     var showMoreMenu by remember { mutableStateOf(false) }
     var showThemeDialog by remember { mutableStateOf(false) }
-    var activeChip by remember { mutableStateOf<String?>(null) }
-    var isGridView by remember { mutableStateOf(false) }
+    var activeChip by rememberSaveable { mutableStateOf<String?>(null) }
+    var isGridView by rememberSaveable { mutableStateOf(false) }
     var currentMediaViewType by remember { mutableStateOf(appPreferences.getMediaViewType()) }
     var favorites by remember { mutableStateOf(appPreferences.getFavorites()) }
 
@@ -451,7 +456,7 @@ fun FolderListScreen(
                                             )
                                         }
                                         if (searchQuery.isNotEmpty()) {
-                                            IconButton(onClick = { searchQuery = "" }, modifier = Modifier.size(24.dp)) {
+                                            IconButton(onClick = { searchQuery = "" }, modifier = Modifier.size(48.dp)) {
                                                 Icon(Icons.Rounded.Close, contentDescription = "Clear", tint = c.textSecondary, modifier = Modifier.size(16.dp))
                                             }
                                         }
@@ -477,7 +482,7 @@ fun FolderListScreen(
                                         // 1. Color Theme Palette button
                                         Box(
                                             modifier = Modifier
-                                                .size(39.dp)
+                                                .size(48.dp)
                                                 .clip(CircleShape)
                                                 .combinedClickable(
                                                     onClick = {
@@ -497,7 +502,7 @@ fun FolderListScreen(
                                         // 2. Light / Dark Mode button
                                         Box(
                                             modifier = Modifier
-                                                .size(39.dp)
+                                                .size(48.dp)
                                                 .clip(CircleShape)
                                                 .combinedClickable(
                                                     onClick = {
@@ -523,7 +528,7 @@ fun FolderListScreen(
                                         if (currentTab == "Video") {
                                             Box(
                                                 modifier = Modifier
-                                                    .size(39.dp)
+                                                    .size(48.dp)
                                                     .clip(CircleShape)
                                                     .combinedClickable(
                                                         onClick = {
@@ -544,7 +549,7 @@ fun FolderListScreen(
                                         // 4. Settings button
                                         Box(
                                             modifier = Modifier
-                                                .size(39.dp)
+                                                .size(48.dp)
                                                 .clip(CircleShape)
                                                 .combinedClickable(
                                                     onClick = {
@@ -579,7 +584,9 @@ fun FolderListScreen(
                 if (tab == "Music") {
                     MusicScreen(
                         modifier = Modifier.fillMaxSize().padding(top = paddingValues.calculateTopPadding()),
-                        onFullScreenChanged = { musicPlayerExpanded = it }
+                        onFullScreenChanged = { musicPlayerExpanded = it },
+                        hasMediaPermission = hasAudioPermission,
+                        onRequestPermission = onRequestPermissions
                     )
                 } else if (isLoading && allFolders.isEmpty()) {
                 Box(modifier = Modifier.fillMaxSize().padding(paddingValues), contentAlignment = Alignment.Center) {
@@ -595,12 +602,17 @@ fun FolderListScreen(
                     ) {
                         Icon(Icons.Rounded.VideoLibrary, contentDescription = null, tint = c.textSecondary, modifier = Modifier.size(64.dp))
                         Spacer(Modifier.height(16.dp))
-                        Text("No Videos Found", color = c.textPrimary, fontSize = 18.sp, fontWeight = FontWeight.SemiBold)
+                        Text(if (hasVideoPermission) "No Videos Found" else "Video Access Needed", color = c.textPrimary, fontSize = 18.sp, fontWeight = FontWeight.SemiBold)
                         Spacer(Modifier.height(6.dp))
-                        Text("Videos on your device will show up here", color = c.textSecondary, fontSize = 13.sp)
+                        Text(
+                            if (hasVideoPermission) "Videos on your device will show up here" else "Allow video access to browse and play your videos",
+                            color = c.textSecondary,
+                            fontSize = 13.sp,
+                            textAlign = TextAlign.Center
+                        )
                         Spacer(Modifier.height(20.dp))
-                        Button(onClick = { refreshTrigger++ }, colors = ButtonDefaults.buttonColors(containerColor = c.accentBlue, contentColor = Color.White)) {
-                            Text("Rescan")
+                        Button(onClick = { if (hasVideoPermission) refreshTrigger++ else onRequestPermissions() }, colors = ButtonDefaults.buttonColors(containerColor = c.accentBlue, contentColor = Color.White)) {
+                            Text(if (hasVideoPermission) "Rescan" else "Allow Access")
                         }
                     }
                 }

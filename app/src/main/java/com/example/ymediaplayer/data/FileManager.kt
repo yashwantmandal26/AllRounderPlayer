@@ -47,8 +47,12 @@ class FileManager(private val context: Context) {
                 if (deleted == uris.size) FileOperationResult.Success
                 else FileOperationResult.Failure("Only deleted $deleted of ${uris.size} videos")
             }
-        } catch (e: RecoverableSecurityException) {
-            FileOperationResult.NeedsConfirmation(e.userAction.actionIntent.intentSender)
+        } catch (e: SecurityException) {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q && e is RecoverableSecurityException) {
+                FileOperationResult.NeedsConfirmation(e.userAction.actionIntent.intentSender)
+            } else {
+                FileOperationResult.Failure(e.message ?: "Permission denied while deleting video")
+            }
         } catch (e: Exception) { FileOperationResult.Failure(e.message ?: "Could not delete video") }
     }
 
@@ -69,8 +73,12 @@ class FileManager(private val context: Context) {
         try {
             if (context.contentResolver.update(uri, values, null, null) > 0) FileOperationResult.Success
             else FileOperationResult.Failure("Video could not be renamed")
-        } catch (e: RecoverableSecurityException) {
-            FileOperationResult.NeedsConfirmation(e.userAction.actionIntent.intentSender)
+        } catch (e: SecurityException) {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q && e is RecoverableSecurityException) {
+                FileOperationResult.NeedsConfirmation(e.userAction.actionIntent.intentSender)
+            } else {
+                FileOperationResult.Failure(e.message ?: "Permission denied while renaming video")
+            }
         } catch (e: Exception) { FileOperationResult.Failure(e.message ?: "Could not rename video") }
     }
 

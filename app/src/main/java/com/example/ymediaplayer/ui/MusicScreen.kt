@@ -100,7 +100,9 @@ val defaultEqPresets = listOf(
 @Composable
 fun MusicScreen(
     modifier: Modifier = Modifier,
-    onFullScreenChanged: (Boolean) -> Unit = {}
+    onFullScreenChanged: (Boolean) -> Unit = {},
+    hasMediaPermission: Boolean = true,
+    onRequestPermission: () -> Unit = {}
 ) {
     val context = LocalContext.current
     val view = androidx.compose.ui.platform.LocalView.current
@@ -834,9 +836,23 @@ fun MusicScreen(
                     Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.padding(32.dp)) {
                         Icon(Icons.Rounded.MusicOff, contentDescription = null, tint = c.textSecondary, modifier = Modifier.size(64.dp))
                         Spacer(Modifier.height(16.dp))
-                        Text("No Music Files Found", color = c.textPrimary, fontSize = 18.sp, fontWeight = FontWeight.SemiBold)
+                        Text(if (hasMediaPermission) "No Music Files Found" else "Audio Access Needed", color = c.textPrimary, fontSize = 18.sp, fontWeight = FontWeight.SemiBold)
                         Spacer(Modifier.height(6.dp))
-                        Text("Add audio files to your device storage to start streaming", color = c.textSecondary, fontSize = 13.sp, textAlign = TextAlign.Center)
+                        Text(
+                            if (hasMediaPermission) "Add audio files to your device storage to start listening" else "Allow audio access to browse and play music on this device",
+                            color = c.textSecondary,
+                            fontSize = 13.sp,
+                            textAlign = TextAlign.Center
+                        )
+                        if (!hasMediaPermission) {
+                            Spacer(Modifier.height(20.dp))
+                            Button(
+                                onClick = onRequestPermission,
+                                colors = ButtonDefaults.buttonColors(containerColor = c.accentBlue, contentColor = Color.White)
+                            ) {
+                                Text("Allow Access")
+                            }
+                        }
                     }
                 }
             } else if (selectedArtist != null) {
@@ -4083,7 +4099,7 @@ private fun MusicVerticalGestureBar(
                         .fillMaxWidth()
                         .height(2.5.dp)
                         .align(Alignment.BottomCenter)
-                        .offset(y = (-192.dp * animatedPct) + 2.dp)
+                        .offset { androidx.compose.ui.unit.IntOffset(0, ((-192.dp.toPx() * animatedPct) + 2.dp.toPx()).roundToInt()) }
                         .clip(RoundedCornerShape(1.dp))
                         .background(
                             Brush.horizontalGradient(

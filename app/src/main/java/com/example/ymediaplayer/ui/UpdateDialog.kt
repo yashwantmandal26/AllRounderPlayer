@@ -47,7 +47,7 @@ fun UpdateDialog(
     val currentVersion = UpdateManager.getCurrentVersionName(context)
 
     val isDownloading = UpdateManager.isDownloading.value
-    val progress = UpdateManager.downloadProgress.value
+    val progress = UpdateManager.downloadProgress.floatValue
     val statusText = UpdateManager.downloadStatusText.value
     val errorMsg = UpdateManager.errorMessage.value
 

@@ -79,6 +79,7 @@ class VideoRepository(private val context: Context) {
 
         val sortOrder = "${MediaStore.Video.Media.DATE_ADDED} DESC, ${MediaStore.Video.Media._ID} DESC"
 
+        try {
         context.contentResolver.query(
             MediaStore.Video.Media.EXTERNAL_CONTENT_URI,
             projection,
@@ -137,6 +138,9 @@ class VideoRepository(private val context: Context) {
                 )
             }
         }
+        } catch (_: SecurityException) {
+            return@withContext emptyList()
+        }
 
         // Group by folder bucket ID
         val folders = videos.groupBy { it.bucketId }
@@ -164,4 +168,3 @@ class VideoRepository(private val context: Context) {
         return folders.flatMap { it.videos }
     }
 }
-

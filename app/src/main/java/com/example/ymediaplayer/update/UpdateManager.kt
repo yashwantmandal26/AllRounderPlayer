@@ -190,7 +190,7 @@ object UpdateManager {
     ) = withContext(Dispatchers.IO) {
         withContext(Dispatchers.Main) {
             isDownloading.value = true
-            downloadProgress.value = 0f
+            downloadProgress.floatValue = 0f
             downloadStatusText.value = "Starting download..."
             errorMessage.value = null
         }
@@ -205,6 +205,7 @@ object UpdateManager {
 
             // Download supporting redirects (GitHub -> AWS S3)
             var currentUrl = release.apkDownloadUrl
+            require(isAllowedDownloadUrl(currentUrl)) { "Update URL is not trusted" }
             var connection: HttpURLConnection
             var redirects = 0
             while (true) {
@@ -223,6 +224,7 @@ object UpdateManager {
                     val newLocation = connection.getHeaderField("Location")
                     connection.disconnect()
                     if (!newLocation.isNullOrEmpty() && redirects < 6) {
+                        require(isAllowedDownloadUrl(newLocation)) { "Update redirect is not trusted" }
                         currentUrl = newLocation
                         redirects++
                         continue
@@ -231,41 +233,49 @@ object UpdateManager {
                 break
             }
 
+            if (connection.responseCode !in 200..299) {
+                connection.disconnect()
+                throw IllegalStateException("Update server returned ${connection.responseCode}")
+            }
+
             val totalLength = connection.contentLengthLong.takeIf { it > 0 } ?: release.fileSize
-            val input: InputStream = connection.inputStream
-            val output = FileOutputStream(apkFile)
+            require(totalLength <= MAX_APK_BYTES || totalLength <= 0L) { "Update file is unexpectedly large" }
 
             val buffer = ByteArray(32 * 1024)
-            var bytesRead: Int
             var downloaded = 0L
             var lastUpdateMs = 0L
 
-            while (input.read(buffer).also { bytesRead = it } != -1) {
-                output.write(buffer, 0, bytesRead)
-                downloaded += bytesRead
+            connection.inputStream.use { input ->
+                FileOutputStream(apkFile).use { output ->
+                    var bytesRead: Int
+                    while (input.read(buffer).also { bytesRead = it } != -1) {
+                        downloaded += bytesRead
+                        require(downloaded <= MAX_APK_BYTES) { "Update file is unexpectedly large" }
+                        output.write(buffer, 0, bytesRead)
 
-                val now = System.currentTimeMillis()
-                if (now - lastUpdateMs > 100 || downloaded == totalLength) {
-                    lastUpdateMs = now
-                    val prog = if (totalLength > 0) (downloaded.toFloat() / totalLength.toFloat()).coerceIn(0f, 1f) else 0f
-                    val downloadedMb = downloaded.toFloat() / (1024 * 1024)
-                    val totalMb = totalLength.toFloat() / (1024 * 1024)
+                        val now = System.currentTimeMillis()
+                        if (now - lastUpdateMs > 100 || downloaded == totalLength) {
+                            lastUpdateMs = now
+                            val prog = if (totalLength > 0) (downloaded.toFloat() / totalLength.toFloat()).coerceIn(0f, 1f) else 0f
+                            val downloadedMb = downloaded.toFloat() / (1024 * 1024)
+                            val totalMb = totalLength.toFloat() / (1024 * 1024)
 
-                    withContext(Dispatchers.Main) {
-                        downloadProgress.value = prog
-                        downloadStatusText.value = if (totalLength > 0) {
-                            String.format(java.util.Locale.getDefault(), "%.1f MB / %.1f MB (%.0f%%)", downloadedMb, totalMb, prog * 100f)
-                        } else {
-                            String.format(java.util.Locale.getDefault(), "%.1f MB downloaded", downloadedMb)
+                            withContext(Dispatchers.Main) {
+                                downloadProgress.floatValue = prog
+                                downloadStatusText.value = if (totalLength > 0) {
+                                    String.format(java.util.Locale.getDefault(), "%.1f MB / %.1f MB (%.0f%%)", downloadedMb, totalMb, prog * 100f)
+                                } else {
+                                    String.format(java.util.Locale.getDefault(), "%.1f MB downloaded", downloadedMb)
+                                }
+                            }
                         }
                     }
                 }
             }
-
-            output.flush()
-            output.close()
-            input.close()
             connection.disconnect()
+
+            require(isValidApkArchive(apkFile)) { "Downloaded file is not a valid APK" }
+            require(isApkSignedByThisApp(context, apkFile)) { "Update signature does not match this app" }
 
             withContext(Dispatchers.Main) {
                 isDownloading.value = false
@@ -324,7 +334,7 @@ object UpdateManager {
     fun dismissUpdate() {
         availableUpdate.value = null
         isDownloading.value = false
-        downloadProgress.value = 0f
+        downloadProgress.floatValue = 0f
         errorMessage.value = null
     }
 
@@ -354,6 +364,58 @@ object UpdateManager {
     private fun cleanVersion(tag: String): String {
         return tag.trim().removePrefix("v").removePrefix("V")
     }
+
+    private const val MAX_APK_BYTES = 500L * 1024L * 1024L
+
+    private fun isAllowedDownloadUrl(rawUrl: String): Boolean = runCatching {
+        val parsed = URL(rawUrl)
+        val host = parsed.host.lowercase(java.util.Locale.US)
+        parsed.protocol.equals("https", ignoreCase = true) && (
+            host == "github.com" ||
+                host == "api.github.com" ||
+                host == "release-assets.githubusercontent.com" ||
+                host.endsWith(".githubusercontent.com")
+            )
+    }.getOrDefault(false)
+
+    private fun isValidApkArchive(file: File): Boolean = runCatching {
+        file.inputStream().use { input ->
+            val header = ByteArray(4)
+            input.read(header) == header.size &&
+                header[0] == 0x50.toByte() && header[1] == 0x4B.toByte() &&
+                header[2] == 0x03.toByte() && header[3] == 0x04.toByte()
+        }
+    }.getOrDefault(false)
+
+    @Suppress("DEPRECATION")
+    private fun isApkSignedByThisApp(context: Context, apkFile: File): Boolean = runCatching {
+        val packageManager = context.packageManager
+        val flags = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+            android.content.pm.PackageManager.GET_SIGNING_CERTIFICATES
+        } else {
+            android.content.pm.PackageManager.GET_SIGNATURES
+        }
+        val archive = packageManager.getPackageArchiveInfo(apkFile.absolutePath, flags) ?: return false
+        if (archive.packageName != context.packageName) return false
+        val installed = packageManager.getPackageInfo(context.packageName, flags)
+
+        fun signatures(info: android.content.pm.PackageInfo): Set<String> {
+            val values = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+                info.signingInfo?.apkContentsSigners.orEmpty()
+            } else {
+                info.signatures.orEmpty()
+            }
+            return values.map { signature ->
+                val digest = java.security.MessageDigest.getInstance("SHA-256")
+                    .digest(signature.toByteArray())
+                digest.joinToString("") { byte -> "%02x".format(byte) }
+            }.toSet()
+        }
+
+        val installedSignatures = signatures(installed)
+        val archiveSignatures = signatures(archive)
+        installedSignatures.isNotEmpty() && archiveSignatures == installedSignatures
+    }.getOrDefault(false)
 
     /**
      * Compares semantic versions (e.g. 1.5.1 > 1.5.0, 2.0 > 1.9.9)

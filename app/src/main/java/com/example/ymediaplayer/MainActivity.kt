@@ -79,8 +79,7 @@ class MainActivity : ComponentActivity() {
         get() = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             arrayOf(
                 Manifest.permission.READ_MEDIA_VIDEO,
-                Manifest.permission.READ_MEDIA_AUDIO,
-                Manifest.permission.POST_NOTIFICATIONS
+                Manifest.permission.READ_MEDIA_AUDIO
             )
         } else {
             arrayOf(Manifest.permission.READ_EXTERNAL_STORAGE)
@@ -161,8 +160,7 @@ class MainActivity : ComponentActivity() {
             openVideoUrl.value = videoUrlExtra
         }
 
-        // Keep screen on & follow system phone brightness for all app screens
-        window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+        // Playback screens manage KEEP_SCREEN_ON only while it is useful.
         val initialLp = window.attributes
         initialLp.screenBrightness = WindowManager.LayoutParams.BRIGHTNESS_OVERRIDE_NONE
         window.attributes = initialLp
@@ -172,8 +170,12 @@ class MainActivity : ComponentActivity() {
 
         setContent {
             AppRoot {
-                if (videoPermissionGranted) {
-                    MainApp()
+                if (videoPermissionGranted || audioPermissionGranted) {
+                    MainApp(
+                        hasVideoPermission = videoPermissionGranted,
+                        hasAudioPermission = audioPermissionGranted,
+                        onRequestPermissions = { requestPermissions() }
+                    )
                 } else {
                     if (!hasPromptedPermissions) {
                         LaunchedEffect(Unit) {
@@ -208,7 +210,11 @@ fun AppRoot(content: @Composable () -> Unit) {
 }
 
 @Composable
-fun MainApp() {
+fun MainApp(
+    hasVideoPermission: Boolean,
+    hasAudioPermission: Boolean,
+    onRequestPermissions: () -> Unit
+) {
     val backStack = rememberNavBackStack(FolderList)
     val context = androidx.compose.ui.platform.LocalContext.current
     val window = (context as? ComponentActivity)?.window
@@ -288,6 +294,9 @@ fun MainApp() {
                         color = appColors.baseBackground
                     ) {
                         FolderListScreen(
+                            hasVideoPermission = hasVideoPermission,
+                            hasAudioPermission = hasAudioPermission,
+                            onRequestPermissions = onRequestPermissions,
                             onFolderClick = { id, name ->
                                 backStack.add(FolderDetail(id, name))
                             },

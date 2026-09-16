@@ -64,6 +64,7 @@ class MusicRepository(private val context: Context) {
         // High-performance indexed selection: uses B-tree index on IS_MUSIC and MIME_TYPE instead of full table scans
         val selection = "(${MediaStore.Audio.Media.IS_MUSIC} != 0 OR ${MediaStore.Audio.Media.MIME_TYPE} LIKE 'audio/%') AND ${MediaStore.Audio.Media.DURATION} >= 1000"
 
+        try {
         context.contentResolver.query(
             MediaStore.Audio.Media.EXTERNAL_CONTENT_URI,
             projection,
@@ -113,6 +114,9 @@ class MusicRepository(private val context: Context) {
                     )
                 )
             }
+        }
+        } catch (_: SecurityException) {
+            return@withContext emptyList()
         }
         memoryCachedMusic = musicList
         lastFetchTime = now

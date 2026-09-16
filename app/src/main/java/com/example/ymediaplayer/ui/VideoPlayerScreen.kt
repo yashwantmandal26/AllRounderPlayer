@@ -1,3 +1,5 @@
+@file:androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)
+
 package com.example.ymediaplayer.ui
 
 import android.app.Activity
@@ -1139,11 +1141,12 @@ fun VideoPlayerScreen(
             addAction(ACTION_PIP_REWIND)
             addAction(ACTION_PIP_FORWARD)
         }
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            context.registerReceiver(pipReceiver, pipFilter, Context.RECEIVER_NOT_EXPORTED)
-        } else {
-            context.registerReceiver(pipReceiver, pipFilter)
-        }
+        androidx.core.content.ContextCompat.registerReceiver(
+            context,
+            pipReceiver,
+            pipFilter,
+            androidx.core.content.ContextCompat.RECEIVER_NOT_EXPORTED
+        )
 
         onDispose {
             componentActivity?.removeOnPictureInPictureModeChangedListener(listener)
@@ -1509,11 +1512,12 @@ fun VideoPlayerScreen(
             addAction(ACTION_VIDEO_REWIND)
             addAction(ACTION_VIDEO_FORWARD)
         }
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            context.registerReceiver(receiver, filter, Context.RECEIVER_NOT_EXPORTED)
-        } else {
-            context.registerReceiver(receiver, filter)
-        }
+        androidx.core.content.ContextCompat.registerReceiver(
+            context,
+            receiver,
+            filter,
+            androidx.core.content.ContextCompat.RECEIVER_NOT_EXPORTED
+        )
 
         onDispose {
             try {
@@ -4741,7 +4745,7 @@ private fun VerticalGestureBar(
                         .fillMaxWidth()
                         .height(2.5.dp)
                         .align(Alignment.BottomCenter)
-                        .offset(y = (-192.dp * animatedPct) + 2.dp)
+                        .offset { androidx.compose.ui.unit.IntOffset(0, ((-192.dp.toPx() * animatedPct) + 2.dp.toPx()).roundToInt()) }
                         .clip(RoundedCornerShape(1.dp))
                         .background(
                             Brush.horizontalGradient(
@@ -4830,7 +4834,7 @@ private fun TemporarySpeedHoldBadge(
     } else if (abs(speed - speed.toInt().toFloat()) < 0.05f) {
         "${speed.toInt()}X Fast"
     } else {
-        String.format(Locale.getDefault(), "%.1fX", speed)
+        String.format(LocalConfiguration.current.locales[0], "%.1fX", speed)
     }
 
     val iconVector = when {
@@ -5189,7 +5193,7 @@ private fun FloatingPlayerControlsBar(
         // 1. Playback Speed (Press & hold resets to 1.0x)
         QuickActionButton(
             icon = Icons.Rounded.Speed,
-            label = if (playbackSpeed != 1f) String.format(Locale.getDefault(), "%.2fx", playbackSpeed) else "Speed",
+            label = if (playbackSpeed != 1f) String.format(LocalConfiguration.current.locales[0], "%.2fx", playbackSpeed) else "Speed",
             isActive = playbackSpeed != 1f,
             activeColor = primaryAccent,
             onLongClick = onResetSpeedToOne,
@@ -6369,7 +6373,7 @@ private fun MiniSpeedDialog(
                     // Speed Display (e.g. 1.25x)
                     Column(horizontalAlignment = Alignment.CenterHorizontally) {
                         Text(
-                            text = String.format(Locale.getDefault(), "%.2fx", currentSpeed),
+                            text = String.format(LocalConfiguration.current.locales[0], "%.2fx", currentSpeed),
                             color = accentColor,
                             fontSize = 32.sp,
                             fontWeight = FontWeight.ExtraBold,

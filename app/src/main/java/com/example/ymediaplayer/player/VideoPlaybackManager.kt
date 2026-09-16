@@ -1,8 +1,11 @@
+@file:androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)
+
 package com.example.ymediaplayer.player
 
 import android.content.Context
 import androidx.compose.runtime.MutableState
 import androidx.compose.runtime.mutableLongStateOf
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.media3.common.AudioAttributes
 import androidx.media3.common.C
@@ -27,8 +30,8 @@ object VideoPlaybackManager {
     val isPlaying: MutableState<Boolean> = mutableStateOf(false)
     val currentPosition: MutableState<Long> = mutableLongStateOf(0L)
     val duration: MutableState<Long> = mutableLongStateOf(0L)
-    val videoWidth: MutableState<Int> = mutableStateOf(0)
-    val videoHeight: MutableState<Int> = mutableStateOf(0)
+    val videoWidth: MutableState<Int> = mutableIntStateOf(0)
+    val videoHeight: MutableState<Int> = mutableIntStateOf(0)
 
     private var playerListener: Player.Listener? = null
 

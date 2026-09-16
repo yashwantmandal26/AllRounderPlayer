@@ -6,20 +6,20 @@ plugins {
 
 android {
     namespace = "com.example.ymediaplayer"
-    compileSdk = 36
+    compileSdk = 37
     defaultConfig {
         applicationId = "com.example.ymediaplayer"
         minSdk = 24
-        targetSdk = 36
+        targetSdk = 37
         versionCode = 7
         versionName = "1.5.1"
     }
 
     buildTypes {
         release {
-            isMinifyEnabled = false
+            isMinifyEnabled = true
+            isShrinkResources = true
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
-            signingConfig = signingConfigs.getByName("debug")
         }
     }
     compileOptions {
@@ -65,17 +65,17 @@ dependencies {
   implementation(libs.androidx.compose.ui)
   implementation(libs.androidx.compose.ui.tooling.preview)
   implementation(libs.androidx.compose.material3)
-  implementation("androidx.compose.material:material-icons-extended:1.7.0")
+  implementation(libs.androidx.compose.material.icons.extended)
   
   // Media3 (ExoPlayer)
-  implementation("androidx.media3:media3-exoplayer:1.4.1")
-  implementation("androidx.media3:media3-ui:1.4.1")
-  implementation("androidx.media3:media3-session:1.4.1")
+  implementation(libs.androidx.media3.exoplayer)
+  implementation(libs.androidx.media3.ui)
+  implementation(libs.androidx.media3.session)
   
   // Coil for seek preview images
-  implementation("io.coil-kt.coil3:coil-compose:3.0.0")
-  implementation("io.coil-kt.coil3:coil-network-okhttp:3.0.0")
-  implementation("io.coil-kt.coil3:coil-video:3.0.0")
+  implementation(libs.coil.compose)
+  implementation(libs.coil.network.okhttp)
+  implementation(libs.coil.video)
 
   // Tooling
   debugImplementation(libs.androidx.compose.ui.tooling)
@@ -86,7 +86,7 @@ dependencies {
   // Local tests: jUnit, coroutines, Android runner
   testImplementation(libs.junit)
   testImplementation(libs.kotlinx.coroutines.test)
-  testImplementation("org.mockito:mockito-core:5.11.0")
+  testImplementation(libs.mockito.core)
 
   // Instrumented tests: jUnit rules and runners
   androidTestImplementation(libs.androidx.test.core)

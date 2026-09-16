@@ -1,3 +1,5 @@
+@file:androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)
+
 package com.example.ymediaplayer.ui
 
 import androidx.compose.foundation.background
@@ -22,6 +24,8 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalWindowInfo
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.IntOffset
@@ -46,6 +50,8 @@ fun InAppMiniPlayer(
 ) {
     val themeController = LocalThemeController.current
     val primaryAccent = themeController.colorTheme.primaryAccent
+    val density = LocalDensity.current
+    val windowSize = LocalWindowInfo.current.containerSize
 
     val isPlaying by VideoPlaybackManager.isPlaying
     val title by VideoPlaybackManager.currentVideoTitle
@@ -75,6 +81,8 @@ fun InAppMiniPlayer(
             Pair(w, h)
         }
     }
+    val minOffsetX = with(density) { -(windowSize.width - miniWidth.toPx() - 32.dp.toPx()).coerceAtLeast(0f) }
+    val minOffsetY = with(density) { -(windowSize.height - miniHeight.toPx() - 128.dp.toPx()).coerceAtLeast(0f) }
 
     Box(
         modifier = modifier
@@ -89,8 +97,8 @@ fun InAppMiniPlayer(
             .pointerInput(Unit) {
                 detectDragGestures { change, dragAmount ->
                     change.consume()
-                    offsetX += dragAmount.x
-                    offsetY += dragAmount.y
+                    offsetX = (offsetX + dragAmount.x).coerceIn(minOffsetX, 0f)
+                    offsetY = (offsetY + dragAmount.y).coerceIn(minOffsetY, 0f)
                 }
             }
             .clickable { onExpand() }
@@ -144,7 +152,7 @@ fun InAppMiniPlayer(
             Text(
                 text = title ?: "Playing Video",
                 color = Color.White,
-                fontSize = 10.sp,
+                fontSize = 12.sp,
                 fontWeight = FontWeight.SemiBold,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
@@ -154,7 +162,7 @@ fun InAppMiniPlayer(
             // Close button
             Box(
                 modifier = Modifier
-                    .size(24.dp)
+                    .size(48.dp)
                     .clip(CircleShape)
                     .background(Color.Black.copy(alpha = 0.65f))
                     .border(0.8.dp, Color.White.copy(alpha = 0.35f), CircleShape)
@@ -174,7 +182,7 @@ fun InAppMiniPlayer(
         Box(
             modifier = Modifier
                 .align(Alignment.Center)
-                .size(38.dp)
+                .size(48.dp)
                 .clip(CircleShape)
                 .background(Color.Black.copy(alpha = 0.65f))
                 .border(1.2.dp, primaryAccent, CircleShape)
