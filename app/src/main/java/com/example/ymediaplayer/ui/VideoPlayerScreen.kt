@@ -7,7 +7,9 @@ import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
 import androidx.core.app.NotificationCompat
+import androidx.media.app.NotificationCompat.MediaStyle
 import com.example.ymediaplayer.MainActivity
+import com.example.ymediaplayer.R
 import com.example.ymediaplayer.player.VideoPlaybackManager
 import android.content.BroadcastReceiver
 import android.content.ClipData
@@ -126,6 +128,7 @@ private const val VIDEO_NOTIFICATION_ID = 2001
 private const val ACTION_VIDEO_PLAY_PAUSE = "com.example.ymediaplayer.ACTION_VIDEO_PLAY_PAUSE"
 private const val ACTION_VIDEO_REWIND = "com.example.ymediaplayer.ACTION_VIDEO_REWIND"
 private const val ACTION_VIDEO_FORWARD = "com.example.ymediaplayer.ACTION_VIDEO_FORWARD"
+private const val ACTION_VIDEO_CLOSE = "com.example.ymediaplayer.ACTION_VIDEO_CLOSE"
 private const val ACTION_PIP_PLAY_PAUSE = "com.example.ymediaplayer.ACTION_PIP_PLAY_PAUSE"
 private const val ACTION_PIP_PREV = "com.example.ymediaplayer.ACTION_PIP_PREV"
 private const val ACTION_PIP_NEXT = "com.example.ymediaplayer.ACTION_PIP_NEXT"
@@ -1477,10 +1480,11 @@ fun VideoPlayerScreen(
         }
     }
 
-    // ─── Video Playback Notification with Live Progress & Tap-to-Open ────────
+    // ─── Video Playback Notification with Live Progress, MediaStyle & Tap-to-Open ────────
     val notificationManager = remember {
         context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
     }
+    var isVideoNotificationDismissed by remember { mutableStateOf(false) }
 
     DisposableEffect(Unit) {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
@@ -1491,6 +1495,7 @@ fun VideoPlayerScreen(
             ).apply {
                 description = "Shows live playback progress and controls for the playing video"
                 setShowBadge(false)
+                lockscreenVisibility = android.app.Notification.VISIBILITY_PUBLIC
             }
             notificationManager.createNotificationChannel(channel)
         }
@@ -1499,6 +1504,7 @@ fun VideoPlayerScreen(
             override fun onReceive(ctx: Context?, intent: Intent?) {
                 when (intent?.action) {
                     ACTION_VIDEO_PLAY_PAUSE -> {
+                        isVideoNotificationDismissed = false
                         togglePlayPause()
                     }
                     ACTION_VIDEO_REWIND -> {
@@ -1507,6 +1513,13 @@ fun VideoPlayerScreen(
                     ACTION_VIDEO_FORWARD -> {
                         safeSeek((exoPlayer.currentPosition + configuredSeekStepMs).coerceAtMost(exoPlayer.duration.coerceAtLeast(0L)))
                     }
+                    ACTION_VIDEO_CLOSE -> {
+                        isVideoNotificationDismissed = true
+                        exoPlayer.pause()
+                        try {
+                            notificationManager.cancel(VIDEO_NOTIFICATION_ID)
+                        } catch (_: Exception) {}
+                    }
                 }
             }
         }
@@ -1514,6 +1527,7 @@ fun VideoPlayerScreen(
             addAction(ACTION_VIDEO_PLAY_PAUSE)
             addAction(ACTION_VIDEO_REWIND)
             addAction(ACTION_VIDEO_FORWARD)
+            addAction(ACTION_VIDEO_CLOSE)
         }
         androidx.core.content.ContextCompat.registerReceiver(
             context,
@@ -1565,11 +1579,18 @@ fun VideoPlayerScreen(
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
     }
+    val closeIntent = remember(context) {
+        PendingIntent.getBroadcast(
+            context, 104,
+            Intent(ACTION_VIDEO_CLOSE).setPackage(context.packageName),
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+    }
 
     var isAppInBackground by remember { mutableStateOf(false) }
-    val shouldShowNotification = (isInPiP || isAppInBackground) && isPlaying
+    val shouldShowNotification = (isInPiP || isAppInBackground) && !isVideoNotificationDismissed
 
-    // Live update notification progress (Only shown when playing in PiP outside app or in background play)
+    // Live update notification progress (Shown when playing in PiP outside app or in background play)
     LaunchedEffect(shouldShowNotification, isPlaying, duration, videoTitle, currentUrl) {
         if (!shouldShowNotification) {
             try {
@@ -1582,27 +1603,31 @@ fun VideoPlayerScreen(
             val curPos = exoPlayer.currentPosition
             val curDur = duration.takeIf { it > 0L } ?: exoPlayer.duration.coerceAtLeast(0L)
             if (curDur > 0L || curPos > 0L) {
-                val progressPercent = if (curDur > 0L) {
-                    ((curPos.toFloat() / curDur.toFloat()) * 100).toInt().coerceIn(0, 100)
-                } else 0
-
                 val remainingMs = (curDur - curPos).coerceAtLeast(0L)
                 val remainingStr = "-${formatTime(remainingMs)}"
                 val title = videoTitle.ifEmpty { "Video Playing" }
                 val timeText = "${formatTime(curPos)} / ${formatTime(curDur)}  ($remainingStr)"
-                val subText = if (isInPiP) "Picture-in-Picture" else "Background Play"
+                val subText = when {
+                    isInPiP -> if (isPlaying) "Picture-in-Picture" else "PiP • Paused"
+                    !isPlaying -> "Paused"
+                    else -> "Background Play"
+                }
 
                 val notification = NotificationCompat.Builder(context, VIDEO_NOTIFICATION_CHANNEL_ID)
-                    .setSmallIcon(android.R.drawable.ic_media_play)
+                    .setSmallIcon(if (isPlaying) android.R.drawable.ic_media_play else android.R.drawable.ic_media_pause)
                     .setContentTitle(title)
                     .setContentText(timeText)
                     .setSubText(subText)
                     .setContentIntent(contentIntent)
+                    .setDeleteIntent(closeIntent)
                     .setOngoing(isPlaying)
                     .setOnlyAlertOnce(true)
                     .setShowWhen(false)
                     .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
-                    .setProgress(100, progressPercent, false)
+                    .setStyle(
+                        MediaStyle()
+                            .setShowActionsInCompactView(0, 1, 2)
+                    )
                     .apply {
                         val thumb = liveAmbientBitmap ?: frameCache.firstEntry()?.value
                         if (thumb != null) {
@@ -1616,6 +1641,7 @@ fun VideoPlayerScreen(
                         playPauseIntent
                     )
                     .addAction(android.R.drawable.ic_media_ff, "+10s", forwardIntent)
+                    .addAction(R.drawable.ic_notif_close, "Close", closeIntent)
                     .build()
 
                 try {
@@ -1623,8 +1649,12 @@ fun VideoPlayerScreen(
                 } catch (_: Exception) {}
             }
 
-            if (!isPlaying) break // update once when paused, don't loop
-            delay(1000L) // 1 second update interval
+            if (!isPlaying) {
+                // If paused, update once and then sleep/wait until state changes
+                delay(3000L)
+            } else {
+                delay(1000L) // 1 second update interval while playing
+            }
         }
     }
 
@@ -1645,6 +1675,7 @@ fun VideoPlayerScreen(
                 }
                 Lifecycle.Event.ON_RESUME -> {
                     isAppInBackground = false
+                    isVideoNotificationDismissed = false
                     try {
                         if (!isInPiP) {
                             notificationManager.cancel(VIDEO_NOTIFICATION_ID)

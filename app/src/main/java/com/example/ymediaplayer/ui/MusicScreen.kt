@@ -359,12 +359,19 @@ fun MusicScreen(
             if (it.isPlaying) it.pause()
         }
         currentlyPlaying = song
+        MusicService.currentMusicItem = song
         appPreferences.incrementPlayCount(song.uri.toString())
+        val artBytes = MusicService.resolveArtworkBytes(context, song.albumArtUri)
         val metadata = MediaMetadata.Builder()
             .setTitle(song.title)
             .setArtist(song.artist)
             .setAlbumTitle(song.album)
             .setArtworkUri(song.albumArtUri)
+            .apply {
+                if (artBytes != null) {
+                    setArtworkData(artBytes, MediaMetadata.PICTURE_TYPE_FRONT_COVER)
+                }
+            }
             .build()
         val item = MediaItem.Builder()
             .setUri(song.uri)
@@ -375,6 +382,7 @@ fun MusicScreen(
         mediaController?.prepare()
         mediaController?.play()
         isPlaying = true
+        MusicService.serviceInstance?.updateSessionCustomLayout()
     }
 
     // Keep most played songs shelf updated
@@ -383,7 +391,7 @@ fun MusicScreen(
         mostPlayedSongs = topUris.mapNotNull { uriStr -> allSongs.find { it.uri.toString() == uriStr } }
     }
 
-    val playNext = {
+    val playNext: () -> Unit = {
         if (priorityNextSong != null) {
             val nextSong = priorityNextSong!!
             priorityNextSong = null
@@ -401,7 +409,7 @@ fun MusicScreen(
         }
     }
 
-    val playPrev = {
+    val playPrev: () -> Unit = {
         if (allSongs.isNotEmpty()) {
             if (currentPosition > 3000L) {
                 mediaController?.seekTo(0)
@@ -466,6 +474,11 @@ fun MusicScreen(
         onDispose {
             mediaController?.removeListener(listener)
             MediaController.releaseFuture(controllerFuture)
+            MusicService.onPlayNextAction = null
+            MusicService.onPlayPrevAction = null
+            MusicService.onPauseAction = null
+            MusicService.onStopAction = null
+            MusicService.onTogglePlayPauseAction = null
         }
     }
 

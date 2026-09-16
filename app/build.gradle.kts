@@ -86,10 +86,11 @@ dependencies {
   implementation(libs.androidx.compose.material3)
   implementation(libs.androidx.compose.material.icons.extended)
   
-  // Media3 (ExoPlayer)
+  // Media3 (ExoPlayer) & Media Notifications
   implementation(libs.androidx.media3.exoplayer)
   implementation(libs.androidx.media3.ui)
   implementation(libs.androidx.media3.session)
+  implementation("androidx.media:media:1.7.0")
   
   // Coil for seek preview images
   implementation(libs.coil.compose)
