@@ -16,3 +16,5 @@ local.properties
 .idea/
 graphify-out/
 .kotlin/
+/keystore/
+/keystore.properties

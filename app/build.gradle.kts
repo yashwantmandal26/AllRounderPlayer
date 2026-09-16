@@ -1,7 +1,17 @@
+import java.util.Properties
+
 plugins {
   alias(libs.plugins.android.application)
   alias(libs.plugins.compose.compiler)
   alias(libs.plugins.kotlin.serialization)
+}
+
+val signingProperties = Properties().apply {
+    val propertiesFile = rootProject.file("keystore.properties")
+    check(propertiesFile.exists()) {
+        "Missing keystore.properties. Copy keystore.properties.example and provide production signing credentials."
+    }
+    propertiesFile.inputStream().use { load(it) }
 }
 
 android {
@@ -11,15 +21,24 @@ android {
         applicationId = "com.example.ymediaplayer"
         minSdk = 24
         targetSdk = 37
-        versionCode = 7
-        versionName = "1.5.1"
+        versionCode = 8
+        versionName = "1.5.2"
     }
 
+    signingConfigs {
+        create("release") {
+            storeFile = rootProject.file(signingProperties.getProperty("storeFile"))
+            storePassword = signingProperties.getProperty("storePassword")
+            keyAlias = signingProperties.getProperty("keyAlias")
+            keyPassword = signingProperties.getProperty("keyPassword")
+        }
+    }
     buildTypes {
         release {
             isMinifyEnabled = true
             isShrinkResources = true
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
+            signingConfig = signingConfigs.getByName("release")
         }
     }
     compileOptions {
