@@ -681,16 +681,20 @@ fun MusicScreen(
                                 .border(1.2.dp, Brush.verticalGradient(listOf(c.cardBorderHighlight, c.glassBorder, c.cardBorderShadow)), RoundedCornerShape(14.dp))
                         )
                     } else {
-                        Column {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier.weight(1f)
+                        ) {
                             Text(
                                 text = "Your Music",
-                                fontSize = 26.sp,
+                                fontSize = 20.sp,
                                 fontWeight = FontWeight.Bold,
                                 color = c.textPrimary
                             )
+                            Spacer(Modifier.width(8.dp))
                             Text(
-                                text = "${allSongs.size} tracks · ${artistsMap.size} artists",
-                                fontSize = 12.sp,
+                                text = "· ${allSongs.size} tracks",
+                                fontSize = 13.sp,
                                 color = c.textSecondary
                             )
                         }
@@ -1989,8 +1993,8 @@ fun MusicScreen(
         // ─── Full Screen Music Player ───────────────────────────────────────
         AnimatedVisibility(
             visible = showFullScreenPlayer,
-            enter = fadeIn(animationSpec = tween(250)),
-            exit = fadeOut(animationSpec = tween(200))
+            enter = slideInVertically(initialOffsetY = { it }, animationSpec = tween(340, easing = FastOutSlowInEasing)) + fadeIn(animationSpec = tween(280)),
+            exit = slideOutVertically(targetOffsetY = { it }, animationSpec = tween(280, easing = FastOutSlowInEasing)) + fadeOut(animationSpec = tween(200))
         ) {
             currentlyPlaying?.let { song ->
                 FullScreenMusicPlayer(
@@ -2970,11 +2974,11 @@ fun FullScreenMusicPlayer(
                     }
                 } else {
                     Text(
-                        text = "NOW PLAYING",
+                        text = "Now playing",
                         color = Color.White.copy(0.65f),
                         fontSize = 12.sp,
                         fontWeight = FontWeight.SemiBold,
-                        letterSpacing = 1.sp
+                        letterSpacing = 0.5.sp
                     )
                 }
 
@@ -3172,9 +3176,10 @@ fun FullScreenMusicPlayer(
                         Box(
                             modifier = Modifier
                                 .align(Alignment.TopEnd)
-                                .offset(x = 10.dp, y = (-6).dp)
+                                .offset(x = 4.dp, y = (-4).dp)
                                 .graphicsLayer {
-                                    transformOrigin = TransformOrigin(0.8f, 0.1f)
+                                    // Pivot at the center of the round base (top of the arm column)
+                                    transformOrigin = TransformOrigin(0.5f, 0.08f)
                                     rotationZ = tonearmAngle
                                 }
                         ) {
@@ -3853,75 +3858,88 @@ fun FullScreenMusicPlayer(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 // Speed Capsule Pill
-                Surface(
-                    onClick = onOpenSpeed,
-                    shape = RoundedCornerShape(12.dp),
-                    color = if (playbackSpeed != 1.0f) c.accentBlue.copy(alpha = 0.2f) else Color.White.copy(alpha = 0.08f),
-                    border = BorderStroke(1.dp, if (playbackSpeed != 1.0f) c.accentBlue.copy(alpha = 0.5f) else Color.White.copy(alpha = 0.12f))
-                ) {
-                    Row(
-                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
-                        verticalAlignment = Alignment.CenterVertically
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    Surface(
+                        onClick = onOpenSpeed,
+                        shape = RoundedCornerShape(12.dp),
+                        color = if (playbackSpeed != 1.0f) c.accentBlue.copy(alpha = 0.2f) else Color.White.copy(alpha = 0.08f),
+                        border = BorderStroke(1.dp, if (playbackSpeed != 1.0f) c.accentBlue.copy(alpha = 0.5f) else Color.White.copy(alpha = 0.12f))
                     ) {
-                        Icon(
-                            Icons.Rounded.Speed,
-                            contentDescription = null,
-                            tint = if (playbackSpeed != 1.0f) c.accentBlue else Color.White.copy(0.7f),
-                            modifier = Modifier.size(15.dp)
-                        )
-                        Spacer(Modifier.width(4.dp))
-                        Text(
-                            "${playbackSpeed}x",
-                            color = if (playbackSpeed != 1.0f) c.accentBlue else Color.White.copy(0.85f),
-                            fontSize = 12.sp,
-                            fontWeight = FontWeight.Bold
-                        )
-                    }
-                }
-
-                // Sleep Timer Button
-                IconButton(onClick = onOpenSleepTimer) {
-                    Box(contentAlignment = Alignment.Center) {
-                        Icon(
-                            Icons.Rounded.Bedtime,
-                            contentDescription = "Sleep Timer",
-                            tint = if (sleepTimerSecondsRemaining > 0) c.accentBlue else Color.White.copy(0.7f)
-                        )
-                        if (sleepTimerSecondsRemaining > 0) {
-                            Box(
-                                modifier = Modifier
-                                    .size(8.dp)
-                                    .align(Alignment.TopEnd)
-                                    .clip(CircleShape)
-                                    .background(c.accentBlue)
+                        Row(
+                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Icon(
+                                Icons.Rounded.Speed,
+                                contentDescription = null,
+                                tint = if (playbackSpeed != 1.0f) c.accentBlue else Color.White.copy(0.7f),
+                                modifier = Modifier.size(15.dp)
+                            )
+                            Spacer(Modifier.width(4.dp))
+                            Text(
+                                "${playbackSpeed}x",
+                                color = if (playbackSpeed != 1.0f) c.accentBlue else Color.White.copy(0.85f),
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.Bold
                             )
                         }
                     }
+                    Spacer(Modifier.height(4.dp))
+                    Text("Speed", color = Color.White.copy(0.5f), fontSize = 10.sp)
+                }
+
+                // Sleep Timer Button
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    IconButton(onClick = onOpenSleepTimer) {
+                        Box(contentAlignment = Alignment.Center) {
+                            Icon(
+                                Icons.Rounded.Bedtime,
+                                contentDescription = "Sleep Timer",
+                                tint = if (sleepTimerSecondsRemaining > 0) c.accentBlue else Color.White.copy(0.7f)
+                            )
+                            if (sleepTimerSecondsRemaining > 0) {
+                                Box(
+                                    modifier = Modifier
+                                        .size(8.dp)
+                                        .align(Alignment.TopEnd)
+                                        .clip(CircleShape)
+                                        .background(c.accentBlue)
+                                )
+                            }
+                        }
+                    }
+                    Text("Sleep", color = Color.White.copy(0.5f), fontSize = 10.sp)
                 }
 
                 // Up Next Queue Button
-                IconButton(onClick = onOpenQueue) {
-                    Icon(
-                        Icons.AutoMirrored.Rounded.QueueMusic,
-                        contentDescription = "Queue",
-                        tint = Color.White.copy(0.85f)
-                    )
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    IconButton(onClick = onOpenQueue) {
+                        Icon(
+                            Icons.AutoMirrored.Rounded.QueueMusic,
+                            contentDescription = "Queue",
+                            tint = Color.White.copy(0.85f)
+                        )
+                    }
+                    Text("Queue", color = Color.White.copy(0.5f), fontSize = 10.sp)
                 }
 
                 // Share Track Button
-                IconButton(onClick = {
-                    val sendIntent = Intent().apply {
-                        action = Intent.ACTION_SEND
-                        putExtra(Intent.EXTRA_TEXT, "Listening to \"${song.title}\" by ${song.artist} on YMedia Player! 🎵")
-                        type = "text/plain"
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    IconButton(onClick = {
+                        val sendIntent = Intent().apply {
+                            action = Intent.ACTION_SEND
+                            putExtra(Intent.EXTRA_TEXT, "Listening to \"${song.title}\" by ${song.artist} on YMedia Player! 🎵")
+                            type = "text/plain"
+                        }
+                        context.startActivity(Intent.createChooser(sendIntent, "Share Track"))
+                    }) {
+                        Icon(
+                            Icons.Rounded.Share,
+                            contentDescription = "Share",
+                            tint = Color.White.copy(0.75f)
+                        )
                     }
-                    context.startActivity(Intent.createChooser(sendIntent, "Share Track"))
-                }) {
-                    Icon(
-                        Icons.Rounded.Share,
-                        contentDescription = "Share",
-                        tint = Color.White.copy(0.75f)
-                    )
+                    Text("Share", color = Color.White.copy(0.5f), fontSize = 10.sp)
                 }
             }
 

@@ -85,8 +85,13 @@ class MusicRepository(private val context: Context) {
                 val id = cursor.getLong(idColumn)
                 val rawTitle = if (titleColumn >= 0) cursor.getString(titleColumn) else null
                 val rawDisplayName = if (displayNameColumn >= 0) cursor.getString(displayNameColumn) else null
+                // Sanitize: if title is mostly garbage characters (?, *, #, etc.), use filename instead
+                val cleanTitle = rawTitle?.let { t ->
+                    val printableCount = t.count { it.isLetterOrDigit() || it == ' ' || it in "'-_.," }
+                    if (t.isBlank() || (t.length > 2 && printableCount.toFloat() / t.length < 0.4f)) null else t
+                }
                 val title = when {
-                    !rawTitle.isNullOrBlank() -> rawTitle
+                    !cleanTitle.isNullOrBlank() -> cleanTitle
                     !rawDisplayName.isNullOrBlank() -> rawDisplayName.substringBeforeLast(".")
                     else -> "Unknown Track"
                 }
