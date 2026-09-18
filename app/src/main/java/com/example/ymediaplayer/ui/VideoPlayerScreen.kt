@@ -401,63 +401,59 @@ private const val AGSL_SUPER_AI_ENHANCE_SHADER = """
             return c;
         }
 
-        const float rFine = 1.35;
-        const float dFine = 0.9546;
-        const float rCoarse = 2.70;
+        // Tightly focused micro-sampling kernel for natural clarity (no halos/pixelation)
+        const float r = 1.15;
+        const float d = 0.813; // 1.15 * 0.7071
 
-        half4 upF    = image.eval(fragCoord + float2(0.0, -rFine));
-        half4 downF  = image.eval(fragCoord + float2(0.0, rFine));
-        half4 leftF  = image.eval(fragCoord + float2(-rFine, 0.0));
-        half4 rightF = image.eval(fragCoord + float2(rFine, 0.0));
-        half4 ulF    = image.eval(fragCoord + float2(-dFine, -dFine));
-        half4 urF    = image.eval(fragCoord + float2(dFine, -dFine));
-        half4 dlF    = image.eval(fragCoord + float2(-dFine, dFine));
-        half4 drF    = image.eval(fragCoord + float2(dFine, dFine));
+        half4 up    = image.eval(fragCoord + float2(0.0, -r));
+        half4 down  = image.eval(fragCoord + float2(0.0, r));
+        half4 left  = image.eval(fragCoord + float2(-r, 0.0));
+        half4 right = image.eval(fragCoord + float2(r, 0.0));
 
-        half4 upC    = image.eval(fragCoord + float2(0.0, -rCoarse));
-        half4 downC  = image.eval(fragCoord + float2(0.0, rCoarse));
-        half4 leftC  = image.eval(fragCoord + float2(-rCoarse, 0.0));
-        half4 rightC = image.eval(fragCoord + float2(rCoarse, 0.0));
+        half4 ul    = image.eval(fragCoord + float2(-d, -d));
+        half4 ur    = image.eval(fragCoord + float2(d, -d));
+        half4 dl    = image.eval(fragCoord + float2(-d, d));
+        half4 dr    = image.eval(fragCoord + float2(d, d));
 
         const half3 lumaW = half3(0.2126, 0.7152, 0.0722);
         half cLuma = dot(c.rgb, lumaW);
 
-        // Multi-frequency luma integration
-        half fineLuma = (dot(upF.rgb + downF.rgb + leftF.rgb + rightF.rgb, lumaW) +
-                        dot(ulF.rgb + urF.rgb + dlF.rgb + drF.rgb, lumaW)) * 0.125;
-        half coarseLuma = dot(upC.rgb + downC.rgb + leftC.rgb + rightC.rgb, lumaW) * 0.25;
+        half cardLuma = dot(up.rgb + down.rgb + left.rgb + right.rgb, lumaW);
+        half diagLuma = dot(ul.rgb + ur.rgb + dl.rgb + dr.rgb, lumaW);
+        half avgLuma  = (cardLuma + diagLuma * 0.7071) / (4.0 + 2.8284);
 
-        half microDiff = cLuma - fineLuma;
-        half macroDiff = fineLuma - coarseLuma;
+        half lumaDiff = cLuma - avgLuma;
+        half absDiff  = abs(lumaDiff);
 
-        // Noise coring: avoids amplifying camera sensor noise or compression grain
-        half absMicro = abs(microDiff);
-        half cleanMicro = sign(microDiff) * max(0.0, absMicro - 0.012) * 1.012;
+        // Intelligent Bilateral Texture Core:
+        // Ignore sensor/compression noise (< 0.012) and damp harsh contrast boundaries (> 0.08) to eliminate ringing
+        half noiseGated = max(0.0, absDiff - 0.012);
+        half boundaryDamping = clamp(1.0 - (absDiff - 0.06) * 10.0, 0.2, 1.0);
+        half cleanBoost = sign(lumaDiff) * noiseGated * boundaryDamping * 0.38 * aiStrength;
+        half detailDelta = clamp(cleanBoost, -0.055, 0.055);
 
-        // Adaptive edge and texture synthesis with anti-halo damping
-        half detailBoost = clamp(cleanMicro * 3.0 + macroDiff * 1.6, -0.30, 0.30) * aiStrength;
-        half3 rgbSharp = c.rgb + half3(detailBoost);
+        half3 rgbEnhanced = c.rgb + half3(detailDelta);
 
-        // Dynamic Shadow Lift: lifts dark regions so shadows NEVER get crushed
-        half shadowFactor = max(0.0, 1.0 - cLuma);
-        half shadowLift = 0.08 * (shadowFactor * shadowFactor) * aiStrength;
-        rgbSharp += half3(shadowLift);
+        // Calibrated Mid-Shadow Clarification (Never dark, keeps deep blacks rich and natural)
+        // Illuminates shadow details in 0.05..0.60 luma zone without raising true 0.0 black floor
+        half shadowFactor = smoothstep(0.01, 0.22, cLuma) * smoothstep(0.75, 0.35, cLuma);
+        half shadowLift   = 0.045 * shadowFactor * aiStrength;
+        rgbEnhanced += half3(shadowLift);
 
-        // Micro-contrast expansion (sigmoid punch for depth)
-        half3 centered = rgbSharp - half3(0.5);
-        rgbSharp = centered * (1.0 + 0.08 * aiStrength) + half3(0.5);
+        // Gentle 3D Cinema Micro-Contrast
+        rgbEnhanced = (rgbEnhanced - half3(0.5)) * (1.0 + 0.035 * aiStrength) + half3(0.5);
 
-        // Skin-Tone Preserved Smart Vibrance
-        half r = rgbSharp.r;
-        half g = rgbSharp.g;
-        half b = rgbSharp.b;
-        bool isSkin = (r > g) && (g > b) && ((r - b) > 0.08) && ((r - g) < 0.35) && (cLuma > 0.15 && cLuma < 0.85);
+        // Skin-Tone Protected Smart Vibrance
+        half rC = rgbEnhanced.r;
+        half gC = rgbEnhanced.g;
+        half bC = rgbEnhanced.b;
+        bool isSkin = (rC > gC) && (gC > bC) && ((rC - bC) > 0.06) && ((rC - gC) < 0.32) && (cLuma > 0.15 && cLuma < 0.85);
 
-        half vibranceFactor = isSkin ? (1.0 + 0.04 * aiStrength) : (1.0 + 0.18 * aiStrength);
-        half newLuma = dot(rgbSharp, lumaW);
-        rgbSharp = mix(half3(newLuma), rgbSharp, vibranceFactor);
+        half vibranceFactor = isSkin ? (1.0 + 0.02 * aiStrength) : (1.0 + 0.10 * aiStrength);
+        half enhancedLuma   = dot(rgbEnhanced, lumaW);
+        rgbEnhanced = mix(half3(enhancedLuma), rgbEnhanced, vibranceFactor);
 
-        return half4(clamp(rgbSharp, half3(0.0), half3(1.0)), c.a);
+        return half4(clamp(rgbEnhanced, half3(0.0), half3(1.0)), c.a);
     }
 """
 
@@ -522,11 +518,11 @@ fun createVideoRenderEffect(
             } catch (_: Throwable) {}
         }
 
-        // Fallback for API 31-32: Calibrated Super AI Color Matrix (never dark: brightens shadows + rich vibrance)
+        // Fallback for API 31-32: Calibrated Super AI Color Matrix (never dark: brightens mid-shadows + gentle vibrance)
         val aiCm = buildVideoColorMatrix(
-            contrast = 1.08f,
-            saturation = 1.18f,
-            brightness = 0.06f,
+            contrast = 1.035f,
+            saturation = 1.10f,
+            brightness = 0.035f,
             warmth = warmth
         )
         return RenderEffect.createColorFilterEffect(ColorMatrixColorFilter(aiCm))
@@ -1177,14 +1173,18 @@ fun VideoPlayerScreen(
         appPreferences.setSuperAiEnhanceEnabled(newState)
 
         if (newState) {
+            if (isNightMode) {
+                isNightMode = false
+                appPreferences.setNightMode(false)
+            }
             preAiBrightness = brightnessPct
             if (!isAutoBrightness) {
                 hasUserAdjustedBrightness = true
-                brightnessPct = (brightnessPct + 0.15f).coerceAtMost(1.0f)
+                brightnessPct = (brightnessPct + 0.10f).coerceAtMost(1.0f)
             }
             showQuickHUD(
                 "Super AI Enhancement: ON",
-                "Neural Clarity • Dynamic Shadow Lift • Smart Vibrance",
+                "Cinema Clarity • Shadow Clarification • Smart Vibrance",
                 Icons.Rounded.AutoAwesome
             )
         } else {
@@ -3852,64 +3852,100 @@ fun VideoPlayerScreen(
                                 )
                             }
 
-                            // 2. Video Picture Profile (Single-Tap to cycle: Standard -> Cinema Warm -> Vivid Punch -> AMOLED Black)
+                            // 2. Video Picture Profile (Disabled when Super AI is active)
                             PlayerIconButton(
-                                name = "Picture: ${videoColorProfile.displayName}",
-                                description = videoColorProfile.description,
+                                name = if (isSuperAiEnhance) "Picture: Managed by Super AI" else "Picture: ${videoColorProfile.displayName}",
+                                description = if (isSuperAiEnhance) "Disabled while Super AI Video Enhancement is active" else videoColorProfile.description,
                                 onClick = {
                                     view.performHaptic(HapticType.LIGHT)
-                                    cycleVideoColorProfile()
+                                    if (isSuperAiEnhance) {
+                                        showQuickHUD(
+                                            "Managed by Super AI",
+                                            "Disable Super AI to adjust manual picture profiles",
+                                            Icons.Rounded.AutoAwesome
+                                        )
+                                    } else {
+                                        cycleVideoColorProfile()
+                                    }
                                 },
                                 icon = videoColorProfile.icon,
                                 modifier = Modifier
                                     .size(42.dp)
                                     .clip(CircleShape)
                                     .background(
-                                        if (videoColorProfile != VideoColorProfile.NORMAL) Brush.radialGradient(listOf(primaryAccent.copy(alpha = 0.35f), Color(0xFF11121C)))
-                                        else Brush.verticalGradient(listOf(Color(0xFF252636), Color(0xFF11121C)))
+                                        when {
+                                            isSuperAiEnhance -> SolidColor(Color.Black.copy(alpha = 0.35f))
+                                            videoColorProfile != VideoColorProfile.NORMAL -> Brush.radialGradient(listOf(primaryAccent.copy(alpha = 0.35f), Color(0xFF11121C)))
+                                            else -> Brush.verticalGradient(listOf(Color(0xFF252636), Color(0xFF11121C)))
+                                        }
                                     )
                                     .border(
                                         1.2.dp,
-                                        if (videoColorProfile != VideoColorProfile.NORMAL) BorderStroke(1.2.dp, primaryAccent).brush
-                                        else Brush.verticalGradient(listOf(primaryAccent.copy(0.6f), primaryAccent.copy(0.2f))),
+                                        when {
+                                            isSuperAiEnhance -> SolidColor(Color.White.copy(alpha = 0.14f))
+                                            videoColorProfile != VideoColorProfile.NORMAL -> BorderStroke(1.2.dp, primaryAccent).brush
+                                            else -> Brush.verticalGradient(listOf(primaryAccent.copy(0.6f), primaryAccent.copy(0.2f)))
+                                        },
                                         CircleShape
                                     )
                             ) {
                                 Icon(
                                     imageVector = videoColorProfile.icon,
                                     contentDescription = videoColorProfile.displayName,
-                                    tint = if (videoColorProfile != VideoColorProfile.NORMAL) primaryAccent else Color.White,
+                                    tint = when {
+                                        isSuperAiEnhance -> Color.White.copy(alpha = 0.35f)
+                                        videoColorProfile != VideoColorProfile.NORMAL -> primaryAccent
+                                        else -> Color.White
+                                    },
                                     modifier = Modifier.size(22.dp)
                                 )
                             }
 
-                            // 3. Video Sharpness Level (Swapped to position 3, Single-Tap to cycle: Off -> Subtle -> Enhanced -> Ultra)
+                            // 3. Video Sharpness Level (Disabled when Super AI is active)
                             PlayerIconButton(
-                                name = "Sharpness: ${videoSharpnessLevel.displayName}",
-                                description = videoSharpnessLevel.description,
+                                name = if (isSuperAiEnhance) "Sharpness: Managed by Super AI" else "Sharpness: ${videoSharpnessLevel.displayName}",
+                                description = if (isSuperAiEnhance) "Disabled while Super AI Video Enhancement is active" else videoSharpnessLevel.description,
                                 onClick = {
                                     view.performHaptic(HapticType.LIGHT)
-                                    cycleVideoSharpness()
+                                    if (isSuperAiEnhance) {
+                                        showQuickHUD(
+                                            "Managed by Super AI",
+                                            "Disable Super AI to adjust manual sharpness level",
+                                            Icons.Rounded.AutoAwesome
+                                        )
+                                    } else {
+                                        cycleVideoSharpness()
+                                    }
                                 },
                                 icon = videoSharpnessLevel.icon,
                                 modifier = Modifier
                                     .size(42.dp)
                                     .clip(CircleShape)
                                     .background(
-                                        if (videoSharpnessLevel != VideoSharpnessLevel.OFF) Brush.radialGradient(listOf(primaryAccent.copy(alpha = 0.35f), Color(0xFF11121C)))
-                                        else Brush.verticalGradient(listOf(Color(0xFF252636), Color(0xFF11121C)))
+                                        when {
+                                            isSuperAiEnhance -> SolidColor(Color.Black.copy(alpha = 0.35f))
+                                            videoSharpnessLevel != VideoSharpnessLevel.OFF -> Brush.radialGradient(listOf(primaryAccent.copy(alpha = 0.35f), Color(0xFF11121C)))
+                                            else -> Brush.verticalGradient(listOf(Color(0xFF252636), Color(0xFF11121C)))
+                                        }
                                     )
                                     .border(
                                         1.2.dp,
-                                        if (videoSharpnessLevel != VideoSharpnessLevel.OFF) BorderStroke(1.2.dp, primaryAccent).brush
-                                        else Brush.verticalGradient(listOf(primaryAccent.copy(0.6f), primaryAccent.copy(0.2f))),
+                                        when {
+                                            isSuperAiEnhance -> SolidColor(Color.White.copy(alpha = 0.14f))
+                                            videoSharpnessLevel != VideoSharpnessLevel.OFF -> BorderStroke(1.2.dp, primaryAccent).brush
+                                            else -> Brush.verticalGradient(listOf(primaryAccent.copy(0.6f), primaryAccent.copy(0.2f)))
+                                        },
                                         CircleShape
                                     )
                             ) {
                                 Icon(
                                     imageVector = videoSharpnessLevel.icon,
                                     contentDescription = videoSharpnessLevel.displayName,
-                                    tint = if (videoSharpnessLevel != VideoSharpnessLevel.OFF) primaryAccent else Color.White,
+                                    tint = when {
+                                        isSuperAiEnhance -> Color.White.copy(alpha = 0.35f)
+                                        videoSharpnessLevel != VideoSharpnessLevel.OFF -> primaryAccent
+                                        else -> Color.White
+                                    },
                                     modifier = Modifier.size(22.dp)
                                 )
                             }
