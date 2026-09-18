@@ -33,6 +33,14 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+        <activity
+            android:name=".ui.VideoPlayerActivity"
+            android:exported="false"
+            android:supportsPictureInPicture="true"
+            android:taskAffinity=".VideoPlayer"
+            android:launchMode="singleTask"
+            android:configChanges="orientation|screenSize|smallestScreenSize|screenLayout|keyboard|keyboardHidden|navigation">
+        </activity>
 
         <service
             android:name=".service.MusicService"
@@ -44,6 +52,7 @@
                 <action android:name="android.media.browse.MediaBrowserService" />
             </intent-filter>
         </service>
+
 
         <provider
             android:name="androidx.core.content.FileProvider"

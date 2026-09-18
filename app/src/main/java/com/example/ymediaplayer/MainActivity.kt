@@ -67,6 +67,7 @@ class MainActivity : ComponentActivity() {
     companion object {
         const val EXTRA_OPEN_VIDEO_URL = "EXTRA_OPEN_VIDEO_URL"
         val openMusicTrigger = mutableStateOf(false)
+        val openSettingsTrigger = mutableStateOf(false)
         val openVideoUrl = mutableStateOf<String?>(null)
         var onUserLeaveHintListener: (() -> Unit)? = null
     }
@@ -79,7 +80,8 @@ class MainActivity : ComponentActivity() {
         get() = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             arrayOf(
                 Manifest.permission.READ_MEDIA_VIDEO,
-                Manifest.permission.READ_MEDIA_AUDIO
+                Manifest.permission.READ_MEDIA_AUDIO,
+                Manifest.permission.POST_NOTIFICATIONS
             )
         } else {
             arrayOf(Manifest.permission.READ_EXTERNAL_STORAGE)
@@ -143,6 +145,9 @@ class MainActivity : ComponentActivity() {
         if (intent.getBooleanExtra(com.example.ymediaplayer.service.MusicService.EXTRA_OPEN_MUSIC_PLAYER, false)) {
             openMusicTrigger.value = true
         }
+        if (intent.getBooleanExtra("OPEN_SETTINGS", false)) {
+            openSettingsTrigger.value = true
+        }
         val videoUrlExtra = intent.getStringExtra(EXTRA_OPEN_VIDEO_URL)
         if (!videoUrlExtra.isNullOrEmpty()) {
             openVideoUrl.value = videoUrlExtra
@@ -154,6 +159,9 @@ class MainActivity : ComponentActivity() {
         
         if (intent?.getBooleanExtra(com.example.ymediaplayer.service.MusicService.EXTRA_OPEN_MUSIC_PLAYER, false) == true) {
             openMusicTrigger.value = true
+        }
+        if (intent?.getBooleanExtra("OPEN_SETTINGS", false) == true) {
+            openSettingsTrigger.value = true
         }
         val videoUrlExtra = intent?.getStringExtra(EXTRA_OPEN_VIDEO_URL)
         if (!videoUrlExtra.isNullOrEmpty()) {
@@ -237,26 +245,24 @@ fun MainApp(
     LaunchedEffect(MainActivity.openVideoUrl.value) {
         val target = MainActivity.openVideoUrl.value
         if (!target.isNullOrEmpty()) {
-            val encoded = URLEncoder.encode(target, "UTF-8")
-            val currentTop = backStack.lastOrNull()
-            if (currentTop is VideoPlayer && currentTop.videoUri == encoded) {
-                // Already viewing this video
-            } else {
-                com.example.ymediaplayer.data.VideoRepository.getVideoDimensions(target)?.let { (w, h) ->
-                    VideoPlaybackManager.setInitialDimensions(w, h)
-                }
-                while (backStack.size > 1) {
-                    backStack.removeLastOrNull()
-                }
-                backStack.add(VideoPlayer(encoded))
+            com.example.ymediaplayer.data.VideoRepository.getVideoDimensions(target)?.let { (w, h) ->
+                VideoPlaybackManager.setInitialDimensions(w, h)
             }
+            val intent = Intent(context, com.example.ymediaplayer.ui.VideoPlayerActivity::class.java).apply {
+                flags = Intent.FLAG_ACTIVITY_SINGLE_TOP
+                putExtra(com.example.ymediaplayer.ui.VideoPlayerActivity.EXTRA_VIDEO_URL, target)
+            }
+            context.startActivity(intent)
             MainActivity.openVideoUrl.value = null
         }
     }
 
-    val currentTop = backStack.lastOrNull()
-    val isMiniPlayerActive by VideoPlaybackManager.isMiniPlayerActive
-    val currentVideoUrl by VideoPlaybackManager.currentVideoUrl
+    LaunchedEffect(MainActivity.openSettingsTrigger.value) {
+        if (MainActivity.openSettingsTrigger.value) {
+            backStack.add(com.example.ymediaplayer.Settings)
+            MainActivity.openSettingsTrigger.value = false
+        }
+    }
 
     Box(modifier = Modifier.fillMaxSize()) {
         NavDisplay(
@@ -301,12 +307,14 @@ fun MainApp(
                                 backStack.add(FolderDetail(id, name))
                             },
                             onVideoClick = { uri -> 
-                                VideoPlaybackManager.expandFromMiniPlayer()
                                 com.example.ymediaplayer.data.VideoRepository.getVideoDimensions(uri)?.let { (w, h) ->
                                     VideoPlaybackManager.setInitialDimensions(w, h)
                                 }
-                                val encodedUri = URLEncoder.encode(uri, "UTF-8")
-                                backStack.add(VideoPlayer(encodedUri)) 
+                                val intent = Intent(context, com.example.ymediaplayer.ui.VideoPlayerActivity::class.java).apply {
+                                    flags = Intent.FLAG_ACTIVITY_SINGLE_TOP
+                                    putExtra(com.example.ymediaplayer.ui.VideoPlayerActivity.EXTRA_VIDEO_URL, uri)
+                                }
+                                context.startActivity(intent)
                             },
                             onOpenSettings = {
                                 backStack.add(com.example.ymediaplayer.Settings)
@@ -330,7 +338,7 @@ fun MainApp(
                                     android.app.PictureInPictureParams.Builder()
                                         .setAutoEnterEnabled(false)
                                         .build()
-                                )
+                                    )
                             } catch (_: Exception) {}
                         }
                     }
@@ -339,17 +347,19 @@ fun MainApp(
                         folderName = navKey.folderName,
                         onBack = { if (backStack.size > 1) backStack.removeLastOrNull() },
                         onVideoClick = { uri ->
-                            VideoPlaybackManager.expandFromMiniPlayer()
                             com.example.ymediaplayer.data.VideoRepository.getVideoDimensions(uri)?.let { (w, h) ->
                                 VideoPlaybackManager.setInitialDimensions(w, h)
                             }
-                            val encodedUri = URLEncoder.encode(uri, "UTF-8")
-                            backStack.add(VideoPlayer(encodedUri))
+                            val intent = Intent(context, com.example.ymediaplayer.ui.VideoPlayerActivity::class.java).apply {
+                                flags = Intent.FLAG_ACTIVITY_SINGLE_TOP
+                                putExtra(com.example.ymediaplayer.ui.VideoPlayerActivity.EXTRA_VIDEO_URL, uri)
+                            }
+                            context.startActivity(intent)
                         }
                     )
                 }
                 entry<VideoPlayer> { navKey ->
-                    val decodedUri = URLDecoder.decode(navKey.videoUri, "UTF-8")
+                    val decodedUri = try { URLDecoder.decode(navKey.videoUri, "UTF-8") } catch (_: Exception) { navKey.videoUri }
                     Surface(
                         modifier = Modifier.fillMaxSize(),
                         color = Color.Black
@@ -372,7 +382,7 @@ fun MainApp(
                                     android.app.PictureInPictureParams.Builder()
                                         .setAutoEnterEnabled(false)
                                         .build()
-                                )
+                                    )
                             } catch (_: Exception) {}
                         }
                     }
@@ -387,39 +397,6 @@ fun MainApp(
                 }
             }
         )
-
-        // ─── Floating YouTube-Style In-App Picture-in-Picture Miniplayer ───
-        androidx.compose.animation.AnimatedVisibility(
-            visible = isMiniPlayerActive && currentTop !is VideoPlayer && !currentVideoUrl.isNullOrEmpty(),
-            enter = androidx.compose.animation.scaleIn(initialScale = 0.85f, animationSpec = androidx.compose.animation.core.tween(180)) + androidx.compose.animation.fadeIn(animationSpec = androidx.compose.animation.core.tween(150)),
-            exit = androidx.compose.animation.scaleOut(targetScale = 0.85f, animationSpec = androidx.compose.animation.core.tween(150)) + androidx.compose.animation.fadeOut(animationSpec = androidx.compose.animation.core.tween(120)),
-            modifier = Modifier.align(Alignment.BottomEnd)
-        ) {
-            LaunchedEffect(isMiniPlayerActive, currentVideoUrl) {
-                MainActivity.onUserLeaveHintListener = {
-                    val url = currentVideoUrl
-                    if (!url.isNullOrEmpty()) {
-                        VideoPlaybackManager.expandFromMiniPlayer()
-                        val encoded = URLEncoder.encode(url, "UTF-8")
-                        backStack.add(VideoPlayer(encoded))
-                    }
-                }
-            }
-
-            InAppMiniPlayer(
-                onExpand = {
-                    val url = currentVideoUrl
-                    if (!url.isNullOrEmpty()) {
-                        VideoPlaybackManager.expandFromMiniPlayer()
-                        val encoded = URLEncoder.encode(url, "UTF-8")
-                        backStack.add(VideoPlayer(encoded))
-                    }
-                },
-                onClose = {
-                    VideoPlaybackManager.closeMiniPlayer()
-                }
-            )
-        }
 
         // ─── In-App Auto-Updater Dialog ──────────────────────────────────────
         val availableUpdate = com.example.ymediaplayer.update.UpdateManager.availableUpdate.value

@@ -226,6 +226,17 @@ fun FolderListScreen(
         }
         allFolders = repository.getFoldersWithVideos()
         isLoading = false
+
+        // Background preload music library into memory cache for instant, zero-jitter Music tab switching
+        kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.IO).launch {
+            try {
+                if (hasAudioPermission && com.example.ymediaplayer.data.MusicRepository.getCachedMusic() == null) {
+                    val mRepo = com.example.ymediaplayer.data.MusicRepository(context)
+                    val songs = mRepo.getMusicFiles()
+                    com.example.ymediaplayer.service.MusicService.currentPlaylist = songs
+                }
+            } catch (_: Exception) {}
+        }
     }
 
     LaunchedEffect(isSearching) {
@@ -421,7 +432,7 @@ fun FolderListScreen(
                                     .border(if (c.isMatte) 1.dp else 0.5.dp, c.glassBorder)
                             ) {
                             Row(
-                                modifier = Modifier.fillMaxWidth().statusBarsPadding().padding(horizontal = 16.dp, vertical = 10.dp),
+                                modifier = Modifier.fillMaxWidth().statusBarsPadding().padding(horizontal = 16.dp, vertical = 6.dp),
                                 verticalAlignment = Alignment.CenterVertically,
                                 horizontalArrangement = Arrangement.SpaceBetween
                             ) {
@@ -475,6 +486,8 @@ fun FolderListScreen(
                                         Text(currentTab, fontSize = 28.sp, fontWeight = FontWeight.Bold, color = c.textPrimary)
                                         if (currentTab == "Video" && totalVideoCount > 0) {
                                             Text("$totalVideoCount videos · ${formatSize(totalSize)}", fontSize = 12.sp, color = c.textSecondary)
+                                        } else if (currentTab == "Music" && com.example.ymediaplayer.service.MusicService.totalTracksCount.intValue > 0) {
+                                            Text("${com.example.ymediaplayer.service.MusicService.totalTracksCount.intValue} tracks · ${formatSize(com.example.ymediaplayer.service.MusicService.totalTracksSize.longValue)}", fontSize = 12.sp, color = c.textSecondary)
                                         }
                                     }
                                     Row(
@@ -613,15 +626,27 @@ fun FolderListScreen(
             },
             modifier = modifier
         ) { paddingValues ->
-            Crossfade(
+            AnimatedContent(
                 targetState = currentTab,
-                animationSpec = snap(),
-                label = "TabCrossfade",
+                transitionSpec = {
+                    val enterAnim = if (targetState == "Music") {
+                        slideInHorizontally(animationSpec = tween(220, easing = FastOutSlowInEasing), initialOffsetX = { it / 6 }) + fadeIn(tween(200))
+                    } else {
+                        slideInHorizontally(animationSpec = tween(220, easing = FastOutSlowInEasing), initialOffsetX = { -it / 6 }) + fadeIn(tween(200))
+                    }
+                    val exitAnim = if (targetState == "Music") {
+                        slideOutHorizontally(animationSpec = tween(180, easing = FastOutSlowInEasing), targetOffsetX = { -it / 6 }) + fadeOut(tween(160))
+                    } else {
+                        slideOutHorizontally(animationSpec = tween(180, easing = FastOutSlowInEasing), targetOffsetX = { it / 6 }) + fadeOut(tween(160))
+                    }
+                    (enterAnim.togetherWith(exitAnim)).using(SizeTransform(clip = false))
+                },
+                label = "TabAnimatedContent",
                 modifier = Modifier.fillMaxSize()
             ) { tab ->
                 if (tab == "Music") {
                     MusicScreen(
-                        modifier = Modifier.fillMaxSize().padding(top = paddingValues.calculateTopPadding()),
+                        modifier = Modifier.fillMaxSize().padding(top = if (musicPlayerExpanded) 0.dp else paddingValues.calculateTopPadding()),
                         onFullScreenChanged = { musicPlayerExpanded = it },
                         hasMediaPermission = hasAudioPermission,
                         onRequestPermission = onRequestPermissions
@@ -972,7 +997,7 @@ fun FolderListScreen(
                             item {
                                 Column(modifier = Modifier.fillMaxWidth()) {
                                     Row(
-                                        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
+                                        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp),
                                         verticalAlignment = Alignment.CenterVertically,
                                         horizontalArrangement = Arrangement.SpaceBetween
                                     ) {
@@ -986,7 +1011,7 @@ fun FolderListScreen(
                                     LazyRow(
                                         contentPadding = PaddingValues(horizontal = 16.dp),
                                         horizontalArrangement = Arrangement.spacedBy(12.dp),
-                                        modifier = Modifier.padding(bottom = 8.dp)
+                                        modifier = Modifier.padding(bottom = 6.dp)
                                     ) {
                                         items(continueWatchingVideos, key = { "cw_${it.uri}" }) { video ->
                                             ContinueWatchingCard(
@@ -1012,7 +1037,7 @@ fun FolderListScreen(
                         if (recentlyAddedVideos.isNotEmpty() && !isSearching && activeChip == null) {
                             item {
                                 Row(
-                                    modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp),
+                                    modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp),
                                     verticalAlignment = Alignment.CenterVertically,
                                     horizontalArrangement = Arrangement.SpaceBetween
                                 ) {
@@ -1029,7 +1054,7 @@ fun FolderListScreen(
                                 LazyRow(
                                     contentPadding = PaddingValues(horizontal = 16.dp),
                                     horizontalArrangement = Arrangement.spacedBy(12.dp),
-                                    modifier = Modifier.padding(bottom = 18.dp)
+                                    modifier = Modifier.padding(bottom = 6.dp)
                                 ) {
                                     items(recentlyAddedVideos, key = { "recent_${it.id}" }) { video ->
                                         RecentlyAddedVideoCard(
@@ -1049,7 +1074,7 @@ fun FolderListScreen(
                         // Folders header
                         item {
                             Row(
-                                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
+                                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp),
                                 horizontalArrangement = Arrangement.SpaceBetween,
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
@@ -1403,7 +1428,7 @@ fun FolderListScreen(
                         .background(c.cardBgElevated)
                         .border(1.dp, c.glassBorder, CircleShape)
                 ) {
-                    Row(modifier = Modifier.padding(5.dp), horizontalArrangement = Arrangement.spacedBy(4.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Row(modifier = Modifier.padding(4.dp), horizontalArrangement = Arrangement.spacedBy(2.dp), verticalAlignment = Alignment.CenterVertically) {
                         val view = androidx.compose.ui.platform.LocalView.current
                         listOf("Video" to Icons.Rounded.Movie, "Music" to Icons.Rounded.MusicNote).forEach { (label, icon) ->
                             val selected = currentTab == label
@@ -1423,7 +1448,7 @@ fun FolderListScreen(
                                 label = "pillTextColor"
                             )
                             val pillElevation by animateDpAsState(
-                                targetValue = if (selected && !c.isMatte) 6.dp else 0.dp,
+                                targetValue = if (selected && !c.isMatte) 4.dp else 0.dp,
                                 animationSpec = tween(250),
                                 label = "pillElevation"
                             )
@@ -1445,11 +1470,11 @@ fun FolderListScreen(
                                         currentTab = label
                                         if (label != "Video") selectedVideoIds = emptySet() 
                                     }
-                                    .padding(horizontal = 20.dp, vertical = 12.dp)
+                                    .padding(horizontal = 15.dp, vertical = 9.dp)
                             ) {
-                                Icon(icon, contentDescription = label, tint = pillTextColor, modifier = Modifier.size(20.dp))
-                                Spacer(Modifier.width(6.dp))
-                                Text(label, color = pillTextColor, fontSize = 14.sp, fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium)
+                                Icon(icon, contentDescription = label, tint = pillTextColor, modifier = Modifier.size(18.dp))
+                                Spacer(Modifier.width(5.dp))
+                                Text(label, color = pillTextColor, fontSize = 13.5.sp, fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium)
                             }
                         }
                     }
@@ -2073,7 +2098,7 @@ fun FolderItem(
     Box(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = 16.dp, vertical = 2.5.dp)
+            .padding(horizontal = 16.dp, vertical = 2.dp)
             .then(if (c.isMatte) Modifier else Modifier.shadow(
                 elevation = 8.dp,
                 shape = RoundedCornerShape(cornerRadius),
@@ -2100,7 +2125,7 @@ fun FolderItem(
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 14.dp, vertical = 12.dp),
+                .padding(horizontal = 14.dp, vertical = 8.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
             // Folder icon / thumbnail

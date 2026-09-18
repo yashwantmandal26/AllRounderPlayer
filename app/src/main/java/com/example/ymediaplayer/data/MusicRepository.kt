@@ -36,6 +36,8 @@ class MusicRepository(private val context: Context) {
             memoryCachedMusic = null
             lastFetchTime = 0L
         }
+
+        fun getCachedMusic(): List<MusicItem>? = memoryCachedMusic
     }
 
     suspend fun getMusicFiles(forceRefresh: Boolean = false): List<MusicItem> = getAllMusic(forceRefresh)
@@ -43,7 +45,7 @@ class MusicRepository(private val context: Context) {
     suspend fun getAllMusic(forceRefresh: Boolean = false): List<MusicItem> = withContext(Dispatchers.IO) {
         val cached = memoryCachedMusic
         val now = System.currentTimeMillis()
-        if (!forceRefresh && cached != null && (now - lastFetchTime < 15_000L)) {
+        if (!forceRefresh && cached != null && (now - lastFetchTime < 300_000L)) {
             return@withContext cached
         }
 

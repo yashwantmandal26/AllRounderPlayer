@@ -11,6 +11,17 @@ import com.example.ymediaplayer.util.MediaStoreVideoFetcher
 import okio.Path.Companion.toPath
 
 class YMediaApplication : Application(), SingletonImageLoader.Factory {
+
+    companion object {
+        lateinit var instance: YMediaApplication
+            private set
+    }
+
+    override fun onCreate() {
+        super.onCreate()
+        instance = this
+    }
+
     override fun newImageLoader(context: PlatformContext): ImageLoader {
         return ImageLoader.Builder(context)
             .components {

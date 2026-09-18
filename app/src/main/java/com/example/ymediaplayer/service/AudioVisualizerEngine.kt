@@ -44,15 +44,40 @@ object AudioReactor {
     private var smoothedBass = 0f
     private var runningBassAverage = 0.05f
     private var lastBeatTimestamp = 0L
+    private var internalBassPulse = 0f
 
     // FFT scratch arrays (128-point real FFT)
     private const val FFT_SIZE = 128
     private val fftReal = FloatArray(FFT_SIZE)
     private val fftImag = FloatArray(FFT_SIZE)
+    private val magnitudes = FloatArray(FFT_SIZE / 2)
     private val window = FloatArray(FFT_SIZE) { i ->
         // Hann window
         (0.5 * (1.0 - cos(2.0 * Math.PI * i / (FFT_SIZE - 1)))).toFloat()
     }
+
+    private var lastUiPublishTimestamp = 0L
+    private const val UI_PUBLISH_INTERVAL_MS = 25L // ~40 fps target for silky-smooth visualizer without Compose UI thrashing
+
+    // Static singleton logarithmic frequency bins
+    private val BIN_MAP = arrayOf(
+        intArrayOf(1),
+        intArrayOf(2),
+        intArrayOf(3),
+        intArrayOf(4),
+        intArrayOf(5, 6),
+        intArrayOf(7, 8),
+        intArrayOf(9, 10),
+        intArrayOf(11, 13),
+        intArrayOf(14, 17),
+        intArrayOf(18, 22),
+        intArrayOf(23, 27),
+        intArrayOf(28, 33),
+        intArrayOf(34, 40),
+        intArrayOf(41, 48),
+        intArrayOf(49, 56),
+        intArrayOf(57, 63)
+    )
 
     fun reset() {
         _energy.floatValue = 0f
@@ -64,7 +89,9 @@ object AudioReactor {
         _waveformData.value = FloatArray(WAVEFORM_POINTS) { 0f }
         smoothedEnergy = 0f
         smoothedBass = 0f
+        internalBassPulse = 0f
         runningBassAverage = 0.05f
+        lastUiPublishTimestamp = 0L
     }
 
     /**
@@ -136,7 +163,6 @@ object AudioReactor {
         // Normalize energy (RMS)
         val rms = sqrt(sumSquares / monoCount).toFloat()
         smoothedEnergy = smoothedEnergy * 0.7f + (rms * 2.6f).coerceIn(0f, 1f) * 0.3f
-        _energy.floatValue = smoothedEnergy
 
         // Bass Energy & Kick Transient Detection
         val bassRms = sqrt(bassSum / monoCount).toFloat() * 3.5f
@@ -144,47 +170,26 @@ object AudioReactor {
 
         runningBassAverage = runningBassAverage * 0.94f + smoothedBass * 0.06f
         val now = System.currentTimeMillis()
-        var currentPulse = _bassPulse.floatValue * 0.86f // natural spring decay
+        var currentPulse = internalBassPulse * 0.86f // natural spring decay
 
         // Transient spike threshold for kick drum / heavy bass drop
         if (smoothedBass > runningBassAverage * 1.32f && smoothedBass > 0.12f && (now - lastBeatTimestamp) > 160L) {
             currentPulse = (smoothedBass * 1.5f).coerceIn(0.6f, 1.2f)
             lastBeatTimestamp = now
         }
-        _bassPulse.floatValue = currentPulse
+        internalBassPulse = currentPulse
 
         // Perform 128-point FFT
         computeFft(fftReal, fftImag, FFT_SIZE)
 
         // Map 64 FFT magnitudes into 16 logarithmic frequency bands
-        val magnitudes = FloatArray(FFT_SIZE / 2) { i ->
+        for (i in 0 until FFT_SIZE / 2) {
             val mag = sqrt(fftReal[i] * fftReal[i] + fftImag[i] * fftImag[i])
-            (mag * 3.8f).coerceIn(0f, 1f)
+            magnitudes[i] = (mag * 3.8f).coerceIn(0f, 1f)
         }
 
-        // Bin groupings: lower bins are single, higher bins are averaged
-        val newBands = FloatArray(NUM_BANDS)
-        val binMap = arrayOf(
-            intArrayOf(1),
-            intArrayOf(2),
-            intArrayOf(3),
-            intArrayOf(4),
-            intArrayOf(5, 6),
-            intArrayOf(7, 8),
-            intArrayOf(9, 10),
-            intArrayOf(11, 13),
-            intArrayOf(14, 17),
-            intArrayOf(18, 22),
-            intArrayOf(23, 27),
-            intArrayOf(28, 33),
-            intArrayOf(34, 40),
-            intArrayOf(41, 48),
-            intArrayOf(49, 56),
-            intArrayOf(57, 63)
-        )
-
         for (bandIdx in 0 until NUM_BANDS) {
-            val bins = binMap[bandIdx]
+            val bins = BIN_MAP[bandIdx]
             var sum = 0f
             for (b in bins) {
                 if (b < magnitudes.size) sum += magnitudes[b]
@@ -198,11 +203,16 @@ object AudioReactor {
             } else {
                 currentBands[bandIdx] = currentBands[bandIdx] * 0.82f + target * 0.18f
             }
-            newBands[bandIdx] = currentBands[bandIdx]
         }
 
-        _bands.value = newBands
-        _waveformData.value = newWave
+        // Throttle Compose State mutations to ~40fps to avoid flooding UI thread message queue
+        if (now - lastUiPublishTimestamp >= UI_PUBLISH_INTERVAL_MS) {
+            lastUiPublishTimestamp = now
+            _energy.floatValue = smoothedEnergy
+            _bassPulse.floatValue = currentPulse
+            _bands.value = currentBands.clone()
+            _waveformData.value = newWave
+        }
     }
 
     /**

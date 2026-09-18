@@ -113,6 +113,10 @@ class PreferencesAndResumeTest {
         appPreferences.setHwAccelerationEnabled(false)
         assertFalse(appPreferences.isHwAccelerationEnabled())
 
+        assertEquals("off", appPreferences.getMemcMode())
+        appPreferences.setMemcMode("high")
+        assertEquals("high", appPreferences.getMemcMode())
+
         assertTrue(appPreferences.isKeepScreenAwake())
         appPreferences.setKeepScreenAwake(false)
         assertFalse(appPreferences.isKeepScreenAwake())
@@ -154,6 +158,7 @@ class PreferencesAndResumeTest {
         appPreferences.setContinueWatchingLimit(5)
         appPreferences.setDoubleTapSeekSeconds(30)
         appPreferences.setResumeMode("START")
+        appPreferences.setMemcMode("medium")
 
         assertFalse(appPreferences.isShowContinueWatching())
         assertEquals(5, appPreferences.getContinueWatchingLimit())
@@ -166,6 +171,7 @@ class PreferencesAndResumeTest {
         assertEquals(20, appPreferences.getContinueWatchingLimit())
         assertEquals(10, appPreferences.getDoubleTapSeekSeconds())
         assertEquals("AUTO", appPreferences.getResumeMode())
+        assertEquals("off", appPreferences.getMemcMode())
     }
 
     @Test
@@ -187,21 +193,36 @@ class PreferencesAndResumeTest {
 
     @Test
     fun playlistSettings_defaultsAndResetRestoresDefaults() {
-        // AutoPlay default is false (by default OFF), RememberPlaylistQueue default is true
-        assertFalse(appPreferences.isAutoPlayNextEnabled())
+        // AutoPlay default is true (by default ON), RememberPlaylistQueue default is true
+        assertTrue(appPreferences.isAutoPlayNextEnabled())
         assertTrue(appPreferences.isRememberPlaylistQueue())
 
         // Can be toggled
-        appPreferences.setAutoPlayNextEnabled(true)
+        appPreferences.setAutoPlayNextEnabled(false)
         appPreferences.setRememberPlaylistQueue(false)
-        assertTrue(appPreferences.isAutoPlayNextEnabled())
+        assertFalse(appPreferences.isAutoPlayNextEnabled())
         assertFalse(appPreferences.isRememberPlaylistQueue())
 
         // Reset to defaults must restore both
         appPreferences.resetAllSettingsToDefaults()
-        assertFalse(appPreferences.isAutoPlayNextEnabled())
+        assertTrue(appPreferences.isAutoPlayNextEnabled())
         assertTrue(appPreferences.isRememberPlaylistQueue())
     }
+
+    @Test
+    fun soundModeSettings_defaultAndToggleWorks() {
+        assertEquals("BALANCED", appPreferences.getMusicSoundMode())
+
+        appPreferences.setMusicSoundMode("BASS_PUNCH")
+        assertEquals("BASS_PUNCH", appPreferences.getMusicSoundMode())
+
+        appPreferences.setMusicSoundMode("VOCAL_BOOST")
+        assertEquals("VOCAL_BOOST", appPreferences.getMusicSoundMode())
+
+        appPreferences.setMusicSoundMode("SPATIAL_3D")
+        assertEquals("SPATIAL_3D", appPreferences.getMusicSoundMode())
+    }
+
 }
 
 /**

@@ -12,6 +12,11 @@ import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.runtime.CompositionLocalProvider
 
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.tween
+import androidx.compose.runtime.getValue
+
 private val DarkColorScheme = darkColorScheme(primary = Purple80, secondary = PurpleGrey80, tertiary = Pink80)
 
 private val LightColorScheme = lightColorScheme(primary = Purple40, secondary = PurpleGrey40, tertiary = Pink40)
@@ -19,7 +24,7 @@ private val LightColorScheme = lightColorScheme(primary = Purple40, secondary = 
 /**
  * Resolves [themeMode] into an effective dark/light state, exposes both a Material3
  * [MaterialTheme] and the app's semantic [LocalAppColors] palette so every screen
- * reacts to the theme switch.
+ * reacts to the theme switch without visual jitter or sudden color jumps.
  */
 @Composable
 fun YMediaPlayerTheme(
@@ -33,20 +38,30 @@ fun YMediaPlayerTheme(
     ThemeMode.CLEAN_LIGHT -> CleanLightAppColors
   }
   val isDark = baseAppColors.isDark
-  
+
+  // Smoothly interpolate theme accents with hardware-accelerated easing to eliminate visual pop and jitter
+  val animSpec = tween<androidx.compose.ui.graphics.Color>(240, easing = FastOutSlowInEasing)
+  val animAccentBlue by animateColorAsState(targetValue = colorTheme.primaryAccent, animationSpec = animSpec, label = "accentBlue")
+  val animAccentGreen by animateColorAsState(targetValue = colorTheme.secondaryAccent, animationSpec = animSpec, label = "accentGreen")
+
+  val targetBlob1 = if (isDark) colorTheme.primaryAccent.copy(alpha = 0.22f) else colorTheme.primaryAccent.copy(alpha = 0.14f)
+  val targetBlob2 = if (isDark) colorTheme.secondaryAccent.copy(alpha = 0.18f) else colorTheme.secondaryAccent.copy(alpha = 0.12f)
+  val animBlob1 by animateColorAsState(targetValue = targetBlob1, animationSpec = animSpec, label = "blob1")
+  val animBlob2 by animateColorAsState(targetValue = targetBlob2, animationSpec = animSpec, label = "blob2")
+
   // Apply selected color theme to app accents & ambient gradient blobs (subtle theme colours in bg)
   val appColors = baseAppColors.copy(
-      accentBlue = colorTheme.primaryAccent,
-      accentGreen = colorTheme.secondaryAccent,
+      accentBlue = animAccentBlue,
+      accentGreen = animAccentGreen,
       onAccent = androidx.compose.ui.graphics.Color.White,
-      gradientBlob1 = if (isDark) colorTheme.primaryAccent.copy(alpha = 0.22f) else colorTheme.primaryAccent.copy(alpha = 0.14f),
-      gradientBlob2 = if (isDark) colorTheme.secondaryAccent.copy(alpha = 0.18f) else colorTheme.secondaryAccent.copy(alpha = 0.12f)
+      gradientBlob1 = animBlob1,
+      gradientBlob2 = animBlob2
   )
 
   val colorScheme = if (isDark) {
-    DarkColorScheme.copy(primary = colorTheme.primaryAccent, secondary = colorTheme.secondaryAccent)
+    DarkColorScheme.copy(primary = animAccentBlue, secondary = animAccentGreen)
   } else {
-    LightColorScheme.copy(primary = colorTheme.primaryAccent, secondary = colorTheme.secondaryAccent)
+    LightColorScheme.copy(primary = animAccentBlue, secondary = animAccentGreen)
   }
 
   CompositionLocalProvider(LocalAppColors provides appColors) {

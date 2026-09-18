@@ -18,3 +18,4 @@ graphify-out/
 .kotlin/
 /keystore/
 /keystore.properties
+.docx-review/

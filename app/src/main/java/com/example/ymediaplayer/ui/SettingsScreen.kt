@@ -104,6 +104,16 @@ fun SettingsScreen(
     var hapticsEnabled by remember { mutableStateOf(appPreferences.isHapticsEnabled()) }
     var hdrEnabled by remember { mutableStateOf(appPreferences.isHdrEnabled()) }
 
+    // ─── Video Picture & Sharpness Enhancement States ──────────────────────
+    var videoColorProfile by remember { mutableStateOf(appPreferences.getVideoColorProfile()) }
+    var videoSharpnessLevel by remember { mutableStateOf(appPreferences.getVideoSharpnessLevel()) }
+    var videoContrast by remember { mutableFloatStateOf(appPreferences.getVideoCustomContrast()) }
+    var videoSaturation by remember { mutableFloatStateOf(appPreferences.getVideoCustomSaturation()) }
+    var videoBrightness by remember { mutableFloatStateOf(appPreferences.getVideoCustomBrightness()) }
+    var videoWarmth by remember { mutableFloatStateOf(appPreferences.getVideoCustomWarmth()) }
+    var videoSharpness by remember { mutableFloatStateOf(appPreferences.getVideoCustomSharpness()) }
+    var videoSoundMode by remember { mutableStateOf(appPreferences.getVideoSoundMode()) }
+
     // ─── Subtitles & Audio States ─────────────────────────────────────────────
     var subFontSize by remember { mutableIntStateOf(appPreferences.getSubtitleFontSize()) }
     var subColor by remember { mutableLongStateOf(appPreferences.getSubtitleColor()) }
@@ -362,7 +372,9 @@ fun SettingsScreen(
                     itemMatches("Default Video Fit Mode", "Fit to Screen Zoom Crop Fixed Width Stretch Fill") ||
                     itemMatches("Hardware Acceleration", "GPU decoders 4K 60fps") ||
                     itemMatches("Keep Screen Awake", "display sleeping") ||
-                    itemMatches("Play During Phone Calls", "video music phone calls")
+                    itemMatches("Play During Phone Calls", "video music phone calls") ||
+                    itemMatches("Video Picture Profiles", "color profile Normal Cinema Warm Vivid Punch AMOLED Black contrast saturation brightness warmth") ||
+                    itemMatches("Video Sharpness Enhancement", "sharpness Off Subtle Crisp Enhanced Detail Ultra Sharp clarity unsharp mask")
                 ))
 
         val showGestures = (q.isBlank() && (selectedCategory == SettingsCategory.ALL || selectedCategory == SettingsCategory.GESTURES)) ||
@@ -655,12 +667,13 @@ fun SettingsScreen(
 
                     SettingsItemToggle(
                         title = "Auto-Play Next in Playlist",
-                        subtitle = "Automatically play next video when current video finishes",
+                        subtitle = "Automatically play next track or video when playback finishes",
                         icon = Icons.Rounded.SkipNext,
                         checked = autoPlayNext,
                         onCheckedChange = {
                             autoPlayNext = it
                             appPreferences.setAutoPlayNextEnabled(it)
+                            com.example.ymediaplayer.service.MusicService.isAutoPlayEnabled.value = it
                         }
                     )
 
@@ -738,6 +751,418 @@ fun SettingsScreen(
                             appPreferences.setPlayDuringCallsEnabled(it)
                         }
                     )
+                }
+            }
+
+            // ─── 1b. Video Picture & Sharpness Enhancement ────────────────────
+            if (showPlayback) {
+                item {
+                    SettingsCategorySection(
+                        title = "Video Picture & Sharpness Enhancement",
+                        icon = Icons.Rounded.Tune,
+                        accentColor = primaryAccent
+                    ) {
+                        // Picture Profiles Selector
+                        Column(modifier = Modifier.padding(14.dp)) {
+                            Text(
+                                text = "Video Picture Profile",
+                                fontSize = 14.sp,
+                                fontWeight = FontWeight.SemiBold,
+                                color = c.textPrimary
+                            )
+                            Text(
+                                text = "Color grading and dynamic range calibrated for mobile screens (without affecting sharpness)",
+                                fontSize = 11.sp,
+                                color = c.textSecondary
+                            )
+                            Spacer(Modifier.height(10.dp))
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                val profiles = listOf(
+                                    Triple("NORMAL", "Normal", Icons.Rounded.Tune),
+                                    Triple("HDR_DYNAMIC", "Dynamic", Icons.Rounded.HdrOn),
+                                    Triple("VIVID_POP", "Vivid", Icons.Rounded.AutoFixHigh),
+                                    Triple("NIGHT_CLARITY", "Night", Icons.Rounded.BrightnessMedium)
+                                )
+                                profiles.forEach { (id, label, icon) ->
+                                    val isSelected = videoColorProfile.equals(id, ignoreCase = true)
+                                    Box(
+                                        modifier = Modifier
+                                            .weight(1f)
+                                            .clip(RoundedCornerShape(12.dp))
+                                            .background(if (isSelected) primaryAccent.copy(alpha = 0.22f) else Color.White.copy(alpha = 0.06f))
+                                            .border(1.2.dp, if (isSelected) primaryAccent else Color.Transparent, RoundedCornerShape(12.dp))
+                                            .clickable {
+                                                videoColorProfile = id
+                                                appPreferences.setVideoColorProfile(id)
+                                                when (id) {
+                                                    "NORMAL" -> {
+                                                        videoContrast = 1.0f
+                                                        videoSaturation = 1.0f
+                                                        videoBrightness = 0.0f
+                                                        videoWarmth = 0.0f
+                                                    }
+                                                    "HDR_DYNAMIC" -> {
+                                                        videoContrast = 1.04f
+                                                        videoSaturation = 1.12f
+                                                        videoBrightness = 0.04f
+                                                        videoWarmth = 0.0f
+                                                    }
+                                                    "VIVID_POP" -> {
+                                                        videoContrast = 1.07f
+                                                        videoSaturation = 1.18f
+                                                        videoBrightness = 0.02f
+                                                        videoWarmth = 0.0f
+                                                    }
+                                                    "NIGHT_CLARITY" -> {
+                                                        videoContrast = 1.02f
+                                                        videoSaturation = 1.06f
+                                                        videoBrightness = 0.07f
+                                                        videoWarmth = 0.0f
+                                                    }
+                                                }
+                                                appPreferences.setVideoCustomContrast(videoContrast)
+                                                appPreferences.setVideoCustomSaturation(videoSaturation)
+                                                appPreferences.setVideoCustomBrightness(videoBrightness)
+                                                appPreferences.setVideoCustomWarmth(videoWarmth)
+                                            }
+                                            .padding(vertical = 10.dp, horizontal = 4.dp),
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        Column(
+                                            horizontalAlignment = Alignment.CenterHorizontally,
+                                            verticalArrangement = Arrangement.spacedBy(4.dp)
+                                        ) {
+                                            Icon(
+                                                imageVector = icon,
+                                                contentDescription = label,
+                                                tint = if (isSelected) primaryAccent else c.textSecondary,
+                                                modifier = Modifier.size(18.dp)
+                                            )
+                                            Text(
+                                                text = label,
+                                                fontSize = 11.sp,
+                                                fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
+                                                color = if (isSelected) primaryAccent else c.textPrimary,
+                                                maxLines = 1
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+                        }
+
+                        SettingsDivider()
+
+                        // Custom Sliders for Picture Tuning
+                        Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp)) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween
+                            ) {
+                                Text("Contrast", fontSize = 12.sp, color = c.textSecondary)
+                                Text("${(videoContrast * 100).toInt()}%", fontSize = 12.sp, color = primaryAccent, fontWeight = FontWeight.Bold)
+                            }
+                            Slider(
+                                value = videoContrast,
+                                onValueChange = {
+                                    videoContrast = it
+                                    appPreferences.setVideoCustomContrast(it)
+                                },
+                                valueRange = 0.6f..1.8f,
+                                colors = SliderDefaults.colors(thumbColor = primaryAccent, activeTrackColor = primaryAccent)
+                            )
+                        }
+
+                        Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp)) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween
+                            ) {
+                                Text("Saturation", fontSize = 12.sp, color = c.textSecondary)
+                                Text("${(videoSaturation * 100).toInt()}%", fontSize = 12.sp, color = primaryAccent, fontWeight = FontWeight.Bold)
+                            }
+                            Slider(
+                                value = videoSaturation,
+                                onValueChange = {
+                                    videoSaturation = it
+                                    appPreferences.setVideoCustomSaturation(it)
+                                },
+                                valueRange = 0.0f..2.0f,
+                                colors = SliderDefaults.colors(thumbColor = primaryAccent, activeTrackColor = primaryAccent)
+                            )
+                        }
+
+                        Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp)) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween
+                            ) {
+                                Text("Brightness / Exposure", fontSize = 12.sp, color = c.textSecondary)
+                                val bPct = (videoBrightness * 100).toInt()
+                                Text(if (bPct >= 0) "+$bPct%" else "$bPct%", fontSize = 12.sp, color = primaryAccent, fontWeight = FontWeight.Bold)
+                            }
+                            Slider(
+                                value = videoBrightness,
+                                onValueChange = {
+                                    videoBrightness = it
+                                    appPreferences.setVideoCustomBrightness(it)
+                                },
+                                valueRange = -0.3f..0.3f,
+                                colors = SliderDefaults.colors(thumbColor = primaryAccent, activeTrackColor = primaryAccent)
+                            )
+                        }
+
+                        Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp)) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween
+                            ) {
+                                Text("Color Temperature (Warmth)", fontSize = 12.sp, color = c.textSecondary)
+                                val wPct = (videoWarmth * 100).toInt()
+                                val label = when {
+                                    wPct > 0 -> "Warm +$wPct%"
+                                    wPct < 0 -> "Cool $wPct%"
+                                    else -> "Neutral (0%)"
+                                }
+                                Text(label, fontSize = 12.sp, color = primaryAccent, fontWeight = FontWeight.Bold)
+                            }
+                            Slider(
+                                value = videoWarmth,
+                                onValueChange = {
+                                    videoWarmth = it
+                                    appPreferences.setVideoCustomWarmth(it)
+                                },
+                                valueRange = -0.5f..0.5f,
+                                colors = SliderDefaults.colors(thumbColor = primaryAccent, activeTrackColor = primaryAccent)
+                            )
+                        }
+
+                        // Reset Picture Settings Button
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 16.dp, vertical = 4.dp),
+                            horizontalArrangement = Arrangement.End
+                        ) {
+                            TextButton(
+                                onClick = {
+                                    videoColorProfile = "NORMAL"
+                                    videoContrast = 1.0f
+                                    videoSaturation = 1.0f
+                                    videoBrightness = 0.0f
+                                    videoWarmth = 0.0f
+                                    appPreferences.setVideoColorProfile("NORMAL")
+                                    appPreferences.setVideoCustomContrast(1.0f)
+                                    appPreferences.setVideoCustomSaturation(1.0f)
+                                    appPreferences.setVideoCustomBrightness(0.0f)
+                                    appPreferences.setVideoCustomWarmth(0.0f)
+                                }
+                            ) {
+                                Icon(Icons.Rounded.RestartAlt, contentDescription = null, tint = primaryAccent, modifier = Modifier.size(16.dp))
+                                Spacer(Modifier.width(4.dp))
+                                Text("Reset Color to Default", fontSize = 12.sp, color = primaryAccent)
+                            }
+                        }
+
+                        SettingsDivider()
+
+                        // Sharpness Levels Selector
+                        Column(modifier = Modifier.padding(14.dp)) {
+                            Text(
+                                text = "Video Sharpness & Edge Clarity",
+                                fontSize = 14.sp,
+                                fontWeight = FontWeight.SemiBold,
+                                color = c.textPrimary
+                            )
+                            Text(
+                                text = "Real-time AGSL luminance unsharp mask shader for enhanced texture and detail",
+                                fontSize = 11.sp,
+                                color = c.textSecondary
+                            )
+                            Spacer(Modifier.height(10.dp))
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                val sharpnessLevels = listOf(
+                                    Triple("OFF", "Off", Icons.Rounded.BlurOff),
+                                    Triple("SUBTLE", "Subtle", Icons.Rounded.Details),
+                                    Triple("ENHANCED", "Enhanced", Icons.Rounded.HighQuality),
+                                    Triple("ULTRA", "Ultra", Icons.Rounded.CenterFocusStrong)
+                                )
+                                sharpnessLevels.forEach { (id, label, icon) ->
+                                    val isSelected = videoSharpnessLevel.equals(id, ignoreCase = true)
+                                    Box(
+                                        modifier = Modifier
+                                            .weight(1f)
+                                            .clip(RoundedCornerShape(12.dp))
+                                            .background(if (isSelected) primaryAccent.copy(alpha = 0.22f) else Color.White.copy(alpha = 0.06f))
+                                            .border(1.2.dp, if (isSelected) primaryAccent else Color.Transparent, RoundedCornerShape(12.dp))
+                                            .clickable {
+                                                videoSharpnessLevel = id
+                                                appPreferences.setVideoSharpnessLevel(id)
+                                                videoSharpness = when (id) {
+                                                    "OFF" -> 0.0f
+                                                    "SUBTLE" -> 0.40f
+                                                    "ENHANCED" -> 0.85f
+                                                    "ULTRA" -> 1.40f
+                                                    else -> 0.0f
+                                                }
+                                                appPreferences.setVideoCustomSharpness(videoSharpness)
+                                            }
+                                            .padding(vertical = 10.dp, horizontal = 4.dp),
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        Column(
+                                            horizontalAlignment = Alignment.CenterHorizontally,
+                                            verticalArrangement = Arrangement.spacedBy(4.dp)
+                                        ) {
+                                            Icon(
+                                                imageVector = icon,
+                                                contentDescription = label,
+                                                tint = if (isSelected) primaryAccent else c.textSecondary,
+                                                modifier = Modifier.size(18.dp)
+                                            )
+                                            Text(
+                                                text = label,
+                                                fontSize = 11.sp,
+                                                fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
+                                                color = if (isSelected) primaryAccent else c.textPrimary,
+                                                maxLines = 1
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+                        }
+
+                        // Sharpness Intensity Slider
+                        Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp)) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween
+                            ) {
+                                Text("Sharpness Intensity", fontSize = 12.sp, color = c.textSecondary)
+                                val sPct = (videoSharpness * 100).toInt()
+                                Text(if (videoSharpness <= 0.01f) "Off (0%)" else "$sPct%", fontSize = 12.sp, color = primaryAccent, fontWeight = FontWeight.Bold)
+                            }
+                            Slider(
+                                value = videoSharpness,
+                                onValueChange = {
+                                    videoSharpness = it
+                                    appPreferences.setVideoCustomSharpness(it)
+                                    videoSharpnessLevel = when {
+                                        it <= 0.01f -> "OFF"
+                                        it < 0.60f -> "SUBTLE"
+                                        it < 1.10f -> "ENHANCED"
+                                        else -> "ULTRA"
+                                    }
+                                    appPreferences.setVideoSharpnessLevel(videoSharpnessLevel)
+                                },
+                                valueRange = 0.0f..2.0f,
+                                colors = SliderDefaults.colors(thumbColor = primaryAccent, activeTrackColor = primaryAccent)
+                            )
+                        }
+
+                        // Reset Sharpness Button
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 16.dp, vertical = 4.dp),
+                            horizontalArrangement = Arrangement.End
+                        ) {
+                            TextButton(
+                                onClick = {
+                                    videoSharpnessLevel = "OFF"
+                                    videoSharpness = 0.0f
+                                    appPreferences.setVideoSharpnessLevel("OFF")
+                                    appPreferences.setVideoCustomSharpness(0.0f)
+                                }
+                            ) {
+                                Icon(Icons.Rounded.RestartAlt, contentDescription = null, tint = primaryAccent, modifier = Modifier.size(16.dp))
+                                Spacer(Modifier.width(4.dp))
+                                Text("Reset Sharpness to Off", fontSize = 12.sp, color = primaryAccent)
+                            }
+                        }
+
+                        SettingsDivider()
+
+                        // 3. Video Acoustic Sound Profiles
+                        Column(modifier = Modifier.padding(14.dp)) {
+                            Text(
+                                text = "Video Acoustic Sound Profile",
+                                fontSize = 14.sp,
+                                fontWeight = FontWeight.SemiBold,
+                                color = c.textPrimary
+                            )
+                            Text(
+                                text = "Acoustically tuned equalizer & soundstage profiles for movie audio and dialogue",
+                                fontSize = 11.sp,
+                                color = c.textSecondary
+                            )
+                            Spacer(Modifier.height(10.dp))
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(6.dp)
+                            ) {
+                                val soundModes = listOf(
+                                    Triple("NORMAL", "Normal", Icons.Rounded.MusicNote),
+                                    Triple("CINEMA", "Cinema", Icons.Rounded.Theaters),
+                                    Triple("CLEAR_VOICE", "Voice", Icons.Rounded.RecordVoiceOver),
+                                    Triple("ACTION_PUNCH", "Action", Icons.Rounded.Bolt),
+                                    Triple("NIGHT_MODE", "Night", Icons.Rounded.NightsStay)
+                                )
+                                soundModes.forEach { (id, label, icon) ->
+                                    val isSelected = videoSoundMode.equals(id, ignoreCase = true)
+                                    Box(
+                                        modifier = Modifier
+                                            .weight(1f)
+                                            .clip(RoundedCornerShape(12.dp))
+                                            .background(
+                                                if (isSelected && id != "NORMAL") primaryAccent.copy(alpha = 0.22f)
+                                                else if (isSelected) Color.White.copy(alpha = 0.12f)
+                                                else Color.White.copy(alpha = 0.06f)
+                                            )
+                                            .border(
+                                                1.2.dp,
+                                                if (isSelected && id != "NORMAL") primaryAccent
+                                                else if (isSelected) Color.White.copy(alpha = 0.4f)
+                                                else Color.Transparent,
+                                                RoundedCornerShape(12.dp)
+                                            )
+                                            .clickable {
+                                                videoSoundMode = id
+                                                appPreferences.setVideoSoundMode(id)
+                                            }
+                                            .padding(vertical = 10.dp, horizontal = 2.dp),
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        Column(
+                                            horizontalAlignment = Alignment.CenterHorizontally,
+                                            verticalArrangement = Arrangement.spacedBy(4.dp)
+                                        ) {
+                                            Icon(
+                                                imageVector = icon,
+                                                contentDescription = label,
+                                                tint = if (isSelected && id != "NORMAL") primaryAccent else if (isSelected) Color.White else c.textSecondary,
+                                                modifier = Modifier.size(18.dp)
+                                            )
+                                            Text(
+                                                text = label,
+                                                fontSize = 11.sp,
+                                                fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
+                                                color = if (isSelected && id != "NORMAL") primaryAccent else if (isSelected) Color.White else c.textPrimary,
+                                                maxLines = 1
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
                 }
             }
         }
@@ -1874,6 +2299,7 @@ fun SettingsScreen(
                         seekSeconds = appPreferences.getDoubleTapSeekSeconds()
                         autoPip = appPreferences.isAutoPipEnabled()
                         autoPlayNext = appPreferences.isAutoPlayNextEnabled()
+                        com.example.ymediaplayer.service.MusicService.isAutoPlayEnabled.value = autoPlayNext
                         rememberPlaylistQueue = appPreferences.isRememberPlaylistQueue()
                         backgroundPlay = appPreferences.isBackgroundPlayEnabled()
                         autoHideTimeoutMs = appPreferences.getControlsAutoHideTimeoutMs()

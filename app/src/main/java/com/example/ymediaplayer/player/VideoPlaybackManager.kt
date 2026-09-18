@@ -3,6 +3,9 @@
 package com.example.ymediaplayer.player
 
 import android.content.Context
+import android.media.AudioFocusRequest
+import android.media.AudioManager
+import android.os.Build
 import androidx.compose.runtime.MutableState
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableIntStateOf
@@ -15,6 +18,10 @@ import androidx.media3.common.Player
 import androidx.media3.exoplayer.DefaultRenderersFactory
 import androidx.media3.exoplayer.ExoPlayer
 import com.example.ymediaplayer.data.AppPreferences
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 /**
  * Singleton managing shared video playback across the full-screen [VideoPlayerScreen]
@@ -32,6 +39,102 @@ object VideoPlaybackManager {
     val duration: MutableState<Long> = mutableLongStateOf(0L)
     val videoWidth: MutableState<Int> = mutableIntStateOf(0)
     val videoHeight: MutableState<Int> = mutableIntStateOf(0)
+    val currentAudioSessionId: MutableState<Int> = mutableIntStateOf(0)
+
+    var onPlayNextAction: (() -> Unit)? = null
+    var onPlayPrevAction: (() -> Unit)? = null
+
+    var isPausedByCall = false
+        private set
+    var isManuallyResumedDuringCall = false
+        private set
+    private var audioManager: AudioManager? = null
+    private var audioFocusRequest: AudioFocusRequest? = null
+
+    private val audioFocusChangeListener = AudioManager.OnAudioFocusChangeListener { focusChange ->
+        when (focusChange) {
+            AudioManager.AUDIOFOCUS_LOSS_TRANSIENT,
+            AudioManager.AUDIOFOCUS_LOSS_TRANSIENT_CAN_DUCK -> {
+                // Incoming call or transient system interruption: pause if playing
+                if (!isManuallyResumedDuringCall) {
+                    player?.let { p ->
+                        if (p.isPlaying) {
+                            isPausedByCall = true
+                            p.pause()
+                        }
+                    }
+                }
+            }
+            AudioManager.AUDIOFOCUS_LOSS -> {
+                if (!isManuallyResumedDuringCall) {
+                    player?.let { p ->
+                        if (p.isPlaying) {
+                            isPausedByCall = true
+                            p.pause()
+                        }
+                    }
+                }
+            }
+            AudioManager.AUDIOFOCUS_GAIN -> {
+                // Call finished or focus regained
+                if (isPausedByCall) {
+                    isPausedByCall = false
+                    isManuallyResumedDuringCall = false
+                    player?.play()
+                }
+            }
+        }
+    }
+
+    private fun requestVideoAudioFocus(context: Context) {
+        val am = context.applicationContext.getSystemService(Context.AUDIO_SERVICE) as? AudioManager ?: return
+        audioManager = am
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            val aAttr = android.media.AudioAttributes.Builder()
+                .setUsage(android.media.AudioAttributes.USAGE_MEDIA)
+                .setContentType(android.media.AudioAttributes.CONTENT_TYPE_MOVIE)
+                .build()
+            val req = AudioFocusRequest.Builder(AudioManager.AUDIOFOCUS_GAIN)
+                .setAudioAttributes(aAttr)
+                .setAcceptsDelayedFocusGain(true)
+                .setOnAudioFocusChangeListener(audioFocusChangeListener)
+                .build()
+            audioFocusRequest = req
+            am.requestAudioFocus(req)
+        } else {
+            @Suppress("DEPRECATION")
+            am.requestAudioFocus(
+                audioFocusChangeListener,
+                AudioManager.STREAM_MUSIC,
+                AudioManager.AUDIOFOCUS_GAIN
+            )
+        }
+    }
+
+    private fun abandonVideoAudioFocus() {
+        val am = audioManager ?: return
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            audioFocusRequest?.let { req -> am.abandonAudioFocusRequest(req) }
+            audioFocusRequest = null
+        } else {
+            @Suppress("DEPRECATION")
+            am.abandonAudioFocus(audioFocusChangeListener)
+        }
+        audioManager = null
+        isPausedByCall = false
+        isManuallyResumedDuringCall = false
+    }
+
+    fun manualPlay() {
+        isManuallyResumedDuringCall = true
+        isPausedByCall = false
+        val p = player ?: return
+        if (p.playbackState == Player.STATE_ENDED) {
+            p.seekTo(0L)
+        }
+        p.play()
+        isPlaying.value = true
+    }
 
     private var playerListener: Player.Listener? = null
 
@@ -66,16 +169,19 @@ object VideoPlaybackManager {
         val renderersFactory = DefaultRenderersFactory(context).apply {
             setExtensionRendererMode(DefaultRenderersFactory.EXTENSION_RENDERER_MODE_ON)
             setEnableDecoderFallback(true)
+            setAllowedVideoJoiningTimeMs(5000L)
+            setEnableAudioTrackPlaybackParams(true)
         }
 
-        // Fast-start load control tuned for local device playback (instant startup in ~200ms)
+        // Fast-start load control tuned for high-bitrate, 4K, and 60fps playback with 10s instant rewind back-buffer
         val loadControl = androidx.media3.exoplayer.DefaultLoadControl.Builder()
             .setBufferDurationsMs(
-                /* minBufferMs = */ 1_500,
-                /* maxBufferMs = */ 3_000,
-                /* bufferForPlaybackMs = */ 200,
-                /* bufferForPlaybackAfterRebufferMs = */ 500
+                /* minBufferMs = */ 15_000,
+                /* maxBufferMs = */ 50_000,
+                /* bufferForPlaybackMs = */ 250,
+                /* bufferForPlaybackAfterRebufferMs = */ 1_000
             )
+            .setBackBuffer(/* backBufferDurationMs = */ 10_000, /* retainBackBufferFromKeyframe = */ true)
             .setPrioritizeTimeOverSizeThresholds(true)
             .build()
 
@@ -84,12 +190,13 @@ object VideoPlaybackManager {
             // Seeking only to sync frames can send a short video back to 0 when it
             // has no later keyframe. Exact seeking honours the point the user taps.
             .setSeekParameters(androidx.media3.exoplayer.SeekParameters.EXACT)
+            .setWakeMode(C.WAKE_MODE_LOCAL)
             .setAudioAttributes(
                 AudioAttributes.Builder()
                     .setContentType(C.AUDIO_CONTENT_TYPE_MOVIE)
                     .setUsage(C.USAGE_MEDIA)
                     .build(),
-                handleAudioFocus
+                /* handleAudioFocus = */ false
             )
             .setHandleAudioBecomingNoisy(appPreferences.isPauseOnHeadsetDisconnect())
             .setVideoScalingMode(C.VIDEO_SCALING_MODE_SCALE_TO_FIT)
@@ -114,13 +221,44 @@ object VideoPlaybackManager {
                 if (isMuted) {
                     volume = 0f
                 }
+
+                val initialMetadata = androidx.media3.common.MediaMetadata.Builder()
+                    .setTitle(title)
+                    .setArtist("Video")
+                    .build()
+
+                val mItem = MediaItem.Builder()
+                    .setUri(url)
+                    .setMediaMetadata(initialMetadata)
+                    .build()
+
                 if (initialProgress > 3000L) {
-                    setMediaItem(MediaItem.fromUri(url), initialProgress)
+                    setMediaItem(mItem, initialProgress)
                 } else {
-                    setMediaItem(MediaItem.fromUri(url))
+                    setMediaItem(mItem)
                 }
                 prepare()
                 playWhenReady = true
+
+                CoroutineScope(Dispatchers.IO).launch {
+                    val thumbBytes = try {
+                        com.example.ymediaplayer.util.MediaArtworkHelper.getVideoThumbnailBytes(context, android.net.Uri.parse(url))
+                    } catch (_: Throwable) { null }
+                    if (thumbBytes != null) {
+                        withContext(Dispatchers.Main) {
+                            if (currentVideoUrl.value == url && player == this@apply) {
+                                val enrichedMeta = initialMetadata.buildUpon()
+                                    .setArtworkData(thumbBytes, androidx.media3.common.MediaMetadata.PICTURE_TYPE_FRONT_COVER)
+                                    .build()
+                                val updatedItem = mItem.buildUpon().setMediaMetadata(enrichedMeta).build()
+                                val curIdx = currentMediaItemIndex
+                                if (curIdx >= 0 && curIdx < mediaItemCount) {
+                                    replaceMediaItem(curIdx, updatedItem)
+                                }
+                            }
+                        }
+                    }
+                }
             }
 
         val listener = object : Player.Listener {
@@ -155,6 +293,10 @@ object VideoPlaybackManager {
                     videoHeight.value = effectiveH
                 }
             }
+
+            override fun onAudioSessionIdChanged(audioSessionId: Int) {
+                currentAudioSessionId.value = audioSessionId
+            }
         }
         newPlayer.addListener(listener)
         playerListener = listener
@@ -163,6 +305,9 @@ object VideoPlaybackManager {
         currentVideoUrl.value = url
         currentVideoTitle.value = title
         isPlaying.value = newPlayer.isPlaying
+        currentAudioSessionId.value = newPlayer.audioSessionId
+
+        requestVideoAudioFocus(context)
 
         return newPlayer
     }
@@ -192,12 +337,11 @@ object VideoPlaybackManager {
         val p = player ?: return
         if (p.isPlaying) {
             p.pause()
+            isPausedByCall = false
+            isManuallyResumedDuringCall = false
         } else {
             com.example.ymediaplayer.service.MusicService.pauseMusic()
-            if (p.playbackState == Player.STATE_ENDED) {
-                p.seekTo(0)
-            }
-            p.play()
+            manualPlay()
         }
         isPlaying.value = p.isPlaying
     }
@@ -214,6 +358,10 @@ object VideoPlaybackManager {
     fun releasePlayer() {
         videoWidth.value = 0
         videoHeight.value = 0
+        abandonVideoAudioFocus()
+        try {
+            com.example.ymediaplayer.service.VideoPlaybackService.stopService(com.example.ymediaplayer.YMediaApplication.instance)
+        } catch (_: Exception) {}
         player?.let { p ->
             playerListener?.let { l -> p.removeListener(l) }
             playerListener = null
@@ -224,5 +372,6 @@ object VideoPlaybackManager {
         }
         player = null
         isPlaying.value = false
+        currentAudioSessionId.value = 0
     }
 }

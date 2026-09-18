@@ -88,6 +88,7 @@ dependencies {
   
   // Media3 (ExoPlayer) & Media Notifications
   implementation(libs.androidx.media3.exoplayer)
+  implementation(libs.androidx.media3.effect)
   implementation(libs.androidx.media3.ui)
   implementation(libs.androidx.media3.session)
   implementation("androidx.media:media:1.7.0")

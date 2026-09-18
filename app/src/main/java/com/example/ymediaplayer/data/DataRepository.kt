@@ -208,6 +208,22 @@ class AppPreferences(private val prefs: SharedPreferences) {
         prefs.edit().putString("music_artwork_style", style).apply()
     }
 
+    // Recently Played Music Tracks
+    fun recordMusicPlayed(uri: String) {
+        val currentList = getRecentlyPlayedMusicUris().toMutableList()
+        currentList.remove(uri)
+        currentList.add(0, uri)
+        val trimmed = currentList.take(50)
+        prefs.edit().putString("music_played_uris", trimmed.joinToString(";;;")).apply()
+        lastProgressUpdate.longValue = System.currentTimeMillis()
+    }
+
+    fun getRecentlyPlayedMusicUris(): List<String> {
+        val raw = prefs.getString("music_played_uris", "") ?: ""
+        if (raw.isEmpty()) return emptyList()
+        return raw.split(";;;").filter { it.isNotBlank() }
+    }
+
     // Security & Privacy Shield (FLAG_SECURE)
     fun isPrivacyLockEnabled(): Boolean {
         return prefs.getBoolean("privacy_lock_enabled", false)
@@ -296,6 +312,34 @@ class AppPreferences(private val prefs: SharedPreferences) {
     fun getEqVirtualizer(): Float = prefs.getFloat("eq_virtualizer", 0.25f)
 
     fun isEqEnabled(): Boolean = prefs.getBoolean("eq_enabled", true)
+
+    fun getMusicSoundMode(): String = prefs.getString("music_sound_mode", "BALANCED") ?: "BALANCED"
+    fun setMusicSoundMode(mode: String) { prefs.edit().putString("music_sound_mode", mode).apply() }
+
+    fun getVideoSoundMode(): String = prefs.getString("video_sound_mode", "NORMAL") ?: "NORMAL"
+    fun setVideoSoundMode(mode: String) { prefs.edit().putString("video_sound_mode", mode).apply() }
+
+    // ─── Video Picture Profiles & Sharpness Enhancement ────────────────────
+    fun getVideoColorProfile(): String = prefs.getString("video_color_profile", "NORMAL") ?: "NORMAL"
+    fun setVideoColorProfile(profile: String) { prefs.edit().putString("video_color_profile", profile).apply() }
+
+    fun getVideoSharpnessLevel(): String = prefs.getString("video_sharpness_level", "OFF") ?: "OFF"
+    fun setVideoSharpnessLevel(level: String) { prefs.edit().putString("video_sharpness_level", level).apply() }
+
+    fun getVideoCustomContrast(): Float = prefs.getFloat("video_custom_contrast", 1.0f)
+    fun setVideoCustomContrast(value: Float) { prefs.edit().putFloat("video_custom_contrast", value).apply() }
+
+    fun getVideoCustomSaturation(): Float = prefs.getFloat("video_custom_saturation", 1.0f)
+    fun setVideoCustomSaturation(value: Float) { prefs.edit().putFloat("video_custom_saturation", value).apply() }
+
+    fun getVideoCustomBrightness(): Float = prefs.getFloat("video_custom_brightness", 0.0f)
+    fun setVideoCustomBrightness(value: Float) { prefs.edit().putFloat("video_custom_brightness", value).apply() }
+
+    fun getVideoCustomWarmth(): Float = prefs.getFloat("video_custom_warmth", 0.0f)
+    fun setVideoCustomWarmth(value: Float) { prefs.edit().putFloat("video_custom_warmth", value).apply() }
+
+    fun getVideoCustomSharpness(): Float = prefs.getFloat("video_custom_sharpness", 0.0f)
+    fun setVideoCustomSharpness(value: Float) { prefs.edit().putFloat("video_custom_sharpness", value).apply() }
 
     // ─── Custom Playlists Persistence ──────────────────────────────────────
     fun getPlaylists(): Map<String, List<String>> {
@@ -452,7 +496,7 @@ class AppPreferences(private val prefs: SharedPreferences) {
     fun isAutoPipEnabled(): Boolean = prefs.getBoolean("auto_pip_enabled", true)
     fun setAutoPipEnabled(enabled: Boolean) { prefs.edit().putBoolean("auto_pip_enabled", enabled).apply() }
 
-    fun isAutoPlayNextEnabled(): Boolean = prefs.getBoolean("auto_play_next_in_playlist", false)
+    fun isAutoPlayNextEnabled(): Boolean = prefs.getBoolean("auto_play_next_in_playlist", true)
     fun setAutoPlayNextEnabled(enabled: Boolean) { prefs.edit().putBoolean("auto_play_next_in_playlist", enabled).apply() }
 
     fun isRememberPlaylistQueue(): Boolean = prefs.getBoolean("remember_playlist_queue", true)
@@ -485,6 +529,9 @@ class AppPreferences(private val prefs: SharedPreferences) {
     fun isHwAccelerationEnabled(): Boolean = prefs.getBoolean("hw_acceleration_enabled", true)
     fun setHwAccelerationEnabled(enabled: Boolean) { prefs.edit().putBoolean("hw_acceleration_enabled", enabled).apply() }
 
+    fun getMemcMode(): String = prefs.getString("memc_mode", "off") ?: "off"
+    fun setMemcMode(mode: String) { prefs.edit().putString("memc_mode", mode).apply() }
+
     fun isKeepScreenAwake(): Boolean = prefs.getBoolean("keep_screen_awake", true)
     fun setKeepScreenAwake(awake: Boolean) { prefs.edit().putBoolean("keep_screen_awake", awake).apply() }
 
@@ -498,7 +545,10 @@ class AppPreferences(private val prefs: SharedPreferences) {
     fun isSeekGestureEnabled(): Boolean = prefs.getBoolean("gesture_seek_enabled", true)
     fun setSeekGestureEnabled(enabled: Boolean) { prefs.edit().putBoolean("gesture_seek_enabled", enabled).apply() }
 
-    fun isPlayDuringCallsEnabled(): Boolean = prefs.getBoolean("play_during_calls", true)
+    fun isAutoBrightnessEnabled(): Boolean = prefs.getBoolean("player_auto_brightness", true)
+    fun setAutoBrightnessEnabled(enabled: Boolean) { prefs.edit().putBoolean("player_auto_brightness", enabled).apply() }
+
+    fun isPlayDuringCallsEnabled(): Boolean = prefs.getBoolean("play_during_calls", false)
     fun setPlayDuringCallsEnabled(enabled: Boolean) { prefs.edit().putBoolean("play_during_calls", enabled).apply() }
 
     fun isVideoSwitchGestureEnabled(): Boolean = prefs.getBoolean("gesture_video_switch_enabled", false)
@@ -631,6 +681,7 @@ class AppPreferences(private val prefs: SharedPreferences) {
             .remove("player_subtitles_enabled")
             .remove("preferred_subtitle_language")
             .remove("hw_acceleration_enabled")
+            .remove("memc_mode")
             .remove("keep_screen_awake")
             .remove("gesture_brightness_enabled")
             .remove("gesture_volume_enabled")
