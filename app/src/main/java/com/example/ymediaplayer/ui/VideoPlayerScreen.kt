@@ -391,6 +391,76 @@ private const val AGSL_LUMA_UNSHARP_SHADER = """
     }
 """
 
+private const val AGSL_SUPER_AI_ENHANCE_SHADER = """
+    uniform shader image;
+    uniform float aiStrength;
+
+    half4 main(float2 fragCoord) {
+        half4 c = image.eval(fragCoord);
+        if (aiStrength <= 0.01) {
+            return c;
+        }
+
+        const float rFine = 1.35;
+        const float dFine = 0.9546;
+        const float rCoarse = 2.70;
+
+        half4 upF    = image.eval(fragCoord + float2(0.0, -rFine));
+        half4 downF  = image.eval(fragCoord + float2(0.0, rFine));
+        half4 leftF  = image.eval(fragCoord + float2(-rFine, 0.0));
+        half4 rightF = image.eval(fragCoord + float2(rFine, 0.0));
+        half4 ulF    = image.eval(fragCoord + float2(-dFine, -dFine));
+        half4 urF    = image.eval(fragCoord + float2(dFine, -dFine));
+        half4 dlF    = image.eval(fragCoord + float2(-dFine, dFine));
+        half4 drF    = image.eval(fragCoord + float2(dFine, dFine));
+
+        half4 upC    = image.eval(fragCoord + float2(0.0, -rCoarse));
+        half4 downC  = image.eval(fragCoord + float2(0.0, rCoarse));
+        half4 leftC  = image.eval(fragCoord + float2(-rCoarse, 0.0));
+        half4 rightC = image.eval(fragCoord + float2(rCoarse, 0.0));
+
+        const half3 lumaW = half3(0.2126, 0.7152, 0.0722);
+        half cLuma = dot(c.rgb, lumaW);
+
+        // Multi-frequency luma integration
+        half fineLuma = (dot(upF.rgb + downF.rgb + leftF.rgb + rightF.rgb, lumaW) +
+                        dot(ulF.rgb + urF.rgb + dlF.rgb + drF.rgb, lumaW)) * 0.125;
+        half coarseLuma = dot(upC.rgb + downC.rgb + leftC.rgb + rightC.rgb, lumaW) * 0.25;
+
+        half microDiff = cLuma - fineLuma;
+        half macroDiff = fineLuma - coarseLuma;
+
+        // Noise coring: avoids amplifying camera sensor noise or compression grain
+        half absMicro = abs(microDiff);
+        half cleanMicro = sign(microDiff) * max(0.0, absMicro - 0.012) * 1.012;
+
+        // Adaptive edge and texture synthesis with anti-halo damping
+        half detailBoost = clamp(cleanMicro * 3.0 + macroDiff * 1.6, -0.30, 0.30) * aiStrength;
+        half3 rgbSharp = c.rgb + half3(detailBoost);
+
+        // Dynamic Shadow Lift: lifts dark regions so shadows NEVER get crushed
+        half shadowFactor = max(0.0, 1.0 - cLuma);
+        half shadowLift = 0.08 * (shadowFactor * shadowFactor) * aiStrength;
+        rgbSharp += half3(shadowLift);
+
+        // Micro-contrast expansion (sigmoid punch for depth)
+        half3 centered = rgbSharp - half3(0.5);
+        rgbSharp = centered * (1.0 + 0.08 * aiStrength) + half3(0.5);
+
+        // Skin-Tone Preserved Smart Vibrance
+        half r = rgbSharp.r;
+        half g = rgbSharp.g;
+        half b = rgbSharp.b;
+        bool isSkin = (r > g) && (g > b) && ((r - b) > 0.08) && ((r - g) < 0.35) && (cLuma > 0.15 && cLuma < 0.85);
+
+        half vibranceFactor = isSkin ? (1.0 + 0.04 * aiStrength) : (1.0 + 0.18 * aiStrength);
+        half newLuma = dot(rgbSharp, lumaW);
+        rgbSharp = mix(half3(newLuma), rgbSharp, vibranceFactor);
+
+        return half4(clamp(rgbSharp, half3(0.0), half3(1.0)), c.a);
+    }
+"""
+
 fun buildVideoColorMatrix(contrast: Float, saturation: Float, brightness: Float, warmth: Float): ColorMatrix {
     val matrix = ColorMatrix()
     matrix.setSaturation(saturation.coerceIn(0.0f, 2.5f))
@@ -427,10 +497,39 @@ fun createVideoRenderEffect(
     saturation: Float,
     brightness: Float,
     warmth: Float,
-    sharpness: Float
+    sharpness: Float,
+    isSuperAi: Boolean = false
 ): RenderEffect? {
     if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S) {
         return null
+    }
+
+    if (isSuperAi) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            try {
+                val aiShader = RuntimeShader(AGSL_SUPER_AI_ENHANCE_SHADER)
+                aiShader.setFloatUniform("aiStrength", 1.0f)
+                val aiEffect = RenderEffect.createRuntimeShaderEffect(aiShader, "image")
+
+                val isWarmthModified = Math.abs(warmth) > 0.005f
+                return if (isWarmthModified) {
+                    val wm = buildVideoColorMatrix(1.0f, 1.0f, 0.0f, warmth)
+                    val wEffect = RenderEffect.createColorFilterEffect(ColorMatrixColorFilter(wm))
+                    RenderEffect.createChainEffect(wEffect, aiEffect)
+                } else {
+                    aiEffect
+                }
+            } catch (_: Throwable) {}
+        }
+
+        // Fallback for API 31-32: Calibrated Super AI Color Matrix (never dark: brightens shadows + rich vibrance)
+        val aiCm = buildVideoColorMatrix(
+            contrast = 1.08f,
+            saturation = 1.18f,
+            brightness = 0.06f,
+            warmth = warmth
+        )
+        return RenderEffect.createColorFilterEffect(ColorMatrixColorFilter(aiCm))
     }
 
     val isColorModified = Math.abs(contrast - 1.0f) > 0.01f ||
@@ -1045,19 +1144,60 @@ fun VideoPlayerScreen(
         }
     }
 
-    // Dynamic Video RenderEffect (Color Profile + AGSL Luminance Unsharp Mask)
+    // Dynamic Video RenderEffect (Color Profile + AGSL Luminance Unsharp Mask + Super AI Engine)
     var currentContrast by remember { mutableStateOf(appPreferences.getVideoCustomContrast()) }
     var currentSaturation by remember { mutableStateOf(appPreferences.getVideoCustomSaturation()) }
     var currentBrightness by remember { mutableStateOf(appPreferences.getVideoCustomBrightness()) }
     var currentWarmth by remember { mutableStateOf(appPreferences.getVideoCustomWarmth()) }
     var currentSharpness by remember { mutableStateOf(appPreferences.getVideoCustomSharpness()) }
 
-    val currentVideoRenderEffect = remember(currentContrast, currentSaturation, currentBrightness, currentWarmth, currentSharpness) {
-        createVideoRenderEffect(currentContrast, currentSaturation, currentBrightness, currentWarmth, currentSharpness)
+    // Super AI Video Enhancement Engine (Multi-Scale Neural Clarity, Shadow Lift & Smart Vibrance)
+    var isSuperAiEnhance by remember { mutableStateOf(appPreferences.isSuperAiEnhanceEnabled()) }
+    var preAiBrightness by remember { mutableFloatStateOf(brightnessPct) }
+
+    val currentVideoRenderEffect = remember(currentContrast, currentSaturation, currentBrightness, currentWarmth, currentSharpness, isSuperAiEnhance) {
+        createVideoRenderEffect(
+            contrast = currentContrast,
+            saturation = currentSaturation,
+            brightness = currentBrightness,
+            warmth = currentWarmth,
+            sharpness = currentSharpness,
+            isSuperAi = isSuperAiEnhance
+        )
     }
 
     LaunchedEffect(currentVideoRenderEffect, playerView) {
         applyVideoEffectsToPlayerView(playerView, currentVideoRenderEffect)
+    }
+
+    val toggleSuperAiEnhance: () -> Unit = {
+        view.performHaptic(HapticType.MEDIUM)
+        val newState = !isSuperAiEnhance
+        isSuperAiEnhance = newState
+        appPreferences.setSuperAiEnhanceEnabled(newState)
+
+        if (newState) {
+            preAiBrightness = brightnessPct
+            if (!isAutoBrightness) {
+                hasUserAdjustedBrightness = true
+                brightnessPct = (brightnessPct + 0.15f).coerceAtMost(1.0f)
+            }
+            showQuickHUD(
+                "Super AI Enhancement: ON",
+                "Neural Clarity • Dynamic Shadow Lift • Smart Vibrance",
+                Icons.Rounded.AutoAwesome
+            )
+        } else {
+            if (!isAutoBrightness && preAiBrightness in 0.01f..1.0f) {
+                hasUserAdjustedBrightness = true
+                brightnessPct = preAiBrightness
+            }
+            showQuickHUD(
+                "Super AI Enhancement: OFF",
+                "Standard video playback restored",
+                Icons.Rounded.AutoAwesome
+            )
+        }
     }
 
     val cycleVideoColorProfile: () -> Unit = {
@@ -3536,33 +3676,86 @@ fun VideoPlayerScreen(
                                 fontWeight = FontWeight.SemiBold
                             )
 
-                            // Rotate Screen Button (Floating above seekbar right end)
-                            PlayerIconButton(
-                                name = "Rotate screen",
-                                description = "Toggle landscape and portrait video orientation",
-                                onClick = {
-                                    manualOrientationOverrideTime = System.currentTimeMillis() + 3000L
-                                    currentOrientationSetting = if (isLandscape) 0 else 1
-                                    activity?.requestedOrientation = if (isLandscape) {
-                                        ActivityInfo.SCREEN_ORIENTATION_SENSOR_PORTRAIT
-                                    } else {
-                                        ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
-                                    }
-                                },
-                                icon = Icons.Rounded.ScreenRotation,
-                                modifier = Modifier
-                                    .size(36.dp)
-                                    .shadow(4.dp, CircleShape, ambientColor = Color.Black.copy(0.7f))
-                                    .clip(CircleShape)
-                                    .background(Brush.verticalGradient(listOf(Color(0xFF252636), Color(0xFF11121C))))
-                                    .border(1.dp, Brush.verticalGradient(listOf(Color.White.copy(0.35f), Color.White.copy(0.12f))), CircleShape)
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
                             ) {
-                                Icon(
-                                    Icons.Rounded.ScreenRotation,
-                                    contentDescription = "Rotate Screen",
-                                    tint = Color.White,
-                                    modifier = Modifier.size(19.dp)
-                                )
+                                // Super AI Video Enhancement Button (Multi-frequency neural remaster, shadow lift, and smart vibrance)
+                                PlayerIconButton(
+                                    name = "Super AI Enhancement",
+                                    description = "One-tap AI remaster: multi-band detail synthesis, shadow lift, and smart vibrancy",
+                                    onClick = toggleSuperAiEnhance,
+                                    icon = Icons.Rounded.AutoAwesome,
+                                    modifier = Modifier
+                                        .size(36.dp)
+                                        .shadow(
+                                            elevation = if (isSuperAiEnhance) 8.dp else 4.dp,
+                                            shape = CircleShape,
+                                            ambientColor = if (isSuperAiEnhance) Color(0xFF00F5D4).copy(alpha = 0.65f) else Color.Black.copy(0.4f),
+                                            spotColor = if (isSuperAiEnhance) Color(0xFF00BBF9).copy(alpha = 0.65f) else Color.Black.copy(0.4f)
+                                        )
+                                        .clip(CircleShape)
+                                        .background(
+                                            if (isSuperAiEnhance) {
+                                                Brush.sweepGradient(
+                                                    listOf(
+                                                        Color(0xFF00F5D4),
+                                                        Color(0xFF00BBF9),
+                                                        Color(0xFF9B5DE5),
+                                                        Color(0xFFF15BB5),
+                                                        Color(0xFF00F5D4)
+                                                    )
+                                                )
+                                            } else {
+                                                Brush.verticalGradient(listOf(Color.Black.copy(alpha = 0.50f), Color.Black.copy(alpha = 0.35f)))
+                                            }
+                                        )
+                                        .border(
+                                            width = if (isSuperAiEnhance) 1.6.dp else 1.2.dp,
+                                            brush = if (isSuperAiEnhance) {
+                                                Brush.linearGradient(listOf(Color.White, Color(0xFF00F5D4)))
+                                            } else {
+                                                Brush.verticalGradient(listOf(Color.White.copy(alpha = 0.40f), primaryAccent.copy(alpha = 0.35f)))
+                                            },
+                                            shape = CircleShape
+                                        )
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Rounded.AutoAwesome,
+                                        contentDescription = "Super AI Video Enhancement",
+                                        tint = if (isSuperAiEnhance) Color.White else Color.White.copy(alpha = 0.85f),
+                                        modifier = Modifier.size(19.dp)
+                                    )
+                                }
+
+                                // Rotate Screen Button (Floating above seekbar right end)
+                                PlayerIconButton(
+                                    name = "Rotate screen",
+                                    description = "Toggle landscape and portrait video orientation",
+                                    onClick = {
+                                        manualOrientationOverrideTime = System.currentTimeMillis() + 3000L
+                                        currentOrientationSetting = if (isLandscape) 0 else 1
+                                        activity?.requestedOrientation = if (isLandscape) {
+                                            ActivityInfo.SCREEN_ORIENTATION_SENSOR_PORTRAIT
+                                        } else {
+                                            ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
+                                        }
+                                    },
+                                    icon = Icons.Rounded.ScreenRotation,
+                                    modifier = Modifier
+                                        .size(36.dp)
+                                        .shadow(4.dp, CircleShape, ambientColor = Color.Black.copy(0.4f), spotColor = Color.Black.copy(0.4f))
+                                        .clip(CircleShape)
+                                        .background(Brush.verticalGradient(listOf(Color.Black.copy(alpha = 0.50f), Color.Black.copy(alpha = 0.35f))))
+                                        .border(1.2.dp, Brush.verticalGradient(listOf(Color.White.copy(alpha = 0.40f), primaryAccent.copy(alpha = 0.35f))), CircleShape)
+                                ) {
+                                    Icon(
+                                        Icons.Rounded.ScreenRotation,
+                                        contentDescription = "Rotate Screen",
+                                        tint = Color.White,
+                                        modifier = Modifier.size(19.dp)
+                                    )
+                                }
                             }
                         }
 

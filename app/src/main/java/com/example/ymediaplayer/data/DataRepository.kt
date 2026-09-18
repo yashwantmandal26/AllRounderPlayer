@@ -341,6 +341,9 @@ class AppPreferences(private val prefs: SharedPreferences) {
     fun getVideoCustomSharpness(): Float = prefs.getFloat("video_custom_sharpness", 0.0f)
     fun setVideoCustomSharpness(value: Float) { prefs.edit().putFloat("video_custom_sharpness", value).apply() }
 
+    fun isSuperAiEnhanceEnabled(): Boolean = prefs.getBoolean("super_ai_enhance_enabled", false)
+    fun setSuperAiEnhanceEnabled(enabled: Boolean) { prefs.edit().putBoolean("super_ai_enhance_enabled", enabled).apply() }
+
     // ─── Custom Playlists Persistence ──────────────────────────────────────
     fun getPlaylists(): Map<String, List<String>> {
         val raw = prefs.getString("custom_playlists_json", null) ?: return emptyMap()
