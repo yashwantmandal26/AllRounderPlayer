@@ -315,26 +315,26 @@ enum class VideoSharpnessLevel(
     ),
     SUBTLE(
         id = "SUBTLE",
-        displayName = "Sharpness: Subtle",
-        shortName = "Subtle",
-        description = "Gentle clarity polish cleaning up compression softness",
-        intensity = 0.40f,
+        displayName = "Sharpness: 5% (Subtle)",
+        shortName = "5%",
+        description = "Delicate 5% edge clarity polish without noise or harsh halos",
+        intensity = 0.05f,
         icon = Icons.Rounded.Details
     ),
     ENHANCED(
         id = "ENHANCED",
-        displayName = "Sharpness: Enhanced",
-        shortName = "Enhanced",
+        displayName = "Sharpness: 15% (Enhanced)",
+        shortName = "15%",
         description = "Crisp definition enhancing facial textures, hair & details",
-        intensity = 0.85f,
+        intensity = 0.15f,
         icon = Icons.Rounded.HighQuality
     ),
     ULTRA(
         id = "ULTRA",
-        displayName = "Sharpness: Ultra",
-        shortName = "Ultra",
-        description = "Extreme edge punch & fine detail texture recovery",
-        intensity = 1.40f,
+        displayName = "Sharpness: 25% (Ultra)",
+        shortName = "25%",
+        description = "High-definition edge punch & fine detail texture recovery",
+        intensity = 0.25f,
         icon = Icons.Rounded.CenterFocusStrong
     );
 
@@ -356,13 +356,13 @@ private const val AGSL_LUMA_UNSHARP_SHADER = """
 
     half4 main(float2 fragCoord) {
         half4 c = image.eval(fragCoord);
-        if (sharpness <= 0.01) {
+        if (sharpness <= 0.005) {
             return c;
         }
         
         // Adaptive multi-tap kernel sampling across bilinear filter space
-        const float step = 1.75;
-        const float diag = 1.25;
+        const float step = 1.35;
+        const float diag = 0.95;
         
         half4 up    = image.eval(fragCoord + float2(0.0, -step));
         half4 down  = image.eval(fragCoord + float2(0.0, step));
@@ -382,9 +382,14 @@ private const val AGSL_LUMA_UNSHARP_SHADER = """
         // 9-tap Laplacian weighted filter (cardinals weighted 1.0, corners weighted 0.707)
         half blurLuma = (cardLuma + cornerLuma * 0.7071) / (4.0 + 4.0 * 0.7071);
         half lumaDiff = cLuma - blurLuma;
+        half absDiff  = abs(lumaDiff);
         
-        // Scaled high-frequency boost with anti-ringing protection
-        half boost = clamp(lumaDiff * (sharpness * 3.5), -0.35, 0.35);
+        // Soft noise gate to avoid amplifying sensor grain/compression artifacts
+        half edgeMask = smoothstep(0.003, 0.025, absDiff);
+        // Anti-ringing boundary damping for high-contrast edges
+        half boundaryDamping = clamp(1.0 - (absDiff - 0.05) * 8.0, 0.35, 1.0);
+        // Scaled high-frequency boost clamped strictly to sharpness limit (e.g. +/- 0.05 for 5%)
+        half boost = clamp(lumaDiff * 1.25 * edgeMask * boundaryDamping, -sharpness, sharpness);
         half3 sharpRgb = c.rgb + half3(boost);
         
         return half4(clamp(sharpRgb, half3(0.0), half3(1.0)), c.a);
@@ -425,12 +430,13 @@ private const val AGSL_SUPER_AI_ENHANCE_SHADER = """
         half lumaDiff = cLuma - avgLuma;
         half absDiff  = abs(lumaDiff);
 
-        // Intelligent Bilateral Texture Core:
-        // Ignore sensor/compression noise (< 0.012) and damp harsh contrast boundaries (> 0.08) to eliminate ringing
-        half noiseGated = max(0.0, absDiff - 0.012);
-        half boundaryDamping = clamp(1.0 - (absDiff - 0.06) * 10.0, 0.2, 1.0);
-        half cleanBoost = sign(lumaDiff) * noiseGated * boundaryDamping * 0.38 * aiStrength;
-        half detailDelta = clamp(cleanBoost, -0.055, 0.055);
+        // 5% Precision Adaptive Clarity Core (Strict 5% detail enhancement)
+        // Soft noise gate (< 0.003) avoids amplifying flat sensor/compression noise
+        half edgeMask = smoothstep(0.003, 0.025, absDiff);
+        // Anti-ringing boundary damping for high-contrast edges
+        half boundaryDamping = clamp(1.0 - (absDiff - 0.05) * 8.0, 0.35, 1.0);
+        // Calibrated 5% high-frequency sharpness boost (strictly capped at +/- 0.050 delta)
+        half detailDelta = clamp(lumaDiff * 1.25 * edgeMask * boundaryDamping * aiStrength, -0.05, 0.05);
 
         half3 rgbEnhanced = c.rgb + half3(detailDelta);
 
@@ -539,7 +545,7 @@ fun createVideoRenderEffect(
     } else null
 
     var sharpnessEffect: RenderEffect? = null
-    if (sharpness > 0.01f && Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+    if (sharpness > 0.005f && Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
         try {
             val shader = RuntimeShader(AGSL_LUMA_UNSHARP_SHADER)
             shader.setFloatUniform("sharpness", sharpness)

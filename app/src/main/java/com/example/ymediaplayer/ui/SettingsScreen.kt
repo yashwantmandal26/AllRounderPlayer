@@ -989,9 +989,9 @@ fun SettingsScreen(
                             ) {
                                 val sharpnessLevels = listOf(
                                     Triple("OFF", "Off", Icons.Rounded.BlurOff),
-                                    Triple("SUBTLE", "Subtle", Icons.Rounded.Details),
-                                    Triple("ENHANCED", "Enhanced", Icons.Rounded.HighQuality),
-                                    Triple("ULTRA", "Ultra", Icons.Rounded.CenterFocusStrong)
+                                    Triple("SUBTLE", "5%", Icons.Rounded.Details),
+                                    Triple("ENHANCED", "15%", Icons.Rounded.HighQuality),
+                                    Triple("ULTRA", "25%", Icons.Rounded.CenterFocusStrong)
                                 )
                                 sharpnessLevels.forEach { (id, label, icon) ->
                                     val isSelected = videoSharpnessLevel.equals(id, ignoreCase = true)
@@ -1006,9 +1006,9 @@ fun SettingsScreen(
                                                 appPreferences.setVideoSharpnessLevel(id)
                                                 videoSharpness = when (id) {
                                                     "OFF" -> 0.0f
-                                                    "SUBTLE" -> 0.40f
-                                                    "ENHANCED" -> 0.85f
-                                                    "ULTRA" -> 1.40f
+                                                    "SUBTLE" -> 0.05f
+                                                    "ENHANCED" -> 0.15f
+                                                    "ULTRA" -> 0.25f
                                                     else -> 0.0f
                                                 }
                                                 appPreferences.setVideoCustomSharpness(videoSharpness)
@@ -1047,7 +1047,7 @@ fun SettingsScreen(
                             ) {
                                 Text("Sharpness Intensity", fontSize = 12.sp, color = c.textSecondary)
                                 val sPct = (videoSharpness * 100).toInt()
-                                Text(if (videoSharpness <= 0.01f) "Off (0%)" else "$sPct%", fontSize = 12.sp, color = primaryAccent, fontWeight = FontWeight.Bold)
+                                Text(if (videoSharpness <= 0.005f) "Off (0%)" else "$sPct%", fontSize = 12.sp, color = primaryAccent, fontWeight = FontWeight.Bold)
                             }
                             Slider(
                                 value = videoSharpness,
@@ -1055,14 +1055,14 @@ fun SettingsScreen(
                                     videoSharpness = it
                                     appPreferences.setVideoCustomSharpness(it)
                                     videoSharpnessLevel = when {
-                                        it <= 0.01f -> "OFF"
-                                        it < 0.60f -> "SUBTLE"
-                                        it < 1.10f -> "ENHANCED"
+                                        it <= 0.005f -> "OFF"
+                                        it < 0.10f -> "SUBTLE"
+                                        it < 0.20f -> "ENHANCED"
                                         else -> "ULTRA"
                                     }
                                     appPreferences.setVideoSharpnessLevel(videoSharpnessLevel)
                                 },
-                                valueRange = 0.0f..2.0f,
+                                valueRange = 0.0f..0.50f,
                                 colors = SliderDefaults.colors(thumbColor = primaryAccent, activeTrackColor = primaryAccent)
                             )
                         }
