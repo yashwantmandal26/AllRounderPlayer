@@ -178,8 +178,8 @@ object VideoPlaybackManager {
             .setBufferDurationsMs(
                 /* minBufferMs = */ 15_000,
                 /* maxBufferMs = */ 50_000,
-                /* bufferForPlaybackMs = */ 250,
-                /* bufferForPlaybackAfterRebufferMs = */ 1_000
+                /* bufferForPlaybackMs = */ 1_000,
+                /* bufferForPlaybackAfterRebufferMs = */ 2_000
             )
             .setBackBuffer(/* backBufferDurationMs = */ 10_000, /* retainBackBufferFromKeyframe = */ true)
             .setPrioritizeTimeOverSizeThresholds(true)
@@ -200,6 +200,7 @@ object VideoPlaybackManager {
             )
             .setHandleAudioBecomingNoisy(appPreferences.isPauseOnHeadsetDisconnect())
             .setVideoScalingMode(C.VIDEO_SCALING_MODE_SCALE_TO_FIT)
+            .setVideoChangeFrameRateStrategy(C.VIDEO_CHANGE_FRAME_RATE_STRATEGY_ONLY_IF_SEAMLESS)
             .build().apply {
                 var tspBuilder = trackSelectionParameters.buildUpon()
                 if (preferredAudioLang != "default" && preferredAudioLang.isNotEmpty()) {
@@ -239,26 +240,6 @@ object VideoPlaybackManager {
                 }
                 prepare()
                 playWhenReady = true
-
-                CoroutineScope(Dispatchers.IO).launch {
-                    val thumbBytes = try {
-                        com.example.ymediaplayer.util.MediaArtworkHelper.getVideoThumbnailBytes(context, android.net.Uri.parse(url))
-                    } catch (_: Throwable) { null }
-                    if (thumbBytes != null) {
-                        withContext(Dispatchers.Main) {
-                            if (currentVideoUrl.value == url && player == this@apply) {
-                                val enrichedMeta = initialMetadata.buildUpon()
-                                    .setArtworkData(thumbBytes, androidx.media3.common.MediaMetadata.PICTURE_TYPE_FRONT_COVER)
-                                    .build()
-                                val updatedItem = mItem.buildUpon().setMediaMetadata(enrichedMeta).build()
-                                val curIdx = currentMediaItemIndex
-                                if (curIdx >= 0 && curIdx < mediaItemCount) {
-                                    replaceMediaItem(curIdx, updatedItem)
-                                }
-                            }
-                        }
-                    }
-                }
             }
 
         val listener = object : Player.Listener {

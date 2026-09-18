@@ -566,11 +566,12 @@ fun createVideoRenderEffect(
 fun applyVideoEffectsToPlayerView(pv: PlayerView?, effect: RenderEffect?) {
     if (pv == null || Build.VERSION.SDK_INT < Build.VERSION_CODES.S) return
     try {
+        if (pv.tag === effect) return
+        pv.tag = effect
         // Clear any surface-level RenderEffect to prevent driver conflicts on Adreno/Mali
         pv.videoSurfaceView?.setRenderEffect(null)
         // Apply effect at the PlayerView ViewGroup level for hardware composited shader passes
         pv.setRenderEffect(effect)
-        pv.invalidate()
     } catch (_: Throwable) {}
 }
 
@@ -875,7 +876,6 @@ fun VideoPlayerScreen(
             lp.screenBrightness = targetHardware
             act.window?.attributes = lp
         }
-        appPreferences.setLastPlayerBrightness(brightnessPct)
     }
 
     // Volume on Right (0f..1f)
@@ -897,74 +897,6 @@ fun VideoPlayerScreen(
     var centerDoubleTapKey by remember { mutableLongStateOf(0L) }
     var liveAmbientBitmap by remember { mutableStateOf<android.graphics.Bitmap?>(null) }
     var showRemainingTime by remember { mutableStateOf(false) }
-
-    // ─── Real-Time Ambient Lighting Frame Synchronizer ───────────────────────
-    LaunchedEffect(isAmbientMode, currentUrl) {
-        if (!isAmbientMode || currentUrl.isBlank()) {
-            liveAmbientBitmap = null
-            return@LaunchedEffect
-        }
-        withContext(Dispatchers.IO) {
-            val retriever = android.media.MediaMetadataRetriever()
-            try {
-                if (currentUrl.startsWith("content://")) {
-                    retriever.setDataSource(context, android.net.Uri.parse(currentUrl))
-                } else {
-                    retriever.setDataSource(currentUrl)
-                }
-            } catch (_: Exception) {
-                try { retriever.release() } catch (_: Exception) {}
-                return@withContext
-            }
-
-            try {
-                // Immediately seed with initial frame so ambient lights up right away
-                val initialPos = withContext(Dispatchers.Main) { exoPlayer.currentPosition }
-                val firstBmp = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O_MR1) {
-                    retriever.getScaledFrameAtTime(
-                        initialPos * 1000L,
-                        android.media.MediaMetadataRetriever.OPTION_CLOSEST_SYNC,
-                        120, 68
-                    ) ?: retriever.getFrameAtTime(initialPos * 1000L)
-                } else {
-                    retriever.getFrameAtTime(initialPos * 1000L)
-                }
-                if (firstBmp != null) {
-                    withContext(Dispatchers.Main) {
-                        liveAmbientBitmap = firstBmp
-                    }
-                }
-
-                while (isActive) {
-                    val pos = withContext(Dispatchers.Main) { exoPlayer.currentPosition }
-                    val playing = withContext(Dispatchers.Main) { exoPlayer.isPlaying }
-
-                    // Fetch fresh low-res keyframe for real-time ambient halo reflection (SYNC only to prevent CPU burn)
-                    if (playing) {
-                        try {
-                            val bmp = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O_MR1) {
-                                retriever.getScaledFrameAtTime(
-                                    pos * 1000L,
-                                    android.media.MediaMetadataRetriever.OPTION_CLOSEST_SYNC,
-                                    120, 68
-                                ) ?: retriever.getFrameAtTime(pos * 1000L)
-                            } else {
-                                retriever.getFrameAtTime(pos * 1000L)
-                            }
-                            if (bmp != null) {
-                                withContext(Dispatchers.Main) {
-                                    liveAmbientBitmap = bmp
-                                }
-                            }
-                        } catch (_: Exception) {}
-                    }
-                    delay(1500L) // 1.5s interval is visually smooth for ambient blur and cuts CPU load by >80%
-                }
-            } finally {
-                try { retriever.release() } catch (_: Exception) {}
-            }
-        }
-    }
 
     // Center Seek HUD
     var centerSeekText by remember { mutableStateOf<String?>(null) }
@@ -1084,6 +1016,57 @@ fun VideoPlayerScreen(
     LaunchedEffect(subtitleDesign, playerView) {
         applySubtitleDesign(playerView, subtitleDesign, appPreferences)
         appPreferences.saveSubtitleDesign(subtitleDesign)
+    }
+
+    // ─── Real-Time Ambient Lighting Frame Synchronizer (GPU Direct Capture) ─────
+    LaunchedEffect(isAmbientMode, currentUrl, playerView) {
+        if (!isAmbientMode || currentUrl.isBlank()) {
+            liveAmbientBitmap = null
+            return@LaunchedEffect
+        }
+        while (isActive) {
+            val tv = playerView.videoSurfaceView as? android.view.TextureView
+            if (tv != null && tv.isAvailable) {
+                try {
+                    val bmp = tv.getBitmap(80, 45)
+                    if (bmp != null) {
+                        liveAmbientBitmap = bmp
+                    }
+                } catch (_: Throwable) {}
+            } else if (exoPlayer.isPlaying) {
+                // Fallback for non-TextureView (e.g. SurfaceView or initial frame)
+                withContext(Dispatchers.IO) {
+                    try {
+                        val retriever = android.media.MediaMetadataRetriever()
+                        try {
+                            if (currentUrl.startsWith("content://")) {
+                                retriever.setDataSource(context, android.net.Uri.parse(currentUrl))
+                            } else {
+                                retriever.setDataSource(currentUrl)
+                            }
+                            val pos = withContext(Dispatchers.Main) { exoPlayer.currentPosition }
+                            val bmp = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O_MR1) {
+                                retriever.getScaledFrameAtTime(
+                                    pos * 1000L,
+                                    android.media.MediaMetadataRetriever.OPTION_CLOSEST_SYNC,
+                                    80, 45
+                                ) ?: retriever.getFrameAtTime(pos * 1000L)
+                            } else {
+                                retriever.getFrameAtTime(pos * 1000L)
+                            }
+                            if (bmp != null) {
+                                withContext(Dispatchers.Main) {
+                                    liveAmbientBitmap = bmp
+                                }
+                            }
+                        } finally {
+                            try { retriever.release() } catch (_: Throwable) {}
+                        }
+                    } catch (_: Throwable) {}
+                }
+            }
+            delay(1500L)
+        }
     }
 
 
@@ -1619,7 +1602,7 @@ fun VideoPlayerScreen(
 
     // ─── Auto-Orientation Sensor (Follows Phone Orientation When Enabled) ─────
     var manualOrientationOverrideTime by remember { mutableLongStateOf(0L) }
-    var currentOrientationSetting by remember { mutableIntStateOf(-1) } // 0: portrait, 1: landscape
+    val currentOrientationSetting = remember { intArrayOf(-1) } // 0: portrait, 1: landscape
     // Pick an initial orientation once for this player session.  A following video
     // must not rotate the device merely because it has a different aspect ratio.
     var hasSetInitialOrientation by remember { mutableStateOf(false) }
@@ -1651,11 +1634,11 @@ fun VideoPlayerScreen(
                 val isLandscapeSensor = (orientation in 65..115) || (orientation in 245..295)
                 val isPortraitSensor = (orientation in 335..360) || (orientation in 0..25) || (orientation in 155..205)
 
-                if (isLandscapeSensor && currentOrientationSetting != 1) {
-                    currentOrientationSetting = 1
+                if (isLandscapeSensor && currentOrientationSetting[0] != 1) {
+                    currentOrientationSetting[0] = 1
                     activity?.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
-                } else if (isPortraitSensor && currentOrientationSetting != 0) {
-                    currentOrientationSetting = 0
+                } else if (isPortraitSensor && currentOrientationSetting[0] != 0) {
+                    currentOrientationSetting[0] = 0
                     activity?.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_SENSOR_PORTRAIT
                 }
             }
@@ -1668,17 +1651,17 @@ fun VideoPlayerScreen(
             hasSetInitialOrientation = true
             if (videoHeight > videoWidth) {
                 // Vertical video (e.g. 9:16) -> play in vertical!
-                currentOrientationSetting = 0
+                currentOrientationSetting[0] = 0
                 activity?.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_SENSOR_PORTRAIT
             } else {
                 // Horizontal video (e.g. 16:9)
                 // When phone is in vertical (portrait) orientation, open in vertical mode only!
                 val isPhonePortrait = configuration.orientation == Configuration.ORIENTATION_PORTRAIT
                 if (isPhonePortrait) {
-                    currentOrientationSetting = 0
+                    currentOrientationSetting[0] = 0
                     activity?.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_SENSOR_PORTRAIT
                 } else {
-                    currentOrientationSetting = 1
+                    currentOrientationSetting[0] = 1
                     activity?.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
                 }
             }
@@ -2325,7 +2308,7 @@ fun VideoPlayerScreen(
             isLocked = false
         } else if (isLandscape && !isVerticalVideo) {
             manualOrientationOverrideTime = System.currentTimeMillis() + 3000L
-            currentOrientationSetting = 0
+            currentOrientationSetting[0] = 0
             activity?.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_SENSOR_PORTRAIT
         } else {
             handleExit()
@@ -2334,12 +2317,19 @@ fun VideoPlayerScreen(
 
     val controlsTouchModifier = Modifier.pointerInput(Unit) {
         awaitPointerEventScope {
+            var lastTouchResetTime = 0L
             try {
                 while (true) {
                     val event = awaitPointerEvent(PointerEventPass.Initial)
                     val anyPressed = event.changes.any { it.pressed }
-                    isTouchingControls = anyPressed
-                    controlsInteractionTimestamp = System.currentTimeMillis()
+                    if (isTouchingControls != anyPressed) {
+                        isTouchingControls = anyPressed
+                    }
+                    val now = System.currentTimeMillis()
+                    if (anyPressed && now - lastTouchResetTime > 1000L) {
+                        lastTouchResetTime = now
+                        controlsInteractionTimestamp = now
+                    }
                 }
             } finally {
                 isTouchingControls = false
@@ -2552,7 +2542,7 @@ fun VideoPlayerScreen(
                             activeGestureMode = gestureMode
                             pendingOrientationAction = {
                                 manualOrientationOverrideTime = System.currentTimeMillis() + 3000L
-                                currentOrientationSetting = 0
+                                currentOrientationSetting[0] = 0
                                 activity?.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_SENSOR_PORTRAIT
                             }
                             change.consume()
@@ -2690,6 +2680,7 @@ fun VideoPlayerScreen(
                 }
                 PlayerGestureMode.BRIGHTNESS -> {
                     brightnessTouchTrigger = System.currentTimeMillis()
+                    appPreferences.setLastPlayerBrightness(brightnessPct)
                 }
                 PlayerGestureMode.VOLUME -> {
                     volumeTouchTrigger = System.currentTimeMillis()
@@ -3740,7 +3731,7 @@ fun VideoPlayerScreen(
                                     description = "Toggle landscape and portrait video orientation",
                                     onClick = {
                                         manualOrientationOverrideTime = System.currentTimeMillis() + 3000L
-                                        currentOrientationSetting = if (isLandscape) 0 else 1
+                                        currentOrientationSetting[0] = if (isLandscape) 0 else 1
                                         activity?.requestedOrientation = if (isLandscape) {
                                             ActivityInfo.SCREEN_ORIENTATION_SENSOR_PORTRAIT
                                         } else {
