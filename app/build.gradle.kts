@@ -21,8 +21,8 @@ android {
         applicationId = "com.example.ymediaplayer"
         minSdk = 24
         targetSdk = 37
-        versionCode = 11
-        versionName = "1.5.5"
+        versionCode = 12
+        versionName = "1.6.0"
     }
 
     signingConfigs {
@@ -91,6 +91,10 @@ dependencies {
   implementation(libs.androidx.media3.effect)
   implementation(libs.androidx.media3.ui)
   implementation(libs.androidx.media3.session)
+  // Native compatibility backend for uncommon codecs and recoverable damaged media.
+  implementation(libs.libvlc.all)
+  // LibVLC still declares legacy-support-v4; pin Fragment to a safe Activity Result version.
+  implementation(libs.androidx.fragment.ktx)
   implementation("androidx.media:media:1.7.0")
   
   // Coil for seek preview images

@@ -27,6 +27,11 @@ import androidx.media3.session.MediaSession
 import androidx.media3.session.MediaSessionService
 import androidx.media3.session.SessionCommand
 import androidx.media3.session.SessionResult
+import android.media.audiofx.BassBoost
+import android.media.audiofx.Equalizer
+import android.media.audiofx.Virtualizer
+import com.example.ymediaplayer.ui.MusicEqPreset
+import com.example.ymediaplayer.ui.MusicSoundMode
 import com.example.ymediaplayer.MainActivity
 import com.example.ymediaplayer.R
 import com.example.ymediaplayer.data.AppPreferences
@@ -44,6 +49,9 @@ import java.io.ByteArrayOutputStream
 
 class MusicService : MediaSessionService() {
     private var mediaSession: MediaSession? = null
+    private var equalizer: Equalizer? = null
+    private var bassBoost: BassBoost? = null
+    private var virtualizer: Virtualizer? = null
 
     companion object {
         const val EXTRA_OPEN_MUSIC_PLAYER = "EXTRA_OPEN_MUSIC_PLAYER"
@@ -58,8 +66,126 @@ class MusicService : MediaSessionService() {
         const val ACTION_PREV = "com.example.ymediaplayer.ACTION_PREV"
         const val ACTION_NEXT = "com.example.ymediaplayer.ACTION_NEXT"
 
-        var currentAudioSessionId: Int = 0
-            private set
+        var currentAudioSessionId: androidx.compose.runtime.MutableState<Int> =
+            androidx.compose.runtime.mutableIntStateOf(0)
+
+        var currentSoundMode: androidx.compose.runtime.MutableState<MusicSoundMode> =
+            androidx.compose.runtime.mutableStateOf(MusicSoundMode.BALANCED)
+
+        var isEqEnabled: androidx.compose.runtime.MutableState<Boolean> =
+            androidx.compose.runtime.mutableStateOf(true)
+
+        var currentEqBands: androidx.compose.runtime.MutableState<List<Float>> =
+            androidx.compose.runtime.mutableStateOf(listOf(0f, 0f, 0f, 0f, 0f))
+
+        var currentBassBoost: androidx.compose.runtime.MutableFloatState =
+            androidx.compose.runtime.mutableFloatStateOf(0f)
+
+        var currentVirtualizer: androidx.compose.runtime.MutableFloatState =
+            androidx.compose.runtime.mutableFloatStateOf(0f)
+
+        var currentPresetName: androidx.compose.runtime.MutableState<String> =
+            androidx.compose.runtime.mutableStateOf("Flat")
+
+        fun initPreferencesState(context: Context) {
+            val prefs = AppPreferences(context)
+            isEqEnabled.value = prefs.isEqEnabled()
+            currentSoundMode.value = MusicSoundMode.fromId(prefs.getMusicSoundMode())
+            currentEqBands.value = prefs.getEqBands()
+            currentBassBoost.floatValue = prefs.getEqBassBoost()
+            currentVirtualizer.floatValue = prefs.getEqVirtualizer()
+            currentPresetName.value = prefs.getEqPreset()
+        }
+
+        fun applySoundMode(context: Context, mode: MusicSoundMode) {
+            val prefs = AppPreferences(context)
+            currentSoundMode.value = mode
+            prefs.setMusicSoundMode(mode.id)
+            isEqEnabled.value = true
+            currentEqBands.value = mode.bands
+            currentBassBoost.floatValue = mode.bassBoost
+            currentVirtualizer.floatValue = mode.virtualizer
+            currentPresetName.value = mode.displayName
+            prefs.saveEqSettings(
+                preset = mode.displayName,
+                bands = mode.bands,
+                bassBoost = mode.bassBoost,
+                virt = mode.virtualizer,
+                enabled = true
+            )
+            serviceInstance?.applyCurrentEffects()
+        }
+
+        fun applyPreset(context: Context, preset: MusicEqPreset) {
+            val prefs = AppPreferences(context)
+            currentPresetName.value = preset.name
+            currentEqBands.value = preset.bands
+            prefs.saveEqSettings(
+                preset = preset.name,
+                bands = preset.bands,
+                bassBoost = currentBassBoost.floatValue,
+                virt = currentVirtualizer.floatValue,
+                enabled = isEqEnabled.value
+            )
+            serviceInstance?.applyCurrentEffects()
+        }
+
+        fun applyBandLevel(context: Context, bandIndex: Int, gainDb: Float) {
+            val prefs = AppPreferences(context)
+            val newBands = currentEqBands.value.toMutableList()
+            if (bandIndex in newBands.indices) {
+                newBands[bandIndex] = gainDb
+            }
+            currentEqBands.value = newBands
+            currentPresetName.value = "Custom"
+            prefs.saveEqSettings(
+                preset = "Custom",
+                bands = newBands,
+                bassBoost = currentBassBoost.floatValue,
+                virt = currentVirtualizer.floatValue,
+                enabled = isEqEnabled.value
+            )
+            serviceInstance?.applyCurrentEffects()
+        }
+
+        fun applyBassBoost(context: Context, value: Float) {
+            val prefs = AppPreferences(context)
+            currentBassBoost.floatValue = value
+            prefs.saveEqSettings(
+                preset = currentPresetName.value,
+                bands = currentEqBands.value,
+                bassBoost = value,
+                virt = currentVirtualizer.floatValue,
+                enabled = isEqEnabled.value
+            )
+            serviceInstance?.applyCurrentEffects()
+        }
+
+        fun applyVirtualizer(context: Context, value: Float) {
+            val prefs = AppPreferences(context)
+            currentVirtualizer.floatValue = value
+            prefs.saveEqSettings(
+                preset = currentPresetName.value,
+                bands = currentEqBands.value,
+                bassBoost = currentBassBoost.floatValue,
+                virt = value,
+                enabled = isEqEnabled.value
+            )
+            serviceInstance?.applyCurrentEffects()
+        }
+
+        fun setEqEnabled(context: Context, enabled: Boolean) {
+            val prefs = AppPreferences(context)
+            isEqEnabled.value = enabled
+            prefs.saveEqSettings(
+                preset = currentPresetName.value,
+                bands = currentEqBands.value,
+                bassBoost = currentBassBoost.floatValue,
+                virt = currentVirtualizer.floatValue,
+                enabled = enabled
+            )
+            serviceInstance?.applyCurrentEffects()
+        }
 
         // Direct player reference when service is running
         var playerInstance: Player? = null
@@ -365,10 +491,19 @@ class MusicService : MediaSessionService() {
             .build()
 
         playerInstance = player
-        currentAudioSessionId = player.audioSessionId
+        val initialSessionId = player.audioSessionId
+        currentAudioSessionId.value = initialSessionId
+        initPreferencesState(this)
+        if (initialSessionId > 0) {
+            attachAudioEffects(initialSessionId)
+        }
+
         player.addListener(object : Player.Listener {
             override fun onAudioSessionIdChanged(audioSessionId: Int) {
-                currentAudioSessionId = audioSessionId
+                currentAudioSessionId.value = audioSessionId
+                if (audioSessionId > 0) {
+                    attachAudioEffects(audioSessionId)
+                }
             }
             override fun onIsPlayingChanged(isPlaying: Boolean) {
                 isMusicPlaying.value = isPlaying
@@ -722,6 +857,68 @@ class MusicService : MediaSessionService() {
         return START_STICKY
     }
 
+    fun attachAudioEffects(audioSessionId: Int) {
+        if (audioSessionId <= 0) return
+        releaseAudioEffects()
+        try {
+            val eq = Equalizer(0, audioSessionId)
+            val bass = BassBoost(0, audioSessionId)
+            val virt = Virtualizer(0, audioSessionId)
+
+            equalizer = eq
+            bassBoost = bass
+            virtualizer = virt
+
+            applyCurrentEffects()
+        } catch (e: Exception) {
+            android.util.Log.e("MusicService", "Failed to attach audio effects to session $audioSessionId", e)
+        }
+    }
+
+    fun releaseAudioEffects() {
+        try { equalizer?.release() } catch (_: Exception) {}
+        try { bassBoost?.release() } catch (_: Exception) {}
+        try { virtualizer?.release() } catch (_: Exception) {}
+        equalizer = null
+        bassBoost = null
+        virtualizer = null
+    }
+
+    fun applyCurrentEffects() {
+        val eqEnabled = isEqEnabled.value
+        val bands = currentEqBands.value
+        val bassStrength = currentBassBoost.floatValue
+        val virtStrength = currentVirtualizer.floatValue
+
+        equalizer?.let { eq ->
+            try {
+                eq.enabled = eqEnabled
+                val minRange = eq.bandLevelRange[0]
+                val maxRange = eq.bandLevelRange[1]
+                bands.forEachIndexed { idx, db ->
+                    val mB = (db * 100).toInt().coerceIn(minRange.toInt(), maxRange.toInt()).toShort()
+                    if (idx < eq.numberOfBands.toInt()) {
+                        eq.setBandLevel(idx.toShort(), mB)
+                    }
+                }
+            } catch (_: Exception) {}
+        }
+
+        bassBoost?.let { b ->
+            try {
+                b.enabled = eqEnabled
+                b.setStrength((bassStrength * 1000).toInt().coerceIn(0, 1000).toShort())
+            } catch (_: Exception) {}
+        }
+
+        virtualizer?.let { v ->
+            try {
+                v.enabled = eqEnabled
+                v.setStrength((virtStrength * 1000).toInt().coerceIn(0, 1000).toShort())
+            } catch (_: Exception) {}
+        }
+    }
+
     override fun onGetSession(controllerInfo: MediaSession.ControllerInfo): MediaSession? {
         return mediaSession
     }
@@ -729,6 +926,8 @@ class MusicService : MediaSessionService() {
     override fun onDestroy() {
         serviceInstance = null
         playerInstance = null
+        releaseAudioEffects()
+        currentAudioSessionId.value = 0
         try {
             stopForeground(STOP_FOREGROUND_REMOVE)
         } catch (_: Exception) {}

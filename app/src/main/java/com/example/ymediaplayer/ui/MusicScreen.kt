@@ -113,9 +113,9 @@ enum class MusicSoundMode(
         displayName = "Balanced Pure",
         shortName = "Balanced",
         description = "Natural studio sound with transparent fidelity",
-        bands = listOf(0.0f, 1.0f, 0.0f, 1.5f, 1.0f),
+        bands = listOf(0.0f, 0.0f, 0.0f, 0.0f, 0.0f),
         bassBoost = 0.0f,
-        virtualizer = 0.05f,
+        virtualizer = 0.0f,
         icon = Icons.Rounded.GraphicEq
     ),
     BASS_PUNCH(
@@ -123,9 +123,9 @@ enum class MusicSoundMode(
         displayName = "Bass Punch",
         shortName = "Bass Punch",
         description = "Deep sub-bass impact with punchy low-end energy",
-        bands = listOf(7.0f, 5.0f, -1.0f, 1.5f, 2.5f),
-        bassBoost = 0.65f,
-        virtualizer = 0.15f,
+        bands = listOf(4.5f, 2.5f, -0.5f, 1.0f, 1.5f),
+        bassBoost = 0.35f,
+        virtualizer = 0.05f,
         icon = Icons.Rounded.Bolt
     ),
     VOCAL_BOOST(
@@ -133,9 +133,9 @@ enum class MusicSoundMode(
         displayName = "Vocal Clarity",
         shortName = "Vocal Boost",
         description = "Crisp, up-front vocals & intimate acoustic detail",
-        bands = listOf(-3.0f, 0.5f, 5.5f, 4.0f, 2.0f),
+        bands = listOf(-2.5f, 0.5f, 4.0f, 3.0f, 1.5f),
         bassBoost = 0.0f,
-        virtualizer = 0.20f,
+        virtualizer = 0.10f,
         icon = Icons.Rounded.RecordVoiceOver
     ),
     SPATIAL_3D(
@@ -143,9 +143,9 @@ enum class MusicSoundMode(
         displayName = "3D Spatial",
         shortName = "3D Spatial",
         description = "Wide holographic soundstage with immersive depth",
-        bands = listOf(4.0f, 1.5f, 0.5f, 3.0f, 5.5f),
-        bassBoost = 0.35f,
-        virtualizer = 0.85f,
+        bands = listOf(2.5f, 1.0f, 0.5f, 2.0f, 3.5f),
+        bassBoost = 0.20f,
+        virtualizer = 0.35f,
         icon = Icons.Rounded.SpatialAudio
     );
 
@@ -304,34 +304,20 @@ fun MusicScreen(
     var sleepTimerMinutes by remember { mutableIntStateOf(0) }
     var sleepTimerSecondsRemaining by remember { mutableIntStateOf(0) }
 
-    // Audio Effects (loaded from persistent AppPreferences)
-    var eqEnabled by remember { mutableStateOf(appPreferences.isEqEnabled()) }
-    var selectedPresetName by remember { mutableStateOf(appPreferences.getEqPreset()) }
-    var bandLevels by remember { mutableStateOf(appPreferences.getEqBands()) }
-    var bassBoostStrength by remember { mutableFloatStateOf(appPreferences.getEqBassBoost()) }
-    var virtualizerStrength by remember { mutableFloatStateOf(appPreferences.getEqVirtualizer()) }
-    var activeAudioSessionId by remember { mutableIntStateOf(MusicService.currentAudioSessionId) }
-    var soundMode by remember { mutableStateOf(MusicSoundMode.fromId(appPreferences.getMusicSoundMode())) }
+    // Audio Effects & Sound Profile State (synced globally through MusicService)
+    val eqEnabled by remember { MusicService.isEqEnabled }
+    val selectedPresetName by remember { MusicService.currentPresetName }
+    val bandLevels by remember { MusicService.currentEqBands }
+    val bassBoostStrength by remember { MusicService.currentBassBoost }
+    val virtualizerStrength by remember { MusicService.currentVirtualizer }
+    val soundMode by remember { MusicService.currentSoundMode }
 
-    fun persistEq() {
-        appPreferences.saveEqSettings(
-            preset = selectedPresetName,
-            bands = bandLevels,
-            bassBoost = bassBoostStrength,
-            virt = virtualizerStrength,
-            enabled = eqEnabled
-        )
+    LaunchedEffect(Unit) {
+        MusicService.initPreferencesState(context)
     }
 
     fun applySoundMode(mode: MusicSoundMode, notify: Boolean = true) {
-        soundMode = mode
-        appPreferences.setMusicSoundMode(mode.id)
-        selectedPresetName = mode.displayName
-        bandLevels = mode.bands
-        bassBoostStrength = mode.bassBoost
-        virtualizerStrength = mode.virtualizer
-        eqEnabled = true
-        persistEq()
+        MusicService.applySoundMode(context, mode)
         if (notify) {
             showInstantHud(
                 mode.icon,
@@ -342,119 +328,24 @@ fun MusicScreen(
         }
     }
 
-    // Hardware Audio Effects keyed to active session ID
-    val audioEffects = remember(activeAudioSessionId) {
-        var eq: Equalizer? = null
-        var bass: BassBoost? = null
-        var virt: Virtualizer? = null
-        try {
-            if (activeAudioSessionId > 0) {
-                eq = Equalizer(0, activeAudioSessionId).apply { enabled = eqEnabled }
-                bass = BassBoost(0, activeAudioSessionId).apply { enabled = eqEnabled }
-                virt = Virtualizer(0, activeAudioSessionId).apply { enabled = eqEnabled }
-            }
-        } catch (_: Exception) {}
-        Triple(eq, bass, virt)
-    }
-
-    DisposableEffect(audioEffects) {
-        onDispose {
-            val (eq, bass, virt) = audioEffects
-            try { eq?.release() } catch (_: Exception) {}
-            try { bass?.release() } catch (_: Exception) {}
-            try { virt?.release() } catch (_: Exception) {}
-        }
-    }
-
-    // Automatically apply EQ, Bass Boost, and Virtualizer whenever effects attach
-    LaunchedEffect(audioEffects, eqEnabled, bandLevels, bassBoostStrength, virtualizerStrength) {
-        val (eq, bass, virt) = audioEffects
-        if (eq != null) {
-            try {
-                eq.enabled = eqEnabled
-                val minRange = eq.bandLevelRange[0]
-                val maxRange = eq.bandLevelRange[1]
-                bandLevels.forEachIndexed { idx, db ->
-                    val mB = (db * 100).toInt().coerceIn(minRange.toInt(), maxRange.toInt()).toShort()
-                    if (idx < eq.numberOfBands.toInt()) {
-                        eq.setBandLevel(idx.toShort(), mB)
-                    }
-                }
-            } catch (_: Exception) {}
-        }
-        if (bass != null) {
-            try {
-                bass.enabled = eqEnabled
-                bass.setStrength((bassBoostStrength * 1000).toInt().toShort())
-            } catch (_: Exception) {}
-        }
-        if (virt != null) {
-            try {
-                virt.enabled = eqEnabled
-                virt.setStrength((virtualizerStrength * 1000).toInt().toShort())
-            } catch (_: Exception) {}
-        }
-    }
-
-    // Apply EQ Band Changes
     fun applyBandLevel(bandIndex: Int, gainDb: Float) {
-        val newBands = bandLevels.toMutableList()
-        newBands[bandIndex] = gainDb
-        bandLevels = newBands
-        selectedPresetName = "Custom"
-        val (eq, _, _) = audioEffects
-        if (eq != null && eqEnabled) {
-            try {
-                val minRange = eq.bandLevelRange[0]
-                val maxRange = eq.bandLevelRange[1]
-                val mB = (gainDb * 100).toInt().coerceIn(minRange.toInt(), maxRange.toInt()).toShort()
-                if (bandIndex < eq.numberOfBands.toInt()) {
-                    eq.setBandLevel(bandIndex.toShort(), mB)
-                }
-            } catch (_: Exception) {}
-        }
-        persistEq()
+        MusicService.applyBandLevel(context, bandIndex, gainDb)
     }
 
     fun applyPreset(preset: MusicEqPreset) {
-        selectedPresetName = preset.name
-        bandLevels = preset.bands
-        val (eq, _, _) = audioEffects
-        if (eq != null && eqEnabled) {
-            try {
-                val minRange = eq.bandLevelRange[0]
-                val maxRange = eq.bandLevelRange[1]
-                preset.bands.forEachIndexed { idx, db ->
-                    val mB = (db * 100).toInt().coerceIn(minRange.toInt(), maxRange.toInt()).toShort()
-                    if (idx < eq.numberOfBands.toInt()) {
-                        eq.setBandLevel(idx.toShort(), mB)
-                    }
-                }
-            } catch (_: Exception) {}
-        }
-        persistEq()
+        MusicService.applyPreset(context, preset)
     }
 
     fun applyBassBoost(value: Float) {
-        bassBoostStrength = value
-        val (_, bass, _) = audioEffects
-        if (bass != null && eqEnabled) {
-            try {
-                bass.setStrength((value * 1000).toInt().toShort())
-            } catch (_: Exception) {}
-        }
-        persistEq()
+        MusicService.applyBassBoost(context, value)
     }
 
     fun applyVirtualizer(value: Float) {
-        virtualizerStrength = value
-        val (_, _, virt) = audioEffects
-        if (virt != null && eqEnabled) {
-            try {
-                virt.setStrength((value * 1000).toInt().toShort())
-            } catch (_: Exception) {}
-        }
-        persistEq()
+        MusicService.applyVirtualizer(context, value)
+    }
+
+    fun toggleEqEnabled(enabled: Boolean) {
+        MusicService.setEqEnabled(context, enabled)
     }
 
     // Inform parent of full screen state so floating pill navigation hides
@@ -643,10 +534,6 @@ fun MusicScreen(
                 }
             } else if (MusicService.currentMusicItem.value != null) {
                 currentlyPlaying = MusicService.currentMusicItem.value
-            }
-
-            if (MusicService.currentAudioSessionId > 0) {
-                activeAudioSessionId = MusicService.currentAudioSessionId
             }
 
             // If notification deep link was triggered before controller connected

@@ -14,6 +14,8 @@ kotlin = "2.4.20"
 nav3Core = "1.1.7"
 lifecycleViewmodelNav3 = "2.11.0"
 media3 = "1.11.1"
+libvlc = "3.7.7"
+androidxFragment = "1.9.1"
 coil = "3.6.2"
 materialIcons = "1.7.8"
 mockito = "5.23.0"
@@ -45,6 +47,8 @@ androidx-media3-exoplayer = { module = "androidx.media3:media3-exoplayer", versi
 androidx-media3-effect = { module = "androidx.media3:media3-effect", version.ref = "media3" }
 androidx-media3-ui = { module = "androidx.media3:media3-ui", version.ref = "media3" }
 androidx-media3-session = { module = "androidx.media3:media3-session", version.ref = "media3" }
+libvlc-all = { module = "org.videolan.android:libvlc-all", version.ref = "libvlc" }
+androidx-fragment-ktx = { module = "androidx.fragment:fragment-ktx", version.ref = "androidxFragment" }
 coil-compose = { module = "io.coil-kt.coil3:coil-compose", version.ref = "coil" }
 coil-network-okhttp = { module = "io.coil-kt.coil3:coil-network-okhttp", version.ref = "coil" }
 coil-video = { module = "io.coil-kt.coil3:coil-video", version.ref = "coil" }

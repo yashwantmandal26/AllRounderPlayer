@@ -41,6 +41,11 @@
             android:launchMode="singleTask"
             android:configChanges="orientation|screenSize|smallestScreenSize|screenLayout|keyboard|keyboardHidden|navigation">
         </activity>
+        <activity
+            android:name=".ui.CompatibilityPlayerActivity"
+            android:exported="false"
+            android:screenOrientation="sensorLandscape"
+            android:configChanges="orientation|screenSize|smallestScreenSize" />
 
         <service
             android:name=".service.MusicService"

@@ -8,9 +8,12 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.media3.common.C
 import androidx.media3.common.audio.AudioProcessor
 import androidx.media3.common.audio.BaseAudioProcessor
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.launch
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
-import kotlin.math.abs
 import kotlin.math.cos
 import kotlin.math.max
 import kotlin.math.min
@@ -20,12 +23,17 @@ import kotlin.math.sqrt
 /**
  * Real-time Audio Reactor holding live music analysis state
  * consumed by UI visualizers and animations.
+ *
+ * Optimized to be completely non-blocking and decoupled from the
+ * real-time ExoPlayer audio playback thread to ensure zero audio underruns or distortion.
  */
 object AudioReactor {
     const val NUM_BANDS = 16
     const val WAVEFORM_POINTS = 64
 
-    // Live reactive state
+    private val visualizerScope = CoroutineScope(Dispatchers.Default + SupervisorJob())
+
+    // Live reactive state for Compose UI
     private val _energy = mutableFloatStateOf(0f)
     val energy: State<Float> = _energy
 
@@ -56,8 +64,14 @@ object AudioReactor {
         (0.5 * (1.0 - cos(2.0 * Math.PI * i / (FFT_SIZE - 1)))).toFloat()
     }
 
-    private var lastUiPublishTimestamp = 0L
-    private const val UI_PUBLISH_INTERVAL_MS = 25L // ~40 fps target for silky-smooth visualizer without Compose UI thrashing
+    private var lastCaptureTimestamp = 0L
+    private const val CAPTURE_INTERVAL_MS = 25L // ~40 fps target for smooth visualizer
+
+    // Preallocated scratch buffer for async processing
+    private const val MAX_SAMPLE_CACHE = 1024
+    private val sampleCache = ShortArray(MAX_SAMPLE_CACHE)
+    @Volatile
+    private var isProcessing = false
 
     // Static singleton logarithmic frequency bins
     private val BIN_MAP = arrayOf(
@@ -91,26 +105,50 @@ object AudioReactor {
         smoothedBass = 0f
         internalBassPulse = 0f
         runningBassAverage = 0.05f
-        lastUiPublishTimestamp = 0L
+        lastCaptureTimestamp = 0L
+        isProcessing = false
     }
 
     /**
-     * Process 16-bit PCM audio buffer from ExoPlayer
+     * Non-blocking sample capture called from ExoPlayer audio thread.
+     * Extracts samples and dispatches analysis to background worker to prevent audio thread starvation.
      */
-    fun processPcmBuffer(buffer: ByteBuffer, channelCount: Int) {
+    fun onAudioPcmBuffer(buffer: ByteBuffer, channelCount: Int) {
+        val now = System.currentTimeMillis()
+        if (now - lastCaptureTimestamp < CAPTURE_INTERVAL_MS || isProcessing) {
+            return
+        }
+
         val remaining = buffer.remaining()
         if (remaining < 4) return
 
         val shortCount = remaining / 2
-        val samplesToRead = min(shortCount, 1024)
-        if (samplesToRead <= 0) return
+        val samplesToCopy = min(shortCount, MAX_SAMPLE_CACHE)
+        if (samplesToCopy <= 0) return
+
+        lastCaptureTimestamp = now
+
+        val startPos = buffer.position()
+        val shortBuffer = buffer.asShortBuffer()
+        shortBuffer.get(sampleCache, 0, samplesToCopy)
+        buffer.position(startPos)
 
         val channels = max(1, channelCount)
-        val shortBuffer = buffer.order(ByteOrder.LITTLE_ENDIAN).asShortBuffer()
-        val monoCount = samplesToRead / channels
+
+        isProcessing = true
+        visualizerScope.launch {
+            try {
+                processSampleCache(samplesToCopy, channels)
+            } finally {
+                isProcessing = false
+            }
+        }
+    }
+
+    private fun processSampleCache(sampleCount: Int, channels: Int) {
+        val monoCount = sampleCount / channels
         if (monoCount <= 0) return
 
-        // Compute RMS energy, downsampled waveform, and sample window for FFT
         var sumSquares = 0.0
         var bassSum = 0.0
         var lowPassFilter = 0f
@@ -125,8 +163,8 @@ object AudioReactor {
                 var monoVal = 0f
                 val baseIdx = i * channels
                 for (ch in 0 until channels) {
-                    if (baseIdx + ch < shortCount) {
-                        monoVal += shortBuffer.get(baseIdx + ch).toFloat() / 32768f
+                    if (baseIdx + ch < sampleCount) {
+                        monoVal += sampleCache[baseIdx + ch].toFloat() / 32768f
                     }
                 }
                 monoVal /= channels
@@ -137,13 +175,13 @@ object AudioReactor {
             fftImag[i] = 0f
         }
 
-        // Full pass over samples for RMS, waveform, and Bass filter
+        // Pass over samples for RMS, waveform, and Bass filter
         for (i in 0 until monoCount) {
             var monoVal = 0f
             val baseIdx = i * channels
             for (ch in 0 until channels) {
-                if (baseIdx + ch < shortCount) {
-                    monoVal += shortBuffer.get(baseIdx + ch).toFloat() / 32768f
+                if (baseIdx + ch < sampleCount) {
+                    monoVal += sampleCache[baseIdx + ch].toFloat() / 32768f
                 }
             }
             monoVal /= channels
@@ -205,14 +243,10 @@ object AudioReactor {
             }
         }
 
-        // Throttle Compose State mutations to ~40fps to avoid flooding UI thread message queue
-        if (now - lastUiPublishTimestamp >= UI_PUBLISH_INTERVAL_MS) {
-            lastUiPublishTimestamp = now
-            _energy.floatValue = smoothedEnergy
-            _bassPulse.floatValue = currentPulse
-            _bands.value = currentBands.clone()
-            _waveformData.value = newWave
-        }
+        _energy.floatValue = smoothedEnergy
+        _bassPulse.floatValue = currentPulse
+        _bands.value = currentBands.clone()
+        _waveformData.value = newWave
     }
 
     /**
@@ -288,10 +322,10 @@ class AudioVisualizerProcessor : BaseAudioProcessor() {
         val outBuffer = replaceOutputBuffer(count)
         val startPos = inputBuffer.position()
 
-        // Peek audio samples and process in AudioReactor
-        AudioReactor.processPcmBuffer(inputBuffer, inputAudioFormat.channelCount)
+        // Asynchronously peek audio samples in AudioReactor without blocking audio render thread
+        AudioReactor.onAudioPcmBuffer(inputBuffer, inputAudioFormat.channelCount)
 
-        // Rewind and pass through to audio output sink
+        // Pass through unmodified to audio output sink
         inputBuffer.position(startPos)
         outBuffer.put(inputBuffer)
         outBuffer.flip()

@@ -174,7 +174,7 @@ enum class VideoSoundMode(
         description = "Expansive 3D theatrical soundstage with deep sub-bass & Foley detail",
         bands = listOf(4.0f, 1.5f, 0.0f, 3.5f, 5.0f),
         bassBoost = 0.40f,
-        virtualizer = 0.80f,
+        virtualizer = 0.40f,
         icon = Icons.Rounded.Theaters
     ),
     CLEAR_VOICE(
@@ -678,6 +678,21 @@ fun VideoPlayerScreen(
             subtitlesEnabled = subtitlesEnabled
         )
     }
+    val safePlaybackMode by VideoPlaybackManager.safeModeActive
+    val playbackRecoveryMessage by VideoPlaybackManager.recoveryMessage
+    val compatibilityFallback by VideoPlaybackManager.compatibilityFallbackRequest
+
+    LaunchedEffect(compatibilityFallback?.requestId) {
+        val request = compatibilityFallback ?: return@LaunchedEffect
+        context.startActivity(
+            Intent(context, CompatibilityPlayerActivity::class.java).apply {
+                putExtra(CompatibilityPlayerActivity.EXTRA_URI, request.uri)
+                putExtra(CompatibilityPlayerActivity.EXTRA_TITLE, request.title)
+                putExtra(CompatibilityPlayerActivity.EXTRA_POSITION_MS, request.positionMs)
+            }
+        )
+        VideoPlaybackManager.consumeCompatibilityFallback(request.requestId)
+    }
 
     val allVideos = remember(allFolders) { allFolders.flatMap { it.videos } }
 
@@ -1129,6 +1144,16 @@ fun VideoPlayerScreen(
         }
     }
 
+    LaunchedEffect(playbackRecoveryMessage) {
+        playbackRecoveryMessage?.let { message ->
+            showQuickHUD(
+                if (safePlaybackMode) "Compatibility mode" else "Playback recovery",
+                message,
+                Icons.Rounded.HealthAndSafety
+            )
+        }
+    }
+
     // Dynamic Video RenderEffect (Color Profile + AGSL Luminance Unsharp Mask + Super AI Engine)
     var currentContrast by remember { mutableStateOf(appPreferences.getVideoCustomContrast()) }
     var currentSaturation by remember { mutableStateOf(appPreferences.getVideoCustomSaturation()) }
@@ -1140,15 +1165,19 @@ fun VideoPlayerScreen(
     var isSuperAiEnhance by remember { mutableStateOf(appPreferences.isSuperAiEnhanceEnabled()) }
     var preAiBrightness by remember { mutableFloatStateOf(brightnessPct) }
 
-    val currentVideoRenderEffect = remember(currentContrast, currentSaturation, currentBrightness, currentWarmth, currentSharpness, isSuperAiEnhance) {
-        createVideoRenderEffect(
-            contrast = currentContrast,
-            saturation = currentSaturation,
-            brightness = currentBrightness,
-            warmth = currentWarmth,
-            sharpness = currentSharpness,
-            isSuperAi = isSuperAiEnhance
-        )
+    val currentVideoRenderEffect = remember(currentContrast, currentSaturation, currentBrightness, currentWarmth, currentSharpness, isSuperAiEnhance, safePlaybackMode) {
+        if (safePlaybackMode) {
+            null
+        } else {
+            createVideoRenderEffect(
+                contrast = currentContrast,
+                saturation = currentSaturation,
+                brightness = currentBrightness,
+                warmth = currentWarmth,
+                sharpness = currentSharpness,
+                isSuperAi = isSuperAiEnhance
+            )
+        }
     }
 
     LaunchedEffect(currentVideoRenderEffect, playerView) {
