@@ -37,6 +37,7 @@ import android.net.Uri
 import coil3.request.ImageRequest
 import coil3.video.VideoFrameDecoder
 import coil3.video.videoFrameMicros
+import coil3.video.videoFrameOption
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -89,19 +90,18 @@ internal fun formatSize(bytes: Long): String {
 
 /**
  * Builds an ImageRequest for video thumbnails that extracts a frame past timestamp 0
- * (e.g. 1 second or 10% of duration) to avoid blank white or black intro frames.
+ * (3 seconds, or the midpoint of shorter clips) to avoid blank white or black intro frames.
  */
 internal val sharedVideoFrameDecoderFactory = VideoFrameDecoder.Factory()
 
 internal fun buildVideoThumbnailRequest(context: Context, uri: Uri, durationMs: Long = 0L): ImageRequest {
-    val frameMicros = when {
-        durationMs > 3000L -> 1_000_000L // 1 second in
-        durationMs > 1000L -> (durationMs * 1000L) / 4 // 25% in
-        else -> 500_000L // 0.5 sec default
-    }
+    val frameMicros = com.example.ymediaplayer.util.VideoThumbnailFrame.timeMicros(durationMs)
     return ImageRequest.Builder(context)
         .data(uri)
         .videoFrameMicros(frameMicros)
+        .videoFrameOption(android.media.MediaMetadataRetriever.OPTION_CLOSEST)
+        .memoryCacheKey("video-frame-v3:$uri:$frameMicros")
+        .diskCacheKey("video-frame-v3:$uri:$frameMicros")
         .size(360, 240)
         .build()
 }
@@ -151,7 +151,9 @@ fun Modifier.liquidGlass(
     alpha: Float = 0.14f,
     borderWidth: Dp = 0.dp,
     blurRadius: Dp = 20.dp
-): Modifier {
+): Modifier = composed {
+    val palette = LocalAppColors.current
+    if (palette.isMatte && palette.isDark) return@composed this.clip(shape).background(palette.cardBg).border(borderWidth, palette.glassBorder, shape)
     val base = this
         .clip(shape)
         .background(
@@ -165,7 +167,7 @@ fun Modifier.liquidGlass(
                 end = Offset(Float.POSITIVE_INFINITY, Float.POSITIVE_INFINITY)
             )
         )
-    return if (borderWidth > 0.dp) {
+    if (borderWidth > 0.dp) {
         base.border(
             width = borderWidth,
             brush = Brush.linearGradient(
@@ -191,6 +193,7 @@ fun Modifier.liquidGlassShimmer(
     shape: Shape,
     durationMs: Int = 3200
 ): Modifier = composed {
+    if (LocalAppColors.current.isMatte && LocalAppColors.current.isDark) return@composed this
     val transition = rememberInfiniteTransition(label = "liquidShimmer")
     val progress by transition.animateFloat(
         initialValue = -0.5f,

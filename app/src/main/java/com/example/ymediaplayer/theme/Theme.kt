@@ -54,12 +54,12 @@ fun YMediaPlayerTheme(
       accentBlue = animAccentBlue,
       accentGreen = animAccentGreen,
       onAccent = androidx.compose.ui.graphics.Color.White,
-      gradientBlob1 = animBlob1,
-      gradientBlob2 = animBlob2
+      gradientBlob1 = if (baseAppColors.isMatte && isDark) androidx.compose.ui.graphics.Color.Transparent else animBlob1,
+      gradientBlob2 = if (baseAppColors.isMatte && isDark) androidx.compose.ui.graphics.Color.Transparent else animBlob2
   )
 
   val colorScheme = if (isDark) {
-    DarkColorScheme.copy(primary = animAccentBlue, secondary = animAccentGreen)
+    DarkColorScheme.copy(primary = animAccentBlue, secondary = animAccentGreen, background = appColors.baseBackground, surface = appColors.cardBg, surfaceVariant = appColors.cardBgElevated, onSurface = appColors.textPrimary, onSurfaceVariant = appColors.textSecondary, outline = appColors.glassBorder, surfaceTint = if (appColors.isMatte) androidx.compose.ui.graphics.Color.Transparent else animAccentBlue)
   } else {
     LightColorScheme.copy(primary = animAccentBlue, secondary = animAccentGreen)
   }

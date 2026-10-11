@@ -1755,6 +1755,7 @@ internal fun CanvasBg(offsetProvider: () -> Float = { 0f }) {
 
     // Enhanced vivid core & falloff for all 3 modes
     val coreAlpha = when {
+        c.isMatte && c.isDark -> 0f
         c.isDark && c.baseBackground == Color(0xFF000000) -> 0.45f * glowStrength // OLED Black (rich vibrant halo)
         c.isDark -> 0.38f * glowStrength                                          // Slate Grey
         else -> 0.28f * glowStrength                                              // Clean Light

@@ -15,11 +15,7 @@ import coil3.fetch.Fetcher
 import coil3.fetch.ImageFetchResult
 import coil3.request.Options
 
-/**
- * High-performance Coil 3 Fetcher that leverages Android OS MediaStore pre-computed thumbnails.
- * Instead of spinning up a full video decoder to parse the MP4 file, it retrieves the system's
- * cached thumbnail in <2ms.
- */
+/** Caches video frames extracted at three seconds, independently of system posters. */
 class MediaStoreVideoFetcher(
     private val context: Context,
     private val uri: Uri
@@ -28,8 +24,8 @@ class MediaStoreVideoFetcher(
     override suspend fun fetch(): FetchResult? {
         if (uri.scheme != ContentResolver.SCHEME_CONTENT) return null
 
-        val cacheKey = uri.lastPathSegment ?: uri.hashCode().toString()
-        val thumbCacheDir = java.io.File(context.cacheDir, "video_thumbs").apply {
+        val cacheKey = java.security.MessageDigest.getInstance("SHA-256").digest(uri.toString().toByteArray()).joinToString("") { "%02x".format(it) }
+        val thumbCacheDir = java.io.File(context.cacheDir, "video_thumbs_frame3_v3").apply {
             if (!exists()) mkdirs()
         }
         val cacheFile = java.io.File(thumbCacheDir, "$cacheKey.webp")
@@ -48,45 +44,9 @@ class MediaStoreVideoFetcher(
             } catch (_: Exception) {}
         }
 
-        // 2. FETCH FROM SYSTEM: MediaStore pre-computed hardware thumbnail
+        // Extract a timestamped frame; system posters do not honor a timestamp.
         try {
-            var bitmap: Bitmap? = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                // Android 10+ (API 29+): Instant hardware-accelerated MediaStore thumbnail
-                try {
-                    context.contentResolver.loadThumbnail(uri, Size(360, 240), null)
-                } catch (_: Exception) { null }
-            } else {
-                // Android 9 and below: MediaStore.Video.Thumbnails
-                val id = uri.lastPathSegment?.toLongOrNull()
-                if (id != null) {
-                    @Suppress("DEPRECATION")
-                    MediaStore.Video.Thumbnails.getThumbnail(
-                        context.contentResolver,
-                        id,
-                        MediaStore.Video.Thumbnails.MINI_KIND,
-                        null
-                    )
-                } else null
-            }
-
-            // 3. FALLBACK: Quick keyframe sync decode if system thumbnail hasn't been generated yet
-            if (bitmap == null) {
-                bitmap = try {
-                    val retriever = android.media.MediaMetadataRetriever()
-                    retriever.setDataSource(context, uri)
-                    val frame = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O_MR1) {
-                        retriever.getScaledFrameAtTime(
-                            1_000_000L,
-                            android.media.MediaMetadataRetriever.OPTION_CLOSEST_SYNC,
-                            360, 240
-                        ) ?: retriever.getFrameAtTime(1_000_000L, android.media.MediaMetadataRetriever.OPTION_CLOSEST_SYNC)
-                    } else {
-                        retriever.getFrameAtTime(1_000_000L, android.media.MediaMetadataRetriever.OPTION_CLOSEST_SYNC)
-                    }
-                    try { retriever.release() } catch (_: Exception) {}
-                    frame
-                } catch (_: Exception) { null }
-            }
+            val bitmap = VideoThumbnailFrame.extract(context, uri)
 
             // 4. PERSIST TO DISK: Write compressed WebP so subsequent loads are instantaneous
             if (bitmap != null) {
@@ -117,7 +77,9 @@ class MediaStoreVideoFetcher(
 
     class Factory : Fetcher.Factory<Uri> {
         override fun create(data: Uri, options: Options, imageLoader: ImageLoader): Fetcher? {
-            if (data.scheme == ContentResolver.SCHEME_CONTENT) {
+            if (data.scheme == ContentResolver.SCHEME_CONTENT &&
+                (data.path?.contains("/video/") == true ||
+                    runCatching { options.context.contentResolver.getType(data)?.startsWith("video/") == true }.getOrDefault(false))) {
                 return MediaStoreVideoFetcher(options.context, data)
             }
             return null

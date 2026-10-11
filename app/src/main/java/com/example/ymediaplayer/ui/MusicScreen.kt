@@ -707,10 +707,10 @@ fun MusicScreen(
                         onClick = { selectedArtist = null },
                         modifier = Modifier
                             .size(38.dp)
-                            .shadow(elevation = 4.dp, shape = CircleShape, ambientColor = c.cardShadowColor, spotColor = c.cardShadowColor)
+                            .shadow(elevation = if (c.isMatte && c.isDark) 0.dp else 4.dp, shape = CircleShape, ambientColor = c.cardShadowColor, spotColor = c.cardShadowColor)
                             .clip(CircleShape)
-                            .background(Brush.verticalGradient(listOf(c.cardBgElevated, c.cardBg)))
-                            .border(1.2.dp, Brush.verticalGradient(listOf(c.cardBorderHighlight, c.cardBorderShadow)), CircleShape)
+                            .background((if (c.isMatte && c.isDark) androidx.compose.ui.graphics.SolidColor(c.cardBg) else Brush.verticalGradient(listOf(c.cardBgElevated, c.cardBg))))
+                            .border(1.2.dp, (if (c.isMatte && c.isDark) androidx.compose.ui.graphics.SolidColor(c.glassBorder) else Brush.verticalGradient(listOf(c.cardBorderHighlight, c.cardBorderShadow))), CircleShape)
                     ) {
                         Icon(Icons.AutoMirrored.Rounded.ArrowBack, contentDescription = "Back", tint = c.textPrimary, modifier = Modifier.size(20.dp))
                     }
@@ -734,10 +734,10 @@ fun MusicScreen(
                         onClick = { selectedAlbum = null },
                         modifier = Modifier
                             .size(38.dp)
-                            .shadow(elevation = 4.dp, shape = CircleShape, ambientColor = c.cardShadowColor, spotColor = c.cardShadowColor)
+                            .shadow(elevation = if (c.isMatte && c.isDark) 0.dp else 4.dp, shape = CircleShape, ambientColor = c.cardShadowColor, spotColor = c.cardShadowColor)
                             .clip(CircleShape)
-                            .background(Brush.verticalGradient(listOf(c.cardBgElevated, c.cardBg)))
-                            .border(1.2.dp, Brush.verticalGradient(listOf(c.cardBorderHighlight, c.cardBorderShadow)), CircleShape)
+                            .background((if (c.isMatte && c.isDark) androidx.compose.ui.graphics.SolidColor(c.cardBg) else Brush.verticalGradient(listOf(c.cardBgElevated, c.cardBg))))
+                            .border(1.2.dp, (if (c.isMatte && c.isDark) androidx.compose.ui.graphics.SolidColor(c.glassBorder) else Brush.verticalGradient(listOf(c.cardBorderHighlight, c.cardBorderShadow))), CircleShape)
                     ) {
                         Icon(Icons.AutoMirrored.Rounded.ArrowBack, contentDescription = "Back", tint = c.textPrimary, modifier = Modifier.size(20.dp))
                     }
@@ -798,10 +798,10 @@ fun MusicScreen(
                             modifier = Modifier
                                 .weight(1f)
                                 .focusRequester(searchFocusRequester)
-                                .shadow(elevation = 6.dp, shape = RoundedCornerShape(14.dp), ambientColor = c.cardShadowColor, spotColor = c.cardShadowColor)
+                                .shadow(elevation = if (c.isMatte && c.isDark) 0.dp else 6.dp, shape = RoundedCornerShape(14.dp), ambientColor = c.cardShadowColor, spotColor = c.cardShadowColor)
                                 .clip(RoundedCornerShape(14.dp))
-                                .background(Brush.verticalGradient(listOf(c.cardBgElevated, c.cardBg)))
-                                .border(1.2.dp, Brush.verticalGradient(listOf(c.cardBorderHighlight, c.glassBorder, c.cardBorderShadow)), RoundedCornerShape(14.dp))
+                                .background((if (c.isMatte && c.isDark) androidx.compose.ui.graphics.SolidColor(c.cardBg) else Brush.verticalGradient(listOf(c.cardBgElevated, c.cardBg))))
+                                .border(1.2.dp, (if (c.isMatte && c.isDark) androidx.compose.ui.graphics.SolidColor(c.glassBorder) else Brush.verticalGradient(listOf(c.cardBorderHighlight, c.glassBorder, c.cardBorderShadow))), RoundedCornerShape(14.dp))
                         )
                     } else {
                         Row(
@@ -809,8 +809,8 @@ fun MusicScreen(
                                 .weight(1f)
                                 .height(42.dp)
                                 .clip(RoundedCornerShape(21.dp))
-                                .background(Brush.verticalGradient(listOf(c.cardBgElevated, c.cardBg)))
-                                .border(1.2.dp, Brush.verticalGradient(listOf(c.cardBorderHighlight, c.glassBorder, c.cardBorderShadow)), RoundedCornerShape(21.dp))
+                                .background((if (c.isMatte && c.isDark) androidx.compose.ui.graphics.SolidColor(c.cardBg) else Brush.verticalGradient(listOf(c.cardBgElevated, c.cardBg))))
+                                .border(1.2.dp, (if (c.isMatte && c.isDark) androidx.compose.ui.graphics.SolidColor(c.glassBorder) else Brush.verticalGradient(listOf(c.cardBorderHighlight, c.glassBorder, c.cardBorderShadow))), RoundedCornerShape(21.dp))
                                 .clickable { isSearching = true }
                                 .padding(horizontal = 14.dp),
                             verticalAlignment = Alignment.CenterVertically
@@ -830,10 +830,10 @@ fun MusicScreen(
                                 onClick = { showSortMenu = true },
                                 modifier = Modifier
                                     .size(42.dp)
-                                    .shadow(elevation = 4.dp, shape = CircleShape, ambientColor = c.cardShadowColor, spotColor = c.cardShadowColor)
+                                    .shadow(elevation = if (c.isMatte && c.isDark) 0.dp else 4.dp, shape = CircleShape, ambientColor = c.cardShadowColor, spotColor = c.cardShadowColor)
                                     .clip(CircleShape)
-                                    .background(Brush.verticalGradient(listOf(c.cardBgElevated, c.cardBg)))
-                                    .border(1.2.dp, Brush.verticalGradient(listOf(c.cardBorderHighlight, c.cardBorderShadow)), CircleShape)
+                                    .background((if (c.isMatte && c.isDark) androidx.compose.ui.graphics.SolidColor(c.cardBg) else Brush.verticalGradient(listOf(c.cardBgElevated, c.cardBg))))
+                                    .border(1.2.dp, (if (c.isMatte && c.isDark) androidx.compose.ui.graphics.SolidColor(c.glassBorder) else Brush.verticalGradient(listOf(c.cardBorderHighlight, c.cardBorderShadow))), CircleShape)
                             ) {
                                 Icon(Icons.AutoMirrored.Rounded.Sort, contentDescription = "Sort", tint = c.textPrimary, modifier = Modifier.size(19.dp))
                             }
@@ -843,7 +843,7 @@ fun MusicScreen(
                                     containerColor = c.dropdownBg,
                                     modifier = Modifier
                                         .border(1.dp, c.glassBorder, RoundedCornerShape(14.dp))
-                                        .shadow(12.dp, RoundedCornerShape(14.dp))
+                                        .shadow(if (c.isMatte && c.isDark) 0.dp else 12.dp, RoundedCornerShape(14.dp))
                                 ) {
                                     Text(
                                         "SORT TRACKS",
@@ -931,13 +931,13 @@ fun MusicScreen(
                                     .shadow(if (selected) 6.dp else 2.dp, chipShape, ambientColor = c.cardShadowColor, spotColor = c.cardShadowColor)
                                     .clip(chipShape)
                                     .background(
-                                        if (selected) Brush.verticalGradient(listOf(c.accentBlue, c.accentBlue.copy(0.85f)))
-                                        else Brush.verticalGradient(listOf(c.cardBgElevated, c.cardBg))
+                                        if (selected) (if (c.isMatte && c.isDark) androidx.compose.ui.graphics.SolidColor(c.accentBlue) else Brush.verticalGradient(listOf(c.accentBlue, c.accentBlue.copy(0.85f))))
+                                        else (if (c.isMatte && c.isDark) androidx.compose.ui.graphics.SolidColor(c.cardBg) else Brush.verticalGradient(listOf(c.cardBgElevated, c.cardBg)))
                                     )
                                     .border(
                                         1.3.dp,
-                                        if (selected) Brush.verticalGradient(listOf(Color.White.copy(0.45f), Color.White.copy(0.12f)))
-                                        else Brush.verticalGradient(listOf(c.cardBorderHighlight, c.cardBorderShadow)),
+                                        if (selected) (if (c.isMatte && c.isDark) androidx.compose.ui.graphics.SolidColor(c.glassBorder) else Brush.verticalGradient(listOf(Color.White.copy(0.45f), Color.White.copy(0.12f))))
+                                        else (if (c.isMatte && c.isDark) androidx.compose.ui.graphics.SolidColor(c.glassBorder) else Brush.verticalGradient(listOf(c.cardBorderHighlight, c.cardBorderShadow))),
                                         chipShape
                                     )
                                     .bounceClick { selectedCategory = cat }
@@ -1009,9 +1009,9 @@ fun MusicScreen(
                             Box(
                                 modifier = Modifier
                                     .size(96.dp)
-                                    .shadow(12.dp, CircleShape, ambientColor = c.accentBlue.copy(0.4f), spotColor = c.accentBlue.copy(0.5f))
+                                    .shadow(if (c.isMatte && c.isDark) 0.dp else 12.dp, CircleShape, ambientColor = c.accentBlue.copy(0.4f), spotColor = c.accentBlue.copy(0.5f))
                                     .clip(CircleShape)
-                                    .background(Brush.verticalGradient(listOf(c.cardBgElevated, c.cardBg)))
+                                    .background((if (c.isMatte && c.isDark) androidx.compose.ui.graphics.SolidColor(c.cardBg) else Brush.verticalGradient(listOf(c.cardBgElevated, c.cardBg))))
                                     .border(2.dp, Brush.verticalGradient(listOf(c.accentBlue, c.cardBorderHighlight)), CircleShape),
                                 contentAlignment = Alignment.Center
                             ) {
@@ -1029,7 +1029,7 @@ fun MusicScreen(
                                     onClick = { artistSongs.firstOrNull()?.let { playSongForce(it) } },
                                     colors = ButtonDefaults.buttonColors(containerColor = c.accentBlue, contentColor = Color.White),
                                     shape = RoundedCornerShape(14.dp),
-                                    modifier = Modifier.shadow(6.dp, RoundedCornerShape(14.dp), ambientColor = c.accentBlue, spotColor = c.accentBlue)
+                                    modifier = Modifier.shadow(if (c.isMatte && c.isDark) 0.dp else 6.dp, RoundedCornerShape(14.dp), ambientColor = c.accentBlue, spotColor = c.accentBlue)
                                 ) {
                                     Icon(Icons.Rounded.PlayArrow, contentDescription = null, modifier = Modifier.size(18.dp))
                                     Spacer(Modifier.width(6.dp))
@@ -1093,10 +1093,10 @@ fun MusicScreen(
                             Box(
                                 modifier = Modifier
                                     .size(140.dp)
-                                    .shadow(16.dp, albumShape, ambientColor = Color.Black.copy(0.7f), spotColor = c.cardShadowColor)
+                                    .shadow(if (c.isMatte && c.isDark) 0.dp else 16.dp, albumShape, ambientColor = Color.Black.copy(0.7f), spotColor = c.cardShadowColor)
                                     .clip(albumShape)
                                     .background(c.cardBg)
-                                    .border(1.4.dp, Brush.verticalGradient(listOf(c.cardBorderHighlight, c.glassBorder, c.cardBorderShadow)), albumShape)
+                                    .border(1.4.dp, (if (c.isMatte && c.isDark) androidx.compose.ui.graphics.SolidColor(c.glassBorder) else Brush.verticalGradient(listOf(c.cardBorderHighlight, c.glassBorder, c.cardBorderShadow))), albumShape)
                             ) {
                                 MusicAlbumArtImage(artUri = albumArt, iconSize = 56.dp, modifier = Modifier.fillMaxSize())
                             }
@@ -1109,7 +1109,7 @@ fun MusicScreen(
                                     onClick = { albumSongs.firstOrNull()?.let { playSongForce(it) } },
                                     colors = ButtonDefaults.buttonColors(containerColor = c.accentBlue, contentColor = Color.White),
                                     shape = RoundedCornerShape(14.dp),
-                                    modifier = Modifier.shadow(6.dp, RoundedCornerShape(14.dp), ambientColor = c.accentBlue, spotColor = c.accentBlue)
+                                    modifier = Modifier.shadow(if (c.isMatte && c.isDark) 0.dp else 6.dp, RoundedCornerShape(14.dp), ambientColor = c.accentBlue, spotColor = c.accentBlue)
                                 ) {
                                     Icon(Icons.Rounded.PlayArrow, contentDescription = null, modifier = Modifier.size(18.dp))
                                     Spacer(Modifier.width(6.dp))
@@ -1294,17 +1294,17 @@ fun MusicScreen(
                                             horizontalAlignment = Alignment.CenterHorizontally,
                                             modifier = Modifier
                                                 .width(100.dp)
-                                                .shadow(4.dp, cardShape, ambientColor = c.cardShadowColor, spotColor = c.cardShadowColor)
+                                                .shadow(if (c.isMatte && c.isDark) 0.dp else 4.dp, cardShape, ambientColor = c.cardShadowColor, spotColor = c.cardShadowColor)
                                                 .clip(cardShape)
-                                                .background(Brush.verticalGradient(listOf(c.cardBgElevated, c.cardBg)))
-                                                .border(1.2.dp, Brush.verticalGradient(listOf(c.cardBorderHighlight, c.glassBorder, c.cardBorderShadow)), cardShape)
+                                                .background((if (c.isMatte && c.isDark) androidx.compose.ui.graphics.SolidColor(c.cardBg) else Brush.verticalGradient(listOf(c.cardBgElevated, c.cardBg))))
+                                                .border(1.2.dp, (if (c.isMatte && c.isDark) androidx.compose.ui.graphics.SolidColor(c.glassBorder) else Brush.verticalGradient(listOf(c.cardBorderHighlight, c.glassBorder, c.cardBorderShadow))), cardShape)
                                                 .clickable { selectedArtist = artistName }
                                                 .padding(10.dp)
                                         ) {
                                             Box(
                                                 modifier = Modifier
                                                     .size(56.dp)
-                                                    .shadow(4.dp, CircleShape)
+                                                    .shadow(if (c.isMatte && c.isDark) 0.dp else 4.dp, CircleShape)
                                                     .clip(CircleShape)
                                                     .background(Color(0xFF141520))
                                                     .border(1.2.dp, c.cardBorderHighlight, CircleShape),
@@ -1361,10 +1361,10 @@ fun MusicScreen(
                                         Column(
                                             modifier = Modifier
                                                 .width(130.dp)
-                                                .shadow(4.dp, cardShape, ambientColor = c.cardShadowColor, spotColor = c.cardShadowColor)
+                                                .shadow(if (c.isMatte && c.isDark) 0.dp else 4.dp, cardShape, ambientColor = c.cardShadowColor, spotColor = c.cardShadowColor)
                                                 .clip(cardShape)
-                                                .background(Brush.verticalGradient(listOf(c.cardBgElevated, c.cardBg)))
-                                                .border(1.2.dp, Brush.verticalGradient(listOf(c.cardBorderHighlight, c.glassBorder, c.cardBorderShadow)), cardShape)
+                                                .background((if (c.isMatte && c.isDark) androidx.compose.ui.graphics.SolidColor(c.cardBg) else Brush.verticalGradient(listOf(c.cardBgElevated, c.cardBg))))
+                                                .border(1.2.dp, (if (c.isMatte && c.isDark) androidx.compose.ui.graphics.SolidColor(c.glassBorder) else Brush.verticalGradient(listOf(c.cardBorderHighlight, c.glassBorder, c.cardBorderShadow))), cardShape)
                                                 .clickable { selectedAlbum = albumId }
                                                 .padding(8.dp)
                                         ) {
@@ -1738,10 +1738,10 @@ fun MusicScreen(
                                 modifier = Modifier
                                     .fillMaxWidth()
                                     .padding(horizontal = 16.dp, vertical = 10.dp)
-                                    .shadow(elevation = 8.dp, shape = heroShape, ambientColor = c.accentBlue.copy(0.3f), spotColor = c.accentBlue.copy(0.4f))
+                                    .shadow(elevation = if (c.isMatte && c.isDark) 0.dp else 8.dp, shape = heroShape, ambientColor = c.accentBlue.copy(0.3f), spotColor = c.accentBlue.copy(0.4f))
                                     .clip(heroShape)
                                     .background(Brush.linearGradient(listOf(c.accentBlue.copy(0.45f), c.cardBgElevated, c.cardBg)))
-                                    .border(1.4.dp, Brush.verticalGradient(listOf(c.cardBorderHighlight, c.glassBorder, c.cardBorderShadow)), heroShape)
+                                    .border(1.4.dp, (if (c.isMatte && c.isDark) androidx.compose.ui.graphics.SolidColor(c.glassBorder) else Brush.verticalGradient(listOf(c.cardBorderHighlight, c.glassBorder, c.cardBorderShadow))), heroShape)
                                     .padding(18.dp)
                             ) {
                                 Column {
@@ -1873,10 +1873,10 @@ fun MusicScreen(
                                 modifier = Modifier
                                     .fillMaxWidth()
                                     .padding(vertical = 5.dp)
-                                    .shadow(elevation = 4.dp, shape = rowShape, ambientColor = c.cardShadowColor, spotColor = c.cardShadowColor)
+                                    .shadow(elevation = if (c.isMatte && c.isDark) 0.dp else 4.dp, shape = rowShape, ambientColor = c.cardShadowColor, spotColor = c.cardShadowColor)
                                     .clip(rowShape)
-                                    .background(Brush.verticalGradient(listOf(c.cardBgElevated, c.cardBg)))
-                                    .border(1.2.dp, Brush.verticalGradient(listOf(c.cardBorderHighlight, c.glassBorder, c.cardBorderShadow)), rowShape)
+                                    .background((if (c.isMatte && c.isDark) androidx.compose.ui.graphics.SolidColor(c.cardBg) else Brush.verticalGradient(listOf(c.cardBgElevated, c.cardBg))))
+                                    .border(1.2.dp, (if (c.isMatte && c.isDark) androidx.compose.ui.graphics.SolidColor(c.glassBorder) else Brush.verticalGradient(listOf(c.cardBorderHighlight, c.glassBorder, c.cardBorderShadow))), rowShape)
                                     .clickable { selectedArtist = name }
                                     .padding(12.dp),
                                 verticalAlignment = Alignment.CenterVertically
@@ -1884,7 +1884,7 @@ fun MusicScreen(
                                 Box(
                                     modifier = Modifier
                                         .size(54.dp)
-                                        .shadow(4.dp, CircleShape)
+                                        .shadow(if (c.isMatte && c.isDark) 0.dp else 4.dp, CircleShape)
                                         .clip(CircleShape)
                                         .background(Color(0xFF141520))
                                         .border(1.4.dp, c.cardBorderHighlight, CircleShape),
@@ -1956,10 +1956,10 @@ fun MusicScreen(
                                 modifier = Modifier
                                     .fillMaxWidth()
                                     .padding(horizontal = 16.dp, vertical = 10.dp)
-                                    .shadow(elevation = 8.dp, shape = heroShape, ambientColor = Color(0xFFFF4D6D).copy(0.3f), spotColor = Color(0xFFFF4D6D).copy(0.4f))
+                                    .shadow(elevation = if (c.isMatte && c.isDark) 0.dp else 8.dp, shape = heroShape, ambientColor = Color(0xFFFF4D6D).copy(0.3f), spotColor = Color(0xFFFF4D6D).copy(0.4f))
                                     .clip(heroShape)
                                     .background(Brush.linearGradient(listOf(Color(0xFFFF4D6D).copy(0.45f), c.cardBgElevated, c.cardBg)))
-                                    .border(1.4.dp, Brush.verticalGradient(listOf(c.cardBorderHighlight, c.glassBorder, c.cardBorderShadow)), heroShape)
+                                    .border(1.4.dp, (if (c.isMatte && c.isDark) androidx.compose.ui.graphics.SolidColor(c.glassBorder) else Brush.verticalGradient(listOf(c.cardBorderHighlight, c.glassBorder, c.cardBorderShadow))), heroShape)
                                     .padding(18.dp)
                             ) {
                                 Column {
@@ -2025,10 +2025,10 @@ fun MusicScreen(
                                     modifier = Modifier
                                         .fillMaxWidth()
                                         .padding(horizontal = 16.dp, vertical = 10.dp)
-                                        .shadow(elevation = 8.dp, shape = heroShape, ambientColor = c.accentBlue.copy(0.3f), spotColor = c.accentBlue.copy(0.4f))
+                                        .shadow(elevation = if (c.isMatte && c.isDark) 0.dp else 8.dp, shape = heroShape, ambientColor = c.accentBlue.copy(0.3f), spotColor = c.accentBlue.copy(0.4f))
                                         .clip(heroShape)
                                         .background(Brush.linearGradient(listOf(c.accentBlue.copy(0.45f), c.cardBgElevated, c.cardBg)))
-                                        .border(1.4.dp, Brush.verticalGradient(listOf(c.cardBorderHighlight, c.glassBorder, c.cardBorderShadow)), heroShape)
+                                        .border(1.4.dp, (if (c.isMatte && c.isDark) androidx.compose.ui.graphics.SolidColor(c.glassBorder) else Brush.verticalGradient(listOf(c.cardBorderHighlight, c.glassBorder, c.cardBorderShadow))), heroShape)
                                         .padding(18.dp)
                                 ) {
                                     Column {
@@ -2137,10 +2137,10 @@ fun MusicScreen(
                                         modifier = Modifier
                                             .fillMaxWidth()
                                             .padding(horizontal = 16.dp, vertical = 5.dp)
-                                            .shadow(4.dp, itemShape, ambientColor = c.cardShadowColor, spotColor = c.cardShadowColor)
+                                            .shadow(if (c.isMatte && c.isDark) 0.dp else 4.dp, itemShape, ambientColor = c.cardShadowColor, spotColor = c.cardShadowColor)
                                             .clip(itemShape)
-                                            .background(Brush.verticalGradient(listOf(c.cardBgElevated, c.cardBg)))
-                                            .border(1.3.dp, Brush.verticalGradient(listOf(c.cardBorderHighlight, c.glassBorder, c.cardBorderShadow)), itemShape)
+                                            .background((if (c.isMatte && c.isDark) androidx.compose.ui.graphics.SolidColor(c.cardBg) else Brush.verticalGradient(listOf(c.cardBgElevated, c.cardBg))))
+                                            .border(1.3.dp, (if (c.isMatte && c.isDark) androidx.compose.ui.graphics.SolidColor(c.glassBorder) else Brush.verticalGradient(listOf(c.cardBorderHighlight, c.glassBorder, c.cardBorderShadow))), itemShape)
                                             .clickable { selectedPlaylist = plName }
                                             .padding(12.dp),
                                         verticalAlignment = Alignment.CenterVertically
@@ -2148,7 +2148,7 @@ fun MusicScreen(
                                         Box(
                                             modifier = Modifier
                                                 .size(52.dp)
-                                                .shadow(4.dp, RoundedCornerShape(12.dp))
+                                                .shadow(if (c.isMatte && c.isDark) 0.dp else 4.dp, RoundedCornerShape(12.dp))
                                                 .clip(RoundedCornerShape(12.dp))
                                                 .background(c.accentBlue.copy(0.2f)),
                                             contentAlignment = Alignment.Center
@@ -2669,7 +2669,7 @@ private fun FeaturedPickHeroCard(
                     ),
                     modifier = Modifier
                         .size(54.dp)
-                        .shadow(10.dp, CircleShape, ambientColor = Color.Black, spotColor = Color.White.copy(alpha = 0.5f))
+                        .shadow(if (c.isMatte && c.isDark) 0.dp else 10.dp, CircleShape, ambientColor = Color.Black, spotColor = Color.White.copy(alpha = 0.5f))
                 ) {
                     Icon(
                         imageVector = if (isCurrentSong && isPlaying) Icons.Rounded.Pause else Icons.Rounded.PlayArrow,
@@ -2721,14 +2721,15 @@ private fun SmartMixCard(
     gradient: List<Color>,
     onClick: () -> Unit
 ) {
+    val c = LocalAppColors.current
     val shape = RoundedCornerShape(16.dp)
     Box(
         modifier = Modifier
             .width(130.dp)
             .height(110.dp)
-            .shadow(6.dp, shape)
+            .shadow(if (c.isMatte && c.isDark) 0.dp else 6.dp, shape)
             .clip(shape)
-            .background(Brush.linearGradient(gradient))
+            .background(if (c.isMatte && c.isDark) androidx.compose.ui.graphics.SolidColor(c.cardBg) else Brush.linearGradient(gradient))
             .clickable(onClick = onClick)
             .padding(12.dp)
     ) {
@@ -2772,12 +2773,12 @@ private fun QuickPickItem(
             .clip(itemShape)
             .background(
                 if (isCurrent) Brush.verticalGradient(listOf(c.accentBlue.copy(0.22f), c.cardBgElevated))
-                else Brush.verticalGradient(listOf(c.cardBgElevated, c.cardBg))
+                else (if (c.isMatte && c.isDark) androidx.compose.ui.graphics.SolidColor(c.cardBg) else Brush.verticalGradient(listOf(c.cardBgElevated, c.cardBg)))
             )
             .border(
                 1.2.dp,
                 if (isCurrent) Brush.verticalGradient(listOf(c.accentBlue, c.cardBorderHighlight, c.accentBlue.copy(0.5f)))
-                else Brush.verticalGradient(listOf(c.cardBorderHighlight, c.glassBorder, c.cardBorderShadow)),
+                else (if (c.isMatte && c.isDark) androidx.compose.ui.graphics.SolidColor(c.glassBorder) else Brush.verticalGradient(listOf(c.cardBorderHighlight, c.glassBorder, c.cardBorderShadow))),
                 itemShape
             )
             .bounceClick(onClick = onClick)
@@ -2789,7 +2790,7 @@ private fun QuickPickItem(
             iconSize = 20.dp,
             modifier = Modifier
                 .size(44.dp)
-                .shadow(2.dp, RoundedCornerShape(10.dp))
+                .shadow(if (c.isMatte && c.isDark) 0.dp else 2.dp, RoundedCornerShape(10.dp))
                 .clip(RoundedCornerShape(10.dp))
                 .border(0.8.dp, c.cardBorderHighlight, RoundedCornerShape(10.dp))
         )
@@ -2841,7 +2842,7 @@ private fun OnlineArtistCard(
         Box(
             modifier = Modifier
                 .size(76.dp)
-                .shadow(elevation = 6.dp, shape = CircleShape, ambientColor = c.cardShadowColor, spotColor = c.cardShadowColor)
+                .shadow(elevation = if (c.isMatte && c.isDark) 0.dp else 6.dp, shape = CircleShape, ambientColor = c.cardShadowColor, spotColor = c.cardShadowColor)
                 .clip(CircleShape)
                 .background(Brush.linearGradient(colors))
                 .border(1.4.dp, Brush.verticalGradient(listOf(Color.White.copy(alpha = 0.35f), c.glassBorder, Color.White.copy(alpha = 0.08f))), CircleShape),
@@ -2910,10 +2911,10 @@ private fun OnlineAlbumCard(
         Box(
             modifier = Modifier
                 .size(130.dp)
-                .shadow(elevation = 8.dp, shape = cardShape, ambientColor = Color.Black.copy(0.6f), spotColor = c.cardShadowColor)
+                .shadow(elevation = if (c.isMatte && c.isDark) 0.dp else 8.dp, shape = cardShape, ambientColor = Color.Black.copy(0.6f), spotColor = c.cardShadowColor)
                 .clip(cardShape)
                 .background(Color(0xFF141520))
-                .border(1.4.dp, Brush.verticalGradient(listOf(c.cardBorderHighlight, c.glassBorder, c.cardBorderShadow)), cardShape)
+                .border(1.4.dp, (if (c.isMatte && c.isDark) androidx.compose.ui.graphics.SolidColor(c.glassBorder) else Brush.verticalGradient(listOf(c.cardBorderHighlight, c.glassBorder, c.cardBorderShadow))), cardShape)
         ) {
             MusicAlbumArtImage(
                 artUri = artUri,
@@ -2984,7 +2985,7 @@ private fun RecentlyPlayedMusicCard(
                 .border(
                     1.4.dp,
                     if (isCurrent) Brush.verticalGradient(listOf(c.accentBlue, c.cardBorderHighlight))
-                    else Brush.verticalGradient(listOf(c.cardBorderHighlight, c.glassBorder, c.cardBorderShadow)),
+                    else (if (c.isMatte && c.isDark) androidx.compose.ui.graphics.SolidColor(c.glassBorder) else Brush.verticalGradient(listOf(c.cardBorderHighlight, c.glassBorder, c.cardBorderShadow))),
                     cardShape
                 )
         ) {
@@ -3198,10 +3199,10 @@ private fun MiniPlayer(
     Box(
         modifier = Modifier
             .fillMaxWidth()
-            .shadow(elevation = 16.dp, shape = miniShape, ambientColor = Color.Black.copy(0.6f), spotColor = c.accentBlue.copy(0.35f))
+            .shadow(elevation = if (c.isMatte && c.isDark) 0.dp else 16.dp, shape = miniShape, ambientColor = Color.Black.copy(0.6f), spotColor = c.accentBlue.copy(0.35f))
             .clip(miniShape)
-            .background(Brush.verticalGradient(listOf(c.cardBgElevated, c.cardBg)))
-            .border(1.2.dp, Brush.verticalGradient(listOf(c.cardBorderHighlight, c.glassBorder, c.cardBorderShadow)), miniShape)
+            .background((if (c.isMatte && c.isDark) androidx.compose.ui.graphics.SolidColor(c.cardBg) else Brush.verticalGradient(listOf(c.cardBgElevated, c.cardBg))))
+            .border(1.2.dp, (if (c.isMatte && c.isDark) androidx.compose.ui.graphics.SolidColor(c.glassBorder) else Brush.verticalGradient(listOf(c.cardBorderHighlight, c.glassBorder, c.cardBorderShadow))), miniShape)
             .pointerInput(Unit) {
                 var totalDragX = 0f
                 var totalDragY = 0f
@@ -3249,7 +3250,7 @@ private fun MiniPlayer(
                     seedText = song.title + song.artist,
                     modifier = Modifier
                         .size(44.dp)
-                        .shadow(elevation = 4.dp, shape = RoundedCornerShape(11.dp))
+                        .shadow(elevation = if (c.isMatte && c.isDark) 0.dp else 4.dp, shape = RoundedCornerShape(11.dp))
                         .clip(RoundedCornerShape(11.dp))
                         .border(1.dp, c.cardBorderHighlight, RoundedCornerShape(11.dp))
                 )
@@ -3279,10 +3280,10 @@ private fun MiniPlayer(
                     onClick = onPrev,
                     modifier = Modifier
                         .size(34.dp)
-                        .shadow(3.dp, CircleShape)
+                        .shadow(if (c.isMatte && c.isDark) 0.dp else 3.dp, CircleShape)
                         .clip(CircleShape)
-                        .background(Brush.verticalGradient(listOf(c.cardBgElevated, c.cardBg)))
-                        .border(1.dp, Brush.verticalGradient(listOf(c.cardBorderHighlight, c.cardBorderShadow)), CircleShape)
+                        .background((if (c.isMatte && c.isDark) androidx.compose.ui.graphics.SolidColor(c.cardBg) else Brush.verticalGradient(listOf(c.cardBgElevated, c.cardBg))))
+                        .border(1.dp, (if (c.isMatte && c.isDark) androidx.compose.ui.graphics.SolidColor(c.glassBorder) else Brush.verticalGradient(listOf(c.cardBorderHighlight, c.cardBorderShadow))), CircleShape)
                 ) {
                     Icon(Icons.Rounded.SkipPrevious, "Previous", tint = Color.White, modifier = Modifier.size(20.dp))
                 }
@@ -3291,7 +3292,7 @@ private fun MiniPlayer(
                     onClick = onPlayPause,
                     modifier = Modifier
                         .size(40.dp)
-                        .shadow(elevation = 6.dp, shape = CircleShape, ambientColor = c.accentBlue, spotColor = c.accentBlue)
+                        .shadow(elevation = if (c.isMatte && c.isDark) 0.dp else 6.dp, shape = CircleShape, ambientColor = c.accentBlue, spotColor = c.accentBlue)
                         .clip(CircleShape)
                         .background(Brush.radialGradient(listOf(c.accentBlue, c.accentBlue.copy(0.85f))))
                 ) {
@@ -3307,10 +3308,10 @@ private fun MiniPlayer(
                     onClick = onNext,
                     modifier = Modifier
                         .size(34.dp)
-                        .shadow(3.dp, CircleShape)
+                        .shadow(if (c.isMatte && c.isDark) 0.dp else 3.dp, CircleShape)
                         .clip(CircleShape)
-                        .background(Brush.verticalGradient(listOf(c.cardBgElevated, c.cardBg)))
-                        .border(1.dp, Brush.verticalGradient(listOf(c.cardBorderHighlight, c.cardBorderShadow)), CircleShape)
+                        .background((if (c.isMatte && c.isDark) androidx.compose.ui.graphics.SolidColor(c.cardBg) else Brush.verticalGradient(listOf(c.cardBgElevated, c.cardBg))))
+                        .border(1.dp, (if (c.isMatte && c.isDark) androidx.compose.ui.graphics.SolidColor(c.glassBorder) else Brush.verticalGradient(listOf(c.cardBorderHighlight, c.cardBorderShadow))), CircleShape)
                 ) {
                     Icon(
                         Icons.Rounded.SkipNext,
@@ -3768,7 +3769,7 @@ fun FullScreenMusicPlayer(
                                 Box(
                                     modifier = Modifier
                                         .size(280.dp)
-                                        .shadow(32.dp, CircleShape, ambientColor = Color.Black, spotColor = c.accentBlue.copy(0.45f))
+                                        .shadow(if (c.isMatte && c.isDark) 0.dp else 32.dp, CircleShape, ambientColor = Color.Black, spotColor = c.accentBlue.copy(0.45f))
                                         .clip(CircleShape)
                                         .background(
                                             Brush.radialGradient(
@@ -3813,7 +3814,7 @@ fun FullScreenMusicPlayer(
                                     Box(
                                         modifier = Modifier
                                             .size(136.dp)
-                                            .shadow(10.dp, CircleShape)
+                                            .shadow(if (c.isMatte && c.isDark) 0.dp else 10.dp, CircleShape)
                                             .clip(CircleShape)
                                             .border(2.dp, Color.White.copy(0.25f), CircleShape)
                                             .graphicsLayer { rotationZ = rotation }
@@ -3875,7 +3876,7 @@ fun FullScreenMusicPlayer(
                                         Box(
                                             modifier = Modifier
                                                 .size(34.dp)
-                                                .shadow(6.dp, CircleShape)
+                                                .shadow(if (c.isMatte && c.isDark) 0.dp else 6.dp, CircleShape)
                                                 .clip(CircleShape)
                                                 .background(
                                                     Brush.radialGradient(
@@ -3912,7 +3913,7 @@ fun FullScreenMusicPlayer(
                                                         )
                                                     )
                                                 )
-                                                .shadow(4.dp, RoundedCornerShape(2.dp))
+                                                .shadow(if (c.isMatte && c.isDark) 0.dp else 4.dp, RoundedCornerShape(2.dp))
                                         )
 
                                         // Cartridge & Stylus Headshell
@@ -3952,7 +3953,7 @@ fun FullScreenMusicPlayer(
                                 modifier = Modifier
                                     .width(300.dp)
                                     .height(190.dp)
-                                    .shadow(32.dp, RoundedCornerShape(16.dp), ambientColor = Color.Black, spotColor = Color(0xFFFFB703).copy(0.3f))
+                                    .shadow(if (c.isMatte && c.isDark) 0.dp else 32.dp, RoundedCornerShape(16.dp), ambientColor = Color.Black, spotColor = Color(0xFFFFB703).copy(0.3f))
                                     .clip(RoundedCornerShape(16.dp))
                                     .background(Brush.verticalGradient(listOf(Color(0xFF2B2B30), Color(0xFF18181B))))
                                     .border(2.dp, Brush.verticalGradient(listOf(Color.White.copy(0.2f), Color.White.copy(0.05f))), RoundedCornerShape(16.dp))
@@ -4144,7 +4145,7 @@ fun FullScreenMusicPlayer(
                                 Box(
                                     modifier = Modifier
                                         .size(200.dp)
-                                        .shadow(28.dp, CircleShape, ambientColor = c.accentBlue, spotColor = Color(0xFF00F5D4))
+                                        .shadow(if (c.isMatte && c.isDark) 0.dp else 28.dp, CircleShape, ambientColor = c.accentBlue, spotColor = Color(0xFF00F5D4))
                                         .clip(CircleShape)
                                         .border(3.dp, Color.White, CircleShape)
                                 ) {
@@ -4225,7 +4226,7 @@ fun FullScreenMusicPlayer(
                                 Box(
                                     modifier = Modifier
                                         .size(190.dp)
-                                        .shadow(28.dp, CircleShape, ambientColor = c.accentBlue, spotColor = Color(0xFF00F5D4))
+                                        .shadow(if (c.isMatte && c.isDark) 0.dp else 28.dp, CircleShape, ambientColor = c.accentBlue, spotColor = Color(0xFF00F5D4))
                                         .clip(CircleShape)
                                         .border(2.5.dp, Color.White.copy(alpha = 0.85f), CircleShape)
                                 ) {
@@ -4247,7 +4248,7 @@ fun FullScreenMusicPlayer(
                                 Box(
                                     modifier = Modifier
                                         .size(220.dp)
-                                        .shadow(32.dp, RoundedCornerShape(24.dp), ambientColor = Color.Black, spotColor = c.accentBlue.copy(0.6f))
+                                        .shadow(if (c.isMatte && c.isDark) 0.dp else 32.dp, RoundedCornerShape(24.dp), ambientColor = Color.Black, spotColor = c.accentBlue.copy(0.6f))
                                         .clip(RoundedCornerShape(24.dp))
                                         .background(c.glassBg)
                                         .border(1.5.dp, c.glassBorder, RoundedCornerShape(24.dp))
@@ -4484,7 +4485,7 @@ fun FullScreenMusicPlayer(
                     Box(
                         modifier = Modifier
                             .size(76.dp)
-                            .shadow(20.dp, CircleShape, ambientColor = c.accentBlue, spotColor = c.accentBlue)
+                            .shadow(if (c.isMatte && c.isDark) 0.dp else 20.dp, CircleShape, ambientColor = c.accentBlue, spotColor = c.accentBlue)
                             .clip(CircleShape)
                             .background(c.accentBlue)
                             .clickable(

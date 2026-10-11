@@ -205,6 +205,7 @@ fun FolderDetailScreen(
         val glowVersion = appPreferences.lastProgressUpdate.longValue
         val glowStrength = remember(glowVersion) { appPreferences.getAmbientGlowStrength() }
         val coreAlpha = when {
+        c.isMatte && c.isDark -> 0f
             c.isDark && c.baseBackground == Color(0xFF000000) -> 0.45f * glowStrength
             c.isDark -> 0.38f * glowStrength
             else -> 0.28f * glowStrength

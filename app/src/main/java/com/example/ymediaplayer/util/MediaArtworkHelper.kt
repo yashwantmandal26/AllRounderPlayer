@@ -94,32 +94,14 @@ object MediaArtworkHelper {
     /**
      * Resolves video thumbnail for video playback.
      * Tries:
-     * 1. Hardware accelerated thumbnail via [ContentResolver.loadThumbnail] on API 29+
-     * 2. Frame extraction via [MediaMetadataRetriever] at 1 second
+     * 1. Scaled frame at three seconds (midpoint for shorter clips)
+     * 2. Closest keyframe if exact-frame decoding is unavailable
      */
     fun getVideoThumbnailBytes(context: Context, videoUri: Uri?): ByteArray? {
         if (videoUri == null) return null
-        val cr = context.contentResolver
-
-        // Strategy 1: Android 10+ loadThumbnail
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-            try {
-                val thumb = cr.loadThumbnail(videoUri, Size(MAX_ARTWORK_DIMENSION, MAX_ARTWORK_DIMENSION), null)
-                return compressToJpegBytes(thumb)
-            } catch (_: Throwable) {}
+        VideoThumbnailFrame.extract(context, videoUri)?.let { frame ->
+            return compressToJpegBytes(frame)
         }
-
-        // Strategy 2: MediaMetadataRetriever keyframe
-        try {
-            MediaMetadataRetriever().use { mmr ->
-                mmr.setDataSource(context, videoUri)
-                val frame = mmr.getFrameAtTime(1_000_000L, MediaMetadataRetriever.OPTION_CLOSEST_SYNC)
-                    ?: mmr.frameAtTime
-                if (frame != null) {
-                    return compressToJpegBytes(frame)
-                }
-            }
-        } catch (_: Throwable) {}
 
         return null
     }

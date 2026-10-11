@@ -61,27 +61,27 @@ val OledBlackAppColors = AppColors(
 /** 2. Slate Grey: Soft, low-contrast dark slate grey background with rich elevated cards */
 val SlateGreyAppColors = AppColors(
     isDark = true,
-    isMatte = false,
-    baseBackground = Color(0xFF13141B),      // Soft dark slate grey (#13141B)
-    gradientBlob1 = Color(0xFF252838),       // Ambient glow
-    gradientBlob2 = Color(0xFF1E212E),       // Ambient glow
-    glassBg = Color(0xFF1F222E),             // Elevated slate card surface
-    glassBgNested = Color(0xFF2B2E3E),       // Elevated surface
-    glassBorder = Color(0xFF333748),         // Clean subtle slate border
-    topBarScrim = Color(0xF213141B),
-    navBarScrim = Color(0xF613141B),
+    isMatte = true,
+    baseBackground = Color(0xFF202020),      // Soft dark slate grey (#202020)
+    gradientBlob1 = Color(0xFF202020),       // Ambient glow
+    gradientBlob2 = Color(0xFF202020),       // Ambient glow
+    glassBg = Color(0xFF292929),             // Elevated slate card surface
+    glassBgNested = Color(0xFF323232),       // Elevated surface
+    glassBorder = Color(0xFF404040),         // Clean subtle slate border
+    topBarScrim = Color(0xF2202020),
+    navBarScrim = Color(0xF6202020),
     textPrimary = Color(0xFFFFFFFF),
     textSecondary = Color.White.copy(alpha = 0.72f),
     textHint = Color.White.copy(alpha = 0.45f),
     accentBlue = Color(0xFF2F80ED),
     accentGreen = Color(0xFF27AE60),
     onAccent = Color.White,
-    dropdownBg = Color(0xFF1F222E),
-    cardBg = Color(0xFF1F222E),              // Slate grey card
-    cardBgElevated = Color(0xFF2B2E3E),      // Elevated slate card
-    cardBorderHighlight = Color(0xFF3D4256),
-    cardBorderShadow = Color(0xFF0C0D12),
-    cardShadowColor = Color.Black.copy(alpha = 0.40f),
+    dropdownBg = Color(0xFF292929),
+    cardBg = Color(0xFF292929),              // Slate grey card
+    cardBgElevated = Color(0xFF323232),      // Elevated slate card
+    cardBorderHighlight = Color(0xFF404040),
+    cardBorderShadow = Color(0xFF404040),
+    cardShadowColor = Color.Transparent,
 )
 
 /** 3. Clean Light: Crisp modern light theme with pure white cards and high-contrast typography */
