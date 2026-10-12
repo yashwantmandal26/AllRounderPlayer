@@ -21,8 +21,8 @@ android {
         applicationId = "com.example.ymediaplayer"
         minSdk = 24
         targetSdk = 37
-        versionCode = 13
-        versionName = "1.6.1"
+        versionCode = 14
+        versionName = "1.6.2"
     }
 
     signingConfigs {

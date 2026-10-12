@@ -201,28 +201,28 @@ object VideoPlaybackManager {
         val memoryClass = manager?.memoryClass ?: 128
         return when {
             manager?.isLowRamDevice == true || memoryClass <= 128 -> BufferProfile(
-                minBufferMs = 8_000,
-                maxBufferMs = 25_000,
-                playbackBufferMs = 1_200,
-                rebufferMs = 3_000,
-                backBufferMs = 3_000,
-                targetBytes = 32 * 1024 * 1024
+                minBufferMs = 4_000,
+                maxBufferMs = 15_000,
+                playbackBufferMs = 250,
+                rebufferMs = 1_000,
+                backBufferMs = 2_000,
+                targetBytes = 24 * 1024 * 1024
             )
             memoryClass <= 256 -> BufferProfile(
-                minBufferMs = 12_000,
-                maxBufferMs = 40_000,
-                playbackBufferMs = 1_000,
-                rebufferMs = 2_500,
-                backBufferMs = 7_000,
-                targetBytes = 64 * 1024 * 1024
+                minBufferMs = 6_000,
+                maxBufferMs = 25_000,
+                playbackBufferMs = 250,
+                rebufferMs = 1_000,
+                backBufferMs = 4_000,
+                targetBytes = 48 * 1024 * 1024
             )
             else -> BufferProfile(
-                minBufferMs = 18_000,
-                maxBufferMs = 60_000,
-                playbackBufferMs = 800,
-                rebufferMs = 2_000,
-                backBufferMs = 12_000,
-                targetBytes = 128 * 1024 * 1024
+                minBufferMs = 10_000,
+                maxBufferMs = 35_000,
+                playbackBufferMs = 250,
+                rebufferMs = 1_000,
+                backBufferMs = 8_000,
+                targetBytes = 96 * 1024 * 1024
             )
         }
     }
@@ -413,9 +413,9 @@ object VideoPlaybackManager {
         val handleAudioFocus = !appPreferences.isPlayDuringCallsEnabled()
 
         val renderersFactory = DefaultRenderersFactory(context).apply {
-            setExtensionRendererMode(DefaultRenderersFactory.EXTENSION_RENDERER_MODE_ON)
+            setExtensionRendererMode(DefaultRenderersFactory.EXTENSION_RENDERER_MODE_OFF)
             setEnableDecoderFallback(true)
-            setAllowedVideoJoiningTimeMs(5000L)
+            setAllowedVideoJoiningTimeMs(0L)
             setEnableAudioTrackPlaybackParams(true)
         }
 
@@ -448,7 +448,7 @@ object VideoPlaybackManager {
                     .setContentType(C.AUDIO_CONTENT_TYPE_MOVIE)
                     .setUsage(C.USAGE_MEDIA)
                     .build(),
-                /* handleAudioFocus = */ false
+                /* handleAudioFocus = */ handleAudioFocus
             )
             .setHandleAudioBecomingNoisy(appPreferences.isPauseOnHeadsetDisconnect())
             .setVideoScalingMode(C.VIDEO_SCALING_MODE_SCALE_TO_FIT)
@@ -624,6 +624,8 @@ object VideoPlaybackManager {
             playerListener?.let { l -> p.removeListener(l) }
             playerListener = null
             try {
+                p.volume = 0f
+                p.pause()
                 p.stop()
                 p.release()
             } catch (_: Exception) {}

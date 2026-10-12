@@ -7,6 +7,8 @@ import android.provider.MediaStore
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
+import android.os.Build
+
 data class MusicItem(
     val id: Long,
     val uri: Uri,
@@ -15,7 +17,9 @@ data class MusicItem(
     val album: String,
     val albumId: Long,
     val duration: Long,
-    val size: Long
+    val size: Long,
+    val path: String = "",
+    val relativePath: String = ""
 ) {
     val albumArtUri: Uri
         get() = ContentUris.withAppendedId(
@@ -51,7 +55,7 @@ class MusicRepository(private val context: Context) {
 
         val musicList = mutableListOf<MusicItem>()
 
-        val projection = arrayOf(
+        val projection = mutableListOf(
             MediaStore.Audio.Media._ID,
             MediaStore.Audio.Media.TITLE,
             MediaStore.Audio.Media.DISPLAY_NAME,
@@ -59,8 +63,13 @@ class MusicRepository(private val context: Context) {
             MediaStore.Audio.Media.ALBUM,
             MediaStore.Audio.Media.ALBUM_ID,
             MediaStore.Audio.Media.DURATION,
-            MediaStore.Audio.Media.SIZE
-        )
+            MediaStore.Audio.Media.SIZE,
+            MediaStore.Audio.Media.DATA
+        ).apply {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                add(MediaStore.Audio.Media.RELATIVE_PATH)
+            }
+        }.toTypedArray()
 
         val sortOrder = "${MediaStore.Audio.Media.TITLE} ASC"
         // High-performance indexed selection: uses B-tree index on IS_MUSIC and MIME_TYPE instead of full table scans
@@ -82,6 +91,8 @@ class MusicRepository(private val context: Context) {
             val albumIdColumn = cursor.getColumnIndexOrThrow(MediaStore.Audio.Media.ALBUM_ID)
             val durationColumn = cursor.getColumnIndexOrThrow(MediaStore.Audio.Media.DURATION)
             val sizeColumn = cursor.getColumnIndexOrThrow(MediaStore.Audio.Media.SIZE)
+            val pathColumn = cursor.getColumnIndex(MediaStore.Audio.Media.DATA)
+            val relPathColumn = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) cursor.getColumnIndex(MediaStore.Audio.Media.RELATIVE_PATH) else -1
 
             while (cursor.moveToNext()) {
                 val id = cursor.getLong(idColumn)
@@ -102,6 +113,8 @@ class MusicRepository(private val context: Context) {
                 val albumId = cursor.getLong(albumIdColumn)
                 val duration = cursor.getLong(durationColumn)
                 val size = cursor.getLong(sizeColumn)
+                val path = if (pathColumn >= 0) cursor.getString(pathColumn).orEmpty() else ""
+                val relPath = if (relPathColumn >= 0) cursor.getString(relPathColumn).orEmpty() else ""
 
                 val contentUri: Uri = ContentUris.withAppendedId(
                     MediaStore.Audio.Media.EXTERNAL_CONTENT_URI,
@@ -117,7 +130,9 @@ class MusicRepository(private val context: Context) {
                         album = album,
                         albumId = albumId,
                         duration = duration,
-                        size = size
+                        size = size,
+                        path = path,
+                        relativePath = relPath
                     )
                 )
             }

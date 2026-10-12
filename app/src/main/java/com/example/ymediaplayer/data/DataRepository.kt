@@ -496,7 +496,7 @@ class AppPreferences(private val prefs: SharedPreferences) {
     fun isBackgroundPlayEnabled(): Boolean = prefs.getBoolean("background_play_enabled", false)
     fun setBackgroundPlayEnabled(enabled: Boolean) { prefs.edit().putBoolean("background_play_enabled", enabled).apply() }
 
-    fun isAutoPipEnabled(): Boolean = prefs.getBoolean("auto_pip_enabled", true)
+    fun isAutoPipEnabled(): Boolean = prefs.getBoolean("auto_pip_enabled", false)
     fun setAutoPipEnabled(enabled: Boolean) { prefs.edit().putBoolean("auto_pip_enabled", enabled).apply() }
 
     fun isAutoPlayNextEnabled(): Boolean = prefs.getBoolean("auto_play_next_in_playlist", true)

@@ -640,8 +640,8 @@ fun SettingsScreen(
                     SettingsDivider()
 
                     SettingsItemToggle(
-                        title = "Auto Picture-in-Picture",
-                        subtitle = "Enter floating PiP window when swiping home",
+                        title = "Auto Picture-in-Picture (PiP)",
+                        subtitle = "Automatically enter floating PiP window when going to home screen during video playback",
                         icon = Icons.Rounded.PictureInPictureAlt,
                         checked = autoPip,
                         onCheckedChange = {

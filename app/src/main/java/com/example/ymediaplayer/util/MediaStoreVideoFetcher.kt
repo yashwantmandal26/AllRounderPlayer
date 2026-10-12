@@ -21,20 +21,51 @@ class MediaStoreVideoFetcher(
     private val uri: Uri
 ) : Fetcher {
 
+    companion object {
+        // High-speed static in-memory LRU cache to make thumbnail reloads instantaneous (0ms)
+        private val maxMemory = (Runtime.getRuntime().maxMemory() / 1024).toInt()
+        private val cacheSizeKb = (maxMemory / 5).coerceIn(32 * 1024, 128 * 1024)
+
+        val memoryCache = object : android.util.LruCache<String, Bitmap>(cacheSizeKb) {
+            override fun sizeOf(key: String, bitmap: Bitmap): Int {
+                return (bitmap.byteCount / 1024).coerceAtLeast(1)
+            }
+        }
+    }
+
     override suspend fun fetch(): FetchResult? {
         if (uri.scheme != ContentResolver.SCHEME_CONTENT) return null
 
-        val cacheKey = java.security.MessageDigest.getInstance("SHA-256").digest(uri.toString().toByteArray()).joinToString("") { "%02x".format(it) }
+        val cacheKey = java.security.MessageDigest.getInstance("SHA-256")
+            .digest(uri.toString().toByteArray())
+            .joinToString("") { "%02x".format(it) }
+
+        // 1. ULTRA-FAST PATH: Check in-memory LRU cache (0ms lookup, 0 disk I/O, 0 decode)
+        memoryCache.get(cacheKey)?.let { memBmp ->
+            if (!memBmp.isRecycled) {
+                return ImageFetchResult(
+                    image = memBmp.asImage(),
+                    isSampled = false,
+                    dataSource = DataSource.MEMORY
+                )
+            }
+        }
+
         val thumbCacheDir = java.io.File(context.cacheDir, "video_thumbs_frame3_v3").apply {
             if (!exists()) mkdirs()
         }
         val cacheFile = java.io.File(thumbCacheDir, "$cacheKey.webp")
 
-        // 1. FAST PATH: Check persistent WebP disk cache (< 1ms read, 0 IPC overhead)
+        // 2. DISK PATH: Check persistent WebP disk cache, populate memory cache, return
         if (cacheFile.exists() && cacheFile.length() > 0) {
             try {
-                val cachedBmp = android.graphics.BitmapFactory.decodeFile(cacheFile.absolutePath)
+                val opts = android.graphics.BitmapFactory.Options().apply {
+                    inPreferredConfig = Bitmap.Config.RGB_565
+                }
+                val cachedBmp = android.graphics.BitmapFactory.decodeFile(cacheFile.absolutePath, opts)
+                    ?: android.graphics.BitmapFactory.decodeFile(cacheFile.absolutePath)
                 if (cachedBmp != null) {
+                    memoryCache.put(cacheKey, cachedBmp)
                     return ImageFetchResult(
                         image = cachedBmp.asImage(),
                         isSampled = false,
@@ -44,12 +75,12 @@ class MediaStoreVideoFetcher(
             } catch (_: Exception) {}
         }
 
-        // Extract a timestamped frame; system posters do not honor a timestamp.
+        // 3. EXTRACTION: Extract a timestamped frame; persist to both memory and disk
         try {
             val bitmap = VideoThumbnailFrame.extract(context, uri)
 
-            // 4. PERSIST TO DISK: Write compressed WebP so subsequent loads are instantaneous
             if (bitmap != null) {
+                memoryCache.put(cacheKey, bitmap)
                 try {
                     val tempFile = java.io.File(thumbCacheDir, "${cacheKey}_tmp.webp")
                     java.io.FileOutputStream(tempFile).use { out ->

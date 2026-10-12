@@ -1,6 +1,7 @@
 package com.example.ymediaplayer.ui
 
 import android.app.Activity
+import com.example.ymediaplayer.MainActivity
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
@@ -605,103 +606,19 @@ fun FolderDetailScreen(
                 .navigationBarsPadding()
                 .padding(bottom = 16.dp, start = 12.dp, end = 12.dp)
         ) {
-            Box(
-                modifier = Modifier
-                    .then(if (c.isMatte) Modifier else Modifier.shadow(16.dp, RoundedCornerShape(24.dp), ambientColor = c.accentBlue.copy(0.4f), spotColor = c.accentBlue))
-                    .clip(RoundedCornerShape(24.dp))
-                    .background(if (c.isMatte) c.cardBg else Color(0xFF141724)) // 100% solid, fully opaque background
-                    .border(1.2.dp, if (c.isMatte) androidx.compose.ui.graphics.SolidColor(c.glassBorder) else Brush.horizontalGradient(listOf(c.accentBlue, c.cardBorderHighlight)), RoundedCornerShape(24.dp))
-                    .padding(horizontal = 10.dp, vertical = 6.dp)
-            ) {
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    Box(
-                        modifier = Modifier
-                            .size(36.dp)
-                            .clip(RoundedCornerShape(10.dp))
-                            .background(Color(0xFF1E2136))
-                            .border(0.8.dp, c.cardBorderHighlight, RoundedCornerShape(10.dp)),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        if (nowPlayingArtUri != null) {
-                            AsyncImage(
-                                model = nowPlayingArtUri,
-                                contentDescription = null,
-                                contentScale = androidx.compose.ui.layout.ContentScale.Crop,
-                                modifier = Modifier.fillMaxSize()
-                            )
-                        } else {
-                            Icon(
-                                Icons.Rounded.MusicNote,
-                                contentDescription = null,
-                                tint = c.accentBlue,
-                                modifier = Modifier.size(20.dp)
-                            )
-                        }
-                    }
-
-                    Column(
-                        modifier = Modifier.widthIn(max = 130.dp)
-                    ) {
-                        Text(
-                            text = nowPlayingTitle.ifBlank { "Music Playing" },
-                            color = Color.White,
-                            fontSize = 12.sp,
-                            fontWeight = FontWeight.Bold,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis
-                        )
-                        Text(
-                            text = nowPlayingArtist.ifBlank { "Background Audio" },
-                            color = c.accentBlue,
-                            fontSize = 10.sp,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis
-                        )
-                    }
-
-                    IconButton(
-                        onClick = { MusicService.playPrevious() },
-                        modifier = Modifier.size(32.dp)
-                    ) {
-                        Icon(
-                            Icons.Rounded.SkipPrevious,
-                            contentDescription = "Previous Track",
-                            tint = Color.White,
-                            modifier = Modifier.size(20.dp)
-                        )
-                    }
-
-                    IconButton(
-                        onClick = { MusicService.togglePlayPause() },
-                        modifier = Modifier
-                            .size(34.dp)
-                            .clip(CircleShape)
-                            .background(c.accentBlue)
-                    ) {
-                        Icon(
-                            imageVector = if (isMusicPlaying) Icons.Rounded.Pause else Icons.Rounded.PlayArrow,
-                            contentDescription = "Play/Pause",
-                            tint = c.onAccent,
-                            modifier = Modifier.size(20.dp)
-                        )
-                    }
-
-                    IconButton(
-                        onClick = { MusicService.playNext() },
-                        modifier = Modifier.size(32.dp)
-                    ) {
-                        Icon(
-                            Icons.Rounded.SkipNext,
-                            contentDescription = "Next Track",
-                            tint = Color.White,
-                            modifier = Modifier.size(20.dp)
-                        )
-                    }
+            MusicMiniPlayerPill(
+                title = nowPlayingTitle,
+                artist = nowPlayingArtist,
+                artUri = nowPlayingArtUri,
+                isPlaying = isMusicPlaying,
+                onPlayPause = { MusicService.togglePlayPause() },
+                onNext = { MusicService.playNext() },
+                onPrev = { MusicService.playPrevious() },
+                onClick = {
+                    view.performHaptic(HapticType.LIGHT)
+                    MainActivity.openMusicTrigger.value = true
                 }
-            }
+            )
         }
 
         // ═══════════════════════════════════════════════════════════════════════

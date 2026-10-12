@@ -99,10 +99,13 @@ internal fun buildVideoThumbnailRequest(context: Context, uri: Uri, durationMs: 
     return ImageRequest.Builder(context)
         .data(uri)
         .videoFrameMicros(frameMicros)
-        .videoFrameOption(android.media.MediaMetadataRetriever.OPTION_CLOSEST)
-        .memoryCacheKey("video-frame-v3:$uri:$frameMicros")
-        .diskCacheKey("video-frame-v3:$uri:$frameMicros")
+        .videoFrameOption(android.media.MediaMetadataRetriever.OPTION_CLOSEST_SYNC)
+        .memoryCacheKey("video-thumb-v4:$uri")
+        .diskCacheKey("video-thumb-v4:$uri")
         .size(360, 240)
+        .precision(coil3.size.Precision.INEXACT)
+        .memoryCachePolicy(coil3.request.CachePolicy.ENABLED)
+        .diskCachePolicy(coil3.request.CachePolicy.ENABLED)
         .build()
 }
 

@@ -1243,18 +1243,21 @@ fun VideoPlayerScreen(
     }
 
     // Hardware Audio Effects (Equalizer, BassBoost, Virtualizer) attached to active session ID
-    val audioEffects = remember(activeAudioSessionId) {
-        var eq: Equalizer? = null
-        var bass: BassBoost? = null
-        var virt: Virtualizer? = null
-        try {
-            if (activeAudioSessionId > 0) {
-                eq = Equalizer(0, activeAudioSessionId).apply { enabled = true }
-                bass = BassBoost(0, activeAudioSessionId).apply { enabled = true }
-                virt = Virtualizer(0, activeAudioSessionId).apply { enabled = true }
-            }
-        } catch (_: Exception) {}
-        Triple(eq, bass, virt)
+    // Only instantiated when a non-standard sound mode is active, avoiding AudioTrack reinit / audio stalls
+    val audioEffects = remember(activeAudioSessionId, videoSoundMode) {
+        if (activeAudioSessionId <= 0 || videoSoundMode == VideoSoundMode.NORMAL) {
+            Triple(null, null, null)
+        } else {
+            var eq: Equalizer? = null
+            var bass: BassBoost? = null
+            var virt: Virtualizer? = null
+            try {
+                eq = Equalizer(0, activeAudioSessionId)
+                bass = BassBoost(0, activeAudioSessionId)
+                virt = Virtualizer(0, activeAudioSessionId)
+            } catch (_: Exception) {}
+            Triple(eq, bass, virt)
+        }
     }
 
     DisposableEffect(audioEffects) {
@@ -1276,7 +1279,6 @@ fun VideoPlayerScreen(
             } else {
                 if (eq != null) {
                     try {
-                        eq.enabled = true
                         val minRange = eq.bandLevelRange[0]
                         val maxRange = eq.bandLevelRange[1]
                         mode.bands.forEachIndexed { idx, db ->
@@ -1285,18 +1287,19 @@ fun VideoPlayerScreen(
                                 eq.setBandLevel(idx.toShort(), mB)
                             }
                         }
+                        eq.enabled = true
                     } catch (_: Exception) {}
                 }
                 if (bass != null) {
                     try {
-                        bass.enabled = true
                         bass.setStrength((mode.bassBoost * 1000).toInt().toShort())
+                        bass.enabled = (mode.bassBoost > 0f)
                     } catch (_: Exception) {}
                 }
                 if (virt != null) {
                     try {
-                        virt.enabled = true
                         virt.setStrength((mode.virtualizer * 1000).toInt().toShort())
+                        virt.enabled = (mode.virtualizer > 0f)
                     } catch (_: Exception) {}
                 }
             }
@@ -1315,24 +1318,6 @@ fun VideoPlayerScreen(
         showQuickHUD(nextMode.displayName, nextMode.description, nextMode.icon)
     }
 
-    // ─── Back Press Handling ──────────────────────────────────────────────────
-    androidx.activity.compose.BackHandler(enabled = true) {
-        when {
-            showQuickControlsBar -> showQuickControlsBar = false
-            showSettingsOverlay -> showSettingsOverlay = false
-            showPlaylistSheet -> showPlaylistSheet = false
-            isMoreExpanded -> isMoreExpanded = false
-            showMoreMenuSheet -> showMoreMenuSheet = false
-            showSpeedSheet -> showSpeedSheet = false
-            showSleepTimerSheet -> showSleepTimerSheet = false
-            showAudioTrackSheet -> showAudioTrackSheet = false
-            showSubtitleSheet -> showSubtitleSheet = false
-            showThemePickerSheet -> showThemePickerSheet = false
-            showVideoInfoSheet -> showVideoInfoSheet = false
-            isLocked -> isLocked = false
-            else -> onBack()
-        }
-    }
 
     val configuredSeekStepSec = remember { appPreferences.getDoubleTapSeekSeconds().coerceAtLeast(1) }
     val configuredSeekStepMs = remember(configuredSeekStepSec) { configuredSeekStepSec * 1000L }
@@ -1630,8 +1615,10 @@ fun VideoPlayerScreen(
     }
 
     // ─── Auto-Orientation Sensor (Follows Phone Orientation When Enabled) ─────
-    var manualOrientationOverrideTime by remember { mutableLongStateOf(0L) }
+    var userOrientationOverride by remember { mutableStateOf<Int?>(null) } // null: auto, 0: portrait, 1: landscape
     val currentOrientationSetting = remember { intArrayOf(-1) } // 0: portrait, 1: landscape
+    val lastSensorOrientation = remember { intArrayOf(-1) } // 0: portrait, 1: landscape
+    var sensorBucketAtOverride by remember { mutableIntStateOf(-1) }
     // Pick an initial orientation once for this player session.  A following video
     // must not rotate the device merely because it has a different aspect ratio.
     var hasSetInitialOrientation by remember { mutableStateOf(false) }
@@ -1643,7 +1630,27 @@ fun VideoPlayerScreen(
 
             override fun onOrientationChanged(orientation: Int) {
                 if (orientation == ORIENTATION_UNKNOWN) return
-                if (System.currentTimeMillis() < manualOrientationOverrideTime) return
+
+                val isLandscapeSensor = (orientation in 65..115) || (orientation in 245..295)
+                val isPortraitSensor = (orientation in 335..360) || (orientation in 0..25) || (orientation in 155..205)
+
+                val sensorBucket = when {
+                    isLandscapeSensor -> 1
+                    isPortraitSensor -> 0
+                    else -> -1
+                }
+                if (sensorBucket == -1) return
+                lastSensorOrientation[0] = sensorBucket
+
+                // If user manually pressed the rotate button:
+                if (userOrientationOverride != null) {
+                    // Do not override user's manual choice while physical orientation has not changed
+                    if (sensorBucket == sensorBucketAtOverride) {
+                        return
+                    }
+                    // Physical orientation actually changed, so clear manual override
+                    userOrientationOverride = null
+                }
 
                 // Check device auto-rotate setting throttled to once every 2 seconds instead of every sensor tick
                 val now = System.currentTimeMillis()
@@ -1660,15 +1667,12 @@ fun VideoPlayerScreen(
 
                 if (!cachedAutoRotateEnabled) return
 
-                val isLandscapeSensor = (orientation in 65..115) || (orientation in 245..295)
-                val isPortraitSensor = (orientation in 335..360) || (orientation in 0..25) || (orientation in 155..205)
-
-                if (isLandscapeSensor && currentOrientationSetting[0] != 1) {
+                if (sensorBucket == 1 && currentOrientationSetting[0] != 1) {
                     currentOrientationSetting[0] = 1
                     activity?.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
-                } else if (isPortraitSensor && currentOrientationSetting[0] != 0) {
+                } else if (sensorBucket == 0 && currentOrientationSetting[0] != 0) {
                     currentOrientationSetting[0] = 0
-                    activity?.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_SENSOR_PORTRAIT
+                    activity?.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
                 }
             }
         }
@@ -1681,14 +1685,14 @@ fun VideoPlayerScreen(
             if (videoHeight > videoWidth) {
                 // Vertical video (e.g. 9:16) -> play in vertical!
                 currentOrientationSetting[0] = 0
-                activity?.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_SENSOR_PORTRAIT
+                activity?.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
             } else {
                 // Horizontal video (e.g. 16:9)
                 // When phone is in vertical (portrait) orientation, open in vertical mode only!
                 val isPhonePortrait = configuration.orientation == Configuration.ORIENTATION_PORTRAIT
                 if (isPhonePortrait) {
                     currentOrientationSetting[0] = 0
-                    activity?.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_SENSOR_PORTRAIT
+                    activity?.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
                 } else {
                     currentOrientationSetting[0] = 1
                     activity?.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
@@ -2260,6 +2264,12 @@ fun VideoPlayerScreen(
         val observer = LifecycleEventObserver { _, event ->
             when (event) {
                 Lifecycle.Event.ON_PAUSE -> {
+                    if (isSpeedHolding) {
+                        isSpeedHolding = false
+                        val restoreSpeed = if (preHoldSpeed > 0.1f) preHoldSpeed else 1.0f
+                        exoPlayer.playbackParameters = PlaybackParameters(restoreSpeed)
+                        exoPlayer.setPlaybackSpeed(restoreSpeed)
+                    }
                     // In Android, ON_PAUSE is called during PiP transitions and multi-window.
                     // Do NOT pause playback here so PiP continues smoothly!
                     val pos = exoPlayer.currentPosition
@@ -2268,6 +2278,12 @@ fun VideoPlayerScreen(
                     }
                 }
                 Lifecycle.Event.ON_STOP -> {
+                    if (isSpeedHolding) {
+                        isSpeedHolding = false
+                        val restoreSpeed = if (preHoldSpeed > 0.1f) preHoldSpeed else 1.0f
+                        exoPlayer.playbackParameters = PlaybackParameters(restoreSpeed)
+                        exoPlayer.setPlaybackSpeed(restoreSpeed)
+                    }
                     isAppInBackground = true
                     val pos = exoPlayer.currentPosition
                     if (pos > 1000L) {
@@ -2324,23 +2340,48 @@ fun VideoPlayerScreen(
     val handleExit: () -> Unit = {
         if (!isExitingToMiniPlayer) {
             isExitingToMiniPlayer = true
+            // Immediately stop audio & playback with zero delay
+            try {
+                exoPlayer.volume = 0f
+                exoPlayer.pause()
+                exoPlayer.stop()
+            } catch (_: Exception) {}
             try {
                 (playerView.parent as? ViewGroup)?.removeView(playerView)
                 playerView.player = null
             } catch (_: Exception) {}
+            val pos = exoPlayer.currentPosition
+            if (pos > 1000L) {
+                appPreferences.saveVideoProgress(currentUrl, pos, exoPlayer.duration.coerceAtLeast(0L))
+            }
+            if (!VideoPlaybackManager.isMiniPlayerActive.value) {
+                VideoPlaybackManager.releasePlayer()
+            }
             onBack()
         }
     }
 
-    BackHandler {
-        if (isLocked) {
-            isLocked = false
-        } else if (isLandscape && !isVerticalVideo) {
-            manualOrientationOverrideTime = System.currentTimeMillis() + 3000L
-            currentOrientationSetting[0] = 0
-            activity?.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_SENSOR_PORTRAIT
-        } else {
-            handleExit()
+    BackHandler(enabled = true) {
+        when {
+            isLocked -> isLocked = false
+            showQuickControlsBar -> showQuickControlsBar = false
+            showSettingsOverlay -> showSettingsOverlay = false
+            showPlaylistSheet -> showPlaylistSheet = false
+            isMoreExpanded -> isMoreExpanded = false
+            showMoreMenuSheet -> showMoreMenuSheet = false
+            showSpeedSheet -> showSpeedSheet = false
+            showSleepTimerSheet -> showSleepTimerSheet = false
+            showAudioTrackSheet -> showAudioTrackSheet = false
+            showSubtitleSheet -> showSubtitleSheet = false
+            showThemePickerSheet -> showThemePickerSheet = false
+            showVideoInfoSheet -> showVideoInfoSheet = false
+            isLandscape && !isVerticalVideo -> {
+                userOrientationOverride = 0
+                sensorBucketAtOverride = lastSensorOrientation[0]
+                currentOrientationSetting[0] = 0
+                activity?.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
+            }
+            else -> handleExit()
         }
     }
 
@@ -2366,7 +2407,12 @@ fun VideoPlayerScreen(
         }
     }
 
-    val playerGestureModifier = Modifier.pointerInput(isLocked, playbackSpeed, duration, isLandscape, isVerticalVideo) {
+    val currentPlaybackSpeed by rememberUpdatedState(playbackSpeed)
+    val currentDuration by rememberUpdatedState(duration)
+    val currentIsLandscape by rememberUpdatedState(isLandscape)
+    val currentIsVerticalVideo by rememberUpdatedState(isVerticalVideo)
+
+    val playerGestureModifier = Modifier.pointerInput(isLocked) {
         if (isLocked) {
             detectTapGestures(
                 onTap = { showControls = !showControls }
@@ -2379,66 +2425,69 @@ fun VideoPlayerScreen(
         var lastTapY = 0f
 
         awaitEachGesture {
-            val down = awaitFirstDown(requireUnconsumed = true)
-            var wasConsumed = down.isConsumed
-            val downTime = System.currentTimeMillis()
-            val startX = down.position.x
-            val startY = down.position.y
-            val screenWidth = size.width.toFloat()
-            val screenHeight = size.height.toFloat()
-
-            val isDoubleTap = (downTime - lastTapTime < 320L) &&
-                    (abs(startX - lastTapX) < 90f && abs(startY - lastTapY) < 90f)
-
-            var gestureMode = PlayerGestureMode.NONE
-            var hasMoved = false
-            val startBrightness = brightnessPct
-            val startVolume = audioManager.getStreamVolume(AudioManager.STREAM_MUSIC)
-            val startPosition = exoPlayer.currentPosition
-            currentDragSeekTarget = startPosition
-            var lastHapticBrightnessStep = ((startBrightness * 100f) / 5f).roundToInt().coerceIn(0, 20)
-            var lastHapticVolumeStep = (((startVolume.toFloat() / maxVolume.toFloat()) * 100f) / 5f).roundToInt().coerceIn(0, 20)
-            var lastHapticSeekStep = (startPosition / 5000L).toInt()
-            var lastHoldX = startX
             var didActivateSpeedHold = false
-            var speedHoldAccumulatorX = 0f
-            var finalDiffX = 0f
-            var finalDiffY = 0f
-            var currentX = startX
-            var currentY = startY
-            var pendingOrientationAction: (() -> Unit)? = null
-            var lastPinchDist = 0f
-            var lastPinchCentroid = Offset.Zero
-            var lastPanX = startX
-            var lastPanY = startY
+            var speedHoldPreSpeed = currentPlaybackSpeed
+            try {
+                val down = awaitFirstDown(requireUnconsumed = true)
+                var wasConsumed = down.isConsumed
+                val downTime = System.currentTimeMillis()
+                val startX = down.position.x
+                val startY = down.position.y
+                val screenWidth = size.width.toFloat()
+                val screenHeight = size.height.toFloat()
 
-            while (true) {
-                val elapsed = System.currentTimeMillis() - downTime
+                val isDoubleTap = (downTime - lastTapTime < 320L) &&
+                        (abs(startX - lastTapX) < 90f && abs(startY - lastTapY) < 90f)
 
-                // ─── 0.5-Second Speed Hold Activation (Tapping & holding anywhere on screen) ───
-                if ((gestureMode == PlayerGestureMode.NONE || gestureMode == PlayerGestureMode.IGNORED_DRAG) && elapsed >= 450L && !isDoubleTap) {
-                    gestureMode = PlayerGestureMode.SPEED_HOLD
-                    activeGestureMode = gestureMode
-                    didActivateSpeedHold = true
-                    preHoldSpeed = playbackSpeed
+                var gestureMode = PlayerGestureMode.NONE
+                var hasMoved = false
+                val startBrightness = brightnessPct
+                val startVolume = audioManager.getStreamVolume(AudioManager.STREAM_MUSIC)
+                val startPosition = exoPlayer.currentPosition
+                currentDragSeekTarget = startPosition
+                var lastHapticBrightnessStep = ((startBrightness * 100f) / 5f).roundToInt().coerceIn(0, 20)
+                var lastHapticVolumeStep = (((startVolume.toFloat() / maxVolume.toFloat()) * 100f) / 5f).roundToInt().coerceIn(0, 20)
+                var lastHapticSeekStep = (startPosition / 5000L).toInt()
+                var lastHoldX = startX
+                var speedHoldAccumulatorX = 0f
+                var finalDiffX = 0f
+                var finalDiffY = 0f
+                var currentX = startX
+                var currentY = startY
+                var pendingOrientationAction: (() -> Unit)? = null
+                var lastPinchDist = 0f
+                var lastPinchCentroid = Offset.Zero
+                var lastPanX = startX
+                var lastPanY = startY
 
-                    val targetHoldSpeed = appPreferences.getPressHoldSpeed().let { if (it > 0.1f) it else 2.0f }
+                while (true) {
+                    val elapsed = System.currentTimeMillis() - downTime
 
-                    speedHoldDisplaySpeed = targetHoldSpeed
-                    speedHoldAccumulatorX = 0f
-                    isSpeedHolding = true
-                    showControls = false
-                    exoPlayer.playbackParameters = PlaybackParameters(targetHoldSpeed)
-                    exoPlayer.setPlaybackSpeed(targetHoldSpeed)
-                    lastHoldX = currentX
-                    view.performHaptic(HapticType.HEAVY)
-                }
+                    // ─── 0.5-Second Speed Hold Activation (Tapping & holding anywhere on screen) ───
+                    if (gestureMode == PlayerGestureMode.NONE && elapsed >= 450L && !isDoubleTap) {
+                        gestureMode = PlayerGestureMode.SPEED_HOLD
+                        activeGestureMode = gestureMode
+                        didActivateSpeedHold = true
+                        speedHoldPreSpeed = currentPlaybackSpeed
+                        preHoldSpeed = currentPlaybackSpeed
 
-                val remainingMs = if ((gestureMode == PlayerGestureMode.NONE || gestureMode == PlayerGestureMode.IGNORED_DRAG) && !isDoubleTap && !didActivateSpeedHold) {
-                    (500L - elapsed).coerceAtLeast(1L)
-                } else {
-                    Long.MAX_VALUE
-                }
+                        val targetHoldSpeed = appPreferences.getPressHoldSpeed().let { if (it > 0.1f) it else 2.0f }
+
+                        speedHoldDisplaySpeed = targetHoldSpeed
+                        speedHoldAccumulatorX = 0f
+                        isSpeedHolding = true
+                        showControls = false
+                        exoPlayer.playbackParameters = PlaybackParameters(targetHoldSpeed)
+                        exoPlayer.setPlaybackSpeed(targetHoldSpeed)
+                        lastHoldX = currentX
+                        view.performHaptic(HapticType.HEAVY)
+                    }
+
+                    val remainingMs = if (gestureMode == PlayerGestureMode.NONE && !isDoubleTap && !didActivateSpeedHold) {
+                        (500L - elapsed).coerceAtLeast(1L)
+                    } else {
+                        Long.MAX_VALUE
+                    }
 
                 val event = if (remainingMs < 5000L) {
                     withTimeoutOrNull(remainingMs) { awaitPointerEvent() }
@@ -2565,14 +2614,15 @@ fun VideoPlayerScreen(
                         lastPanY = currentY
                     } else if (moveDistX > 45f || moveDistY > 45f) {
                         hasMoved = true
-                        if (isCenterArea && diffY > 50f && moveDistY > moveDistX * 1.3f && isLandscape && !isVerticalVideo) {
+                        if (isCenterArea && diffY > 50f && moveDistY > moveDistX * 1.3f && currentIsLandscape && !currentIsVerticalVideo) {
                             // Center downward swipe in landscape returns to portrait
                             gestureMode = PlayerGestureMode.ORIENTATION_SWIPE
                             activeGestureMode = gestureMode
                             pendingOrientationAction = {
-                                manualOrientationOverrideTime = System.currentTimeMillis() + 3000L
+                                userOrientationOverride = 0
+                                sensorBucketAtOverride = lastSensorOrientation[0]
                                 currentOrientationSetting[0] = 0
-                                activity?.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_SENSOR_PORTRAIT
+                                activity?.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
                             }
                             change.consume()
                         } else if (moveDistX > 45f && moveDistX > moveDistY * 1.2f) {
@@ -2638,9 +2688,9 @@ fun VideoPlayerScreen(
                     }
                     PlayerGestureMode.SEEK -> {
                         val dragRatio = diffX / screenWidth
-                        val fullScreenSeekMs = if (duration > 0L) (duration * 0.25f).toLong().coerceIn(60000L, 600000L) else 120000L
+                        val fullScreenSeekMs = if (currentDuration > 0L) (currentDuration * 0.25f).toLong().coerceIn(60000L, 600000L) else 120000L
                         val delta = (dragRatio * fullScreenSeekMs).toLong()
-                        currentDragSeekTarget = (startPosition + delta).coerceIn(0L, duration.coerceAtLeast(0L))
+                        currentDragSeekTarget = (startPosition + delta).coerceIn(0L, currentDuration.coerceAtLeast(0L))
                         scrubPosition = currentDragSeekTarget.toFloat()
                         isDraggingSeek = true
                         centerSeekIcon = if (delta >= 0) Icons.Rounded.FastForward else Icons.Rounded.FastRewind
@@ -2785,8 +2835,23 @@ fun VideoPlayerScreen(
                 }
                 else -> {}
             }
+        } finally {
+            if (isSpeedHolding || didActivateSpeedHold) {
+                isSpeedHolding = false
+                val restoreSpeed = if (preHoldSpeed > 0.1f) preHoldSpeed else speedHoldPreSpeed
+                exoPlayer.playbackParameters = PlaybackParameters(restoreSpeed)
+                exoPlayer.setPlaybackSpeed(restoreSpeed)
+                didActivateSpeedHold = false
+            }
+            if (isDraggingSeek) {
+                isDraggingSeek = false
+                centerSeekText = null
+                centerSeekIcon = null
+            }
+            activeGestureMode = PlayerGestureMode.NONE
         }
     }
+}
 
     LaunchedEffect(showZoomHUD, zoomHUDText) {
         if (showZoomHUD) {
@@ -2853,10 +2918,9 @@ fun VideoPlayerScreen(
                         )
                     } else {
                         AsyncImage(
-                            model = ImageRequest.Builder(context)
-                                .data(currentUrl)
-                                .decoderFactory(VideoFrameDecoder.Factory())
-                                .build(),
+                            model = remember(currentUrl) {
+                                buildVideoThumbnailRequest(context, currentUrl.toUri())
+                            },
                             contentDescription = null,
                             contentScale = ContentScale.Crop,
                             modifier = Modifier
@@ -3175,7 +3239,13 @@ fun VideoPlayerScreen(
         ) {
             TemporarySpeedHoldBadge(
                 speed = speedHoldDisplaySpeed,
-                accentColor = primaryAccent
+                accentColor = primaryAccent,
+                modifier = Modifier.clickable {
+                    isSpeedHolding = false
+                    val restoreSpeed = if (preHoldSpeed > 0.1f) preHoldSpeed else 1.0f
+                    exoPlayer.playbackParameters = PlaybackParameters(restoreSpeed)
+                    exoPlayer.setPlaybackSpeed(restoreSpeed)
+                }
             )
         }
 
@@ -3759,12 +3829,14 @@ fun VideoPlayerScreen(
                                     name = "Rotate screen",
                                     description = "Toggle landscape and portrait video orientation",
                                     onClick = {
-                                        manualOrientationOverrideTime = System.currentTimeMillis() + 3000L
-                                        currentOrientationSetting[0] = if (isLandscape) 0 else 1
-                                        activity?.requestedOrientation = if (isLandscape) {
-                                            ActivityInfo.SCREEN_ORIENTATION_SENSOR_PORTRAIT
-                                        } else {
+                                        val nextOrientation = if (isLandscape) 0 else 1
+                                        userOrientationOverride = nextOrientation
+                                        sensorBucketAtOverride = lastSensorOrientation[0]
+                                        currentOrientationSetting[0] = nextOrientation
+                                        activity?.requestedOrientation = if (nextOrientation == 1) {
                                             ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
+                                        } else {
+                                            ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
                                         }
                                     },
                                     icon = Icons.Rounded.ScreenRotation,
@@ -4431,10 +4503,9 @@ fun VideoPlayerScreen(
                                             contentAlignment = Alignment.Center
                                         ) {
                                             AsyncImage(
-                                                model = ImageRequest.Builder(context)
-                                                    .data(item.uri)
-                                                    .decoderFactory(VideoFrameDecoder.Factory())
-                                                    .build(),
+                                                model = remember(item.uri) {
+                                                    buildVideoThumbnailRequest(context, item.uri, item.duration)
+                                                },
                                                 contentDescription = item.title,
                                                 contentScale = ContentScale.Crop,
                                                 modifier = Modifier.fillMaxSize()

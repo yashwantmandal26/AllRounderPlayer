@@ -38,6 +38,17 @@ class VideoPlayerActivity : ComponentActivity() {
 
         currentUrl = intent.getStringExtra(EXTRA_VIDEO_URL) ?: ""
 
+        val prefs = com.example.ymediaplayer.data.AppPreferences(this)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            try {
+                setPictureInPictureParams(
+                    android.app.PictureInPictureParams.Builder()
+                        .setAutoEnterEnabled(prefs.isAutoPipEnabled())
+                        .build()
+                )
+            } catch (_: Exception) {}
+        }
+
         setContent {
             AppRoot {
                 Surface(
@@ -62,6 +73,20 @@ class VideoPlayerActivity : ComponentActivity() {
         }
     }
 
+    override fun onResume() {
+        super.onResume()
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            val prefs = com.example.ymediaplayer.data.AppPreferences(this)
+            try {
+                setPictureInPictureParams(
+                    android.app.PictureInPictureParams.Builder()
+                        .setAutoEnterEnabled(prefs.isAutoPipEnabled())
+                        .build()
+                )
+            } catch (_: Exception) {}
+        }
+    }
+
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         setIntent(intent)
@@ -76,8 +101,35 @@ class VideoPlayerActivity : ComponentActivity() {
         onUserLeaveHintListener?.invoke()
     }
 
+    override fun onPause() {
+        super.onPause()
+        val prefs = com.example.ymediaplayer.data.AppPreferences(this)
+        if (!isInPictureInPictureMode && !prefs.isBackgroundPlayEnabled() && !com.example.ymediaplayer.player.VideoPlaybackManager.isMiniPlayerActive.value) {
+            com.example.ymediaplayer.player.VideoPlaybackManager.player?.pause()
+        }
+        if (isFinishing && !com.example.ymediaplayer.player.VideoPlaybackManager.isMiniPlayerActive.value) {
+            com.example.ymediaplayer.player.VideoPlaybackManager.player?.let { p ->
+                try {
+                    p.volume = 0f
+                    p.pause()
+                    p.stop()
+                } catch (_: Exception) {}
+            }
+        }
+    }
+
+    override fun onStop() {
+        super.onStop()
+        if (isFinishing && !com.example.ymediaplayer.player.VideoPlaybackManager.isMiniPlayerActive.value) {
+            com.example.ymediaplayer.player.VideoPlaybackManager.releasePlayer()
+        }
+    }
+
     override fun onDestroy() {
         super.onDestroy()
         onUserLeaveHintListener = null
+        if (!com.example.ymediaplayer.player.VideoPlaybackManager.isMiniPlayerActive.value) {
+            com.example.ymediaplayer.player.VideoPlaybackManager.releasePlayer()
+        }
     }
 }

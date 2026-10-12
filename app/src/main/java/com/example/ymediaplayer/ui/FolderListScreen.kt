@@ -1,6 +1,7 @@
 package com.example.ymediaplayer.ui
 
 import android.app.Activity
+import com.example.ymediaplayer.MainActivity
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
@@ -1267,156 +1268,21 @@ fun FolderListScreen(
                     Box(
                         modifier = Modifier
                             .padding(bottom = 10.dp, start = 12.dp, end = 12.dp)
-                            .then(if (c.isMatte) Modifier else Modifier.shadow(16.dp, RoundedCornerShape(24.dp), ambientColor = c.accentBlue.copy(0.4f), spotColor = c.accentBlue))
-                            .clip(RoundedCornerShape(24.dp))
-                            .background(if (c.isMatte) c.cardBg else Color(0xFF141724)) // 100% solid, fully opaque background
-                            .border(1.2.dp, if (c.isMatte) androidx.compose.ui.graphics.SolidColor(c.glassBorder) else Brush.horizontalGradient(listOf(c.accentBlue, c.cardBorderHighlight)), RoundedCornerShape(24.dp))
-                            .padding(horizontal = 10.dp, vertical = 6.dp)
                     ) {
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(8.dp)
-                        ) {
-                            // Thumbnail / Fallback (Click to open Music tab)
-                            Box(
-                                modifier = Modifier
-                                    .size(36.dp)
-                                    .clip(RoundedCornerShape(10.dp))
-                                    .background(Color(0xFF1E2136))
-                                    .border(0.8.dp, c.cardBorderHighlight, RoundedCornerShape(10.dp))
-                                    .clickable { currentTab = "Music" },
-                                contentAlignment = Alignment.Center
-                            ) {
-                                if (nowPlayingArtUri != null) {
-                                    AsyncImage(
-                                        model = nowPlayingArtUri,
-                                        contentDescription = null,
-                                        contentScale = ContentScale.Crop,
-                                        modifier = Modifier.fillMaxSize()
-                                    )
-                                } else {
-                                    Icon(
-                                        Icons.Rounded.MusicNote,
-                                        contentDescription = null,
-                                        tint = c.accentBlue,
-                                        modifier = Modifier.size(20.dp)
-                                    )
-                                }
+                        MusicMiniPlayerPill(
+                            title = nowPlayingTitle,
+                            artist = nowPlayingArtist,
+                            artUri = nowPlayingArtUri,
+                            isPlaying = isMusicPlaying,
+                            onPlayPause = { MusicService.togglePlayPause() },
+                            onNext = { MusicService.playNext() },
+                            onPrev = { MusicService.playPrevious() },
+                            onClick = {
+                                view.performHaptic(HapticType.LIGHT)
+                                MainActivity.openMusicTrigger.value = true
+                                currentTab = "Music"
                             }
-
-                            // Song title & artist (Click to open Music tab)
-                            Column(
-                                modifier = Modifier
-                                    .widthIn(max = 130.dp)
-                                    .clickable { currentTab = "Music" }
-                            ) {
-                                Text(
-                                    text = nowPlayingTitle.ifBlank { "Music Playing" },
-                                    color = Color.White,
-                                    fontSize = 12.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis
-                                )
-                                Text(
-                                    text = nowPlayingArtist.ifBlank { "Tap to open" },
-                                    color = c.accentBlue,
-                                    fontSize = 10.sp,
-                                    maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis
-                                )
-                            }
-
-                            // Previous button
-                            IconButton(
-                                onClick = { MusicService.playPrevious() },
-                                modifier = Modifier.size(32.dp)
-                            ) {
-                                Icon(
-                                    Icons.Rounded.SkipPrevious,
-                                    contentDescription = "Previous Track",
-                                    tint = Color.White,
-                                    modifier = Modifier.size(20.dp)
-                                )
-                            }
-
-                            // Play / Pause button
-                            IconButton(
-                                onClick = { MusicService.togglePlayPause() },
-                                modifier = Modifier
-                                    .size(34.dp)
-                                    .clip(CircleShape)
-                                    .background(c.accentBlue)
-                            ) {
-                                Icon(
-                                    imageVector = if (isMusicPlaying) Icons.Rounded.Pause else Icons.Rounded.PlayArrow,
-                                    contentDescription = "Play/Pause",
-                                    tint = c.onAccent,
-                                    modifier = Modifier.size(20.dp)
-                                )
-                            }
-
-                            // Next button
-                            IconButton(
-                                onClick = { MusicService.playNext() },
-                                modifier = Modifier.size(32.dp)
-                            ) {
-                                Icon(
-                                    Icons.Rounded.SkipNext,
-                                    contentDescription = "Next Track",
-                                    tint = Color.White,
-                                    modifier = Modifier.size(20.dp)
-                                )
-                            }
-
-                            // Animated equalizer bars
-                            Row(
-                                horizontalArrangement = Arrangement.spacedBy(2.5.dp),
-                                verticalAlignment = Alignment.Bottom,
-                                modifier = Modifier.height(16.dp).padding(end = 4.dp)
-                            ) {
-                                val infiniteTransition = rememberInfiniteTransition(label = "nowPlayingBars")
-                                val bar1 by infiniteTransition.animateFloat(
-                                    initialValue = 0.2f,
-                                    targetValue = 1f,
-                                    animationSpec = infiniteRepeatable(tween(350, easing = LinearEasing), RepeatMode.Reverse),
-                                    label = "b1"
-                                )
-                                val bar2 by infiniteTransition.animateFloat(
-                                    initialValue = 0.5f,
-                                    targetValue = 0.15f,
-                                    animationSpec = infiniteRepeatable(tween(450, easing = LinearEasing), RepeatMode.Reverse),
-                                    label = "b2"
-                                )
-                                val bar3 by infiniteTransition.animateFloat(
-                                    initialValue = 0.1f,
-                                    targetValue = 0.9f,
-                                    animationSpec = infiniteRepeatable(tween(300, easing = LinearEasing), RepeatMode.Reverse),
-                                    label = "b3"
-                                )
-                                val bar4 by infiniteTransition.animateFloat(
-                                    initialValue = 0.4f,
-                                    targetValue = 0.8f,
-                                    animationSpec = infiniteRepeatable(tween(400, easing = LinearEasing), RepeatMode.Reverse),
-                                    label = "b4"
-                                )
-
-                                listOf(bar1, bar2, bar3, bar4).forEach { heightFraction ->
-                                    val actualHeight = if (isMusicPlaying) heightFraction else 0.2f
-                                    Box(
-                                        modifier = Modifier
-                                            .width(3.dp)
-                                            .fillMaxHeight(actualHeight)
-                                            .clip(RoundedCornerShape(2.dp))
-                                            .background(
-                                                Brush.verticalGradient(
-                                                    listOf(Color.White, c.accentBlue)
-                                                )
-                                            )
-                                    )
-                                }
-                            }
-                        }
+                        )
                     }
                 }
 

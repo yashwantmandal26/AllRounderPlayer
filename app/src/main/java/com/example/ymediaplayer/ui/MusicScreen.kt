@@ -1,16 +1,31 @@
 package com.example.ymediaplayer.ui
 
 import android.app.Activity
+import android.app.SearchManager
+import android.content.ClipData
+import android.content.ClipboardManager
 import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
-import android.widget.Toast
-import android.view.WindowManager
 import android.media.AudioManager
+import android.media.RingtoneManager
 import android.media.audiofx.BassBoost
 import android.media.audiofx.Equalizer
 import android.media.audiofx.Virtualizer
+import android.net.Uri
+import android.os.Build
+import android.provider.DocumentsContract
+import android.provider.MediaStore
+import android.provider.Settings
+import android.view.WindowManager
+import android.widget.Toast
 import androidx.activity.compose.BackHandler
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.IntentSenderRequest
+import androidx.activity.result.contract.ActivityResultContracts
+import com.example.ymediaplayer.data.FileManager
+import com.example.ymediaplayer.data.FileOperationResult
+import java.io.File
 import androidx.compose.animation.*
 import androidx.compose.animation.core.*
 import androidx.compose.foundation.*
@@ -208,6 +223,7 @@ fun MusicScreen(
     val c = LocalAppColors.current
     val repository = remember { MusicRepository(context) }
     val appPreferences = remember { AppPreferences(context) }
+    val coroutineScope = rememberCoroutineScope()
 
     var allSongs by remember { mutableStateOf<List<MusicItem>>(MusicRepository.getCachedMusic() ?: emptyList()) }
     var isLoading by remember { mutableStateOf(MusicRepository.getCachedMusic() == null) }
@@ -274,6 +290,9 @@ fun MusicScreen(
     var songForContextMenu by remember { mutableStateOf<MusicItem?>(null) }
     var songForAddToPlaylist by remember { mutableStateOf<MusicItem?>(null) }
     var priorityNextSong by remember { mutableStateOf<MusicItem?>(null) }
+    var songPendingDelete by remember { mutableStateOf<MusicItem?>(null) }
+    var showDeleteConfirmDialog by remember { mutableStateOf(false) }
+    val fileManager = remember { FileManager(context) }
     var mostPlayedSongs by remember { mutableStateOf<List<MusicItem>>(emptyList()) }
     var sortOrder by remember { mutableStateOf("TITLE") } // "TITLE", "ARTIST", "DURATION"
     var showSortMenu by remember { mutableStateOf(false) }
@@ -358,11 +377,12 @@ fun MusicScreen(
         showFullScreenPlayer = false
     }
 
-    // Listen for notification deep link tap
+    // Listen for notification deep link tap / mini player tap from other screens
     LaunchedEffect(MainActivity.openMusicTrigger.value) {
         if (MainActivity.openMusicTrigger.value) {
-            if (currentlyPlaying == null) {
-                currentlyPlaying = MusicService.currentMusicItem.value
+            val liveSong = MusicService.currentMusicItem.value
+            if (liveSong != null) {
+                currentlyPlaying = liveSong
             }
             showFullScreenPlayer = true
             MainActivity.openMusicTrigger.value = false
@@ -463,6 +483,32 @@ fun MusicScreen(
                 val prevIdx = if (idx <= 0) allSongs.size - 1 else idx - 1
                 playSongForce(allSongs[prevIdx])
             }
+        }
+    }
+
+    val deleteRequestLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.StartIntentSenderForResult()
+    ) { result ->
+        if (result.resultCode == Activity.RESULT_OK) {
+            val s = songPendingDelete
+            MusicRepository.invalidateCache()
+            coroutineScope.launch {
+                val list = repository.getMusicFiles(forceRefresh = true)
+                allSongs = list
+                if (s != null && currentlyPlaying?.uri == s.uri) {
+                    if (list.isNotEmpty()) {
+                        playNext()
+                    } else {
+                        mediaController?.stop()
+                        currentlyPlaying = null
+                        showFullScreenPlayer = false
+                    }
+                }
+                songPendingDelete = null
+                Toast.makeText(context, "Track deleted", Toast.LENGTH_SHORT).show()
+            }
+        } else {
+            songPendingDelete = null
         }
     }
 
@@ -2244,7 +2290,7 @@ fun MusicScreen(
 
         // ─── Floating Mini Player ───────────────────────────────────────────
         AnimatedVisibility(
-            visible = currentlyPlaying != null && !showFullScreenPlayer,
+            visible = (currentlyPlaying != null || MusicService.nowPlayingTitle.value.isNotBlank()) && !showFullScreenPlayer,
             enter = fadeIn(animationSpec = tween(220)) + scaleIn(initialScale = 0.96f, animationSpec = tween(220)),
             exit = fadeOut(animationSpec = tween(180)) + scaleOut(targetScale = 0.96f, animationSpec = tween(180)),
             modifier = Modifier
@@ -2252,17 +2298,26 @@ fun MusicScreen(
                 .navigationBarsPadding()
                 .padding(bottom = 76.dp, start = 12.dp, end = 12.dp)
         ) {
-            currentlyPlaying?.let { song ->
-                MiniPlayer(
-                    song = song,
-                    isPlaying = isPlaying,
-                    progressProvider = { if (duration > 0L) (currentPosition.toFloat() / duration.toFloat()).coerceIn(0f, 1f) else 0f },
-                    onPlayPause = { if (isPlaying) mediaController?.pause() else mediaController?.play() },
-                    onNext = playNext,
-                    onPrev = playPrev,
-                    onClick = { showFullScreenPlayer = true }
-                )
-            }
+            val liveSong = currentlyPlaying ?: MusicService.currentMusicItem.value
+            val displayTitle = liveSong?.title ?: MusicService.nowPlayingTitle.value
+            val displayArtist = liveSong?.artist ?: MusicService.nowPlayingArtist.value
+            val displayArt = liveSong?.albumArtUri ?: MusicService.nowPlayingArtUri.value
+            MusicMiniPlayerPill(
+                title = displayTitle,
+                artist = displayArtist,
+                artUri = displayArt,
+                isPlaying = isPlaying,
+                onPlayPause = { if (isPlaying) mediaController?.pause() else mediaController?.play() },
+                onNext = playNext,
+                onPrev = playPrev,
+                onClick = {
+                    view.performHaptic(HapticType.LIGHT)
+                    if (currentlyPlaying == null && liveSong != null) {
+                        currentlyPlaying = liveSong
+                    }
+                    showFullScreenPlayer = true
+                }
+            )
         }
 
         // ─── Full Screen Music Player ───────────────────────────────────────
@@ -2327,6 +2382,10 @@ fun MusicScreen(
                     onOpenSleepTimer = { view.performHaptic(HapticType.LIGHT); showSleepDialog = true },
                     onOpenSpeed = { view.performHaptic(HapticType.LIGHT); showSpeedDialog = true },
                     onOpenSongInfo = { view.performHaptic(HapticType.LIGHT); showSongInfoDialog = true },
+                    onOpenMoreOptions = {
+                        view.performHaptic(HapticType.LIGHT)
+                        songForContextMenu = song
+                    },
                     hudFeedback = hudFeedback,
                     soundMode = soundMode,
                     onCycleSoundMode = {
@@ -2438,12 +2497,136 @@ fun MusicScreen(
                     context.startActivity(Intent.createChooser(sendIntent, "Share Music File"))
                     songForContextMenu = null
                 },
+                onOpenInExplorer = {
+                    openMusicInFileExplorer(context, s)
+                    songForContextMenu = null
+                },
+                onSearchInBrowser = {
+                    searchMusicInBrowser(context, s)
+                    songForContextMenu = null
+                },
+                onSearchOnYoutube = {
+                    searchMusicOnYoutube(context, s)
+                    songForContextMenu = null
+                },
+                onSetAsRingtone = {
+                    setAsRingtone(context, s)
+                    songForContextMenu = null
+                },
+                onCopyInfo = {
+                    copyTrackInfo(context, s)
+                    songForContextMenu = null
+                },
+                onDelete = {
+                    songPendingDelete = s
+                    showDeleteConfirmDialog = true
+                    songForContextMenu = null
+                },
                 onViewDetails = {
                     currentlyPlaying = s
                     showSongInfoDialog = true
                     songForContextMenu = null
                 },
                 onDismiss = { songForContextMenu = null }
+            )
+        }
+
+        // ─── Delete Confirmation Dialog ──────────────────────────────────────
+        if (showDeleteConfirmDialog && songPendingDelete != null) {
+            val targetSong = songPendingDelete!!
+            AlertDialog(
+                onDismissRequest = {
+                    showDeleteConfirmDialog = false
+                    songPendingDelete = null
+                },
+                containerColor = c.dropdownBg,
+                icon = {
+                    Icon(
+                        Icons.Rounded.Delete,
+                        contentDescription = null,
+                        tint = Color(0xFFE53935),
+                        modifier = Modifier.size(32.dp)
+                    )
+                },
+                title = {
+                    Text(
+                        "Delete Music File?",
+                        color = c.textPrimary,
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 18.sp
+                    )
+                },
+                text = {
+                    Column {
+                        Text(
+                            "Are you sure you want to permanently delete \"${targetSong.title}\" from your device?",
+                            color = c.textSecondary,
+                            fontSize = 14.sp
+                        )
+                        if (targetSong.path.isNotBlank()) {
+                            Spacer(Modifier.height(8.dp))
+                            Text(
+                                targetSong.path,
+                                color = c.textSecondary.copy(alpha = 0.7f),
+                                fontSize = 11.sp,
+                                maxLines = 2,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                        }
+                    }
+                },
+                confirmButton = {
+                    TextButton(
+                        onClick = {
+                            val toDelete = songPendingDelete
+                            showDeleteConfirmDialog = false
+                            if (toDelete != null) {
+                                coroutineScope.launch {
+                                    val result = fileManager.deleteVideos(listOf(toDelete.uri))
+                                    when (result) {
+                                        is FileOperationResult.NeedsConfirmation -> {
+                                            deleteRequestLauncher.launch(
+                                                IntentSenderRequest.Builder(result.intentSender).build()
+                                            )
+                                        }
+                                        is FileOperationResult.Success -> {
+                                            MusicRepository.invalidateCache()
+                                            val list = repository.getMusicFiles(forceRefresh = true)
+                                            allSongs = list
+                                            if (currentlyPlaying?.uri == toDelete.uri) {
+                                                if (list.isNotEmpty()) {
+                                                    playNext()
+                                                } else {
+                                                    mediaController?.stop()
+                                                    currentlyPlaying = null
+                                                    showFullScreenPlayer = false
+                                                }
+                                            }
+                                            songPendingDelete = null
+                                            Toast.makeText(context, "Track deleted", Toast.LENGTH_SHORT).show()
+                                        }
+                                        is FileOperationResult.Failure -> {
+                                            songPendingDelete = null
+                                            Toast.makeText(context, "Failed to delete: ${result.message}", Toast.LENGTH_SHORT).show()
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    ) {
+                        Text("Delete", color = Color(0xFFE53935), fontWeight = FontWeight.Bold)
+                    }
+                },
+                dismissButton = {
+                    TextButton(
+                        onClick = {
+                            showDeleteConfirmDialog = false
+                            songPendingDelete = null
+                        }
+                    ) {
+                        Text("Cancel", color = c.textSecondary)
+                    }
+                }
             )
         }
 
@@ -2489,6 +2672,181 @@ private fun formatTotalDuration(songs: List<MusicItem>): String {
     val totalMs = songs.sumOf { it.duration }
     val minutes = totalMs / 1000 / 60
     return if (minutes >= 60) "${minutes / 60} hr ${minutes % 60} min" else "$minutes min"
+}
+
+private fun openMusicInFileExplorer(context: Context, song: MusicItem) {
+    var opened = false
+
+    // 1. Try DocumentsUI / Storage Access Framework directory intent
+    try {
+        val relPath = song.relativePath.trim('/')
+        val docUri = if (relPath.isNotEmpty()) {
+            DocumentsContract.buildDocumentUri(
+                "com.android.externalstorage.documents",
+                "primary:$relPath"
+            )
+        } else {
+            DocumentsContract.buildDocumentUri(
+                "com.android.externalstorage.documents",
+                "primary:Music"
+            )
+        }
+        val intent = Intent(Intent.ACTION_VIEW).apply {
+            setDataAndType(docUri, DocumentsContract.Document.MIME_TYPE_DIR)
+            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_ACTIVITY_NEW_TASK)
+        }
+        context.startActivity(intent)
+        opened = true
+    } catch (_: Exception) {}
+
+    // 2. Try parent folder via FileProvider
+    if (!opened && song.path.isNotBlank()) {
+        try {
+            val file = File(song.path)
+            val parentFolder = file.parentFile
+            if (parentFolder != null && parentFolder.exists()) {
+                val folderUri = androidx.core.content.FileProvider.getUriForFile(
+                    context,
+                    "${context.packageName}.fileprovider",
+                    parentFolder
+                )
+                val intent = Intent(Intent.ACTION_VIEW).apply {
+                    setDataAndType(folderUri, "resource/folder")
+                    addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_ACTIVITY_NEW_TASK)
+                }
+                context.startActivity(Intent.createChooser(intent, "Open Folder in File Manager"))
+                opened = true
+            }
+        } catch (_: Exception) {}
+    }
+
+    // 3. Try viewing audio URI with chooser
+    if (!opened) {
+        try {
+            val intent = Intent(Intent.ACTION_VIEW).apply {
+                setDataAndType(song.uri, "audio/*")
+                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_ACTIVITY_NEW_TASK)
+            }
+            context.startActivity(Intent.createChooser(intent, "Open Audio File With"))
+            opened = true
+        } catch (_: Exception) {}
+    }
+
+    if (opened) {
+        Toast.makeText(context, "Opening file location...", Toast.LENGTH_SHORT).show()
+    } else {
+        val displayPath = song.path.ifBlank { song.relativePath.ifBlank { song.uri.toString() } }
+        val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as? ClipboardManager
+        clipboard?.setPrimaryClip(ClipData.newPlainText("File Path", displayPath))
+        Toast.makeText(context, "Location copied: $displayPath", Toast.LENGTH_LONG).show()
+    }
+}
+
+private fun searchMusicInBrowser(context: Context, song: MusicItem) {
+    try {
+        val query = "${song.title} ${song.artist}".trim()
+        val webSearchIntent = Intent(Intent.ACTION_WEB_SEARCH).apply {
+            putExtra(SearchManager.QUERY, query)
+            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        }
+        if (webSearchIntent.resolveActivity(context.packageManager) != null) {
+            context.startActivity(webSearchIntent)
+        } else {
+            val browserIntent = Intent(
+                Intent.ACTION_VIEW,
+                Uri.parse("https://www.google.com/search?q=${Uri.encode(query)}")
+            ).apply {
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            }
+            context.startActivity(browserIntent)
+        }
+    } catch (_: Exception) {
+        try {
+            val query = "${song.title} ${song.artist}".trim()
+            val browserIntent = Intent(
+                Intent.ACTION_VIEW,
+                Uri.parse("https://www.google.com/search?q=${Uri.encode(query)}")
+            ).apply {
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            }
+            context.startActivity(browserIntent)
+        } catch (e: Exception) {
+            Toast.makeText(context, "Could not open browser", Toast.LENGTH_SHORT).show()
+        }
+    }
+}
+
+private fun searchMusicOnYoutube(context: Context, song: MusicItem) {
+    val query = "${song.title} ${song.artist}".trim()
+    try {
+        val youtubeIntent = Intent(Intent.ACTION_SEARCH).apply {
+            setPackage("com.google.android.youtube")
+            putExtra("query", query)
+            flags = Intent.FLAG_ACTIVITY_NEW_TASK
+        }
+        if (youtubeIntent.resolveActivity(context.packageManager) != null) {
+            context.startActivity(youtubeIntent)
+        } else {
+            val webIntent = Intent(
+                Intent.ACTION_VIEW,
+                Uri.parse("https://www.youtube.com/results?search_query=${Uri.encode(query)}")
+            ).apply {
+                flags = Intent.FLAG_ACTIVITY_NEW_TASK
+            }
+            context.startActivity(webIntent)
+        }
+    } catch (_: Exception) {
+        try {
+            val webIntent = Intent(
+                Intent.ACTION_VIEW,
+                Uri.parse("https://www.youtube.com/results?search_query=${Uri.encode(query)}")
+            ).apply {
+                flags = Intent.FLAG_ACTIVITY_NEW_TASK
+            }
+            context.startActivity(webIntent)
+        } catch (e: Exception) {
+            Toast.makeText(context, "Could not open YouTube", Toast.LENGTH_SHORT).show()
+        }
+    }
+}
+
+private fun setAsRingtone(context: Context, song: MusicItem) {
+    try {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+            if (!Settings.System.canWrite(context)) {
+                Toast.makeText(context, "Grant permission to set ringtone", Toast.LENGTH_LONG).show()
+                val intent = Intent(Settings.ACTION_MANAGE_WRITE_SETTINGS).apply {
+                    data = Uri.parse("package:${context.packageName}")
+                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                }
+                context.startActivity(intent)
+                return
+            }
+        }
+        RingtoneManager.setActualDefaultRingtoneUri(
+            context,
+            RingtoneManager.TYPE_RINGTONE,
+            song.uri
+        )
+        Toast.makeText(context, "Set as phone ringtone: ${song.title}", Toast.LENGTH_SHORT).show()
+    } catch (e: Exception) {
+        Toast.makeText(context, "Failed to set ringtone: ${e.localizedMessage ?: "Permission needed"}", Toast.LENGTH_SHORT).show()
+    }
+}
+
+private fun copyTrackInfo(context: Context, song: MusicItem) {
+    val info = buildString {
+        appendLine("Title: ${song.title}")
+        appendLine("Artist: ${song.artist}")
+        appendLine("Album: ${song.album}")
+        appendLine("Duration: ${formatTime(song.duration)}")
+        if (song.size > 0L) appendLine("Size: ${formatSize(song.size)}")
+        if (song.path.isNotBlank()) appendLine("File Path: ${song.path}")
+        else if (song.relativePath.isNotBlank()) appendLine("Folder: ${song.relativePath}")
+    }
+    val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as? ClipboardManager
+    clipboard?.setPrimaryClip(ClipData.newPlainText("Track Info", info))
+    Toast.makeText(context, "Track details copied to clipboard", Toast.LENGTH_SHORT).show()
 }
 
 // ─────────────────────────────────────────────────────────────────
@@ -3379,6 +3737,7 @@ fun FullScreenMusicPlayer(
     onOpenSleepTimer: () -> Unit,
     onOpenSpeed: () -> Unit,
     onOpenSongInfo: () -> Unit,
+    onOpenMoreOptions: () -> Unit = {},
     soundMode: MusicSoundMode = MusicSoundMode.BALANCED,
     onCycleSoundMode: () -> Unit = {},
     hudFeedback: HudFeedback? = null,
@@ -3680,9 +4039,13 @@ fun FullScreenMusicPlayer(
                             )
                         }
                     }
-                    // Song Info / More
+                    // Song Info
                     IconButton(onClick = onOpenSongInfo) {
                         Icon(Icons.Rounded.Info, contentDescription = "Info", tint = Color.White.copy(0.8f))
+                    }
+                    // More Options (3 Dots)
+                    IconButton(onClick = onOpenMoreOptions) {
+                        Icon(Icons.Rounded.MoreVert, contentDescription = "More options", tint = Color.White.copy(0.8f))
                     }
                 }
             }
@@ -5614,6 +5977,11 @@ private fun SongInfoDialog(song: MusicItem, onDismiss: () -> Unit) {
             InfoRow("Duration", formatTime(song.duration))
             InfoRow("Total Plays", "$playCount plays")
             InfoRow("File Size", formatSize(song.size))
+            if (song.path.isNotBlank()) {
+                InfoRow("Path", song.path)
+            } else if (song.relativePath.isNotBlank()) {
+                InfoRow("Folder", song.relativePath)
+            }
             InfoRow("URI", song.uri.toString())
 
             Spacer(Modifier.height(18.dp))
@@ -5657,6 +6025,12 @@ private fun SongActionMenuSheet(
     onAddToPlaylist: () -> Unit,
     onToggleFavorite: () -> Unit,
     onShare: () -> Unit,
+    onOpenInExplorer: () -> Unit,
+    onSearchInBrowser: () -> Unit,
+    onSearchOnYoutube: () -> Unit,
+    onSetAsRingtone: () -> Unit,
+    onCopyInfo: () -> Unit,
+    onDelete: () -> Unit,
     onViewDetails: () -> Unit,
     onDismiss: () -> Unit
 ) {
@@ -5680,6 +6054,7 @@ private fun SongActionMenuSheet(
                 .fillMaxWidth()
                 .navigationBarsPadding()
                 .padding(horizontal = 20.dp, vertical = 8.dp)
+                .verticalScroll(rememberScrollState())
         ) {
             Row(
                 modifier = Modifier
@@ -5741,9 +6116,44 @@ private fun SongActionMenuSheet(
             )
 
             ActionMenuItem(
+                icon = Icons.Rounded.FolderOpen,
+                title = "Open in File Explorer",
+                subtitle = "Locate audio file in device storage",
+                onClick = onOpenInExplorer
+            )
+
+            ActionMenuItem(
+                icon = Icons.Rounded.Language,
+                title = "Search in Browser",
+                subtitle = "Find lyrics, artist & song on web",
+                onClick = onSearchInBrowser
+            )
+
+            ActionMenuItem(
+                icon = Icons.Rounded.SmartDisplay,
+                title = "Search on YouTube",
+                subtitle = "Watch music video or live performance",
+                onClick = onSearchOnYoutube
+            )
+
+            ActionMenuItem(
+                icon = Icons.Rounded.NotificationsActive,
+                title = "Set as Phone Ringtone",
+                subtitle = "Use track as default ringtone",
+                onClick = onSetAsRingtone
+            )
+
+            ActionMenuItem(
+                icon = Icons.Rounded.ContentCopy,
+                title = "Copy Track Info",
+                subtitle = "Copy title, artist, and path to clipboard",
+                onClick = onCopyInfo
+            )
+
+            ActionMenuItem(
                 icon = Icons.Rounded.Share,
                 title = "Share Track",
-                subtitle = "Send track info to friends",
+                subtitle = "Send audio file to friends",
                 onClick = onShare
             )
 
@@ -5752,6 +6162,14 @@ private fun SongActionMenuSheet(
                 title = "Track Details",
                 subtitle = "View file specs and metadata",
                 onClick = onViewDetails
+            )
+
+            ActionMenuItem(
+                icon = Icons.Rounded.Delete,
+                tint = Color(0xFFE53935),
+                title = "Delete this Music",
+                subtitle = "Permanently remove audio file from device",
+                onClick = onDelete
             )
 
             Spacer(Modifier.height(16.dp))
