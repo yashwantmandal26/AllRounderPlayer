@@ -249,7 +249,7 @@ fun MainApp(
                 VideoPlaybackManager.setInitialDimensions(w, h)
             }
             val intent = Intent(context, com.example.ymediaplayer.ui.VideoPlayerActivity::class.java).apply {
-                flags = Intent.FLAG_ACTIVITY_SINGLE_TOP
+                flags = Intent.FLAG_ACTIVITY_REORDER_TO_FRONT or Intent.FLAG_ACTIVITY_SINGLE_TOP
                 putExtra(com.example.ymediaplayer.ui.VideoPlayerActivity.EXTRA_VIDEO_URL, target)
             }
             context.startActivity(intent)
@@ -311,7 +311,7 @@ fun MainApp(
                                     VideoPlaybackManager.setInitialDimensions(w, h)
                                 }
                                 val intent = Intent(context, com.example.ymediaplayer.ui.VideoPlayerActivity::class.java).apply {
-                                    flags = Intent.FLAG_ACTIVITY_SINGLE_TOP
+                                    flags = Intent.FLAG_ACTIVITY_REORDER_TO_FRONT or Intent.FLAG_ACTIVITY_SINGLE_TOP
                                     putExtra(com.example.ymediaplayer.ui.VideoPlayerActivity.EXTRA_VIDEO_URL, uri)
                                 }
                                 context.startActivity(intent)
@@ -351,7 +351,7 @@ fun MainApp(
                                 VideoPlaybackManager.setInitialDimensions(w, h)
                             }
                             val intent = Intent(context, com.example.ymediaplayer.ui.VideoPlayerActivity::class.java).apply {
-                                flags = Intent.FLAG_ACTIVITY_SINGLE_TOP
+                                flags = Intent.FLAG_ACTIVITY_REORDER_TO_FRONT or Intent.FLAG_ACTIVITY_SINGLE_TOP
                                 putExtra(com.example.ymediaplayer.ui.VideoPlayerActivity.EXTRA_VIDEO_URL, uri)
                             }
                             context.startActivity(intent)

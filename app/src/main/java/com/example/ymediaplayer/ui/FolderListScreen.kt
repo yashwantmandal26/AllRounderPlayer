@@ -95,6 +95,7 @@ fun FolderListScreen(
     val appPreferences = remember { AppPreferences(context) }
     val fileManager = remember { FileManager(context) }
     val coroutineScope = rememberCoroutineScope()
+    val libraryFeedback = remember { SnackbarHostState() }
     val haptic = LocalHapticFeedback.current
 
     // Data state
@@ -396,6 +397,17 @@ fun FolderListScreen(
 
         Scaffold(
             containerColor = Color.Transparent,
+            snackbarHost = {
+                SnackbarHost(libraryFeedback) { data ->
+                    Row(Modifier.fillMaxWidth().padding(16.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween) {
+                        Text(data.visuals.message, color = c.textPrimary,
+                            modifier = Modifier.weight(1f), fontSize = 13.sp)
+                        TextButton(onClick = { data.performAction() }) { Text("Undo", color = c.accentBlue) }
+                    }
+                }
+            },
             topBar = {
                 if (!musicPlayerExpanded) {
                     if (inSelectionMode) {
@@ -1024,8 +1036,16 @@ fun FolderListScreen(
                                                     if (!inSelectionMode) videoActionTarget = video
                                                 },
                                                 onRemove = {
-                                                    appPreferences.clearVideoProgress(video.uri.toString())
-                                                    Toast.makeText(context, "Removed from Continue Watching", Toast.LENGTH_SHORT).show()
+                                                    val uri = video.uri.toString()
+                                                    val position = appPreferences.getVideoProgress(uri)
+                                                    val duration = appPreferences.getVideoDuration(uri)
+                                                    appPreferences.clearVideoProgress(uri)
+                                                    coroutineScope.launch {
+                                                        if (libraryFeedback.showSnackbar("Removed from Continue Watching", "Undo", duration = SnackbarDuration.Short) == SnackbarResult.ActionPerformed
+                                                            && appPreferences.getVideoProgress(uri) == 0L) {
+                                                            appPreferences.saveVideoProgress(uri, position, duration)
+                                                        }
+                                                    }
                                                 }
                                             )
                                         }

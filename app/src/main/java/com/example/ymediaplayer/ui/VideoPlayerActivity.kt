@@ -12,6 +12,8 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.Surface
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.key
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -27,6 +29,7 @@ class VideoPlayerActivity : ComponentActivity() {
     }
 
     private var currentUrl by mutableStateOf("")
+    private var requestSequence by mutableIntStateOf(0)
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -36,7 +39,7 @@ class VideoPlayerActivity : ComponentActivity() {
         initialLp.screenBrightness = WindowManager.LayoutParams.BRIGHTNESS_OVERRIDE_NONE
         window.attributes = initialLp
 
-        currentUrl = intent.getStringExtra(EXTRA_VIDEO_URL) ?: ""
+        currentUrl = savedInstanceState?.getString(EXTRA_VIDEO_URL) ?: intent.getStringExtra(EXTRA_VIDEO_URL) ?: ""
 
         val prefs = com.example.ymediaplayer.data.AppPreferences(this)
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
@@ -56,6 +59,7 @@ class VideoPlayerActivity : ComponentActivity() {
                     color = Color.Black
                 ) {
                     if (currentUrl.isNotEmpty()) {
+                        key(currentUrl, requestSequence) {
                         VideoPlayerScreen(
                             videoUrl = currentUrl,
                             onBack = { finish() },
@@ -67,6 +71,7 @@ class VideoPlayerActivity : ComponentActivity() {
                                 startActivity(intent)
                             }
                         )
+                        }
                     }
                 }
             }
@@ -91,7 +96,15 @@ class VideoPlayerActivity : ComponentActivity() {
         super.onNewIntent(intent)
         setIntent(intent)
         val newUrl = intent.getStringExtra(EXTRA_VIDEO_URL)
-        if (!newUrl.isNullOrEmpty() && newUrl != currentUrl) {
+        val manager = com.example.ymediaplayer.player.VideoPlaybackManager
+        if (!newUrl.isNullOrEmpty() && newUrl != manager.currentVideoUrl.value) {
+            manager.player?.let { player ->
+                manager.currentVideoUrl.value?.let { url ->
+                    com.example.ymediaplayer.data.AppPreferences(this).saveVideoProgress(
+                        url, player.currentPosition, player.duration.coerceAtLeast(0L))
+                }
+            }
+            requestSequence++
             currentUrl = newUrl
         }
     }
@@ -103,10 +116,6 @@ class VideoPlayerActivity : ComponentActivity() {
 
     override fun onPause() {
         super.onPause()
-        val prefs = com.example.ymediaplayer.data.AppPreferences(this)
-        if (!isInPictureInPictureMode && !prefs.isBackgroundPlayEnabled() && !com.example.ymediaplayer.player.VideoPlaybackManager.isMiniPlayerActive.value) {
-            com.example.ymediaplayer.player.VideoPlaybackManager.player?.pause()
-        }
         if (isFinishing && !com.example.ymediaplayer.player.VideoPlaybackManager.isMiniPlayerActive.value) {
             com.example.ymediaplayer.player.VideoPlaybackManager.player?.let { p ->
                 try {
@@ -118,8 +127,24 @@ class VideoPlayerActivity : ComponentActivity() {
         }
     }
 
+    override fun onSaveInstanceState(outState: Bundle) {
+        val manager = com.example.ymediaplayer.player.VideoPlaybackManager
+        outState.putString(EXTRA_VIDEO_URL, manager.currentVideoUrl.value ?: currentUrl)
+        manager.player?.let { player ->
+            val prefs = com.example.ymediaplayer.data.AppPreferences(this)
+            prefs.saveVideoProgress(manager.currentVideoUrl.value ?: currentUrl,
+                player.currentPosition, player.duration.coerceAtLeast(0L))
+        }
+        super.onSaveInstanceState(outState)
+    }
+
     override fun onStop() {
         super.onStop()
+        val prefs = com.example.ymediaplayer.data.AppPreferences(this)
+        if (!isInPictureInPictureMode && !prefs.isBackgroundPlayEnabled() &&
+            !com.example.ymediaplayer.player.VideoPlaybackManager.isMiniPlayerActive.value) {
+            com.example.ymediaplayer.player.VideoPlaybackManager.player?.pause()
+        }
         if (isFinishing && !com.example.ymediaplayer.player.VideoPlaybackManager.isMiniPlayerActive.value) {
             com.example.ymediaplayer.player.VideoPlaybackManager.releasePlayer()
         }
@@ -128,7 +153,7 @@ class VideoPlayerActivity : ComponentActivity() {
     override fun onDestroy() {
         super.onDestroy()
         onUserLeaveHintListener = null
-        if (!com.example.ymediaplayer.player.VideoPlaybackManager.isMiniPlayerActive.value) {
+        if (!isChangingConfigurations && !com.example.ymediaplayer.player.VideoPlaybackManager.isMiniPlayerActive.value) {
             com.example.ymediaplayer.player.VideoPlaybackManager.releasePlayer()
         }
     }

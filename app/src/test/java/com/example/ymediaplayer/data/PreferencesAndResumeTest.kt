@@ -9,6 +9,37 @@ import org.junit.Test
 
 class PreferencesAndResumeTest {
 
+    @Test
+    fun speakerAndHeadphoneProfilesStayIndependent() {
+        appPreferences.setVideoRouteSoundMode("speakers", "CLEAR_VOICE")
+        appPreferences.setVideoRouteSoundMode("headphones", "CINEMA")
+        appPreferences.setVideoRouteSoundStrength("headphones", 0.4f)
+        appPreferences.setVideoVolumeLevelingEnabled("headphones", true)
+        assertEquals("CLEAR_VOICE", appPreferences.getVideoRouteSoundMode("speakers"))
+        assertEquals("CINEMA", appPreferences.getVideoRouteSoundMode("headphones"))
+        assertEquals(1f, appPreferences.getVideoRouteSoundStrength("speakers"), 0f)
+        assertEquals(0.4f, appPreferences.getVideoRouteSoundStrength("headphones"), 0f)
+        assertFalse(appPreferences.isVideoVolumeLevelingEnabled("speakers"))
+        assertTrue(appPreferences.isVideoVolumeLevelingEnabled("headphones"))
+    }
+
+    @Test
+    fun settingsResetClearsNewEnhancementsAndKeepsLibraryData() {
+        appPreferences.setVideoModeStrength("picture", 0.3f)
+        appPreferences.setVideoRouteSoundMode("speakers", "NIGHT_MODE")
+        appPreferences.setVideoVolumeLevelingEnabled("speakers", true)
+        appPreferences.setVideoAmbientBatterySaver(true)
+        appPreferences.setSubtitleBottomPadding(0.3f)
+        appPreferences.toggleFavorite("video")
+        appPreferences.resetAllSettingsToDefaults()
+        assertEquals(1f, appPreferences.getVideoModeStrength("picture"), 0f)
+        assertEquals("NORMAL", appPreferences.getVideoRouteSoundMode("speakers"))
+        assertFalse(appPreferences.isVideoVolumeLevelingEnabled("speakers"))
+        assertFalse(appPreferences.isVideoAmbientBatterySaver())
+        assertEquals(0.08f, appPreferences.getSubtitleBottomPadding(), 0f)
+        assertTrue(appPreferences.isFavorite("video"))
+    }
+
     private lateinit var fakePrefs: FakeSharedPreferences
     private lateinit var appPreferences: AppPreferences
 

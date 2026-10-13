@@ -46,8 +46,8 @@ object MediaArtworkHelper {
 
         // Strategy 2: Extract embedded artwork via MediaMetadataRetriever from the actual audio file Uri
         if (songUri != null) {
+            val mmr = MediaMetadataRetriever()
             try {
-                MediaMetadataRetriever().use { mmr ->
                     mmr.setDataSource(context, songUri)
                     val rawBytes = mmr.embeddedPicture
                     if (rawBytes != null && rawBytes.isNotEmpty()) {
@@ -56,8 +56,10 @@ object MediaArtworkHelper {
                             return compressToJpegBytes(bmp)
                         }
                     }
-                }
-            } catch (_: Throwable) {}
+            } catch (_: Throwable) {
+            } finally {
+                try { mmr.release() } catch (_: Exception) {}
+            }
         }
 
         // Strategy 3: Open albumArtUri stream (legacy MediaStore album art or file URI)

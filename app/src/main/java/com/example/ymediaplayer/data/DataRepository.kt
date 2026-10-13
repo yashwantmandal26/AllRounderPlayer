@@ -319,6 +319,25 @@ class AppPreferences(private val prefs: SharedPreferences) {
     fun getVideoSoundMode(): String = prefs.getString("video_sound_mode", "NORMAL") ?: "NORMAL"
     fun setVideoSoundMode(mode: String) { prefs.edit().putString("video_sound_mode", mode).apply() }
 
+    fun getVideoModeStrength(kind: String): Float = prefs.getFloat("video_strength_$kind", 1f).coerceIn(0f, 1f)
+    fun setVideoModeStrength(kind: String, strength: Float) { prefs.edit().putFloat("video_strength_$kind", strength.coerceIn(0f, 1f)).apply() }
+    fun getVideoRouteSoundMode(route: String): String = prefs.getString("video_sound_$route", getVideoSoundMode()) ?: "NORMAL"
+    fun setVideoRouteSoundMode(route: String, mode: String) { prefs.edit().putString("video_sound_$route", mode).apply() }
+    fun getVideoRouteSoundStrength(route: String): Float = prefs.getFloat("video_sound_strength_$route", 1f).coerceIn(0f, 1f)
+    fun setVideoRouteSoundStrength(route: String, strength: Float) { prefs.edit().putFloat("video_sound_strength_$route", strength.coerceIn(0f, 1f)).apply() }
+    fun isVideoVolumeLevelingEnabled(route: String): Boolean = prefs.getBoolean("video_leveling_$route", false)
+    fun setVideoVolumeLevelingEnabled(route: String, enabled: Boolean) { prefs.edit().putBoolean("video_leveling_$route", enabled).apply() }
+    fun getVideoAmbientSpread(): Float = prefs.getFloat("video_ambient_spread", 0.5f).coerceIn(0f, 1f)
+    fun setVideoAmbientSpread(value: Float) { prefs.edit().putFloat("video_ambient_spread", value.coerceIn(0f, 1f)).apply() }
+    fun isVideoAmbientBatterySaver(): Boolean = prefs.getBoolean("video_ambient_battery_saver", false)
+    fun setVideoAmbientBatterySaver(enabled: Boolean) { prefs.edit().putBoolean("video_ambient_battery_saver", enabled).apply() }
+    fun getExternalSubtitleUri(video: String): String? = prefs.getString("subtitle_uri_$video", null)
+    fun setExternalSubtitleUri(video: String, uri: String?) { prefs.edit().putString("subtitle_uri_$video", uri).apply() }
+    fun getSubtitleDelayMs(video: String): Long = prefs.getLong("subtitle_delay_$video", 0L)
+    fun setSubtitleDelayMs(video: String, delay: Long) { prefs.edit().putLong("subtitle_delay_$video", delay.coerceIn(-30_000L, 30_000L)).apply() }
+    fun getSubtitleBottomPadding(): Float = prefs.getFloat("subtitle_bottom_padding", 0.08f).coerceIn(0f, 0.4f)
+    fun setSubtitleBottomPadding(value: Float) { prefs.edit().putFloat("subtitle_bottom_padding", value.coerceIn(0f, 0.4f)).apply() }
+
     // ─── Video Picture Profiles & Sharpness Enhancement ────────────────────
     fun getVideoColorProfile(): String = prefs.getString("video_color_profile", "NORMAL") ?: "NORMAL"
     fun setVideoColorProfile(profile: String) { prefs.edit().putString("video_color_profile", profile).apply() }
@@ -666,6 +685,15 @@ class AppPreferences(private val prefs: SharedPreferences) {
     }
 
     fun resetAllSettingsToDefaults() {
+        val enhancementKeys = prefs.all.keys.filter {
+            it.startsWith("video_strength_") || it.startsWith("video_sound_") ||
+            it.startsWith("video_leveling_") || it.startsWith("video_ambient_") ||
+            it.startsWith("video_custom_") || it.startsWith("subtitle_delay_")
+        }
+        val enhancementEditor = prefs.edit()
+        enhancementKeys.forEach { enhancementEditor.remove(it) }
+        enhancementEditor.remove("video_color_profile").remove("video_sharpness_level")
+            .remove("super_ai_enhance_enabled").remove("subtitle_bottom_padding").remove("ambient_glow_strength").apply()
         prefs.edit()
             .remove("resume_mode")
             .remove("remember_playback_speed")

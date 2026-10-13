@@ -35,7 +35,6 @@ import androidx.compose.animation.*
 import androidx.compose.animation.core.*
 import androidx.compose.foundation.*
 import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.detectDragGestures
@@ -66,6 +65,9 @@ import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.zIndex
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
@@ -169,9 +171,9 @@ enum class VideoSoundMode(
     ),
     CINEMA(
         id = "CINEMA",
-        displayName = "Cinema 3D",
+        displayName = "Cinema",
         shortName = "Cinema",
-        description = "Expansive 3D theatrical soundstage with deep sub-bass & Foley detail",
+        description = "Warm bass and clear detail; spatial effects depend on your device",
         bands = listOf(4.0f, 1.5f, 0.0f, 3.5f, 5.0f),
         bassBoost = 0.40f,
         virtualizer = 0.40f,
@@ -179,7 +181,7 @@ enum class VideoSoundMode(
     ),
     CLEAR_VOICE(
         id = "CLEAR_VOICE",
-        displayName = "Clear Voice",
+        displayName = "Dialogue",
         shortName = "Voice",
         description = "Cuts low-end boom to make speech & dialogue crisp and front-and-center",
         bands = listOf(-4.0f, -1.0f, 6.0f, 4.5f, 1.5f),
@@ -189,11 +191,11 @@ enum class VideoSoundMode(
     ),
     ACTION_PUNCH(
         id = "ACTION_PUNCH",
-        displayName = "Action Punch",
-        shortName = "Action",
+        displayName = "Bass",
+        shortName = "Bass",
         description = "High-energy sub-bass punch tuned for explosions, battles & impact",
-        bands = listOf(7.5f, 5.0f, -1.0f, 2.0f, 3.0f),
-        bassBoost = 0.70f,
+        bands = listOf(4.0f, 2.5f, -1.0f, 1.5f, 2.0f),
+        bassBoost = 0.30f,
         virtualizer = 0.25f,
         icon = Icons.Rounded.Bolt
     ),
@@ -201,8 +203,8 @@ enum class VideoSoundMode(
         id = "NIGHT_MODE",
         displayName = "Night Mode",
         shortName = "Night",
-        description = "Soft balanced profile leveled for comfortable late-night viewing",
-        bands = listOf(0.5f, 1.0f, 0.5f, 1.0f, 0.5f),
+        description = "Reduced bass and clearer dialogue for quieter listening",
+        bands = listOf(-5.0f, -2.0f, 2.0f, 1.0f, -1.0f),
         bassBoost = 0.0f,
         virtualizer = 0.05f,
         icon = Icons.Rounded.NightsStay
@@ -234,8 +236,8 @@ enum class VideoColorProfile(
 ) {
     NORMAL(
         id = "NORMAL",
-        displayName = "Standard",
-        shortName = "Normal",
+        displayName = "Natural",
+        shortName = "Natural",
         description = "Untouched original video colors & natural dynamic range",
         contrast = 1.0f,
         saturation = 1.0f,
@@ -245,9 +247,9 @@ enum class VideoColorProfile(
     ),
     HDR_DYNAMIC(
         id = "HDR_DYNAMIC",
-        displayName = "HDR Dynamic",
+        displayName = "Dynamic",
         shortName = "Dynamic",
-        description = "Lifts shadows & expands dynamic range without washing out highlights",
+        description = "Brighter picture with gentle contrast and richer color",
         contrast = 1.04f,
         saturation = 1.12f,
         brightness = 0.04f,
@@ -267,7 +269,7 @@ enum class VideoColorProfile(
     ),
     NIGHT_CLARITY(
         id = "NIGHT_CLARITY",
-        displayName = "Night Clarity",
+        displayName = "Low Light",
         shortName = "Night",
         description = "Boosts dark scenes & shadows so hidden video details become visible",
         contrast = 1.02f,
@@ -389,7 +391,7 @@ private const val AGSL_LUMA_UNSHARP_SHADER = """
         // Anti-ringing boundary damping for high-contrast edges
         half boundaryDamping = clamp(1.0 - (absDiff - 0.05) * 8.0, 0.35, 1.0);
         // Scaled high-frequency boost clamped strictly to sharpness limit (e.g. +/- 0.05 for 5%)
-        half boost = clamp(lumaDiff * 1.25 * edgeMask * boundaryDamping, -sharpness, sharpness);
+        half boost = clamp(lumaDiff * (sharpness * 5.0) * edgeMask * boundaryDamping, -sharpness, sharpness);
         half3 sharpRgb = c.rgb + half3(boost);
         
         return half4(clamp(sharpRgb, half3(0.0), half3(1.0)), c.a);
@@ -436,7 +438,7 @@ private const val AGSL_SUPER_AI_ENHANCE_SHADER = """
         // Anti-ringing boundary damping for high-contrast edges
         half boundaryDamping = clamp(1.0 - (absDiff - 0.05) * 8.0, 0.35, 1.0);
         // Calibrated 5% high-frequency sharpness boost (strictly capped at +/- 0.050 delta)
-        half detailDelta = clamp(lumaDiff * 1.25 * edgeMask * boundaryDamping * aiStrength, -0.05, 0.05);
+        half detailDelta = clamp(lumaDiff * (sharpness * 5.0) * edgeMask * boundaryDamping * aiStrength, -0.05, 0.05);
 
         half3 rgbEnhanced = c.rgb + half3(detailDelta);
 
@@ -494,6 +496,30 @@ fun buildVideoColorMatrix(contrast: Float, saturation: Float, brightness: Float,
     return matrix
 }
 
+// Shadow lift tapers toward white rather than adding a flat offset to every pixel.
+private const val AGSL_PICTURE_SHADER = """
+    uniform shader image;
+    uniform float contrast;
+    uniform float saturation;
+    uniform float brightness;
+    uniform float warmth;
+    half4 main(float2 coord) {
+        half4 source = image.eval(coord);
+        half3 rgb = source.rgb;
+        half luma = dot(rgb, half3(0.2126, 0.7152, 0.0722));
+        half lift = brightness * (1.0 - luma) * (1.0 - luma);
+        rgb += half3(lift);
+        // A bounded S-curve increases separation without clipping highlights.
+        rgb += (contrast - 1.0) * (rgb - half3(0.5)) * 4.0 * rgb * (half3(1.0) - rgb);
+        luma = dot(rgb, half3(0.2126, 0.7152, 0.0722));
+        half chroma = max(rgb.r, max(rgb.g, rgb.b)) - min(rgb.r, min(rgb.g, rgb.b));
+        half amount = 1.0 + (saturation - 1.0) * (1.0 - chroma);
+        rgb = mix(half3(luma), rgb, amount);
+        rgb *= half3(1.0 + warmth * 0.15, 1.0 + warmth * 0.04, 1.0 - warmth * 0.15);
+        return half4(clamp(rgb, half3(0.0), half3(1.0)), source.a);
+    }
+"""
+
 fun createVideoRenderEffect(
     contrast: Float,
     saturation: Float,
@@ -540,8 +566,18 @@ fun createVideoRenderEffect(
             Math.abs(warmth) > 0.005f
 
     val colorEffect = if (isColorModified) {
-        val cm = buildVideoColorMatrix(contrast, saturation, brightness, warmth)
-        RenderEffect.createColorFilterEffect(ColorMatrixColorFilter(cm))
+        val fallback = RenderEffect.createColorFilterEffect(ColorMatrixColorFilter(
+            buildVideoColorMatrix(contrast, saturation, brightness, warmth)))
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            try {
+                val shader = RuntimeShader(AGSL_PICTURE_SHADER)
+                shader.setFloatUniform("contrast", contrast.coerceIn(0.5f, 2.5f))
+                shader.setFloatUniform("saturation", saturation.coerceIn(0f, 2.5f))
+                shader.setFloatUniform("brightness", brightness.coerceIn(-0.5f, 0.5f))
+                shader.setFloatUniform("warmth", warmth.coerceIn(-1f, 1f))
+                RenderEffect.createRuntimeShaderEffect(shader, "image")
+            } catch (_: IllegalArgumentException) { fallback }
+        } else fallback
     } else null
 
     var sharpnessEffect: RenderEffect? = null
@@ -568,10 +604,9 @@ fun applyVideoEffectsToPlayerView(pv: PlayerView?, effect: RenderEffect?) {
     try {
         if (pv.tag === effect) return
         pv.tag = effect
-        // Clear any surface-level RenderEffect to prevent driver conflicts on Adreno/Mali
-        pv.videoSurfaceView?.setRenderEffect(null)
-        // Apply effect at the PlayerView ViewGroup level for hardware composited shader passes
-        pv.setRenderEffect(effect)
+        // Process only video pixels; subtitles and player overlays retain their original appearance.
+        pv.setRenderEffect(null)
+        (pv.videoSurfaceView as? android.view.TextureView)?.setRenderEffect(effect)
     } catch (_: Throwable) {}
 }
 
@@ -703,8 +738,8 @@ fun VideoPlayerScreen(
         }
         currentUrl = item.uri.toString()
         videoTitle = item.title.substringBeforeLast(".")
-        val itemProgress = appPreferences.getVideoProgress(item.uri.toString())
-        if (itemProgress > 3000L) {
+        val itemProgress = if (appPreferences.getResumeMode() == "START") 0L else appPreferences.getVideoProgress(item.uri.toString())
+        if (itemProgress > 0L) {
             exoPlayer.setMediaItem(MediaItem.fromUri(item.uri), itemProgress)
         } else {
             exoPlayer.setMediaItem(MediaItem.fromUri(item.uri))
@@ -746,7 +781,7 @@ fun VideoPlayerScreen(
     }
 
     // ─── Player State ─────────────────────────────────────────────────────────
-    var isPlaying by remember { mutableStateOf(true) }
+    var isPlaying by remember(exoPlayer) { mutableStateOf(exoPlayer.isPlaying) }
     var currentPosition by remember { mutableLongStateOf(0L) }
     var bufferedPosition by remember { mutableLongStateOf(0L) }
     var duration by remember { mutableLongStateOf(0L) }
@@ -755,7 +790,7 @@ fun VideoPlayerScreen(
     var controlsInteractionTimestamp by remember { mutableLongStateOf(0L) }
     val optionsScrollState = rememberScrollState()
     var isMuted by remember { mutableStateOf(initialMuted) }
-    var playbackSpeed by remember { mutableFloatStateOf(initialPlaybackSpeed) }
+    var playbackSpeed by remember(exoPlayer) { mutableFloatStateOf(exoPlayer.playbackParameters.speed) }
     val configuration = LocalConfiguration.current
     val isLandscape = configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
     val c = LocalAppColors.current
@@ -765,6 +800,11 @@ fun VideoPlayerScreen(
     var isBackgroundAudio by remember { mutableStateOf(appPreferences.isBackgroundPlayEnabled()) }
     var resizeMode by remember(currentUrl) { mutableIntStateOf(AspectRatioFrameLayout.RESIZE_MODE_FIT) }
     var isAmbientMode by remember { mutableStateOf(appPreferences.isAmbientModeEnabled()) }
+    var ambientIntensity by remember { mutableFloatStateOf(appPreferences.getAmbientGlowStrength().coerceIn(0.2f, 1.8f)) }
+    var ambientSpread by remember { mutableFloatStateOf(appPreferences.getVideoAmbientSpread()) }
+    var ambientBatterySaver by remember { mutableStateOf(appPreferences.isVideoAmbientBatterySaver()) }
+    var showAmbientSettings by remember { mutableStateOf(false) }
+
 
     val toggleAmbientMode: () -> Unit = {
         view.performHaptic(HapticType.LIGHT)
@@ -910,7 +950,6 @@ fun VideoPlayerScreen(
     var doubleTapIsForward by remember { mutableStateOf(true) }
     var centerDoubleTapPlayPause by remember { mutableStateOf<Boolean?>(null) }
     var centerDoubleTapKey by remember { mutableLongStateOf(0L) }
-    var liveAmbientBitmap by remember { mutableStateOf<android.graphics.Bitmap?>(null) }
     var showRemainingTime by remember { mutableStateOf(false) }
 
     // Center Seek HUD
@@ -926,8 +965,10 @@ fun VideoPlayerScreen(
     var showSleepTimerSheet by remember { mutableStateOf(false) }
     var showAudioTrackSheet by remember { mutableStateOf(false) }
     var showSubtitleSheet by remember { mutableStateOf(false) }
+    var showSubtitleTools by remember { mutableStateOf(false) }
     var showThemePickerSheet by remember { mutableStateOf(false) }
     var showVideoInfoSheet by remember { mutableStateOf(false) }
+    var modePicker by remember { mutableStateOf<String?>(null) }
     var showQuickControlsBar by remember { mutableStateOf(false) }
     var subtitleDesign by remember { mutableIntStateOf(appPreferences.getSubtitleDesign()) }
     var isShuffleOn by remember { mutableStateOf(false) }
@@ -997,7 +1038,7 @@ fun VideoPlayerScreen(
         }
     }
 
-    val playerView = remember(context, isHdrVideo) {
+    val playerView = remember(context, isHdrVideo, exoPlayer) {
         val pv = if (isHdrVideo) {
             // Pure 10-bit SurfaceView pipeline (prevents yellow tint, renders native BT.2020 / HLG / Dolby Vision)
             PlayerView(context)
@@ -1033,64 +1074,14 @@ fun VideoPlayerScreen(
         appPreferences.saveSubtitleDesign(subtitleDesign)
     }
 
-    // ─── Real-Time Ambient Lighting Frame Synchronizer (GPU Direct Capture) ─────
-    LaunchedEffect(isAmbientMode, currentUrl, playerView) {
-        if (!isAmbientMode || currentUrl.isBlank()) {
-            liveAmbientBitmap = null
-            return@LaunchedEffect
-        }
-        while (isActive) {
-            val tv = playerView.videoSurfaceView as? android.view.TextureView
-            if (tv != null && tv.isAvailable) {
-                try {
-                    val bmp = tv.getBitmap(80, 45)
-                    if (bmp != null) {
-                        liveAmbientBitmap = bmp
-                    }
-                } catch (_: Throwable) {}
-            } else if (exoPlayer.isPlaying) {
-                // Fallback for non-TextureView (e.g. SurfaceView or initial frame)
-                withContext(Dispatchers.IO) {
-                    try {
-                        val retriever = android.media.MediaMetadataRetriever()
-                        try {
-                            if (currentUrl.startsWith("content://")) {
-                                retriever.setDataSource(context, android.net.Uri.parse(currentUrl))
-                            } else {
-                                retriever.setDataSource(currentUrl)
-                            }
-                            val pos = withContext(Dispatchers.Main) { exoPlayer.currentPosition }
-                            val bmp = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O_MR1) {
-                                retriever.getScaledFrameAtTime(
-                                    pos * 1000L,
-                                    android.media.MediaMetadataRetriever.OPTION_CLOSEST_SYNC,
-                                    80, 45
-                                ) ?: retriever.getFrameAtTime(pos * 1000L)
-                            } else {
-                                retriever.getFrameAtTime(pos * 1000L)
-                            }
-                            if (bmp != null) {
-                                withContext(Dispatchers.Main) {
-                                    liveAmbientBitmap = bmp
-                                }
-                            }
-                        } finally {
-                            try { retriever.release() } catch (_: Throwable) {}
-                        }
-                    } catch (_: Throwable) {}
-                }
-            }
-            delay(1500L)
-        }
-    }
-
-
     // Sleep Timer
     var sleepTimerMinutes by remember { mutableIntStateOf(0) }
 
     // Picture in Picture
     var isInPiP by remember { mutableStateOf(false) }
-    var prePipSubtitleFlags by remember { mutableIntStateOf(-1) } // stores subtitle flags before PiP entry
+    val subtitleState = rememberVideoSubtitles(currentUrl, exoPlayer, playerView, appPreferences, isInPiP)
+    var prePipSubtitleFlags by remember { mutableIntStateOf(-1) }
+    var prePipSubtitlesDisabled by remember { mutableStateOf(false) } // stores subtitle flags before PiP entry
 
     // Pinch-to-Zoom & Pan
     var videoZoomScale by remember(currentUrl) { mutableFloatStateOf(1f) }
@@ -1121,26 +1112,30 @@ fun VideoPlayerScreen(
 
     // ─── Video Sound Profiles & Hardware Audio Effects ────────────────────────
     val activeAudioSessionId by remember { VideoPlaybackManager.currentAudioSessionId }
-    var videoSoundMode by remember { mutableStateOf(VideoSoundMode.fromId(appPreferences.getVideoSoundMode())) }
+    val audioRoute = rememberVideoAudioRoute(audioManager)
+    var videoSoundMode by remember(audioRoute) { mutableStateOf(VideoSoundMode.fromId(appPreferences.getVideoRouteSoundMode(audioRoute))) }
+    var audioStrength by remember(audioRoute) { mutableFloatStateOf(appPreferences.getVideoRouteSoundStrength(audioRoute)) }
+    var volumeLeveling by remember(audioRoute) { mutableStateOf(appPreferences.isVideoVolumeLevelingEnabled(audioRoute)) }
+    var pictureStrength by remember { mutableFloatStateOf(appPreferences.getVideoModeStrength("picture")) }
+    var sharpnessStrength by remember { mutableFloatStateOf(appPreferences.getVideoModeStrength("sharpness")) }
+    var previewOriginal by remember { mutableStateOf(false) }
+
     var videoColorProfile by remember { mutableStateOf(VideoColorProfile.fromId(appPreferences.getVideoColorProfile())) }
     var videoSharpnessLevel by remember { mutableStateOf(VideoSharpnessLevel.fromId(appPreferences.getVideoSharpnessLevel())) }
 
     // Instant HUD Indicator (Shared across Sound, Picture, and Sharpness controls)
     var quickHUDText by remember { mutableStateOf<String?>(null) }
     var quickHUDSubtext by remember { mutableStateOf<String?>(null) }
-    var quickHUDIcon by remember { mutableStateOf<androidx.compose.ui.graphics.vector.ImageVector?>(null) }
     var quickHUDJob by remember { mutableStateOf<kotlinx.coroutines.Job?>(null) }
 
-    val showQuickHUD: (String, String, androidx.compose.ui.graphics.vector.ImageVector) -> Unit = { text, subtext, icon ->
+    val showQuickHUD: (String, String, androidx.compose.ui.graphics.vector.ImageVector) -> Unit = { text, subtext, _ ->
         quickHUDJob?.cancel()
         quickHUDText = text
         quickHUDSubtext = subtext
-        quickHUDIcon = icon
         quickHUDJob = coroutineScope.launch {
             delay(1800)
             quickHUDText = null
             quickHUDSubtext = null
-            quickHUDIcon = null
         }
     }
 
@@ -1163,18 +1158,17 @@ fun VideoPlayerScreen(
 
     // Super AI Video Enhancement Engine (Multi-Scale Neural Clarity, Shadow Lift & Smart Vibrance)
     var isSuperAiEnhance by remember { mutableStateOf(appPreferences.isSuperAiEnhanceEnabled()) }
-    var preAiBrightness by remember { mutableFloatStateOf(brightnessPct) }
 
-    val currentVideoRenderEffect = remember(currentContrast, currentSaturation, currentBrightness, currentWarmth, currentSharpness, isSuperAiEnhance, safePlaybackMode) {
-        if (safePlaybackMode) {
+    val currentVideoRenderEffect = remember(currentContrast, currentSaturation, currentBrightness, currentWarmth, currentSharpness, isSuperAiEnhance, safePlaybackMode, previewOriginal, pictureStrength, sharpnessStrength, isHdrVideo) {
+        if (safePlaybackMode || previewOriginal || isHdrVideo) {
             null
         } else {
             createVideoRenderEffect(
-                contrast = currentContrast,
-                saturation = currentSaturation,
-                brightness = currentBrightness,
-                warmth = currentWarmth,
-                sharpness = currentSharpness,
+                contrast = 1f + (currentContrast - 1f) * pictureStrength,
+                saturation = 1f + (currentSaturation - 1f) * pictureStrength,
+                brightness = currentBrightness * pictureStrength,
+                warmth = currentWarmth * pictureStrength,
+                sharpness = currentSharpness * sharpnessStrength,
                 isSuperAi = isSuperAiEnhance
             )
         }
@@ -1187,39 +1181,35 @@ fun VideoPlayerScreen(
     val toggleSuperAiEnhance: () -> Unit = {
         view.performHaptic(HapticType.MEDIUM)
         val newState = !isSuperAiEnhance
-        isSuperAiEnhance = newState
-        appPreferences.setSuperAiEnhanceEnabled(newState)
-
-        if (newState) {
-            if (isNightMode) {
-                isNightMode = false
-                appPreferences.setNightMode(false)
-            }
-            preAiBrightness = brightnessPct
-            if (!isAutoBrightness) {
-                hasUserAdjustedBrightness = true
-                brightnessPct = (brightnessPct + 0.10f).coerceAtMost(1.0f)
-            }
-            showQuickHUD(
-                "Super AI Enhancement: ON",
-                "Cinema Clarity • Shadow Clarification • Smart Vibrance",
-                Icons.Rounded.AutoAwesome
-            )
+        if (newState && (isHdrVideo || safePlaybackMode || Build.VERSION.SDK_INT < 31)) {
+            showQuickHUD("Smart clarity unavailable", "Available for SDR playback on Android 12 or newer", Icons.Rounded.Info)
         } else {
-            if (!isAutoBrightness && preAiBrightness in 0.01f..1.0f) {
-                hasUserAdjustedBrightness = true
-                brightnessPct = preAiBrightness
+            isSuperAiEnhance = newState
+            appPreferences.setSuperAiEnhanceEnabled(newState)
+
+            if (newState) {
+                if (isNightMode) {
+                    isNightMode = false
+                    appPreferences.setNightMode(false)
+                }
+
+                showQuickHUD(
+                    "Smart clarity: ON",
+                    "Cinema Clarity • Shadow Clarification • Smart Vibrance",
+                    Icons.Rounded.AutoAwesome
+                )
+            } else {
+
+                showQuickHUD(
+                    "Smart clarity: OFF",
+                    "Standard video playback restored",
+                    Icons.Rounded.AutoAwesome
+                )
             }
-            showQuickHUD(
-                "Super AI Enhancement: OFF",
-                "Standard video playback restored",
-                Icons.Rounded.AutoAwesome
-            )
         }
     }
 
-    val cycleVideoColorProfile: () -> Unit = {
-        val nextProfile = videoColorProfile.next()
+    val selectVideoColorProfile: (VideoColorProfile) -> Unit = { nextProfile ->
         videoColorProfile = nextProfile
         appPreferences.setVideoColorProfile(nextProfile.id)
         currentContrast = nextProfile.contrast
@@ -1233,8 +1223,7 @@ fun VideoPlayerScreen(
         showQuickHUD(nextProfile.displayName, nextProfile.description, nextProfile.icon)
     }
 
-    val cycleVideoSharpness: () -> Unit = {
-        val nextLevel = videoSharpnessLevel.next()
+    val selectVideoSharpness: (VideoSharpnessLevel) -> Unit = { nextLevel ->
         videoSharpnessLevel = nextLevel
         appPreferences.setVideoSharpnessLevel(nextLevel.id)
         currentSharpness = nextLevel.intensity
@@ -1244,18 +1233,16 @@ fun VideoPlayerScreen(
 
     // Hardware Audio Effects (Equalizer, BassBoost, Virtualizer) attached to active session ID
     // Only instantiated when a non-standard sound mode is active, avoiding AudioTrack reinit / audio stalls
-    val audioEffects = remember(activeAudioSessionId, videoSoundMode) {
-        if (activeAudioSessionId <= 0 || videoSoundMode == VideoSoundMode.NORMAL) {
+    val audioEffects = remember(activeAudioSessionId) {
+        if (activeAudioSessionId <= 0) {
             Triple(null, null, null)
         } else {
             var eq: Equalizer? = null
             var bass: BassBoost? = null
             var virt: Virtualizer? = null
-            try {
-                eq = Equalizer(0, activeAudioSessionId)
-                bass = BassBoost(0, activeAudioSessionId)
-                virt = Virtualizer(0, activeAudioSessionId)
-            } catch (_: Exception) {}
+            try { eq = Equalizer(0, activeAudioSessionId) } catch (_: Exception) {}
+            try { bass = BassBoost(0, activeAudioSessionId) } catch (_: Exception) {}
+            try { virt = Virtualizer(0, activeAudioSessionId) } catch (_: Exception) {}
             Triple(eq, bass, virt)
         }
     }
@@ -1269,7 +1256,7 @@ fun VideoPlayerScreen(
         }
     }
 
-    val applyAcoustics: (VideoSoundMode) -> Unit = remember(audioEffects) {
+    val applyAcoustics: (VideoSoundMode) -> Unit = remember(audioEffects, audioStrength, audioRoute) {
         { mode ->
             val (eq, bass, virt) = audioEffects
             if (mode == VideoSoundMode.NORMAL) {
@@ -1281,40 +1268,41 @@ fun VideoPlayerScreen(
                     try {
                         val minRange = eq.bandLevelRange[0]
                         val maxRange = eq.bandLevelRange[1]
-                        mode.bands.forEachIndexed { idx, db ->
-                            val mB = (db * 100).toInt().coerceIn(minRange.toInt(), maxRange.toInt()).toShort()
-                            if (idx < eq.numberOfBands.toInt()) {
-                                eq.setBandLevel(idx.toShort(), mB)
-                            }
+                        for (index in 0 until eq.numberOfBands.toInt()) {
+                            val band = index.toShort()
+                            val db = interpolateVideoEqGain(eq.getCenterFreq(band) / 1000f, mode.bands) * audioStrength
+                            val level = (db * 100).toInt().coerceIn(minRange.toInt(), maxRange.toInt())
+                            eq.setBandLevel(band, level.toShort())
                         }
                         eq.enabled = true
                     } catch (_: Exception) {}
                 }
                 if (bass != null) {
                     try {
-                        bass.setStrength((mode.bassBoost * 1000).toInt().toShort())
+                        bass.setStrength((mode.bassBoost * audioStrength * 1000).toInt().toShort())
                         bass.enabled = (mode.bassBoost > 0f)
                     } catch (_: Exception) {}
                 }
                 if (virt != null) {
                     try {
-                        virt.setStrength((mode.virtualizer * 1000).toInt().toShort())
-                        virt.enabled = (mode.virtualizer > 0f)
+                        virt.setStrength((mode.virtualizer * audioStrength * 1000).toInt().toShort())
+                        virt.enabled = (mode.virtualizer > 0f && audioRoute == "headphones")
                     } catch (_: Exception) {}
                 }
             }
         }
     }
 
-    LaunchedEffect(audioEffects, videoSoundMode) {
-        applyAcoustics(videoSoundMode)
+    LaunchedEffect(audioEffects, videoSoundMode, audioStrength, volumeLeveling, previewOriginal, exoPlayer) {
+        applyAcoustics(if (previewOriginal) VideoSoundMode.NORMAL else videoSoundMode)
+        VideoPlaybackManager.setAudioDynamics(
+            if (!previewOriginal && videoSoundMode == VideoSoundMode.NIGHT_MODE) audioStrength else 0f,
+            volumeLeveling && !previewOriginal)
     }
 
-    val cycleVideoSoundMode: () -> Unit = {
-        val nextMode = videoSoundMode.next()
+    val selectVideoSoundMode: (VideoSoundMode) -> Unit = { nextMode ->
         videoSoundMode = nextMode
-        appPreferences.setVideoSoundMode(nextMode.id)
-        applyAcoustics(nextMode)
+        appPreferences.setVideoRouteSoundMode(audioRoute, nextMode.id)
         showQuickHUD(nextMode.displayName, nextMode.description, nextMode.icon)
     }
 
@@ -1752,7 +1740,7 @@ fun VideoPlayerScreen(
     }
 
     // ─── PiP Callback (Subtitle disable/restore + remote actions) ──────────────
-    DisposableEffect(componentActivity) {
+    DisposableEffect(componentActivity, exoPlayer, playerView) {
         val listener = Consumer<PictureInPictureModeChangedInfo> { info ->
             isInPiP = info.isInPictureInPictureMode
             if (info.isInPictureInPictureMode) {
@@ -1760,6 +1748,7 @@ fun VideoPlayerScreen(
                 playerView.subtitleView?.visibility = android.view.View.GONE
                 playerView.subtitleView?.setCues(emptyList())
                 playerView.subtitleView?.alpha = 0f
+                prePipSubtitlesDisabled = exoPlayer.trackSelectionParameters.disabledTrackTypes.contains(C.TRACK_TYPE_TEXT)
                 prePipSubtitleFlags = exoPlayer.trackSelectionParameters.ignoredTextSelectionFlags
                 exoPlayer.trackSelectionParameters = exoPlayer.trackSelectionParameters
                     .buildUpon()
@@ -1772,7 +1761,7 @@ fun VideoPlayerScreen(
                 playerView.subtitleView?.alpha = 1f
                 exoPlayer.trackSelectionParameters = exoPlayer.trackSelectionParameters
                     .buildUpon()
-                    .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, false)
+                    .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, prePipSubtitlesDisabled)
                     .build()
                 if (prePipSubtitleFlags >= 0) {
                     exoPlayer.trackSelectionParameters = exoPlayer.trackSelectionParameters
@@ -1837,7 +1826,7 @@ fun VideoPlayerScreen(
     }
 
     // ─── PiP Params Builder (clamped aspect ratio, remote actions, auto-enter) ─
-    val buildPipParams = remember(videoWidth, videoHeight, isPlaying, isVerticalVideo, currentVideoIndex, playlistVideos, currentUrl) {
+    val buildPipParams = remember(exoPlayer, videoWidth, videoHeight, isPlaying, isVerticalVideo, currentVideoIndex, playlistVideos, currentUrl) {
         {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
                 try {
@@ -2077,7 +2066,7 @@ fun VideoPlayerScreen(
     }
 
     // ─── Auto-hide Controls (Stay visible while touching, dragging, dialogs open, or paused) ──
-    val isAnySheetOrMenuOpen = showPlaylistSheet ||
+    val isAnySheetOrMenuOpen = showSubtitleTools || showAmbientSettings || modePicker != null || showPlaylistSheet ||
             showSettingsOverlay ||
             showMoreMenuSheet ||
             showSpeedSheet ||
@@ -2260,10 +2249,11 @@ fun VideoPlayerScreen(
     var isAppInBackground by remember { mutableStateOf(false) }
 
     // ─── Lifecycle Handling ───────────────────────────────────────────────────
-    DisposableEffect(lifecycleOwner) {
+    DisposableEffect(lifecycleOwner, exoPlayer) {
         val observer = LifecycleEventObserver { _, event ->
             when (event) {
                 Lifecycle.Event.ON_PAUSE -> {
+                    previewOriginal = false
                     if (isSpeedHolding) {
                         isSpeedHolding = false
                         val restoreSpeed = if (preHoldSpeed > 0.1f) preHoldSpeed else 1.0f
@@ -2297,6 +2287,9 @@ fun VideoPlayerScreen(
                 }
                 Lifecycle.Event.ON_RESUME -> {
                     isAppInBackground = false
+                    ambientIntensity = appPreferences.getAmbientGlowStrength().coerceIn(0.2f, 1.8f)
+                    ambientSpread = appPreferences.getVideoAmbientSpread()
+                    ambientBatterySaver = appPreferences.isVideoAmbientBatterySaver()
                     isVideoNotificationDismissed = false
                     // Re-apply settings on resume (preserve current video's resizeMode)
                     isAmbientMode = appPreferences.isAmbientModeEnabled()
@@ -2323,7 +2316,7 @@ fun VideoPlayerScreen(
             if (pos > 1000L) {
                 appPreferences.saveVideoProgress(currentUrl, pos, exoPlayer.duration.coerceAtLeast(0L))
             }
-            if (!VideoPlaybackManager.isMiniPlayerActive.value) {
+            if (activity?.isFinishing == true && !VideoPlaybackManager.isMiniPlayerActive.value) {
                 VideoPlaybackManager.releasePlayer()
             }
             val lp = activity?.window?.attributes
@@ -2366,6 +2359,9 @@ fun VideoPlayerScreen(
             isLocked -> isLocked = false
             showQuickControlsBar -> showQuickControlsBar = false
             showSettingsOverlay -> showSettingsOverlay = false
+            showSubtitleTools -> showSubtitleTools = false
+            showAmbientSettings -> showAmbientSettings = false
+            modePicker != null -> { previewOriginal = false; modePicker = null }
             showPlaylistSheet -> showPlaylistSheet = false
             isMoreExpanded -> isMoreExpanded = false
             showMoreMenuSheet -> showMoreMenuSheet = false
@@ -2448,6 +2444,8 @@ fun VideoPlayerScreen(
                 var lastHapticBrightnessStep = ((startBrightness * 100f) / 5f).roundToInt().coerceIn(0, 20)
                 var lastHapticVolumeStep = (((startVolume.toFloat() / maxVolume.toFloat()) * 100f) / 5f).roundToInt().coerceIn(0, 20)
                 var lastHapticSeekStep = (startPosition / 5000L).toInt()
+                var lastSeekX = startX
+                var accumulatedSeek = startPosition.toDouble()
                 var lastHoldX = startX
                 var speedHoldAccumulatorX = 0f
                 var finalDiffX = 0f
@@ -2687,10 +2685,14 @@ fun VideoPlayerScreen(
                         change.consume()
                     }
                     PlayerGestureMode.SEEK -> {
-                        val dragRatio = diffX / screenWidth
+                        val fineSeek = currentY < startY - 80f * view.resources.displayMetrics.density
+                        val dragRatio = (currentX - lastSeekX) / screenWidth
+                        lastSeekX = currentX
                         val fullScreenSeekMs = if (currentDuration > 0L) (currentDuration * 0.25f).toLong().coerceIn(60000L, 600000L) else 120000L
-                        val delta = (dragRatio * fullScreenSeekMs).toLong()
-                        currentDragSeekTarget = (startPosition + delta).coerceIn(0L, currentDuration.coerceAtLeast(0L))
+                        accumulatedSeek = (accumulatedSeek + dragRatio * fullScreenSeekMs * if (fineSeek) 0.1 else 1.0)
+                            .coerceIn(0.0, currentDuration.coerceAtLeast(0L).toDouble())
+                        currentDragSeekTarget = accumulatedSeek.toLong()
+                        val delta = currentDragSeekTarget - startPosition
                         scrubPosition = currentDragSeekTarget.toFloat()
                         isDraggingSeek = true
                         centerSeekIcon = if (delta >= 0) Icons.Rounded.FastForward else Icons.Rounded.FastRewind
@@ -2903,37 +2905,14 @@ fun VideoPlayerScreen(
                 .background(Color.Black)
                 .then(playerGestureModifier)
         ) {
-            // ─── 0. Ambient Blurred Backdrop (Atmospheric Halo Reflection) ────────
-            if (isAmbientMode) {
-                Box(modifier = Modifier.fillMaxSize()) {
-                    val bgBmp = liveAmbientBitmap
-                    if (bgBmp != null) {
-                        androidx.compose.foundation.Image(
-                            bitmap = bgBmp.asImageBitmap(),
-                            contentDescription = null,
-                            contentScale = ContentScale.Crop,
-                            modifier = Modifier
-                                .fillMaxSize()
-                                .blur(48.dp)
-                        )
-                    } else {
-                        AsyncImage(
-                            model = remember(currentUrl) {
-                                buildVideoThumbnailRequest(context, currentUrl.toUri())
-                            },
-                            contentDescription = null,
-                            contentScale = ContentScale.Crop,
-                            modifier = Modifier
-                                .fillMaxSize()
-                                .blur(48.dp)
-                        )
-                    }
-                    Box(
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .background(Color.Black.copy(alpha = 0.52f))
-                    )
-                }
+            // Sample the displayed surface, keeping frame updates out of screen recomposition.
+            if (isAmbientMode && !isInPiP) {
+                VideoAmbientBackdrop(
+                    playerView = playerView,
+                    mediaUrl = currentUrl,
+                    isPlaying = isPlaying,
+                    glowStrength = ambientIntensity, spread = ambientSpread, batterySaver = ambientBatterySaver
+                )
             }
 
             // ─── 1. Video Surface with Pinch-to-Zoom & Pan ────────────────────────
@@ -3086,25 +3065,21 @@ fun VideoPlayerScreen(
             )
         }
 
+        if (isDraggingSeek && !isInPiP) {
+            Box(Modifier.align(Alignment.Center)) { VideoSeekPreview(currentUrl, scrubPosition.toLong()) }
+        }
+
         // ─── 5. Horizontal Seek Center HUD ────────────────────────────────────
         AnimatedVisibility(
-            visible = centerSeekText != null,
+            visible = centerSeekText != null && !isDraggingSeek,
             enter = fadeIn(tween(100)),
             exit = fadeOut(tween(200)),
             modifier = Modifier.align(Alignment.Center)
         ) {
             Column(
                 horizontalAlignment = Alignment.CenterHorizontally,
-                modifier = Modifier
-                    .clip(RoundedCornerShape(20.dp))
-                    .background(Color.Black.copy(alpha = 0.82f))
-                    .border(1.2.dp, primaryAccent.copy(alpha = 0.6f), RoundedCornerShape(20.dp))
-                    .padding(horizontal = 20.dp, vertical = 14.dp)
+                modifier = Modifier.padding(horizontal = 20.dp, vertical = 14.dp)
             ) {
-                centerSeekIcon?.let {
-                    Icon(it, contentDescription = null, tint = primaryAccent, modifier = Modifier.size(40.dp))
-                    Spacer(Modifier.height(8.dp))
-                }
                 Text(
                     text = centerSeekText ?: "",
                     color = Color.White,
@@ -3161,19 +3136,7 @@ fun VideoPlayerScreen(
                 .statusBarsPadding()
                 .padding(top = 68.dp)
         ) {
-            Box(
-                modifier = Modifier
-                    .clip(RoundedCornerShape(24.dp))
-                    .background(Color.Black.copy(alpha = 0.80f))
-                    .border(1.2.dp, primaryAccent, RoundedCornerShape(24.dp))
-                    .padding(horizontal = 20.dp, vertical = 10.dp),
-                contentAlignment = Alignment.Center
-            ) {
-                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Icon(Icons.Rounded.ZoomIn, contentDescription = null, tint = primaryAccent, modifier = Modifier.size(22.dp))
-                    Text(text = zoomHUDText, color = Color.White, fontSize = 15.sp, fontWeight = FontWeight.Bold, fontFamily = FontFamily.Monospace)
-                }
-            }
+            TextOnlyPlayerFeedback(zoomHUDText)
         }
 
         // ─── 6d. Quick HUD Indicator (Instant Feedback for Picture, Audio & Sharpness) ─
@@ -3186,47 +3149,8 @@ fun VideoPlayerScreen(
                 .statusBarsPadding()
                 .padding(top = 68.dp)
         ) {
-            Box(
-                modifier = Modifier
-                    .clip(RoundedCornerShape(24.dp))
-                    .background(Color.Black.copy(alpha = 0.85f))
-                    .border(1.2.dp, primaryAccent, RoundedCornerShape(24.dp))
-                    .padding(horizontal = 18.dp, vertical = 10.dp),
-                contentAlignment = Alignment.Center
-            ) {
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(10.dp)
-                ) {
-                    quickHUDIcon?.let { icon ->
-                        Icon(
-                            imageVector = icon,
-                            contentDescription = null,
-                            tint = primaryAccent,
-                            modifier = Modifier.size(24.dp)
-                        )
-                    }
-                    Column {
-                        Text(
-                            text = quickHUDText ?: "",
-                            color = Color.White,
-                            fontSize = 15.sp,
-                            fontWeight = FontWeight.Bold
-                        )
-                        quickHUDSubtext?.let { sub ->
-                            Text(
-                                text = sub,
-                                color = Color.White.copy(alpha = 0.75f),
-                                fontSize = 11.sp,
-                                maxLines = 1
-                            )
-                        }
-                    }
-                }
-            }
+            TextOnlyPlayerFeedback(quickHUDText.orEmpty(), quickHUDSubtext)
         }
-
-
 
         // ─── 6b. Press-Hold Speed HUD (Small Pill with Animated ">>" Icon) ───
         AnimatedVisibility(
@@ -3239,7 +3163,6 @@ fun VideoPlayerScreen(
         ) {
             TemporarySpeedHoldBadge(
                 speed = speedHoldDisplaySpeed,
-                accentColor = primaryAccent,
                 modifier = Modifier.clickable {
                     isSpeedHolding = false
                     val restoreSpeed = if (preHoldSpeed > 0.1f) preHoldSpeed else 1.0f
@@ -3776,10 +3699,11 @@ fun VideoPlayerScreen(
                                 verticalAlignment = Alignment.CenterVertically,
                                 horizontalArrangement = Arrangement.spacedBy(8.dp)
                             ) {
-                                // Super AI Video Enhancement Button (Multi-frequency neural remaster, shadow lift, and smart vibrance)
+                                OriginalPreviewButton(previewOriginal) { previewOriginal = it }
+                                // Smart clarity button (Multi-frequency neural remaster, shadow lift, and smart vibrance)
                                 PlayerIconButton(
-                                    name = "Super AI Enhancement",
-                                    description = "One-tap AI remaster: multi-band detail synthesis, shadow lift, and smart vibrancy",
+                                    name = "Smart clarity",
+                                    description = "Gentle detail enhancement, shadow lift and richer color",
                                     onClick = toggleSuperAiEnhance,
                                     icon = Icons.Rounded.AutoAwesome,
                                     modifier = Modifier
@@ -3818,7 +3742,7 @@ fun VideoPlayerScreen(
                                 ) {
                                     Icon(
                                         imageVector = Icons.Rounded.AutoAwesome,
-                                        contentDescription = "Super AI Video Enhancement",
+                                        contentDescription = "Smart clarity",
                                         tint = if (isSuperAiEnhance) Color.White else Color.White.copy(alpha = 0.85f),
                                         modifier = Modifier.size(19.dp)
                                     )
@@ -3923,6 +3847,8 @@ fun VideoPlayerScreen(
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()
+                                .horizontalScroll(rememberScrollState())
+                                .widthIn(min = (configuration.screenWidthDp - 36).coerceAtLeast(0).dp)
                                 .padding(horizontal = 4.dp, vertical = 2.dp),
                             horizontalArrangement = Arrangement.SpaceEvenly,
                             verticalAlignment = Alignment.CenterVertically
@@ -3950,133 +3876,14 @@ fun VideoPlayerScreen(
                                 )
                             }
 
-                            // 2. Video Picture Profile (Disabled when Super AI is active)
-                            PlayerIconButton(
-                                name = if (isSuperAiEnhance) "Picture: Managed by Super AI" else "Picture: ${videoColorProfile.displayName}",
-                                description = if (isSuperAiEnhance) "Disabled while Super AI Video Enhancement is active" else videoColorProfile.description,
-                                onClick = {
-                                    view.performHaptic(HapticType.LIGHT)
-                                    if (isSuperAiEnhance) {
-                                        showQuickHUD(
-                                            "Managed by Super AI",
-                                            "Disable Super AI to adjust manual picture profiles",
-                                            Icons.Rounded.AutoAwesome
-                                        )
-                                    } else {
-                                        cycleVideoColorProfile()
-                                    }
-                                },
-                                icon = videoColorProfile.icon,
-                                modifier = Modifier
-                                    .size(42.dp)
-                                    .clip(CircleShape)
-                                    .background(
-                                        when {
-                                            isSuperAiEnhance -> SolidColor(Color.Black.copy(alpha = 0.35f))
-                                            videoColorProfile != VideoColorProfile.NORMAL -> Brush.radialGradient(listOf(primaryAccent.copy(alpha = 0.35f), Color(0xFF11121C)))
-                                            else -> Brush.verticalGradient(listOf(Color(0xFF252636), Color(0xFF11121C)))
-                                        }
-                                    )
-                                    .border(
-                                        1.2.dp,
-                                        when {
-                                            isSuperAiEnhance -> SolidColor(Color.White.copy(alpha = 0.14f))
-                                            videoColorProfile != VideoColorProfile.NORMAL -> BorderStroke(1.2.dp, primaryAccent).brush
-                                            else -> Brush.verticalGradient(listOf(primaryAccent.copy(0.6f), primaryAccent.copy(0.2f)))
-                                        },
-                                        CircleShape
-                                    )
-                            ) {
-                                Icon(
-                                    imageVector = videoColorProfile.icon,
-                                    contentDescription = videoColorProfile.displayName,
-                                    tint = when {
-                                        isSuperAiEnhance -> Color.White.copy(alpha = 0.35f)
-                                        videoColorProfile != VideoColorProfile.NORMAL -> primaryAccent
-                                        else -> Color.White
-                                    },
-                                    modifier = Modifier.size(22.dp)
-                                )
+                            PlayerModeButton("Video", videoColorProfile.shortName, videoColorProfile.icon, primaryAccent) {
+                                modePicker = "Video"
                             }
-
-                            // 3. Video Sharpness Level (Disabled when Super AI is active)
-                            PlayerIconButton(
-                                name = if (isSuperAiEnhance) "Sharpness: Managed by Super AI" else "Sharpness: ${videoSharpnessLevel.displayName}",
-                                description = if (isSuperAiEnhance) "Disabled while Super AI Video Enhancement is active" else videoSharpnessLevel.description,
-                                onClick = {
-                                    view.performHaptic(HapticType.LIGHT)
-                                    if (isSuperAiEnhance) {
-                                        showQuickHUD(
-                                            "Managed by Super AI",
-                                            "Disable Super AI to adjust manual sharpness level",
-                                            Icons.Rounded.AutoAwesome
-                                        )
-                                    } else {
-                                        cycleVideoSharpness()
-                                    }
-                                },
-                                icon = videoSharpnessLevel.icon,
-                                modifier = Modifier
-                                    .size(42.dp)
-                                    .clip(CircleShape)
-                                    .background(
-                                        when {
-                                            isSuperAiEnhance -> SolidColor(Color.Black.copy(alpha = 0.35f))
-                                            videoSharpnessLevel != VideoSharpnessLevel.OFF -> Brush.radialGradient(listOf(primaryAccent.copy(alpha = 0.35f), Color(0xFF11121C)))
-                                            else -> Brush.verticalGradient(listOf(Color(0xFF252636), Color(0xFF11121C)))
-                                        }
-                                    )
-                                    .border(
-                                        1.2.dp,
-                                        when {
-                                            isSuperAiEnhance -> SolidColor(Color.White.copy(alpha = 0.14f))
-                                            videoSharpnessLevel != VideoSharpnessLevel.OFF -> BorderStroke(1.2.dp, primaryAccent).brush
-                                            else -> Brush.verticalGradient(listOf(primaryAccent.copy(0.6f), primaryAccent.copy(0.2f)))
-                                        },
-                                        CircleShape
-                                    )
-                            ) {
-                                Icon(
-                                    imageVector = videoSharpnessLevel.icon,
-                                    contentDescription = videoSharpnessLevel.displayName,
-                                    tint = when {
-                                        isSuperAiEnhance -> Color.White.copy(alpha = 0.35f)
-                                        videoSharpnessLevel != VideoSharpnessLevel.OFF -> primaryAccent
-                                        else -> Color.White
-                                    },
-                                    modifier = Modifier.size(22.dp)
-                                )
+                            PlayerModeButton("Sharpness", videoSharpnessLevel.shortName, videoSharpnessLevel.icon, primaryAccent) {
+                                modePicker = "Sharpness"
                             }
-
-                            // 4. Audio Profile (Swapped to position 4, Single-Tap to cycle: Normal -> Cinema 3D -> Clear Voice -> Action Punch -> Night Mode)
-                            PlayerIconButton(
-                                name = "Audio: ${videoSoundMode.displayName}",
-                                description = videoSoundMode.description,
-                                onClick = {
-                                    view.performHaptic(HapticType.LIGHT)
-                                    cycleVideoSoundMode()
-                                },
-                                icon = videoSoundMode.icon,
-                                modifier = Modifier
-                                    .size(42.dp)
-                                    .clip(CircleShape)
-                                    .background(
-                                        if (videoSoundMode != VideoSoundMode.NORMAL) Brush.radialGradient(listOf(primaryAccent.copy(alpha = 0.35f), Color(0xFF11121C)))
-                                        else Brush.verticalGradient(listOf(Color(0xFF252636), Color(0xFF11121C)))
-                                    )
-                                    .border(
-                                        1.2.dp,
-                                        if (videoSoundMode != VideoSoundMode.NORMAL) BorderStroke(1.2.dp, primaryAccent).brush
-                                        else Brush.verticalGradient(listOf(primaryAccent.copy(0.6f), primaryAccent.copy(0.2f))),
-                                        CircleShape
-                                    )
-                            ) {
-                                Icon(
-                                    imageVector = videoSoundMode.icon,
-                                    contentDescription = videoSoundMode.displayName,
-                                    tint = if (videoSoundMode != VideoSoundMode.NORMAL) primaryAccent else Color.White,
-                                    modifier = Modifier.size(22.dp)
-                                )
+                            PlayerModeButton("Audio", videoSoundMode.shortName, videoSoundMode.icon, primaryAccent) {
+                                modePicker = "Audio"
                             }
 
                             // 5. Aspect Ratio / Fit Screen
@@ -4165,52 +3972,7 @@ fun VideoPlayerScreen(
                     .zIndex(9999f)
             ) {
                 activeElementTooltip?.let { tooltip ->
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        modifier = Modifier
-                            .shadow(12.dp, RoundedCornerShape(20.dp))
-                            .clip(RoundedCornerShape(20.dp))
-                            .background(Color(0xF0181A24))
-                            .border(
-                                1.2.dp,
-                                Brush.horizontalGradient(
-                                    listOf(primaryAccent.copy(alpha = 0.8f), Color(0xFF00E5FF).copy(alpha = 0.6f))
-                                ),
-                                RoundedCornerShape(20.dp)
-                            )
-                            .padding(horizontal = 16.dp, vertical = 9.dp)
-                    ) {
-                        if (tooltip.icon != null) {
-                            Icon(
-                                imageVector = tooltip.icon,
-                                contentDescription = null,
-                                tint = Color(0xFFFFD54F),
-                                modifier = Modifier.size(20.dp)
-                            )
-                            Spacer(Modifier.width(10.dp))
-                        }
-                        Column(
-                            verticalArrangement = Arrangement.Center
-                        ) {
-                            Text(
-                                text = tooltip.name,
-                                color = Color.White,
-                                fontSize = 13.sp,
-                                fontWeight = FontWeight.Bold,
-                                letterSpacing = 0.2.sp
-                            )
-                            if (!tooltip.description.isNullOrBlank()) {
-                                Spacer(Modifier.height(2.dp))
-                                Text(
-                                    text = tooltip.description,
-                                    color = Color.White.copy(alpha = 0.75f),
-                                    fontSize = 11.sp,
-                                    fontWeight = FontWeight.Medium,
-                                    lineHeight = 14.sp
-                                )
-                            }
-                        }
-                    }
+                    TextOnlyPlayerFeedback(tooltip.name, tooltip.description)
                 }
             }
         } // End of outer Box
@@ -4235,6 +3997,22 @@ fun VideoPlayerScreen(
     LaunchedEffect(showSettingsOverlay) {
         if (!showSettingsOverlay) {
             isAmbientMode = appPreferences.isAmbientModeEnabled()
+            ambientIntensity = appPreferences.getAmbientGlowStrength().coerceIn(0.2f, 1.8f)
+            ambientSpread = appPreferences.getVideoAmbientSpread()
+            ambientBatterySaver = appPreferences.isVideoAmbientBatterySaver()
+            pictureStrength = appPreferences.getVideoModeStrength("picture")
+            sharpnessStrength = appPreferences.getVideoModeStrength("sharpness")
+            videoColorProfile = VideoColorProfile.fromId(appPreferences.getVideoColorProfile())
+            videoSharpnessLevel = VideoSharpnessLevel.fromId(appPreferences.getVideoSharpnessLevel())
+            currentContrast = appPreferences.getVideoCustomContrast()
+            currentSaturation = appPreferences.getVideoCustomSaturation()
+            currentBrightness = appPreferences.getVideoCustomBrightness()
+            currentWarmth = appPreferences.getVideoCustomWarmth()
+            currentSharpness = appPreferences.getVideoCustomSharpness()
+            isSuperAiEnhance = appPreferences.isSuperAiEnhanceEnabled()
+            videoSoundMode = VideoSoundMode.fromId(appPreferences.getVideoRouteSoundMode(audioRoute))
+            audioStrength = appPreferences.getVideoRouteSoundStrength(audioRoute)
+            volumeLeveling = appPreferences.isVideoVolumeLevelingEnabled(audioRoute)
             isNightMode = appPreferences.isNightMode()
             isBackgroundAudio = appPreferences.isBackgroundPlayEnabled()
             resizeMode = appPreferences.getDefaultResizeMode()
@@ -4759,6 +4537,8 @@ fun VideoPlayerScreen(
         if (showSubtitleSheet) {
             SubtitlesDialog(
                 exoPlayer = exoPlayer,
+                onOpenTools = { showSubtitleSheet = false; showSubtitleTools = true },
+                onSelectEmbedded = { subtitleState.useEmbedded() },
                 subtitleDesign = subtitleDesign,
                 onSubtitleDesignChange = { newDesign ->
                     subtitleDesign = newDesign
@@ -4771,6 +4551,78 @@ fun VideoPlayerScreen(
         }
 
         // ─── Mini Video Details Dialog ────────────────────────────────────────
+        if (showSubtitleTools) {
+            VideoSubtitleTools(subtitleState, playerView, subtitleDesign,
+                onSeek = { safeSeek(it) }, onDismiss = { showSubtitleTools = false })
+        }
+
+        if (showAmbientSettings) {
+            PlayerAmbientSettings(isAmbientMode, ambientIntensity, ambientSpread, ambientBatterySaver,
+                onEnabled = { isAmbientMode = it; appPreferences.setAmbientModeEnabled(it) },
+                onIntensity = { ambientIntensity = it; appPreferences.setAmbientGlowStrength(it) },
+                onSpread = { ambientSpread = it; appPreferences.setVideoAmbientSpread(it) },
+                onBatterySaver = { ambientBatterySaver = it; appPreferences.setVideoAmbientBatterySaver(it) },
+                onDismiss = { showAmbientSettings = false })
+        }
+
+        modePicker?.let { category ->
+            val unavailable = when {
+                category == "Audio" -> null
+                safePlaybackMode -> "Picture adjustments are unavailable in compatibility mode."
+                isHdrVideo -> "Original HDR is preserved. Picture adjustments are available for SDR videos."
+                isSuperAiEnhance -> "Turn off Smart clarity to adjust these settings."
+                Build.VERSION.SDK_INT < 31 -> "Picture adjustments require Android 12 or newer."
+                category == "Sharpness" && Build.VERSION.SDK_INT < 33 -> "Sharpness requires Android 13 or newer."
+                else -> null
+            }
+            val choices = when (category) {
+                "Video" -> VideoColorProfile.entries.map { PlayerModeOption(it.id, it.displayName, it.description) }
+                "Sharpness" -> VideoSharpnessLevel.entries.map { PlayerModeOption(it.id, it.displayName, it.description) }
+                else -> VideoSoundMode.entries.map { PlayerModeOption(it.id, it.displayName, it.description,
+                    it == VideoSoundMode.NORMAL || it == VideoSoundMode.NIGHT_MODE || audioEffects.first != null) }
+            }
+            val selected = when (category) {
+                "Video" -> videoColorProfile.id
+                "Sharpness" -> videoSharpnessLevel.id
+                else -> videoSoundMode.id
+            }
+            PlayerModePicker(category, choices, selected, primaryAccent, unavailable,
+                onDismiss = { previewOriginal = false; modePicker = null },
+                strength = when (category) { "Video" -> pictureStrength; "Sharpness" -> sharpnessStrength; else -> audioStrength },
+                onStrengthChange = {
+                    when (category) {
+                        "Video" -> { pictureStrength = it; appPreferences.setVideoModeStrength("picture", it) }
+                        "Sharpness" -> { sharpnessStrength = it; appPreferences.setVideoModeStrength("sharpness", it) }
+                        else -> { audioStrength = it; appPreferences.setVideoRouteSoundStrength(audioRoute, it) }
+                    }
+                },
+                onReset = {
+                    previewOriginal = false
+                    if (category != "Audio") {
+                        isSuperAiEnhance = false
+                        appPreferences.setSuperAiEnhanceEnabled(false)
+                    }
+                    when (category) {
+                        "Video" -> { selectVideoColorProfile(VideoColorProfile.NORMAL); pictureStrength = 1f; appPreferences.setVideoModeStrength("picture", 1f) }
+                        "Sharpness" -> { selectVideoSharpness(VideoSharpnessLevel.OFF); sharpnessStrength = 1f; appPreferences.setVideoModeStrength("sharpness", 1f) }
+                        else -> { selectVideoSoundMode(VideoSoundMode.NORMAL); audioStrength = 1f; volumeLeveling = false
+                            appPreferences.setVideoRouteSoundStrength(audioRoute, 1f); appPreferences.setVideoVolumeLevelingEnabled(audioRoute, false) }
+                    }
+                },
+                previewOriginal = previewOriginal, onPreview = { previewOriginal = it },
+                normalize = if (category == "Audio") volumeLeveling else null,
+                onNormalizeChange = { volumeLeveling = it; appPreferences.setVideoVolumeLevelingEnabled(audioRoute, it) },
+                routeLabel = if (category == "Audio") audioRoute else "",
+                onSelect = { id ->
+                    view.performHaptic(HapticType.LIGHT)
+                    when (category) {
+                        "Video" -> selectVideoColorProfile(VideoColorProfile.fromId(id))
+                        "Sharpness" -> selectVideoSharpness(VideoSharpnessLevel.fromId(id))
+                        else -> selectVideoSoundMode(VideoSoundMode.fromId(id))
+                    }
+                })
+        }
+
         if (showVideoInfoSheet) {
             MiniVideoDetailsDialog(
                 exoPlayer = exoPlayer,
@@ -4792,6 +4644,7 @@ fun VideoPlayerScreen(
                 Column(
                     modifier = Modifier
                         .fillMaxWidth()
+                        .verticalScroll(rememberScrollState())
                         .padding(horizontal = 20.dp, vertical = 12.dp)
                         .navigationBarsPadding()
                 ) {
@@ -4802,6 +4655,13 @@ fun VideoPlayerScreen(
                         fontWeight = FontWeight.Bold
                     )
                     Spacer(Modifier.height(14.dp))
+
+                    TextButton(onClick = { showMoreMenuSheet = false; showAmbientSettings = true }) {
+                        Text("Ambient lighting", color = primaryAccent)
+                    }
+                    TextButton(onClick = { showMoreMenuSheet = false; showSubtitleTools = true }) {
+                        Text("Subtitle timing & search", color = primaryAccent)
+                    }
 
                     // 1. Autoplay Toggle
                     Row(
@@ -5235,53 +5095,10 @@ private fun VerticalGestureBar(
 @Composable
 private fun TemporarySpeedHoldBadge(
     speed: Float,
-    accentColor: Color,
     modifier: Modifier = Modifier
 ) {
-    val isNormalSpeed = abs(speed - 1.0f) < 0.05f
-    val speedText = if (isNormalSpeed) {
-        "1.0X Normal"
-    } else if (abs(speed - speed.toInt().toFloat()) < 0.05f) {
-        "${speed.toInt()}X Fast"
-    } else {
-        String.format(LocalConfiguration.current.locales[0], "%.1fX", speed)
-    }
-
-    val iconVector = when {
-        isNormalSpeed -> Icons.Rounded.PlayArrow
-        speed > 1.0f -> Icons.Rounded.FastForward
-        else -> Icons.Rounded.FastRewind
-    }
-
-    Box(
-        modifier = modifier
-            .shadow(10.dp, RoundedCornerShape(18.dp), ambientColor = Color.Black.copy(alpha = 0.6f), spotColor = Color.Black.copy(alpha = 0.6f))
-            .clip(RoundedCornerShape(18.dp))
-            .background(Color(0xF00A0B10))
-            .border(1.2.dp, accentColor.copy(alpha = 0.5f), RoundedCornerShape(18.dp))
-            .padding(horizontal = 14.dp, vertical = 6.dp),
-        contentAlignment = Alignment.Center
-    ) {
-        Row(
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(7.dp)
-        ) {
-            Icon(
-                imageVector = iconVector,
-                contentDescription = null,
-                tint = accentColor,
-                modifier = Modifier.size(16.dp)
-            )
-            Text(
-                text = speedText,
-                color = Color.White,
-                fontSize = 13.sp,
-                fontWeight = FontWeight.ExtraBold,
-                fontFamily = FontFamily.Monospace,
-                letterSpacing = 0.4.sp
-            )
-        }
-    }
+    val label = String.format(LocalConfiguration.current.locales[0], "%.1f× speed", speed)
+    TextOnlyPlayerFeedback(label, modifier = modifier)
 }
 
 // ─── Element Tooltip State & Provider ───────────────────────────────────────
@@ -5308,20 +5125,15 @@ private fun PlayerIconButton(
     val view = LocalView.current
     val tooltipHandler = LocalElementTooltipHandler.current
     Box(
-        modifier = modifier
+        modifier = Modifier.minimumInteractiveComponentSize().then(modifier)
             .clip(CircleShape)
-            .pointerInput(enabled, name, description, icon) {
-                if (!enabled) return@pointerInput
-                detectTapGestures(
-                    onTap = {
-                        onClick()
-                    },
-                    onLongPress = {
-                        view.performHaptic(HapticType.MEDIUM)
-                        tooltipHandler?.invoke(name, description, icon)
-                    }
-                )
-            },
+            .semantics(mergeDescendants = true) { contentDescription = name }
+            .combinedClickable(enabled = enabled, role = Role.Button,
+                onClick = onClick,
+                onLongClick = {
+                    view.performHaptic(HapticType.MEDIUM)
+                    tooltipHandler?.invoke(name, description, icon)
+                }),
         contentAlignment = Alignment.Center
     ) {
         content()
@@ -5538,6 +5350,7 @@ fun applySubtitleDesign(playerView: PlayerView?, design: Int, appPreferences: Ap
             )
         }
     }
+    subtitleView.setBottomPaddingFraction(appPreferences?.getSubtitleBottomPadding() ?: 0.08f)
     subtitleView.setStyle(captionStyle)
 }
 
@@ -6218,6 +6031,16 @@ private fun AudioTracksDialog(
     val context = LocalContext.current
     val c = LocalAppColors.current
     val appPreferences = remember { AppPreferences(context) }
+    var trackRevision by remember { mutableIntStateOf(0) }
+    DisposableEffect(exoPlayer) {
+        val listener = object : Player.Listener {
+            override fun onTracksChanged(tracks: Tracks) { trackRevision++ }
+            override fun onTrackSelectionParametersChanged(parameters: TrackSelectionParameters) { trackRevision++ }
+        }
+        exoPlayer.addListener(listener)
+        onDispose { exoPlayer.removeListener(listener) }
+    }
+    @Suppress("UNUSED_VARIABLE") val revision = trackRevision
     val currentTracks = exoPlayer.currentTracks
     val audioGroups = remember(currentTracks) {
         currentTracks.groups.filter { it.type == C.TRACK_TYPE_AUDIO }
@@ -6375,6 +6198,8 @@ private fun AudioTracksDialog(
 @Composable
 private fun SubtitlesDialog(
     exoPlayer: ExoPlayer,
+    onOpenTools: () -> Unit,
+    onSelectEmbedded: () -> Unit,
     subtitleDesign: Int,
     onSubtitleDesignChange: (Int) -> Unit,
     accentColor: Color,
@@ -6384,6 +6209,16 @@ private fun SubtitlesDialog(
     val c = LocalAppColors.current
     val appPreferences = remember { AppPreferences(context) }
     var selectedTab by remember { mutableIntStateOf(0) }
+    var trackRevision by remember { mutableIntStateOf(0) }
+    DisposableEffect(exoPlayer) {
+        val listener = object : Player.Listener {
+            override fun onTracksChanged(tracks: Tracks) { trackRevision++ }
+            override fun onTrackSelectionParametersChanged(parameters: TrackSelectionParameters) { trackRevision++ }
+        }
+        exoPlayer.addListener(listener)
+        onDispose { exoPlayer.removeListener(listener) }
+    }
+    @Suppress("UNUSED_VARIABLE") val revision = trackRevision
     val currentTracks = exoPlayer.currentTracks
     val textGroups = remember(currentTracks) {
         currentTracks.groups.filter { it.type == C.TRACK_TYPE_TEXT }
@@ -6396,6 +6231,7 @@ private fun SubtitlesDialog(
         icon = Icons.Rounded.Subtitles
     ) {
 
+                TextButton(onClick = onOpenTools) { Text("Timing, position & subtitle search") }
                 // 2 Tabs: Tracks & Styles
                 TabRow(
                     selectedTabIndex = selectedTab,
@@ -6473,6 +6309,7 @@ private fun SubtitlesDialog(
                                                 .setIgnoredTextSelectionFlags(C.SELECTION_FLAG_DEFAULT)
                                                 .clearOverridesOfType(C.TRACK_TYPE_TEXT)
                                                 .build()
+                                            onSelectEmbedded()
                                             appPreferences.setSubtitlesEnabled(false)
                                             onDismiss()
                                         }
@@ -6536,6 +6373,7 @@ private fun SubtitlesDialog(
                                                     .setIgnoredTextSelectionFlags(0)
                                                     .setOverrideForType(TrackSelectionOverride(group.mediaTrackGroup, i))
                                                     .build()
+                                                onSelectEmbedded()
                                                 appPreferences.setSubtitlesEnabled(true)
                                                 format.language?.let { appPreferences.setPreferredSubtitleLanguage(it) }
                                                 onDismiss()

@@ -19,3 +19,6 @@ graphify-out/
 /keystore/
 /keystore.properties
 .docx-review/
+
+# Signed APKs are published as GitHub Release assets.
+/app-release.apk

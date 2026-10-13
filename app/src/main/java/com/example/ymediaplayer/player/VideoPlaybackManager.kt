@@ -177,6 +177,12 @@ object VideoPlaybackManager {
     }
 
     private var playerListener: Player.Listener? = null
+    private var dynamicsProcessor: VideoDynamicsProcessor? = null
+
+    fun setAudioDynamics(nightStrength: Float, leveling: Boolean) {
+        dynamicsProcessor?.settings = VideoDynamicsProcessor.Settings(nightStrength.coerceIn(0f, 1f), leveling)
+    }
+
 
     fun consumeCompatibilityFallback(requestId: Long) {
         if (compatibilityFallbackRequest.value?.requestId == requestId) {
@@ -412,7 +418,16 @@ object VideoPlaybackManager {
         val appPreferences = AppPreferences(context)
         val handleAudioFocus = !appPreferences.isPlayDuringCallsEnabled()
 
-        val renderersFactory = DefaultRenderersFactory(context).apply {
+        val dynamics = VideoDynamicsProcessor()
+        dynamicsProcessor = dynamics
+        val renderersFactory = object : DefaultRenderersFactory(context) {
+            override fun buildAudioSink(context: Context, enableFloatOutput: Boolean,
+                enableAudioTrackPlaybackParams: Boolean): androidx.media3.exoplayer.audio.AudioSink {
+                return androidx.media3.exoplayer.audio.DefaultAudioSink.Builder(context)
+                    .setAudioProcessors(arrayOf(dynamics))
+                    .build()
+            }
+        }.apply {
             setExtensionRendererMode(DefaultRenderersFactory.EXTENSION_RENDERER_MODE_OFF)
             setEnableDecoderFallback(true)
             setAllowedVideoJoiningTimeMs(0L)
@@ -463,7 +478,7 @@ object VideoPlaybackManager {
                     tspBuilder = tspBuilder.setPreferredAudioLanguage(preferredAudioLang)
                 }
                 if (!subtitlesEnabled) {
-                    tspBuilder = tspBuilder.setIgnoredTextSelectionFlags(C.SELECTION_FLAG_DEFAULT)
+                    tspBuilder = tspBuilder.setTrackTypeDisabled(C.TRACK_TYPE_TEXT, true)
                 } else if (preferredSubLang.isNotEmpty()) {
                     tspBuilder = tspBuilder.setPreferredTextLanguage(preferredSubLang)
                 }
@@ -489,7 +504,7 @@ object VideoPlaybackManager {
                     .setMediaMetadata(initialMetadata)
                     .build()
 
-                if (initialProgress > 3000L) {
+                if (initialProgress > 0L) {
                     setMediaItem(mItem, initialProgress)
                 } else {
                     setMediaItem(mItem)
