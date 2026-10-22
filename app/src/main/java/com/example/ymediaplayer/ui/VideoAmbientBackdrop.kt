@@ -18,6 +18,8 @@ import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.FilterQuality
 import androidx.compose.ui.graphics.ImageBitmap
@@ -37,11 +39,9 @@ import kotlin.coroutines.resume
 import kotlin.math.max
 import kotlin.math.roundToInt
 
-private const val SAMPLE_WIDTH = 48
-private const val SAMPLE_HEIGHT = 27
 private const val ACTIVE_CAPTURE_INTERVAL_MS = 40L // ~25 FPS real-time sync with video
 
-/** Low-resolution surface capture with bounded work and no queued frames. */
+/** High-fidelity low-overhead surface capture for authentic ambient backlighting. */
 @androidx.annotation.OptIn(UnstableApi::class)
 @Composable
 internal fun VideoAmbientBackdrop(
@@ -74,8 +74,24 @@ internal fun VideoAmbientBackdrop(
                     continue
                 }
                 withFrameNanos { }
-                // Published bitmaps are immutable: never recycle or overwrite a frame still in use by the GPU.
-                val target = Bitmap.createBitmap(SAMPLE_WIDTH, SAMPLE_HEIGHT, Bitmap.Config.ARGB_8888)
+
+                // Determine native aspect ratio of the active video
+                val videoSize = playerView.player?.videoSize
+                val vw = videoSize?.width?.takeIf { it > 0 }
+                    ?: (playerView.videoSurfaceView as? SurfaceView)?.width?.takeIf { it > 0 }
+                    ?: 16
+                val vh = videoSize?.height?.takeIf { it > 0 }
+                    ?: (playerView.videoSurfaceView as? SurfaceView)?.height?.takeIf { it > 0 }
+                    ?: 9
+
+                val maxDim = 96
+                val (sampleW, sampleH) = if (vw >= vh) {
+                    maxDim to max(16, (maxDim * (vh.toFloat() / vw)).roundToInt())
+                } else {
+                    max(16, (maxDim * (vw.toFloat() / vh)).roundToInt()) to maxDim
+                }
+
+                val target = Bitmap.createBitmap(sampleW, sampleH, Bitmap.Config.ARGB_8888)
                 val captured = when (val surface = playerView.videoSurfaceView) {
                     is TextureView -> if (surface.isAvailable) {
                         try { surface.getBitmap(target); true } catch (_: IllegalStateException) { false }
@@ -96,32 +112,39 @@ internal fun VideoAmbientBackdrop(
         Box(
             Modifier
                 .fillMaxSize()
-                .blur((12 + spread * 36).dp)
+                .blur((28 + spread * 44).dp)
                 .drawBehind {
                     frame.value?.let { image ->
-                        // 1.15x overscale to eliminate dark letterbox border influence on ambient color
-                        val scale = max(size.width / image.width, size.height / image.height) * 1.15f
-                        val width = (image.width * scale).roundToInt()
-                        val height = (image.height * scale).roundToInt()
+                        // Draw without aggressive zoom, gracefully mapping the video's edge colors
                         drawImage(
                             image = image,
-                            dstOffset = IntOffset(
-                                ((size.width - width) / 2).roundToInt(),
-                                ((size.height - height) / 2).roundToInt()
-                            ),
-                            dstSize = IntSize(width, height),
-                            filterQuality = FilterQuality.Low
+                            dstOffset = IntOffset.Zero,
+                            dstSize = IntSize(size.width.roundToInt(), size.height.roundToInt()),
+                            filterQuality = FilterQuality.Medium
                         )
                     }
                 }
         )
-        // Dynamic darkness overlay adapting to user ambient glow strength
-        val dimAlpha = (1f - (0.44f * glowStrength.coerceIn(0.2f, 1.8f))).coerceIn(0.35f, 0.88f)
+        // Luminous ambient vignette: vibrant light radiating around the video, smoothly fading to deep black at edges
+        val baseGlow = glowStrength.coerceIn(0.2f, 1.8f)
+        val centerAlpha = (1f - (0.60f * baseGlow)).coerceIn(0.12f, 0.70f)
+        val edgeAlpha = (centerAlpha + 0.35f).coerceAtMost(0.92f)
+
         Box(
             Modifier
                 .fillMaxSize()
                 .drawBehind {
-                    drawRect(Color.Black.copy(alpha = dimAlpha))
+                    drawRect(
+                        brush = Brush.radialGradient(
+                            colors = listOf(
+                                Color.Black.copy(alpha = centerAlpha),
+                                Color.Black.copy(alpha = (centerAlpha + edgeAlpha) / 2f),
+                                Color.Black.copy(alpha = edgeAlpha)
+                            ),
+                            center = Offset(size.width / 2f, size.height / 2f),
+                            radius = max(size.width, size.height) * 0.75f
+                        )
+                    )
                 }
         )
     }

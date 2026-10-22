@@ -3506,42 +3506,35 @@ fun VideoPlayerScreen(
                                     }
                                 )
 
-                                // 4. A-B Repeat Chip
-                                val isAbActive = loopStartMs != null
-                                val abText = when {
-                                    loopStartMs != null && loopEndMs != null -> "A-B [${formatTime(loopStartMs!!)} - ${formatTime(loopEndMs!!)}]"
-                                    loopStartMs != null -> "Set B (${formatTime(loopStartMs!!)})"
-                                    else -> "A-B Loop"
-                                }
+                                // 4. Ambient Background Toggle Chip
                                 ExpandedOptionChip(
-                                    icon = Icons.Rounded.AllInclusive,
-                                    label = abText,
-                                    isActive = isAbActive,
+                                    icon = if (isAmbientMode) Icons.Rounded.BlurOn else Icons.Rounded.BlurOff,
+                                    label = if (isAmbientMode) "Ambient ON" else "Ambient OFF",
+                                    isActive = isAmbientMode,
                                     accentColor = primaryAccent,
                                     onClick = {
-                                        if (loopStartMs == null) {
-                                            loopStartMs = currentPosition
-                                        } else if (loopEndMs == null) {
-                                            if (currentPosition > loopStartMs!!) {
-                                                loopEndMs = currentPosition
-                                            }
-                                        } else {
-                                            loopStartMs = null
-                                            loopEndMs = null
-                                        }
+                                        toggleAmbientMode()
+                                        view.performHaptic(HapticType.LIGHT)
+                                    },
+                                    onLongClick = {
+                                        showAmbientSettings = true
+                                        view.performHaptic(HapticType.MEDIUM)
                                     }
                                 )
 
-                                // 5. Add Bookmark Chip
+                                // 5. Dynamic Theme Chip (Single tap cycles to next color theme directly)
                                 ExpandedOptionChip(
-                                    icon = Icons.Rounded.BookmarkAdd,
-                                    label = "Bookmark",
-                                    isActive = false,
+                                    icon = Icons.Rounded.Palette,
+                                    label = activeTheme.displayName,
+                                    isActive = true,
                                     accentColor = primaryAccent,
                                     onClick = {
-                                        appPreferences.saveBookmark(currentUrl, currentPosition, "")
-                                        bookmarksList = appPreferences.getBookmarks(currentUrl)
-                                        Toast.makeText(context, "Bookmark saved at ${formatTime(currentPosition)}", Toast.LENGTH_SHORT).show()
+                                        themeController.cycleColorTheme()
+                                        view.performHaptic(HapticType.LIGHT)
+                                    },
+                                    onLongClick = {
+                                        showThemePickerSheet = true
+                                        view.performHaptic(HapticType.MEDIUM)
                                     }
                                 )
 
@@ -3552,24 +3545,6 @@ fun VideoPlayerScreen(
                                     isActive = false,
                                     accentColor = primaryAccent,
                                     onClick = { showVideoInfoSheet = true }
-                                )
-
-                                // 7. Dynamic Theme Chip
-                                ExpandedOptionChip(
-                                    icon = Icons.Rounded.Palette,
-                                    label = activeTheme.displayName,
-                                    isActive = true,
-                                    accentColor = primaryAccent,
-                                    onClick = { showThemePickerSheet = true }
-                                )
-
-                                // 8. Player Settings Chip
-                                ExpandedOptionChip(
-                                    icon = Icons.Rounded.Settings,
-                                    label = "Settings",
-                                    isActive = false,
-                                    accentColor = primaryAccent,
-                                    onClick = { showSettingsOverlay = true }
                                 )
                             }
                         }
@@ -5868,12 +5843,14 @@ private fun resolveSubtitleTrackDetails(format: Format, trackIndex: Int): TrackD
 }
 
 // ─── Expanded Option Chip for 3-Dots Inline Menu ─────────────────────────────
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun ExpandedOptionChip(
     icon: ImageVector,
     label: String,
     isActive: Boolean = false,
     accentColor: Color,
+    onLongClick: (() -> Unit)? = null,
     onClick: () -> Unit
 ) {
     Row(
@@ -5890,7 +5867,10 @@ private fun ExpandedOptionChip(
                 else Brush.verticalGradient(listOf(Color.White.copy(alpha = 0.28f), Color.White.copy(alpha = 0.10f))),
                 RoundedCornerShape(10.dp)
             )
-            .clickable(onClick = onClick)
+            .combinedClickable(
+                onClick = onClick,
+                onLongClick = onLongClick
+            )
             .padding(horizontal = 10.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(6.dp)
