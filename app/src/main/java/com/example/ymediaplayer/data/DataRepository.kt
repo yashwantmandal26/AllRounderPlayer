@@ -7,6 +7,7 @@ class AppPreferences(private val prefs: SharedPreferences) {
     constructor(context: Context) : this(context.getSharedPreferences("ymedia_prefs", Context.MODE_PRIVATE))
 
     companion object {
+        private val preferencesRevision = androidx.compose.runtime.mutableLongStateOf(0L)
         private val progressCache = java.util.concurrent.ConcurrentHashMap<String, Long>()
         private val completedCache = java.util.concurrent.ConcurrentHashMap<String, Boolean>()
 
@@ -17,7 +18,7 @@ class AppPreferences(private val prefs: SharedPreferences) {
     }
 
     // Reactive Compose state: bumps on any progress/completion changes so UI recomposes instantly
-    val lastProgressUpdate = androidx.compose.runtime.mutableLongStateOf(0L)
+    val lastProgressUpdate get() = preferencesRevision
 
     // History: Map of Video URI to Last Played Position (in milliseconds)
     fun saveVideoProgress(uri: String, position: Long, duration: Long = 0L) {
@@ -42,7 +43,7 @@ class AppPreferences(private val prefs: SharedPreferences) {
         } else {
             recordPlayedUri(uri)
         }
-        lastProgressUpdate.longValue = System.currentTimeMillis()
+        lastProgressUpdate.longValue++
     }
 
     fun isCompleted(uri: String): Boolean {
@@ -50,6 +51,9 @@ class AppPreferences(private val prefs: SharedPreferences) {
             prefs.getBoolean("completed_$uri", false)
         }
     }
+
+    fun getVideoStartPosition(uri: String): Long =
+        if (getResumeMode() == "START" || isCompleted(uri)) 0L else getVideoProgress(uri).coerceAtLeast(0L)
 
     fun markCompleted(uri: String, completed: Boolean) {
         completedCache[uri] = completed
@@ -63,7 +67,7 @@ class AppPreferences(private val prefs: SharedPreferences) {
             currentList.remove(uri)
             prefs.edit().putString("played_uris", currentList.joinToString(";;;")).apply()
         }
-        lastProgressUpdate.longValue = System.currentTimeMillis()
+        lastProgressUpdate.longValue++
     }
 
     fun recordPlayback(uri: String, position: Long, duration: Long) {
@@ -215,7 +219,7 @@ class AppPreferences(private val prefs: SharedPreferences) {
         currentList.add(0, uri)
         val trimmed = currentList.take(50)
         prefs.edit().putString("music_played_uris", trimmed.joinToString(";;;")).apply()
-        lastProgressUpdate.longValue = System.currentTimeMillis()
+        lastProgressUpdate.longValue++
     }
 
     fun getRecentlyPlayedMusicUris(): List<String> {
@@ -247,7 +251,7 @@ class AppPreferences(private val prefs: SharedPreferences) {
         val currentList = getPlayedUris().toMutableList()
         currentList.remove(uri)
         prefs.edit().putString("played_uris", currentList.joinToString(";;;")).apply()
-        lastProgressUpdate.longValue = System.currentTimeMillis()
+        lastProgressUpdate.longValue++
     }
 
     // ─── Pinned Folders ────────────────────────────────────────────────────
@@ -317,7 +321,13 @@ class AppPreferences(private val prefs: SharedPreferences) {
     fun setMusicSoundMode(mode: String) { prefs.edit().putString("music_sound_mode", mode).apply() }
 
     fun getVideoSoundMode(): String = prefs.getString("video_sound_mode", "NORMAL") ?: "NORMAL"
-    fun setVideoSoundMode(mode: String) { prefs.edit().putString("video_sound_mode", mode).apply() }
+    fun setVideoSoundMode(mode: String) {
+        // A selection in Settings applies to every route; in-player choices remain route-specific.
+        val editor = prefs.edit().putString("video_sound_mode", mode)
+        prefs.all.keys.filter { it.startsWith("video_sound_") && it != "video_sound_mode" && !it.startsWith("video_sound_strength_") }
+            .forEach { editor.remove(it) }
+        editor.apply()
+    }
 
     fun getVideoModeStrength(kind: String): Float = prefs.getFloat("video_strength_$kind", 1f).coerceIn(0f, 1f)
     fun setVideoModeStrength(kind: String, strength: Float) { prefs.edit().putFloat("video_strength_$kind", strength.coerceIn(0f, 1f)).apply() }
@@ -614,31 +624,31 @@ class AppPreferences(private val prefs: SharedPreferences) {
     fun isShowContinueWatching(): Boolean = prefs.getBoolean("show_continue_watching", true)
     fun setShowContinueWatching(show: Boolean) {
         prefs.edit().putBoolean("show_continue_watching", show).apply()
-        lastProgressUpdate.longValue = System.currentTimeMillis()
+        lastProgressUpdate.longValue++
     }
 
     fun getContinueWatchingLimit(): Int = prefs.getInt("continue_watching_limit", 20)
     fun setContinueWatchingLimit(limit: Int) {
         prefs.edit().putInt("continue_watching_limit", limit).apply()
-        lastProgressUpdate.longValue = System.currentTimeMillis()
+        lastProgressUpdate.longValue++
     }
 
     fun isShowRecentlyAdded(): Boolean = prefs.getBoolean("show_recently_added", true)
     fun setShowRecentlyAdded(show: Boolean) {
         prefs.edit().putBoolean("show_recently_added", show).apply()
-        lastProgressUpdate.longValue = System.currentTimeMillis()
+        lastProgressUpdate.longValue++
     }
 
     fun getExcludeShortClipsSeconds(): Int = prefs.getInt("exclude_short_clips_seconds", 0)
     fun setExcludeShortClipsSeconds(sec: Int) {
         prefs.edit().putInt("exclude_short_clips_seconds", sec).apply()
-        lastProgressUpdate.longValue = System.currentTimeMillis()
+        lastProgressUpdate.longValue++
     }
 
     fun isExcludeHiddenFolders(): Boolean = prefs.getBoolean("exclude_hidden_folders", true)
     fun setExcludeHiddenFolders(enabled: Boolean) {
         prefs.edit().putBoolean("exclude_hidden_folders", enabled).apply()
-        lastProgressUpdate.longValue = System.currentTimeMillis()
+        lastProgressUpdate.longValue++
     }
 
     fun isConfirmDeleteEnabled(): Boolean = prefs.getBoolean("confirm_delete_enabled", true)
@@ -652,13 +662,13 @@ class AppPreferences(private val prefs: SharedPreferences) {
     fun getAmbientGlowStrength(): Float = prefs.getFloat("ambient_glow_strength", 1.0f)
     fun setAmbientGlowStrength(strength: Float) {
         prefs.edit().putFloat("ambient_glow_strength", strength).apply()
-        lastProgressUpdate.longValue = System.currentTimeMillis()
+        lastProgressUpdate.longValue++
     }
 
     fun getUiCornerStyle(): String = prefs.getString("ui_corner_style", "MODERN") ?: "MODERN"
     fun setUiCornerStyle(style: String) {
         prefs.edit().putString("ui_corner_style", style).apply()
-        lastProgressUpdate.longValue = System.currentTimeMillis()
+        lastProgressUpdate.longValue++
     }
 
     // ─── Maintenance & Clean-up ────────────────────────────────────────────────
@@ -674,7 +684,7 @@ class AppPreferences(private val prefs: SharedPreferences) {
         editor.remove("played_uris")
         editor.apply()
         clearCache()
-        lastProgressUpdate.longValue = System.currentTimeMillis()
+        lastProgressUpdate.longValue++
     }
 
     fun clearAllBookmarks() {
@@ -695,6 +705,17 @@ class AppPreferences(private val prefs: SharedPreferences) {
         enhancementEditor.remove("video_color_profile").remove("video_sharpness_level")
             .remove("super_ai_enhance_enabled").remove("subtitle_bottom_padding").remove("ambient_glow_strength").apply()
         prefs.edit()
+            .remove("player_theme").remove("subtitle_design")
+            .remove("hdr_playback_enabled")
+            .remove("sub_bg_enabled")
+            .remove("play_during_calls")
+            .remove("music_artwork_style")
+            .remove("music_sound_mode")
+            .remove("ui_corner_style")
+            .remove("player_auto_brightness")
+            .remove("eq_preset").remove("eq_bands").remove("eq_bass_boost")
+            .remove("eq_virtualizer").remove("eq_enabled")
+            .remove("auto_check_updates").remove("last_update_check_time").remove("skipped_update_tag")
             .remove("resume_mode")
             .remove("remember_playback_speed")
             .remove("last_playback_speed")
@@ -741,7 +762,7 @@ class AppPreferences(private val prefs: SharedPreferences) {
             .remove("media_view_type")
             .remove("sort_order")
             .apply()
-        lastProgressUpdate.longValue = System.currentTimeMillis()
+        lastProgressUpdate.longValue++
     }
 
     private fun formatBookmarkTime(ms: Long): String {

@@ -108,15 +108,16 @@ fun FolderDetailScreen(
     }
 
     // Android 11+ Recycle Bin Permission Launcher
-    val deleteRequestLauncher = rememberLauncherForActivityResult(
-        ActivityResultContracts.StartIntentSenderForResult()
-    ) { result ->
-        if (result.resultCode == Activity.RESULT_OK) {
+    val hasRecycleBin = FileManager.supportsRecycleBin()
+    val handleFileOperation = rememberFileOperationHandler(
+        onSuccess = {
             selectedVideoIds = emptySet()
             deleteVideosConfirm = emptyList()
+            renameVideoTarget = null
             refreshTrigger++
-        }
-    }
+        },
+        onFailure = { android.widget.Toast.makeText(context, it, android.widget.Toast.LENGTH_LONG).show() }
+    )
 
     // Refresh automatically whenever screen resumes (e.g. returning from video player)
     val lifecycleOwner = LocalLifecycleOwner.current
@@ -707,7 +708,7 @@ fun FolderDetailScreen(
                         selectedVideoIds = selectedVideoIds + video.id
                         videoActionTarget = null
                     }
-                    VideoActionItem(Icons.Rounded.Delete, "Move to Recycle Bin", Color(0xFFE53935)) {
+                    VideoActionItem(Icons.Rounded.Delete, if (hasRecycleBin) "Move to Recycle Bin" else "Delete video", Color(0xFFE53935)) {
                         deleteVideosConfirm = listOf(video)
                         videoActionTarget = null
                     }
@@ -743,18 +744,7 @@ fun FolderDetailScreen(
                         val finalName = if (ext.isNotEmpty()) "$newName.$ext" else newName
                         coroutineScope.launch {
                             val result = fileManager.renameVideo(video.id, finalName)
-                            when (result) {
-                                is FileOperationResult.NeedsConfirmation -> {
-                                    deleteRequestLauncher.launch(IntentSenderRequest.Builder(result.intentSender).build())
-                                }
-                                is FileOperationResult.Success -> {
-                                    refreshTrigger++
-                                    renameVideoTarget = null
-                                }
-                                is FileOperationResult.Failure -> {
-                                    Toast.makeText(context, result.message, Toast.LENGTH_SHORT).show()
-                                }
-                            }
+                            handleFileOperation(result)
                         }
                     }) {
                         Text("Rename", color = c.accentBlue, fontWeight = FontWeight.Bold)
@@ -776,14 +766,14 @@ fun FolderDetailScreen(
                 containerColor = c.dropdownBg,
                 title = {
                     Text(
-                        if (count == 1) "Move to Recycle Bin?" else "Move $count Videos to Bin?",
+                        if (!hasRecycleBin) "Permanently delete $count video(s)?" else if (count == 1) "Move to Recycle Bin?" else "Move $count Videos to Bin?",
                         color = c.textPrimary,
                         fontWeight = FontWeight.Bold
                     )
                 },
                 text = {
                     Text(
-                        "Videos will be moved to your device's Recycle Bin (Google Files / Gallery) where they can be restored within 30 days.",
+                        if (hasRecycleBin) "Videos will be moved to your device's Recycle Bin where they can be restored for a limited time." else "Your Android version does not support the system Recycle Bin. These videos will be permanently deleted and cannot be restored.",
                         color = c.textSecondary,
                         fontSize = 14.sp
                     )
@@ -793,22 +783,10 @@ fun FolderDetailScreen(
                         coroutineScope.launch {
                             val uris = deleteVideosConfirm.map { it.uri }
                             val result = fileManager.deleteVideos(uris)
-                            when (result) {
-                                is FileOperationResult.NeedsConfirmation -> {
-                                    deleteRequestLauncher.launch(IntentSenderRequest.Builder(result.intentSender).build())
-                                }
-                                is FileOperationResult.Success -> {
-                                    selectedVideoIds = emptySet()
-                                    deleteVideosConfirm = emptyList()
-                                    refreshTrigger++
-                                }
-                                is FileOperationResult.Failure -> {
-                                    Toast.makeText(context, result.message, Toast.LENGTH_SHORT).show()
-                                }
-                            }
+                            handleFileOperation(result)
                         }
                     }) {
-                        Text("Move to Bin", color = Color(0xFFE53935), fontWeight = FontWeight.Bold)
+                        Text(if (hasRecycleBin) "Move to Bin" else "Delete permanently", color = Color(0xFFE53935), fontWeight = FontWeight.Bold)
                     }
                 },
                 dismissButton = {

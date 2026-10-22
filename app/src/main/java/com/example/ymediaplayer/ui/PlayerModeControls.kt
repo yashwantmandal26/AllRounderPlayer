@@ -76,7 +76,7 @@ internal fun PlayerModePicker(
             Column(Modifier.widthIn(max = 440.dp).heightIn(max = 500.dp)
                 .verticalScroll(rememberScrollState()).padding(20.dp)) {
                 Text("$title mode", color = Color.White, fontSize = 22.sp, fontWeight = FontWeight.SemiBold)
-                Text(unavailable ?: "Choose a preset Â· applied immediately", color = Color(0xFFB9BBC6),
+                Text(unavailable ?: "Choose a preset · applied immediately", color = Color(0xFFB9BBC6),
                     fontSize = 13.sp, modifier = Modifier.padding(top = 4.dp, bottom = 12.dp))
                 options.forEach { option ->
                     val active = option.id == selected

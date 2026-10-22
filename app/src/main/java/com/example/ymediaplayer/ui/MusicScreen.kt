@@ -263,8 +263,8 @@ fun MusicScreen(
     var duration by remember { mutableLongStateOf(0L) }
 
     // Playback modes
-    var isShuffle by remember { mutableStateOf(false) }
-    var repeatMode by remember { mutableIntStateOf(Player.REPEAT_MODE_OFF) } // 0: OFF, 1: ONE, 2: ALL
+    val isShuffle by remember { MusicService.shuffleEnabled }
+    val repeatMode by remember { MusicService.repeatMode } // 0: OFF, 1: ONE, 2: ALL
     var playbackSpeed by remember { mutableFloatStateOf(1.0f) }
 
     // Customization State
@@ -289,7 +289,6 @@ fun MusicScreen(
     var showCreatePlaylistDialog by remember { mutableStateOf(false) }
     var songForContextMenu by remember { mutableStateOf<MusicItem?>(null) }
     var songForAddToPlaylist by remember { mutableStateOf<MusicItem?>(null) }
-    var priorityNextSong by remember { mutableStateOf<MusicItem?>(null) }
     var songPendingDelete by remember { mutableStateOf<MusicItem?>(null) }
     var showDeleteConfirmDialog by remember { mutableStateOf(false) }
     val fileManager = remember { FileManager(context) }
@@ -320,8 +319,7 @@ fun MusicScreen(
     var showSongInfoDialog by remember { mutableStateOf(false) }
 
     // Sleep Timer
-    var sleepTimerMinutes by remember { mutableIntStateOf(0) }
-    var sleepTimerSecondsRemaining by remember { mutableIntStateOf(0) }
+    val sleepTimerSecondsRemaining by remember { MusicService.sleepTimerSecondsRemaining }
 
     // Audio Effects & Sound Profile State (synced globally through MusicService)
     val eqEnabled by remember { MusicService.isEqEnabled }
@@ -400,54 +398,12 @@ fun MusicScreen(
         }
     }
 
-    // Sleep Timer countdown
-    LaunchedEffect(sleepTimerSecondsRemaining) {
-        if (sleepTimerSecondsRemaining > 0) {
-            delay(1000)
-            sleepTimerSecondsRemaining -= 1
-            if (sleepTimerSecondsRemaining == 0) {
-                mediaController?.pause()
-                sleepTimerMinutes = 0
-            }
-        }
-    }
-
-    val playSongForce = { song: MusicItem ->
-        com.example.ymediaplayer.player.VideoPlaybackManager.player?.let {
-            if (it.isPlaying) it.pause()
-        }
+    fun playSongForce(song: MusicItem, queue: List<MusicItem> = allSongs) {
+        MusicService.currentPlaylist = queue.ifEmpty { listOf(song) }
+        MusicService.currentSongIndex = MusicService.currentPlaylist.indexOfFirst { it.uri == song.uri }
         currentlyPlaying = song
-        MusicService.currentMusicItem.value = song
-        MusicService.nowPlayingTitle.value = song.title
-        MusicService.nowPlayingArtist.value = song.artist
-        MusicService.nowPlayingArtUri.value = song.albumArtUri
-        if (allSongs.isNotEmpty()) {
-            val idx = allSongs.indexOfFirst { it.id == song.id }
-            if (idx >= 0) MusicService.currentSongIndex = idx
-        }
-        appPreferences.incrementPlayCount(song.uri.toString())
-        val artBytes = MusicService.resolveArtworkBytes(context, song.uri, song.albumArtUri)
-        val metadata = MediaMetadata.Builder()
-            .setTitle(song.title)
-            .setArtist(song.artist)
-            .setAlbumTitle(song.album)
-            .setArtworkUri(song.albumArtUri)
-            .apply {
-                if (artBytes != null) {
-                    setArtworkData(artBytes, MediaMetadata.PICTURE_TYPE_FRONT_COVER)
-                }
-            }
-            .build()
-        val item = MediaItem.Builder()
-            .setUri(song.uri)
-            .setMediaId(song.id.toString())
-            .setMediaMetadata(metadata)
-            .build()
-        mediaController?.setMediaItem(item)
-        mediaController?.prepare()
-        mediaController?.play()
-        isPlaying = true
-        MusicService.serviceInstance?.updateSessionCustomLayout()
+        MusicService.playSong(song)
+
     }
 
     // Keep most played songs shelf updated
@@ -456,35 +412,8 @@ fun MusicScreen(
         mostPlayedSongs = topUris.mapNotNull { uriStr -> allSongs.find { it.uri.toString() == uriStr } }
     }
 
-    val playNext: () -> Unit = {
-        if (priorityNextSong != null) {
-            val nextSong = priorityNextSong!!
-            priorityNextSong = null
-            playSongForce(nextSong)
-        } else if (allSongs.isNotEmpty()) {
-            val nextSong = if (isShuffle) {
-                val pool = allSongs.filter { it.id != currentlyPlaying?.id }
-                if (pool.isNotEmpty()) pool.random() else allSongs.first()
-            } else {
-                val idx = allSongs.indexOfFirst { it.id == currentlyPlaying?.id }
-                val nextIdx = if (idx == -1) 0 else (idx + 1) % allSongs.size
-                allSongs[nextIdx]
-            }
-            playSongForce(nextSong)
-        }
-    }
-
-    val playPrev: () -> Unit = {
-        if (allSongs.isNotEmpty()) {
-            if (currentPosition > 3000L) {
-                mediaController?.seekTo(0)
-            } else {
-                val idx = allSongs.indexOfFirst { it.id == currentlyPlaying?.id }
-                val prevIdx = if (idx <= 0) allSongs.size - 1 else idx - 1
-                playSongForce(allSongs[prevIdx])
-            }
-        }
-    }
+    val playNext: () -> Unit = { MusicService.playNext() }
+    val playPrev: () -> Unit = { MusicService.playPrevious() }
 
     val deleteRequestLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.StartIntentSenderForResult()
@@ -517,7 +446,7 @@ fun MusicScreen(
         val songs = repository.getMusicFiles()
         allSongs = songs
         isLoading = false
-        MusicService.currentPlaylist = songs
+        if (MusicService.currentPlaylist.isEmpty()) MusicService.currentPlaylist = songs
         if (currentlyPlaying == null && MusicService.currentMusicItem.value != null) {
             currentlyPlaying = MusicService.currentMusicItem.value
         }
@@ -545,21 +474,12 @@ fun MusicScreen(
                         MusicService.nowPlayingTitle.value = nextSong.title
                         MusicService.nowPlayingArtist.value = nextSong.artist
                         MusicService.nowPlayingArtUri.value = nextSong.albumArtUri
-                        val idx = allSongs.indexOfFirst { it.id == nextSong.id }
+                        val idx = MusicService.currentPlaylist.indexOfFirst { it.id == nextSong.id }
                         if (idx >= 0) MusicService.currentSongIndex = idx
                     }
                 }
             }
-            override fun onPlaybackStateChanged(playbackState: Int) {
-                if (playbackState == Player.STATE_ENDED) {
-                    if (repeatMode == Player.REPEAT_MODE_ONE) {
-                        mediaController?.seekTo(0)
-                        mediaController?.play()
-                    } else if (repeatMode == Player.REPEAT_MODE_ALL || isShuffle) {
-                        playNext()
-                    }
-                }
-            }
+
         }
 
         controllerFuture.addListener({
@@ -609,13 +529,7 @@ fun MusicScreen(
             MusicService.nowPlayingTitle.value = song.title
             MusicService.nowPlayingArtist.value = song.artist
             MusicService.nowPlayingArtUri.value = song.albumArtUri
-            if (allSongs.isNotEmpty()) {
-                val idx = allSongs.indexOfFirst { it.id == song.id }
-                if (idx >= 0) MusicService.currentSongIndex = idx
-            }
-        }
-        if (allSongs.isNotEmpty()) {
-            MusicService.currentPlaylist = allSongs
+
         }
         MusicService.onPlayNextAction = playNext
         MusicService.onPlayPrevAction = playPrev
@@ -1072,7 +986,7 @@ fun MusicScreen(
                             Spacer(Modifier.height(14.dp))
                             Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                                 Button(
-                                    onClick = { artistSongs.firstOrNull()?.let { playSongForce(it) } },
+                                    onClick = { artistSongs.firstOrNull()?.let { playSongForce(it, artistSongs) } },
                                     colors = ButtonDefaults.buttonColors(containerColor = c.accentBlue, contentColor = Color.White),
                                     shape = RoundedCornerShape(14.dp),
                                     modifier = Modifier.shadow(if (c.isMatte && c.isDark) 0.dp else 6.dp, RoundedCornerShape(14.dp), ambientColor = c.accentBlue, spotColor = c.accentBlue)
@@ -1084,7 +998,8 @@ fun MusicScreen(
                                 OutlinedButton(
                                     onClick = {
                                         val shuffled = artistSongs.shuffled()
-                                        shuffled.firstOrNull()?.let { playSongForce(it) }
+                                        MusicService.setShuffleEnabled(true)
+                                        shuffled.firstOrNull()?.let { playSongForce(it, shuffled) }
                                     },
                                     border = BorderStroke(1.2.dp, c.cardBorderHighlight),
                                     shape = RoundedCornerShape(14.dp),
@@ -1110,7 +1025,7 @@ fun MusicScreen(
                                 favorites = appPreferences.getMusicFavorites()
                             },
                             onClick = {
-                                if (!isCurrent) playSongForce(song)
+                                if (!isCurrent) playSongForce(song, artistSongs)
                                 else if (isPlaying) mediaController?.pause() else mediaController?.play()
                             }
                         )
@@ -1152,7 +1067,7 @@ fun MusicScreen(
                             Spacer(Modifier.height(14.dp))
                             Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                                 Button(
-                                    onClick = { albumSongs.firstOrNull()?.let { playSongForce(it) } },
+                                    onClick = { albumSongs.firstOrNull()?.let { playSongForce(it, albumSongs) } },
                                     colors = ButtonDefaults.buttonColors(containerColor = c.accentBlue, contentColor = Color.White),
                                     shape = RoundedCornerShape(14.dp),
                                     modifier = Modifier.shadow(if (c.isMatte && c.isDark) 0.dp else 6.dp, RoundedCornerShape(14.dp), ambientColor = c.accentBlue, spotColor = c.accentBlue)
@@ -1164,7 +1079,8 @@ fun MusicScreen(
                                 OutlinedButton(
                                     onClick = {
                                         val shuffled = albumSongs.shuffled()
-                                        shuffled.firstOrNull()?.let { playSongForce(it) }
+                                        MusicService.setShuffleEnabled(true)
+                                        shuffled.firstOrNull()?.let { playSongForce(it, shuffled) }
                                     },
                                     border = BorderStroke(1.2.dp, c.cardBorderHighlight),
                                     shape = RoundedCornerShape(14.dp),
@@ -1192,7 +1108,7 @@ fun MusicScreen(
                             onLongClick = { songForContextMenu = song },
                             onMoreClick = { songForContextMenu = song },
                             onClick = {
-                                if (!isCurrent) playSongForce(song)
+                                if (!isCurrent) playSongForce(song, albumSongs)
                                 else if (isPlaying) mediaController?.pause() else mediaController?.play()
                             }
                         )
@@ -2211,7 +2127,7 @@ fun MusicScreen(
                                             Text("${plSongs.size} tracks", fontSize = 12.sp, color = c.textSecondary)
                                         }
                                         if (plSongs.isNotEmpty()) {
-                                            IconButton(onClick = { playSongForce(plSongs.first()) }) {
+                                            IconButton(onClick = { playSongForce(plSongs.first(), plSongs) }) {
                                                 Icon(Icons.Rounded.PlayArrow, contentDescription = "Play", tint = c.accentBlue)
                                             }
                                         }
@@ -2248,7 +2164,7 @@ fun MusicScreen(
                                         Text("${plSongs.size} tracks", fontSize = 12.sp, color = c.textSecondary)
                                     }
                                     if (plSongs.isNotEmpty()) {
-                                        IconButton(onClick = { playSongForce(plSongs.random()) }) {
+                                        IconButton(onClick = { MusicService.setShuffleEnabled(true); playSongForce(plSongs.random(), plSongs) }) {
                                             Icon(Icons.Rounded.Shuffle, contentDescription = "Shuffle", tint = c.accentBlue)
                                         }
                                     }
@@ -2276,7 +2192,7 @@ fun MusicScreen(
                                         onLongClick = { songForContextMenu = song },
                                         onMoreClick = { songForContextMenu = song },
                                         onClick = {
-                                            if (!isCurrent) playSongForce(song)
+                                            if (!isCurrent) playSongForce(song, plSongs)
                                             else if (isPlaying) mediaController?.pause() else mediaController?.play()
                                         }
                                     )
@@ -2344,15 +2260,15 @@ fun MusicScreen(
                     onSeek = { mediaController?.seekTo(it) },
                     onToggleShuffle = { 
                         view.performHaptic(HapticType.LIGHT)
-                        isShuffle = !isShuffle 
+                        MusicService.setShuffleEnabled(!isShuffle) 
                     },
                     onToggleRepeat = {
                         view.performHaptic(HapticType.LIGHT)
-                        repeatMode = when (repeatMode) {
+                        MusicService.setRepeatMode(when (repeatMode) {
                             Player.REPEAT_MODE_OFF -> Player.REPEAT_MODE_ALL
                             Player.REPEAT_MODE_ALL -> Player.REPEAT_MODE_ONE
                             else -> Player.REPEAT_MODE_OFF
-                        }
+                        })
                     },
                     onToggleArtworkStyle = {
                         val styles = listOf("VINYL", "CARD", "SONIC_REACTOR", "CASSETTE", "CYBER_ORB", "WAVE")
@@ -2423,10 +2339,10 @@ fun MusicScreen(
         // ─── Play Queue Bottom Sheet ────────────────────────────────────────
         if (showQueueSheet) {
             QueueDialog(
-                queue = allSongs,
+                queue = MusicService.currentPlaylist,
                 currentSong = currentlyPlaying,
                 isPlaying = isPlaying,
-                onSelectSong = { song -> playSongForce(song); showQueueSheet = false },
+                onSelectSong = { song -> playSongForce(song, MusicService.currentPlaylist); showQueueSheet = false },
                 onDismiss = { showQueueSheet = false }
             )
         }
@@ -2436,13 +2352,11 @@ fun MusicScreen(
             SleepTimerDialog(
                 currentRemainingSeconds = sleepTimerSecondsRemaining,
                 onSetTimer = { minutes ->
-                    sleepTimerMinutes = minutes
-                    sleepTimerSecondsRemaining = minutes * 60
+                    MusicService.setSleepTimer(minutes)
                     showSleepDialog = false
                 },
                 onCancelTimer = {
-                    sleepTimerMinutes = 0
-                    sleepTimerSecondsRemaining = 0
+                    MusicService.setSleepTimer(0)
                     showSleepDialog = false
                 },
                 onDismiss = { showSleepDialog = false }
@@ -2474,7 +2388,7 @@ fun MusicScreen(
                 song = s,
                 isFavorite = favorites.contains(s.uri.toString()),
                 onPlayNext = {
-                    priorityNextSong = s
+                    MusicService.enqueueNext(s)
                     songForContextMenu = null
                     android.widget.Toast.makeText(context, "Will play next: ${s.title}", android.widget.Toast.LENGTH_SHORT).show()
                 },

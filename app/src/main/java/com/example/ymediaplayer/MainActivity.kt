@@ -1,5 +1,8 @@
 package com.example.ymediaplayer
 
+import androidx.lifecycle.compose.currentStateAsState
+import androidx.lifecycle.lifecycleScope
+import kotlinx.coroutines.launch
 import android.Manifest
 import android.content.pm.PackageManager
 import android.os.Build
@@ -81,6 +84,7 @@ class MainActivity : ComponentActivity() {
             arrayOf(
                 Manifest.permission.READ_MEDIA_VIDEO,
                 Manifest.permission.READ_MEDIA_AUDIO,
+                *if (Build.VERSION.SDK_INT >= 34) arrayOf(Manifest.permission.READ_MEDIA_VISUAL_USER_SELECTED) else emptyArray(),
                 Manifest.permission.POST_NOTIFICATIONS
             )
         } else {
@@ -97,7 +101,8 @@ class MainActivity : ComponentActivity() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             videoPermissionGranted = ContextCompat.checkSelfPermission(
                 this, Manifest.permission.READ_MEDIA_VIDEO
-            ) == PackageManager.PERMISSION_GRANTED
+            ) == PackageManager.PERMISSION_GRANTED || (Build.VERSION.SDK_INT >= 34 &&
+                ContextCompat.checkSelfPermission(this, Manifest.permission.READ_MEDIA_VISUAL_USER_SELECTED) == PackageManager.PERMISSION_GRANTED)
             audioPermissionGranted = ContextCompat.checkSelfPermission(
                 this, Manifest.permission.READ_MEDIA_AUDIO
             ) == PackageManager.PERMISSION_GRANTED
@@ -126,6 +131,7 @@ class MainActivity : ComponentActivity() {
     override fun onResume() {
         super.onResume()
         updatePermissionState()
+        lifecycleScope.launch { com.example.ymediaplayer.update.UpdateManager.resumePendingInstall(this@MainActivity) }
         // Ensure app screens follow the phone's native brightness
         val lp = window.attributes
         if (lp.screenBrightness != WindowManager.LayoutParams.BRIGHTNESS_OVERRIDE_NONE) {
@@ -213,6 +219,13 @@ fun AppRoot(content: @Composable () -> Unit) {
             colorTheme = themeController.colorTheme
         ) {
             content()
+            val lifecycleState by androidx.lifecycle.compose.LocalLifecycleOwner.current.lifecycle.currentStateAsState()
+            val update = com.example.ymediaplayer.update.UpdateManager.availableUpdate.value
+            if (lifecycleState == androidx.lifecycle.Lifecycle.State.RESUMED && update != null &&
+                com.example.ymediaplayer.update.UpdateManager.showUpdateDialog.value) {
+                com.example.ymediaplayer.ui.UpdateDialog(update,
+                    onDismiss = { com.example.ymediaplayer.update.UpdateManager.dismissUpdate() })
+            }
         }
     }
 }
@@ -398,15 +411,7 @@ fun MainApp(
             }
         )
 
-        // ─── In-App Auto-Updater Dialog ──────────────────────────────────────
-        val availableUpdate = com.example.ymediaplayer.update.UpdateManager.availableUpdate.value
-        val showUpdateDialog = com.example.ymediaplayer.update.UpdateManager.showUpdateDialog.value
-        if (availableUpdate != null && showUpdateDialog) {
-            com.example.ymediaplayer.ui.UpdateDialog(
-                release = availableUpdate,
-                onDismiss = { com.example.ymediaplayer.update.UpdateManager.dismissUpdate() }
-            )
-        }
+
     }
 }
 

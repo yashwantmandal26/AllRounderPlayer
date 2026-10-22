@@ -1,0 +1,59 @@
+INSTRUMENTATION_STATUS: class=com.example.ymediaplayer.ui.FullQaIntegrationProbeTest
+INSTRUMENTATION_STATUS: current=1
+INSTRUMENTATION_STATUS: id=AndroidJUnitRunner
+INSTRUMENTATION_STATUS: numtests=1
+INSTRUMENTATION_STATUS: stream=
+com.example.ymediaplayer.ui.FullQaIntegrationProbeTest:
+INSTRUMENTATION_STATUS: test=settingsNotNowClosesUpdateDialog
+INSTRUMENTATION_STATUS_CODE: 1
+INSTRUMENTATION_STATUS: class=com.example.ymediaplayer.ui.FullQaIntegrationProbeTest
+INSTRUMENTATION_STATUS: current=1
+INSTRUMENTATION_STATUS: id=AndroidJUnitRunner
+INSTRUMENTATION_STATUS: numtests=1
+INSTRUMENTATION_STATUS: stack=java.lang.AssertionError: Failed: assertDoesNotExist.
+Reason: Did not expect any node but found '1' node that satisfies: (TestTag = 'update-dialog')
+Node found:
+Node #190 at (l=48.0, t=48.0, r=1032.0, b=1162.0)px, Tag: 'update-dialog'
+IsContainer = 'true'
+Shape = 'RoundedCornerShape(topStart = CornerSize(size = 24.0.dp), topEnd = CornerSize(size = 24.0.dp), bottomEnd = CornerSize(size = 24.0.dp), bottomStart = CornerSize(size = 24.0.dp))'
+Has 4 children
+
+	at androidx.compose.ui.test.SemanticsNodeInteraction.assertDoesNotExist(SemanticsNodeInteraction.kt:101)
+	at com.example.ymediaplayer.ui.FullQaIntegrationProbeTest.settingsNotNowClosesUpdateDialog(FullQaIntegrationProbeTest.kt:32)
+
+INSTRUMENTATION_STATUS: stream=
+Error in settingsNotNowClosesUpdateDialog(com.example.ymediaplayer.ui.FullQaIntegrationProbeTest):
+java.lang.AssertionError: Failed: assertDoesNotExist.
+Reason: Did not expect any node but found '1' node that satisfies: (TestTag = 'update-dialog')
+Node found:
+Node #190 at (l=48.0, t=48.0, r=1032.0, b=1162.0)px, Tag: 'update-dialog'
+IsContainer = 'true'
+Shape = 'RoundedCornerShape(topStart = CornerSize(size = 24.0.dp), topEnd = CornerSize(size = 24.0.dp), bottomEnd = CornerSize(size = 24.0.dp), bottomStart = CornerSize(size = 24.0.dp))'
+Has 4 children
+
+	at androidx.compose.ui.test.SemanticsNodeInteraction.assertDoesNotExist(SemanticsNodeInteraction.kt:101)
+	at com.example.ymediaplayer.ui.FullQaIntegrationProbeTest.settingsNotNowClosesUpdateDialog(FullQaIntegrationProbeTest.kt:32)
+
+INSTRUMENTATION_STATUS: test=settingsNotNowClosesUpdateDialog
+INSTRUMENTATION_STATUS_CODE: -2
+INSTRUMENTATION_RESULT: stream=
+
+Time: 1.544
+There was 1 failure:
+1) settingsNotNowClosesUpdateDialog(com.example.ymediaplayer.ui.FullQaIntegrationProbeTest)
+java.lang.AssertionError: Failed: assertDoesNotExist.
+Reason: Did not expect any node but found '1' node that satisfies: (TestTag = 'update-dialog')
+Node found:
+Node #190 at (l=48.0, t=48.0, r=1032.0, b=1162.0)px, Tag: 'update-dialog'
+IsContainer = 'true'
+Shape = 'RoundedCornerShape(topStart = CornerSize(size = 24.0.dp), topEnd = CornerSize(size = 24.0.dp), bottomEnd = CornerSize(size = 24.0.dp), bottomStart = CornerSize(size = 24.0.dp))'
+Has 4 children
+
+	at androidx.compose.ui.test.SemanticsNodeInteraction.assertDoesNotExist(SemanticsNodeInteraction.kt:101)
+	at com.example.ymediaplayer.ui.FullQaIntegrationProbeTest.settingsNotNowClosesUpdateDialog(FullQaIntegrationProbeTest.kt:32)
+
+FAILURES!!!
+Tests run: 1,  Failures: 1
+
+
+INSTRUMENTATION_CODE: -1

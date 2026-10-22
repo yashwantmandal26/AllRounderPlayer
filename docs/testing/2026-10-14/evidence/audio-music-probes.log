@@ -1,0 +1,232 @@
+INSTRUMENTATION_STATUS: class=com.example.ymediaplayer.player.FullQaAudioPipelineProbeTest
+INSTRUMENTATION_STATUS: current=1
+INSTRUMENTATION_STATUS: id=AndroidJUnitRunner
+INSTRUMENTATION_STATUS: numtests=7
+INSTRUMENTATION_STATUS: stream=
+com.example.ymediaplayer.player.FullQaAudioPipelineProbeTest:
+INSTRUMENTATION_STATUS: test=normalPipelineStartupEmptyDrainThenSequentialChunks
+INSTRUMENTATION_STATUS_CODE: 1
+INSTRUMENTATION_STATUS: class=com.example.ymediaplayer.player.FullQaAudioPipelineProbeTest
+INSTRUMENTATION_STATUS: current=1
+INSTRUMENTATION_STATUS: id=AndroidJUnitRunner
+INSTRUMENTATION_STATUS: numtests=7
+INSTRUMENTATION_STATUS: stack=java.lang.IllegalArgumentException: The source buffer is this buffer
+	at java.nio.Buffer.createSameBufferException(Buffer.java:279)
+	at java.nio.ByteBuffer.put(ByteBuffer.java:1023)
+	at java.nio.DirectByteBuffer.put(DirectByteBuffer.java:310)
+	at com.example.ymediaplayer.player.VideoDynamicsProcessor.queueInput(VideoDynamicsProcessor.kt:67)
+	at androidx.media3.common.audio.AudioProcessingPipeline.processData(AudioProcessingPipeline.java:369)
+	at androidx.media3.common.audio.AudioProcessingPipeline.getOutput(AudioProcessingPipeline.java:260)
+	at com.example.ymediaplayer.player.FullQaAudioPipelineProbeTest.assertPipelineStartupAndSequentialChunks(FullQaAudioPipelineProbeTest.kt:71)
+	at com.example.ymediaplayer.player.FullQaAudioPipelineProbeTest.normalPipelineStartupEmptyDrainThenSequentialChunks(FullQaAudioPipelineProbeTest.kt:99)
+
+INSTRUMENTATION_STATUS: stream=
+Error in normalPipelineStartupEmptyDrainThenSequentialChunks(com.example.ymediaplayer.player.FullQaAudioPipelineProbeTest):
+java.lang.IllegalArgumentException: The source buffer is this buffer
+	at java.nio.Buffer.createSameBufferException(Buffer.java:279)
+	at java.nio.ByteBuffer.put(ByteBuffer.java:1023)
+	at java.nio.DirectByteBuffer.put(DirectByteBuffer.java:310)
+	at com.example.ymediaplayer.player.VideoDynamicsProcessor.queueInput(VideoDynamicsProcessor.kt:67)
+	at androidx.media3.common.audio.AudioProcessingPipeline.processData(AudioProcessingPipeline.java:369)
+	at androidx.media3.common.audio.AudioProcessingPipeline.getOutput(AudioProcessingPipeline.java:260)
+	at com.example.ymediaplayer.player.FullQaAudioPipelineProbeTest.assertPipelineStartupAndSequentialChunks(FullQaAudioPipelineProbeTest.kt:71)
+	at com.example.ymediaplayer.player.FullQaAudioPipelineProbeTest.normalPipelineStartupEmptyDrainThenSequentialChunks(FullQaAudioPipelineProbeTest.kt:99)
+
+INSTRUMENTATION_STATUS: test=normalPipelineStartupEmptyDrainThenSequentialChunks
+INSTRUMENTATION_STATUS_CODE: -2
+INSTRUMENTATION_STATUS: class=com.example.ymediaplayer.player.FullQaAudioPipelineProbeTest
+INSTRUMENTATION_STATUS: current=2
+INSTRUMENTATION_STATUS: id=AndroidJUnitRunner
+INSTRUMENTATION_STATUS: numtests=7
+INSTRUMENTATION_STATUS: stream=
+INSTRUMENTATION_STATUS: test=volumeLevelingSequentialPcm16StereoChunks
+INSTRUMENTATION_STATUS_CODE: 1
+INSTRUMENTATION_STATUS: class=com.example.ymediaplayer.player.FullQaAudioPipelineProbeTest
+INSTRUMENTATION_STATUS: current=2
+INSTRUMENTATION_STATUS: id=AndroidJUnitRunner
+INSTRUMENTATION_STATUS: numtests=7
+INSTRUMENTATION_STATUS: stream=.
+INSTRUMENTATION_STATUS: test=volumeLevelingSequentialPcm16StereoChunks
+INSTRUMENTATION_STATUS_CODE: 0
+INSTRUMENTATION_STATUS: class=com.example.ymediaplayer.player.FullQaAudioPipelineProbeTest
+INSTRUMENTATION_STATUS: current=3
+INSTRUMENTATION_STATUS: id=AndroidJUnitRunner
+INSTRUMENTATION_STATUS: numtests=7
+INSTRUMENTATION_STATUS: stream=
+INSTRUMENTATION_STATUS: test=volumeLevelingPipelineStartupEmptyDrainThenSequentialChunks
+INSTRUMENTATION_STATUS_CODE: 1
+INSTRUMENTATION_STATUS: class=com.example.ymediaplayer.player.FullQaAudioPipelineProbeTest
+INSTRUMENTATION_STATUS: current=3
+INSTRUMENTATION_STATUS: id=AndroidJUnitRunner
+INSTRUMENTATION_STATUS: numtests=7
+INSTRUMENTATION_STATUS: stack=java.lang.IllegalArgumentException: The source buffer is this buffer
+	at java.nio.Buffer.createSameBufferException(Buffer.java:279)
+	at java.nio.ByteBuffer.put(ByteBuffer.java:1023)
+	at java.nio.DirectByteBuffer.put(DirectByteBuffer.java:310)
+	at com.example.ymediaplayer.player.VideoDynamicsProcessor.queueInput(VideoDynamicsProcessor.kt:82)
+	at androidx.media3.common.audio.AudioProcessingPipeline.processData(AudioProcessingPipeline.java:369)
+	at androidx.media3.common.audio.AudioProcessingPipeline.getOutput(AudioProcessingPipeline.java:260)
+	at com.example.ymediaplayer.player.FullQaAudioPipelineProbeTest.assertPipelineStartupAndSequentialChunks(FullQaAudioPipelineProbeTest.kt:71)
+	at com.example.ymediaplayer.player.FullQaAudioPipelineProbeTest.volumeLevelingPipelineStartupEmptyDrainThenSequentialChunks(FullQaAudioPipelineProbeTest.kt:102)
+
+INSTRUMENTATION_STATUS: stream=
+Error in volumeLevelingPipelineStartupEmptyDrainThenSequentialChunks(com.example.ymediaplayer.player.FullQaAudioPipelineProbeTest):
+java.lang.IllegalArgumentException: The source buffer is this buffer
+	at java.nio.Buffer.createSameBufferException(Buffer.java:279)
+	at java.nio.ByteBuffer.put(ByteBuffer.java:1023)
+	at java.nio.DirectByteBuffer.put(DirectByteBuffer.java:310)
+	at com.example.ymediaplayer.player.VideoDynamicsProcessor.queueInput(VideoDynamicsProcessor.kt:82)
+	at androidx.media3.common.audio.AudioProcessingPipeline.processData(AudioProcessingPipeline.java:369)
+	at androidx.media3.common.audio.AudioProcessingPipeline.getOutput(AudioProcessingPipeline.java:260)
+	at com.example.ymediaplayer.player.FullQaAudioPipelineProbeTest.assertPipelineStartupAndSequentialChunks(FullQaAudioPipelineProbeTest.kt:71)
+	at com.example.ymediaplayer.player.FullQaAudioPipelineProbeTest.volumeLevelingPipelineStartupEmptyDrainThenSequentialChunks(FullQaAudioPipelineProbeTest.kt:102)
+
+INSTRUMENTATION_STATUS: test=volumeLevelingPipelineStartupEmptyDrainThenSequentialChunks
+INSTRUMENTATION_STATUS_CODE: -2
+INSTRUMENTATION_STATUS: class=com.example.ymediaplayer.player.FullQaAudioPipelineProbeTest
+INSTRUMENTATION_STATUS: current=4
+INSTRUMENTATION_STATUS: id=AndroidJUnitRunner
+INSTRUMENTATION_STATUS: numtests=7
+INSTRUMENTATION_STATUS: stream=
+INSTRUMENTATION_STATUS: test=normalSequentialPcm16StereoChunks
+INSTRUMENTATION_STATUS_CODE: 1
+INSTRUMENTATION_STATUS: class=com.example.ymediaplayer.player.FullQaAudioPipelineProbeTest
+INSTRUMENTATION_STATUS: current=4
+INSTRUMENTATION_STATUS: id=AndroidJUnitRunner
+INSTRUMENTATION_STATUS: numtests=7
+INSTRUMENTATION_STATUS: stream=.
+INSTRUMENTATION_STATUS: test=normalSequentialPcm16StereoChunks
+INSTRUMENTATION_STATUS_CODE: 0
+INSTRUMENTATION_STATUS: class=com.example.ymediaplayer.ui.FullQaMusicProbeTest
+INSTRUMENTATION_STATUS: current=5
+INSTRUMENTATION_STATUS: id=AndroidJUnitRunner
+INSTRUMENTATION_STATUS: numtests=7
+INSTRUMENTATION_STATUS: stream=
+com.example.ymediaplayer.ui.FullQaMusicProbeTest:
+INSTRUMENTATION_STATUS: test=uiPlaybackShouldAddGeneratedTrackToRecentlyPlayed
+INSTRUMENTATION_STATUS_CODE: 1
+INSTRUMENTATION_STATUS: class=com.example.ymediaplayer.ui.FullQaMusicProbeTest
+INSTRUMENTATION_STATUS: current=5
+INSTRUMENTATION_STATUS: id=AndroidJUnitRunner
+INSTRUMENTATION_STATUS: numtests=7
+INSTRUMENTATION_STATUS: stack=java.lang.AssertionError: Playing AllRounder_QA_A through the actual Music UI must add it to Recently Played; actual=[]
+	at org.junit.Assert.fail(Assert.java:89)
+	at org.junit.Assert.assertTrue(Assert.java:42)
+	at com.example.ymediaplayer.ui.FullQaMusicProbeTest.uiPlaybackShouldAddGeneratedTrackToRecentlyPlayed(FullQaMusicProbeTest.kt:130)
+
+INSTRUMENTATION_STATUS: stream=
+Error in uiPlaybackShouldAddGeneratedTrackToRecentlyPlayed(com.example.ymediaplayer.ui.FullQaMusicProbeTest):
+java.lang.AssertionError: Playing AllRounder_QA_A through the actual Music UI must add it to Recently Played; actual=[]
+	at org.junit.Assert.fail(Assert.java:89)
+	at org.junit.Assert.assertTrue(Assert.java:42)
+	at com.example.ymediaplayer.ui.FullQaMusicProbeTest.uiPlaybackShouldAddGeneratedTrackToRecentlyPlayed(FullQaMusicProbeTest.kt:130)
+
+INSTRUMENTATION_STATUS: test=uiPlaybackShouldAddGeneratedTrackToRecentlyPlayed
+INSTRUMENTATION_STATUS_CODE: -2
+INSTRUMENTATION_STATUS: class=com.example.ymediaplayer.ui.FullQaMusicProbeTest
+INSTRUMENTATION_STATUS: current=6
+INSTRUMENTATION_STATUS: id=AndroidJUnitRunner
+INSTRUMENTATION_STATUS: numtests=7
+INSTRUMENTATION_STATUS: stream=
+INSTRUMENTATION_STATUS: test=repeatOneUiShouldUpdatePlaybackServiceRepeatMode
+INSTRUMENTATION_STATUS_CODE: 1
+INSTRUMENTATION_STATUS: class=com.example.ymediaplayer.ui.FullQaMusicProbeTest
+INSTRUMENTATION_STATUS: current=6
+INSTRUMENTATION_STATUS: id=AndroidJUnitRunner
+INSTRUMENTATION_STATUS: numtests=7
+INSTRUMENTATION_STATUS: stack=java.lang.AssertionError: Selecting Repeat One in the actual UI must update the playback service expected:<1> but was:<0>
+	at org.junit.Assert.fail(Assert.java:89)
+	at org.junit.Assert.failNotEquals(Assert.java:835)
+	at org.junit.Assert.assertEquals(Assert.java:120)
+	at com.example.ymediaplayer.ui.FullQaMusicProbeTest.repeatOneUiShouldUpdatePlaybackServiceRepeatMode(FullQaMusicProbeTest.kt:142)
+
+INSTRUMENTATION_STATUS: stream=
+Error in repeatOneUiShouldUpdatePlaybackServiceRepeatMode(com.example.ymediaplayer.ui.FullQaMusicProbeTest):
+java.lang.AssertionError: Selecting Repeat One in the actual UI must update the playback service expected:<1> but was:<0>
+	at org.junit.Assert.fail(Assert.java:89)
+	at org.junit.Assert.failNotEquals(Assert.java:835)
+	at org.junit.Assert.assertEquals(Assert.java:120)
+	at com.example.ymediaplayer.ui.FullQaMusicProbeTest.repeatOneUiShouldUpdatePlaybackServiceRepeatMode(FullQaMusicProbeTest.kt:142)
+
+INSTRUMENTATION_STATUS: test=repeatOneUiShouldUpdatePlaybackServiceRepeatMode
+INSTRUMENTATION_STATUS_CODE: -2
+INSTRUMENTATION_STATUS: class=com.example.ymediaplayer.ui.FullQaMusicProbeTest
+INSTRUMENTATION_STATUS: current=7
+INSTRUMENTATION_STATUS: id=AndroidJUnitRunner
+INSTRUMENTATION_STATUS: numtests=7
+INSTRUMENTATION_STATUS: stream=
+INSTRUMENTATION_STATUS: test=sleepTimerShouldSurviveMusicScreenDetachAndRemount
+INSTRUMENTATION_STATUS_CODE: 1
+INSTRUMENTATION_STATUS: class=com.example.ymediaplayer.ui.FullQaMusicProbeTest
+INSTRUMENTATION_STATUS: current=7
+INSTRUMENTATION_STATUS: id=AndroidJUnitRunner
+INSTRUMENTATION_STATUS: numtests=7
+INSTRUMENTATION_STATUS: stack=java.lang.AssertionError: A running 15-minute sleep timer must survive leaving and reopening Music
+Reason: Expected exactly '1' node but could not find any node that satisfies: (Text + InputText + EditableText contains 'Timer:' (ignoreCase: false) as substring)
+
+	at androidx.compose.ui.test.SemanticsNodeInteraction.fetchOneOrThrow(SemanticsNodeInteraction.kt:178)
+	at androidx.compose.ui.test.SemanticsNodeInteraction.fetchOneOrThrow$default(SemanticsNodeInteraction.kt:150)
+	at androidx.compose.ui.test.SemanticsNodeInteraction.assertExists(SemanticsNodeInteraction.kt:125)
+	at com.example.ymediaplayer.ui.FullQaMusicProbeTest.sleepTimerShouldSurviveMusicScreenDetachAndRemount(FullQaMusicProbeTest.kt:163)
+
+INSTRUMENTATION_STATUS: stream=
+Error in sleepTimerShouldSurviveMusicScreenDetachAndRemount(com.example.ymediaplayer.ui.FullQaMusicProbeTest):
+java.lang.AssertionError: A running 15-minute sleep timer must survive leaving and reopening Music
+Reason: Expected exactly '1' node but could not find any node that satisfies: (Text + InputText + EditableText contains 'Timer:' (ignoreCase: false) as substring)
+
+	at androidx.compose.ui.test.SemanticsNodeInteraction.fetchOneOrThrow(SemanticsNodeInteraction.kt:178)
+	at androidx.compose.ui.test.SemanticsNodeInteraction.fetchOneOrThrow$default(SemanticsNodeInteraction.kt:150)
+	at androidx.compose.ui.test.SemanticsNodeInteraction.assertExists(SemanticsNodeInteraction.kt:125)
+	at com.example.ymediaplayer.ui.FullQaMusicProbeTest.sleepTimerShouldSurviveMusicScreenDetachAndRemount(FullQaMusicProbeTest.kt:163)
+
+INSTRUMENTATION_STATUS: test=sleepTimerShouldSurviveMusicScreenDetachAndRemount
+INSTRUMENTATION_STATUS_CODE: -2
+INSTRUMENTATION_RESULT: stream=
+
+Time: 17.772
+There were 5 failures:
+1) normalPipelineStartupEmptyDrainThenSequentialChunks(com.example.ymediaplayer.player.FullQaAudioPipelineProbeTest)
+java.lang.IllegalArgumentException: The source buffer is this buffer
+	at java.nio.Buffer.createSameBufferException(Buffer.java:279)
+	at java.nio.ByteBuffer.put(ByteBuffer.java:1023)
+	at java.nio.DirectByteBuffer.put(DirectByteBuffer.java:310)
+	at com.example.ymediaplayer.player.VideoDynamicsProcessor.queueInput(VideoDynamicsProcessor.kt:67)
+	at androidx.media3.common.audio.AudioProcessingPipeline.processData(AudioProcessingPipeline.java:369)
+	at androidx.media3.common.audio.AudioProcessingPipeline.getOutput(AudioProcessingPipeline.java:260)
+	at com.example.ymediaplayer.player.FullQaAudioPipelineProbeTest.assertPipelineStartupAndSequentialChunks(FullQaAudioPipelineProbeTest.kt:71)
+	at com.example.ymediaplayer.player.FullQaAudioPipelineProbeTest.normalPipelineStartupEmptyDrainThenSequentialChunks(FullQaAudioPipelineProbeTest.kt:99)
+2) volumeLevelingPipelineStartupEmptyDrainThenSequentialChunks(com.example.ymediaplayer.player.FullQaAudioPipelineProbeTest)
+java.lang.IllegalArgumentException: The source buffer is this buffer
+	at java.nio.Buffer.createSameBufferException(Buffer.java:279)
+	at java.nio.ByteBuffer.put(ByteBuffer.java:1023)
+	at java.nio.DirectByteBuffer.put(DirectByteBuffer.java:310)
+	at com.example.ymediaplayer.player.VideoDynamicsProcessor.queueInput(VideoDynamicsProcessor.kt:82)
+	at androidx.media3.common.audio.AudioProcessingPipeline.processData(AudioProcessingPipeline.java:369)
+	at androidx.media3.common.audio.AudioProcessingPipeline.getOutput(AudioProcessingPipeline.java:260)
+	at com.example.ymediaplayer.player.FullQaAudioPipelineProbeTest.assertPipelineStartupAndSequentialChunks(FullQaAudioPipelineProbeTest.kt:71)
+	at com.example.ymediaplayer.player.FullQaAudioPipelineProbeTest.volumeLevelingPipelineStartupEmptyDrainThenSequentialChunks(FullQaAudioPipelineProbeTest.kt:102)
+3) uiPlaybackShouldAddGeneratedTrackToRecentlyPlayed(com.example.ymediaplayer.ui.FullQaMusicProbeTest)
+java.lang.AssertionError: Playing AllRounder_QA_A through the actual Music UI must add it to Recently Played; actual=[]
+	at org.junit.Assert.fail(Assert.java:89)
+	at org.junit.Assert.assertTrue(Assert.java:42)
+	at com.example.ymediaplayer.ui.FullQaMusicProbeTest.uiPlaybackShouldAddGeneratedTrackToRecentlyPlayed(FullQaMusicProbeTest.kt:130)
+4) repeatOneUiShouldUpdatePlaybackServiceRepeatMode(com.example.ymediaplayer.ui.FullQaMusicProbeTest)
+java.lang.AssertionError: Selecting Repeat One in the actual UI must update the playback service expected:<1> but was:<0>
+	at org.junit.Assert.fail(Assert.java:89)
+	at org.junit.Assert.failNotEquals(Assert.java:835)
+	at org.junit.Assert.assertEquals(Assert.java:120)
+	at com.example.ymediaplayer.ui.FullQaMusicProbeTest.repeatOneUiShouldUpdatePlaybackServiceRepeatMode(FullQaMusicProbeTest.kt:142)
+5) sleepTimerShouldSurviveMusicScreenDetachAndRemount(com.example.ymediaplayer.ui.FullQaMusicProbeTest)
+java.lang.AssertionError: A running 15-minute sleep timer must survive leaving and reopening Music
+Reason: Expected exactly '1' node but could not find any node that satisfies: (Text + InputText + EditableText contains 'Timer:' (ignoreCase: false) as substring)
+
+	at androidx.compose.ui.test.SemanticsNodeInteraction.fetchOneOrThrow(SemanticsNodeInteraction.kt:178)
+	at androidx.compose.ui.test.SemanticsNodeInteraction.fetchOneOrThrow$default(SemanticsNodeInteraction.kt:150)
+	at androidx.compose.ui.test.SemanticsNodeInteraction.assertExists(SemanticsNodeInteraction.kt:125)
+	at com.example.ymediaplayer.ui.FullQaMusicProbeTest.sleepTimerShouldSurviveMusicScreenDetachAndRemount(FullQaMusicProbeTest.kt:163)
+
+FAILURES!!!
+Tests run: 7,  Failures: 5
+
+
+INSTRUMENTATION_CODE: -1

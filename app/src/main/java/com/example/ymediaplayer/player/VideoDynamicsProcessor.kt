@@ -61,6 +61,8 @@ internal class VideoDynamicsProcessor : BaseAudioProcessor() {
     }
 
     override fun queueInput(inputBuffer: ByteBuffer) {
+        // Media3 polls the pipeline with its shared EMPTY_BUFFER before PCM arrives.
+        if (!inputBuffer.hasRemaining()) return
         val output = replaceOutputBuffer(inputBuffer.remaining())
         val config = settings
         if (config.night == 0f && !config.leveling) {

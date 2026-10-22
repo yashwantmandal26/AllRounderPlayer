@@ -95,6 +95,7 @@ class MusicService : MediaSessionService() {
             currentBassBoost.floatValue = prefs.getEqBassBoost()
             currentVirtualizer.floatValue = prefs.getEqVirtualizer()
             currentPresetName.value = prefs.getEqPreset()
+            serviceInstance?.applyCurrentEffects()
         }
 
         fun applySoundMode(context: Context, mode: MusicSoundMode) {
@@ -214,7 +215,74 @@ class MusicService : MediaSessionService() {
 
         var currentMusicItem: androidx.compose.runtime.MutableState<MusicItem?> =
             androidx.compose.runtime.mutableStateOf(null)
-        var currentPlaylist: List<MusicItem> = emptyList()
+        val activeQueue = androidx.compose.runtime.mutableStateOf<List<MusicItem>>(emptyList())
+        var currentPlaylist: List<MusicItem>
+            get() = activeQueue.value
+            set(value) { activeQueue.value = value.toList() }
+        val repeatMode = androidx.compose.runtime.mutableIntStateOf(Player.REPEAT_MODE_OFF)
+        val shuffleEnabled = androidx.compose.runtime.mutableStateOf(false)
+        val sleepTimerSecondsRemaining = androidx.compose.runtime.mutableIntStateOf(0)
+        private var sleepTimerJob: Job? = null
+        private var sleepDeadlineMs = 0L
+
+        fun setRepeatMode(mode: Int) {
+            repeatMode.intValue = mode
+            playerInstance?.repeatMode = mode
+            syncAutoAdvance()
+        }
+
+        fun setShuffleEnabled(enabled: Boolean) {
+            shuffleEnabled.value = enabled
+            playerInstance?.shuffleModeEnabled = enabled
+            syncAutoAdvance()
+        }
+
+        fun setAutoPlayEnabled(enabled: Boolean) {
+            isAutoPlayEnabled.value = enabled
+            syncAutoAdvance()
+        }
+
+        private fun syncAutoAdvance() {
+            (playerInstance as? ExoPlayer)?.setPauseAtEndOfMediaItems(
+                !isAutoPlayEnabled.value && repeatMode.intValue == Player.REPEAT_MODE_OFF && !shuffleEnabled.value)
+        }
+
+        private fun queueMediaItem(item: MusicItem): MediaItem = MediaItem.Builder()
+            .setUri(item.uri).setMediaId(item.id.toString())
+            .setMediaMetadata(MediaMetadata.Builder().setTitle(item.title).setArtist(item.artist)
+                .setAlbumTitle(item.album).setArtworkUri(item.albumArtUri).build()).build()
+
+        fun enqueueNext(song: MusicItem) {
+            val player = playerInstance ?: return
+            val current = currentMusicItem.value ?: return
+            val queue = currentPlaylist.filter { it.uri != song.uri || it.uri == current.uri }.toMutableList()
+            val index = queue.indexOfFirst { it.uri == current.uri }
+            if (index < 0) return
+            queue.add(index + 1, song)
+            val position = player.currentPosition
+            val playing = player.playWhenReady
+            currentPlaylist = queue
+            player.setMediaItems(queue.map(::queueMediaItem), index, position)
+            player.prepare()
+            player.playWhenReady = playing
+        }
+
+        fun setSleepTimer(minutes: Int) = startSleepTimer(minutes.coerceAtLeast(0).toLong() * 60_000L)
+
+        internal fun startSleepTimer(durationMs: Long) {
+            sleepTimerJob?.cancel()
+            sleepDeadlineMs = if (durationMs > 0) android.os.SystemClock.elapsedRealtime() + durationMs else 0L
+            sleepTimerSecondsRemaining.intValue = ((durationMs.coerceAtLeast(0L) + 999) / 1000).toInt()
+            if (durationMs <= 0) return
+            sleepTimerJob = musicScope.launch {
+                while (true) {
+                    val remaining = (sleepDeadlineMs - android.os.SystemClock.elapsedRealtime()).coerceAtLeast(0L)
+                    sleepTimerSecondsRemaining.intValue = ((remaining + 999) / 1000).toInt()
+                    if (remaining == 0L) { playerInstance?.pause(); break }
+                    delay(minOf(remaining, 250L))
+                }
+            }
+        }
         var currentSongIndex: Int = -1
 
         var onPlayNextAction: (() -> Unit)? = null
@@ -321,7 +389,6 @@ class MusicService : MediaSessionService() {
             nowPlayingTitle.value = item.title
             nowPlayingArtist.value = item.artist
             nowPlayingArtUri.value = item.albumArtUri
-            AppPreferences(context).recordMusicPlayed(item.uri.toString())
 
             val player = playerInstance ?: return
 
@@ -338,7 +405,11 @@ class MusicService : MediaSessionService() {
                 .setMediaMetadata(initialMetadata)
                 .build()
 
-            player.setMediaItem(mediaItem)
+            if (currentPlaylist.none { it.uri == item.uri }) currentPlaylist = listOf(item)
+            currentSongIndex = currentPlaylist.indexOfFirst { it.uri == item.uri }.coerceAtLeast(0)
+            player.setMediaItems(currentPlaylist.map { queued ->
+                if (queued.uri == item.uri) mediaItem else queueMediaItem(queued)
+            }, currentSongIndex, 0L)
             player.prepare()
             fadeIn(player)
             isMusicPlaying.value = true
@@ -392,42 +463,20 @@ class MusicService : MediaSessionService() {
         }
 
         fun playNext() {
-            if (onPlayNextAction != null) {
-                onPlayNextAction?.invoke()
-                return
-            }
-            val player = playerInstance
-            if (player != null && currentPlaylist.isNotEmpty()) {
-                val nextIdx = (currentSongIndex + 1) % currentPlaylist.size
-                currentSongIndex = nextIdx
-                playSong(currentPlaylist[nextIdx])
-                return
-            }
-            player?.let {
-                if (it.hasNextMediaItem()) it.seekToNextMediaItem()
-            }
+            val player = playerInstance ?: return
+            if (player.hasNextMediaItem()) player.seekToNextMediaItem()
+            else if (player.mediaItemCount > 0) player.seekTo(0, 0L)
+            player.play()
         }
 
         fun playPrevious() {
-            if (onPlayPrevAction != null) {
-                onPlayPrevAction?.invoke()
-                return
-            }
-            val player = playerInstance
-            if (player != null && currentPlaylist.isNotEmpty()) {
-                if (player.currentPosition > 3000L) {
-                    player.seekTo(0L)
-                    return
-                }
-                val prevIdx = if (currentSongIndex <= 0) currentPlaylist.size - 1 else currentSongIndex - 1
-                currentSongIndex = prevIdx
-                playSong(currentPlaylist[prevIdx])
-                return
-            }
-            player?.let {
-                if (it.hasPreviousMediaItem()) it.seekToPreviousMediaItem() else it.seekTo(0L)
-            }
+            val player = playerInstance ?: return
+            if (player.currentPosition > 3000L) player.seekTo(0L)
+            else if (player.hasPreviousMediaItem()) player.seekToPreviousMediaItem()
+            else if (player.mediaItemCount > 0) player.seekTo(player.mediaItemCount - 1, 0L)
+            player.play()
         }
+
     }
 
     override fun onCreate() {
@@ -491,6 +540,18 @@ class MusicService : MediaSessionService() {
             .build()
 
         playerInstance = player
+        player.repeatMode = repeatMode.intValue
+        player.shuffleModeEnabled = shuffleEnabled.value
+        syncAutoAdvance()
+        var lastRecordedUri: String? = null
+        fun recordPlayedItem(item: MediaItem?, repeat: Boolean = false) {
+            val uri = item?.localConfiguration?.uri?.toString() ?: return
+            if (repeat || uri != lastRecordedUri) {
+                appPreferences.recordMusicPlayed(uri)
+                appPreferences.incrementPlayCount(uri)
+                lastRecordedUri = uri
+            }
+        }
         val initialSessionId = player.audioSessionId
         currentAudioSessionId.value = initialSessionId
         initPreferencesState(this)
@@ -499,6 +560,8 @@ class MusicService : MediaSessionService() {
         }
 
         player.addListener(object : Player.Listener {
+            override fun onRepeatModeChanged(mode: Int) { repeatMode.intValue = mode; syncAutoAdvance() }
+            override fun onShuffleModeEnabledChanged(enabled: Boolean) { shuffleEnabled.value = enabled; syncAutoAdvance() }
             override fun onAudioSessionIdChanged(audioSessionId: Int) {
                 currentAudioSessionId.value = audioSessionId
                 if (audioSessionId > 0) {
@@ -507,6 +570,7 @@ class MusicService : MediaSessionService() {
             }
             override fun onIsPlayingChanged(isPlaying: Boolean) {
                 isMusicPlaying.value = isPlaying
+                if (isPlaying) recordPlayedItem(player.currentMediaItem)
                 if (!isPlaying) {
                     AudioReactor.reset()
                 }
@@ -518,7 +582,7 @@ class MusicService : MediaSessionService() {
                     AudioReactor.reset()
                 }
                 if (playbackState == Player.STATE_ENDED) {
-                    if (isAutoPlayEnabled.value && player.repeatMode != Player.REPEAT_MODE_ONE) {
+                    if ((isAutoPlayEnabled.value || repeatMode.intValue == Player.REPEAT_MODE_ALL || shuffleEnabled.value) && player.repeatMode != Player.REPEAT_MODE_ONE) {
                         playNext()
                     }
                 }
@@ -536,12 +600,13 @@ class MusicService : MediaSessionService() {
                 if (mediaItem != null) {
                     val mediaId = mediaItem.mediaId
                     val uriStr = mediaItem.localConfiguration?.uri?.toString()
+                    if (player.isPlaying) recordPlayedItem(mediaItem, reason == Player.MEDIA_ITEM_TRANSITION_REASON_REPEAT)
                     val found = currentPlaylist.find {
                         (mediaId.isNotBlank() && it.id.toString() == mediaId) || it.uri.toString() == uriStr
                     }
                     if (found != null) {
                         currentMusicItem.value = found
-                        currentSongIndex = currentPlaylist.indexOf(found)
+                        currentSongIndex = player.currentMediaItemIndex
                         nowPlayingTitle.value = found.title
                         nowPlayingArtist.value = found.artist
                         nowPlayingArtUri.value = found.albumArtUri
@@ -924,6 +989,7 @@ class MusicService : MediaSessionService() {
     }
 
     override fun onDestroy() {
+        setSleepTimer(0)
         serviceInstance = null
         playerInstance = null
         releaseAudioEffects()

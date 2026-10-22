@@ -16,7 +16,6 @@ import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.compose.animation.*
 import androidx.compose.animation.core.*
 import androidx.compose.foundation.*
-import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.*
@@ -178,16 +177,17 @@ fun FolderListScreen(
     )
 
     // Delete launcher (Android 11+ requires user confirmation)
-    val deleteRequestLauncher = rememberLauncherForActivityResult(
-        ActivityResultContracts.StartIntentSenderForResult()
-    ) { result ->
-        if (result.resultCode == Activity.RESULT_OK) {
+    val hasRecycleBin = FileManager.supportsRecycleBin()
+    val handleFileOperation = rememberFileOperationHandler(
+        onSuccess = {
             selectedVideoIds = emptySet()
             deleteVideosConfirm = emptyList()
+            renameVideoTarget = null
             deleteFolderConfirm = null
             refreshTrigger++
-        }
-    }
+        },
+        onFailure = { android.widget.Toast.makeText(context, it, android.widget.Toast.LENGTH_LONG).show() }
+    )
 
     // Live auto-refresh: watch MediaStore for file changes
     DisposableEffect(Unit) {
@@ -495,54 +495,23 @@ fun FolderListScreen(
                                         Text("Cancel", color = c.accentBlue, fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
                                     }
                                 } else {
-                                    Column(modifier = Modifier.weight(1f)) {
-                                        Text(currentTab, fontSize = 28.sp, fontWeight = FontWeight.Bold, color = c.textPrimary)
-                                        if (currentTab == "Video" && totalVideoCount > 0) {
-                                            Text("$totalVideoCount videos · ${formatSize(totalSize)}", fontSize = 12.sp, color = c.textSecondary)
-                                        } else if (currentTab == "Music" && com.example.ymediaplayer.service.MusicService.totalTracksCount.intValue > 0) {
-                                            Text("${com.example.ymediaplayer.service.MusicService.totalTracksCount.intValue} tracks · ${formatSize(com.example.ymediaplayer.service.MusicService.totalTracksSize.longValue)}", fontSize = 12.sp, color = c.textSecondary)
+                                    val detectedUpdate = UpdateManager.availableUpdate.value
+                                    LibraryHeader(
+                                        title = currentTab,
+                                        summary = when {
+                                            currentTab == "Video" && totalVideoCount > 0 ->
+                                                "$totalVideoCount videos · ${formatSize(totalSize)}"
+                                            currentTab == "Music" && MusicService.totalTracksCount.intValue > 0 ->
+                                                "${MusicService.totalTracksCount.intValue} tracks · ${formatSize(MusicService.totalTracksSize.longValue)}"
+                                            else -> null
+                                        },
+                                        actionCount = if (currentTab == "Video") 4 else 3,
+                                        updateVersion = detectedUpdate?.versionName,
+                                        onUpdateClick = {
+                                            view.performHaptic(HapticType.LIGHT)
+                                            UpdateManager.openUpdateDialog()
                                         }
-                                    }
-                                    Row(
-                                        horizontalArrangement = Arrangement.spacedBy(4.dp),
-                                        verticalAlignment = Alignment.CenterVertically
                                     ) {
-                                        // 0. Update Available Green Button / Indicator
-                                        val detectedUpdate = UpdateManager.availableUpdate.value
-                                        if (detectedUpdate != null) {
-                                            Surface(
-                                                onClick = {
-                                                    view.performHaptic(HapticType.LIGHT)
-                                                    UpdateManager.openUpdateDialog()
-                                                },
-                                                shape = RoundedCornerShape(14.dp),
-                                                color = Color(0xFF10B981).copy(alpha = 0.16f),
-                                                border = BorderStroke(1.2.dp, Color(0xFF10B981).copy(alpha = 0.65f)),
-                                                modifier = Modifier.height(36.dp)
-                                            ) {
-                                                Row(
-                                                    verticalAlignment = Alignment.CenterVertically,
-                                                    horizontalArrangement = Arrangement.spacedBy(5.dp),
-                                                    modifier = Modifier.padding(horizontal = 9.dp, vertical = 6.dp)
-                                                ) {
-                                                    Icon(
-                                                        imageVector = Icons.Rounded.SystemUpdate,
-                                                        contentDescription = "Update Available",
-                                                        tint = Color(0xFF10B981),
-                                                        modifier = Modifier.size(17.dp)
-                                                    )
-                                                    Text(
-                                                        text = "Update Available",
-                                                        color = Color(0xFF10B981),
-                                                        fontSize = 12.sp,
-                                                        fontWeight = FontWeight.Bold,
-                                                        maxLines = 1,
-                                                        softWrap = false
-                                                    )
-                                                }
-                                            }
-                                        }
-
                                         // 1. Color Theme Palette button
                                         Box(
                                             modifier = Modifier
@@ -1455,7 +1424,7 @@ fun FolderListScreen(
                         folderActionTarget = null
                     }
                     if (folder.id != "last_played" && folder.id != "all_videos") {
-                        VideoActionItem(Icons.Rounded.Delete, "Move All to Bin", Color(0xFFE53935)) { deleteFolderConfirm = folder; folderActionTarget = null }
+                        VideoActionItem(Icons.Rounded.Delete, if (hasRecycleBin) "Move All to Bin" else "Delete all videos", Color(0xFFE53935)) { deleteFolderConfirm = folder; folderActionTarget = null }
                     }
                 }
             }
@@ -1486,11 +1455,7 @@ fun FolderListScreen(
                         val finalName = if (ext.isNotEmpty()) "$newName.$ext" else newName
                         coroutineScope.launch {
                             val result = fileManager.renameVideo(video.id, finalName)
-                            when (result) {
-                                is com.example.ymediaplayer.data.FileOperationResult.NeedsConfirmation -> deleteRequestLauncher.launch(androidx.activity.result.IntentSenderRequest.Builder(result.intentSender).build())
-                                is com.example.ymediaplayer.data.FileOperationResult.Success -> { refreshTrigger++; renameVideoTarget = null }
-                                is com.example.ymediaplayer.data.FileOperationResult.Failure -> android.widget.Toast.makeText(context, result.message, android.widget.Toast.LENGTH_SHORT).show()
-                            }
+                            handleFileOperation(result)
                         }
                     }) { Text("Rename", color = c.accentBlue) }
                 },
@@ -1504,24 +1469,16 @@ fun FolderListScreen(
             AlertDialog(
                 onDismissRequest = { deleteVideosConfirm = emptyList() },
                 containerColor = c.dropdownBg,
-                title = { Text(if (count == 1) "Move to Recycle Bin?" else "Move $count Videos to Bin?", color = c.textPrimary, fontWeight = FontWeight.Bold) },
-                text = { Text("Videos will be moved to your device's Recycle Bin (Google Files / Gallery) where they can be restored within 30 days.", color = c.textSecondary) },
+                title = { Text(if (!hasRecycleBin) "Permanently delete $count video(s)?" else if (count == 1) "Move to Recycle Bin?" else "Move $count Videos to Bin?", color = c.textPrimary, fontWeight = FontWeight.Bold) },
+                text = { Text(if (hasRecycleBin) "Videos will be moved to your device's Recycle Bin where they can be restored for a limited time." else "Your Android version does not support the system Recycle Bin. These videos will be permanently deleted and cannot be restored.", color = c.textSecondary) },
                 confirmButton = {
                     TextButton(onClick = {
                         coroutineScope.launch {
                             val uris = deleteVideosConfirm.map { it.uri }
                             val result = fileManager.deleteVideos(uris)
-                            when (result) {
-                                is com.example.ymediaplayer.data.FileOperationResult.NeedsConfirmation -> deleteRequestLauncher.launch(androidx.activity.result.IntentSenderRequest.Builder(result.intentSender).build())
-                                is com.example.ymediaplayer.data.FileOperationResult.Success -> {
-                                    selectedVideoIds = emptySet<Long>()
-                                    deleteVideosConfirm = emptyList()
-                                    refreshTrigger++
-                                }
-                                is com.example.ymediaplayer.data.FileOperationResult.Failure -> android.widget.Toast.makeText(context, result.message, android.widget.Toast.LENGTH_SHORT).show()
-                            }
+                            handleFileOperation(result)
                         }
-                    }) { Text("Move to Bin", color = Color(0xFFE53935)) }
+                    }) { Text(if (hasRecycleBin) "Move to Bin" else "Delete permanently", color = Color(0xFFE53935)) }
                 },
                 dismissButton = { TextButton(onClick = { deleteVideosConfirm = emptyList() }) { Text("Cancel", color = c.textSecondary) } }
             )
@@ -1532,23 +1489,16 @@ fun FolderListScreen(
             AlertDialog(
                 onDismissRequest = { deleteFolderConfirm = null },
                 containerColor = c.dropdownBg,
-                title = { Text("Move \"${folder.name}\" to Recycle Bin?", color = c.textPrimary, fontWeight = FontWeight.Bold) },
-                text = { Text("All ${folder.videos.size} videos in this folder will be moved to your device's Recycle Bin (Google Files / Gallery) where they can be restored.", color = c.textSecondary) },
+                title = { Text(if (hasRecycleBin) "Move \"${folder.name}\" to Recycle Bin?" else "Permanently delete folder videos?", color = c.textPrimary, fontWeight = FontWeight.Bold) },
+                text = { Text(if (hasRecycleBin) "All ${folder.videos.size} videos in this folder will be moved to your device's Recycle Bin." else "All ${folder.videos.size} videos will be permanently deleted. Your Android version does not support the system Recycle Bin. This cannot be undone.", color = c.textSecondary) },
                 confirmButton = {
                     TextButton(onClick = {
                         coroutineScope.launch {
                             val uris = folder.videos.map { it.uri }
                             val result = fileManager.deleteVideos(uris)
-                            when (result) {
-                                is com.example.ymediaplayer.data.FileOperationResult.NeedsConfirmation -> deleteRequestLauncher.launch(androidx.activity.result.IntentSenderRequest.Builder(result.intentSender).build())
-                                is com.example.ymediaplayer.data.FileOperationResult.Success -> {
-                                    deleteFolderConfirm = null
-                                    refreshTrigger++
-                                }
-                                is com.example.ymediaplayer.data.FileOperationResult.Failure -> android.widget.Toast.makeText(context, result.message, android.widget.Toast.LENGTH_SHORT).show()
-                            }
+                            handleFileOperation(result)
                         }
-                    }) { Text("Move All to Bin", color = Color(0xFFE53935)) }
+                    }) { Text(if (hasRecycleBin) "Move All to Bin" else "Delete all permanently", color = Color(0xFFE53935)) }
                 },
                 dismissButton = { TextButton(onClick = { deleteFolderConfirm = null }) { Text("Cancel", color = c.textSecondary) } }
             )

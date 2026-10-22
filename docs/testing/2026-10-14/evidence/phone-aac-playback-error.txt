@@ -1,0 +1,47 @@
+E/ExoPlayerImplInternal( 1711): Playback error
+E/ExoPlayerImplInternal( 1711):   androidx.media3.exoplayer.ExoPlaybackException: Unexpected runtime error
+E/ExoPlayerImplInternal( 1711):       at androidx.media3.exoplayer.ExoPlayerImplInternal.handleMessage(ExoPlayerImplInternal.java:1005)
+E/ExoPlayerImplInternal( 1711):       at android.os.Handler.dispatchMessageImpl(Handler.java:138)
+E/ExoPlayerImplInternal( 1711):       at android.os.Handler.dispatchMessage(Handler.java:125)
+E/ExoPlayerImplInternal( 1711):       at android.os.Looper.loopOnce(Looper.java:321)
+E/ExoPlayerImplInternal( 1711):       at android.os.Looper.loop(Looper.java:422)
+E/ExoPlayerImplInternal( 1711):       at android.os.HandlerThread.run(HandlerThread.java:139)
+E/ExoPlayerImplInternal( 1711):   Caused by: java.lang.IllegalArgumentException: The source buffer is this buffer
+E/ExoPlayerImplInternal( 1711):       at java.nio.Buffer.createSameBufferException(Buffer.java:279)
+E/ExoPlayerImplInternal( 1711):       at java.nio.ByteBuffer.put(ByteBuffer.java:1023)
+E/ExoPlayerImplInternal( 1711):       at java.nio.DirectByteBuffer.put(DirectByteBuffer.java:310)
+E/ExoPlayerImplInternal( 1711):       at com.example.ymediaplayer.player.VideoDynamicsProcessor.queueInput(VideoDynamicsProcessor.kt:67)
+E/ExoPlayerImplInternal( 1711):       at androidx.media3.common.audio.AudioProcessingPipeline.processData(AudioProcessingPipeline.java:369)
+E/ExoPlayerImplInternal( 1711):       at androidx.media3.common.audio.AudioProcessingPipeline.getOutput(AudioProcessingPipeline.java:260)
+E/ExoPlayerImplInternal( 1711):       at androidx.media3.exoplayer.audio.DefaultAudioSink.processBuffers(DefaultAudioSink.java:1205)
+E/ExoPlayerImplInternal( 1711):       at androidx.media3.exoplayer.audio.DefaultAudioSink.handleBuffer(DefaultAudioSink.java:1077)
+E/ExoPlayerImplInternal( 1711):       at androidx.media3.exoplayer.audio.MediaCodecAudioRenderer.lambda$processOutputBuffer$0$androidx-media3-exoplayer-audio-MediaCodecAudioRenderer(MediaCodecAudioRenderer.java:938)
+E/ExoPlayerImplInternal( 1711):       at androidx.media3.exoplayer.audio.MediaCodecAudioRenderer$$ExternalSyntheticLambda0.run(D8$$SyntheticClass:0)
+E/ExoPlayerImplInternal( 1711):       at androidx.media3.exoplayer.mediacodec.AsynchronousMediaCodecAdapter.lambda$useBuffer$0$androidx-media3-exoplayer-mediacodec-AsynchronousMediaCodecAdapter(AsynchronousMediaCodecAdapter.java:274)
+E/ExoPlayerImplInternal( 1711):       at androidx.media3.exoplayer.mediacodec.AsynchronousMediaCodecAdapter$$ExternalSyntheticLambda1.run(D8$$SyntheticClass:0)
+
+I/VideoPlayback( 1711): playback_error: code=ERROR_CODE_FAILED_RUNTIME_CHECK, attempt=0, action=RETRY, renderer=null, message=Unexpected runtime error
+E/ExoPlayerImplInternal( 1711): Playback error
+E/ExoPlayerImplInternal( 1711):   androidx.media3.exoplayer.ExoPlaybackException: Unexpected runtime error
+E/ExoPlayerImplInternal( 1711):       at androidx.media3.exoplayer.ExoPlayerImplInternal.handleMessage(ExoPlayerImplInternal.java:1005)
+E/ExoPlayerImplInternal( 1711):       at android.os.Handler.dispatchMessageImpl(Handler.java:138)
+E/ExoPlayerImplInternal( 1711):       at android.os.Handler.dispatchMessage(Handler.java:125)
+E/ExoPlayerImplInternal( 1711):       at android.os.Looper.loopOnce(Looper.java:321)
+E/ExoPlayerImplInternal( 1711):       at android.os.Looper.loop(Looper.java:422)
+E/ExoPlayerImplInternal( 1711):       at android.os.HandlerThread.run(HandlerThread.java:139)
+E/ExoPlayerImplInternal( 1711):   Caused by: java.lang.IllegalArgumentException: The source buffer is this buffer
+E/ExoPlayerImplInternal( 1711):       at java.nio.Buffer.createSameBufferException(Buffer.java:279)
+E/ExoPlayerImplInternal( 1711):       at java.nio.ByteBuffer.put(ByteBuffer.java:1023)
+E/ExoPlayerImplInternal( 1711):       at java.nio.DirectByteBuffer.put(DirectByteBuffer.java:310)
+E/ExoPlayerImplInternal( 1711):       at com.example.ymediaplayer.player.VideoDynamicsProcessor.queueInput(VideoDynamicsProcessor.kt:67)
+E/ExoPlayerImplInternal( 1711):       at androidx.media3.common.audio.AudioProcessingPipeline.processData(AudioProcessingPipeline.java:369)
+E/ExoPlayerImplInternal( 1711):       at androidx.media3.common.audio.AudioProcessingPipeline.getOutput(AudioProcessingPipeline.java:260)
+E/ExoPlayerImplInternal( 1711):       at androidx.media3.exoplayer.audio.DefaultAudioSink.processBuffers(DefaultAudioSink.java:1205)
+E/ExoPlayerImplInternal( 1711):       at androidx.media3.exoplayer.audio.DefaultAudioSink.handleBuffer(DefaultAudioSink.java:1077)
+E/ExoPlayerImplInternal( 1711):       at androidx.media3.exoplayer.audio.MediaCodecAudioRenderer.lambda$processOutputBuffer$0$androidx-media3-exoplayer-audio-MediaCodecAudioRenderer(MediaCodecAudioRenderer.java:938)
+E/ExoPlayerImplInternal( 1711):       at androidx.media3.exoplayer.audio.MediaCodecAudioRenderer$$ExternalSyntheticLambda0.run(D8$$SyntheticClass:0)
+E/ExoPlayerImplInternal( 1711):       at androidx.media3.exoplayer.mediacodec.AsynchronousMediaCodecAdapter.lambda$useBuffer$0$androidx-media3-exoplayer-mediacodec-AsynchronousMediaCodecAdapter(AsynchronousMediaCodecAdapter.java:274)
+E/ExoPlayerImplInternal( 1711):       at androidx.media3.exoplayer.mediacodec.AsynchronousMediaCodecAdapter$$ExternalSyntheticLambda1.run(D8$$SyntheticClass:0)
+
+I/VideoPlayback( 1711): playback_error: code=ERROR_CODE_FAILED_RUNTIME_CHECK, attempt=1, action=COMPATIBILITY_FALLBACK, renderer=null, message=Unexpected runtime error
+I/VideoPlayback( 1711): compatibility_fallback: ERROR_CODE_FAILED_RUNTIME_CHECK: Unexpected runtime error

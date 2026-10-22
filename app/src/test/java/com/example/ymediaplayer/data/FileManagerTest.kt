@@ -41,4 +41,11 @@ class FileManagerTest {
         val formatted = SimpleDateFormat("dd MMM yyyy, HH:mm", Locale.US).format(Date(epochSeconds * 1000L))
         assertTrue(formatted.contains("2023"))
     }
+    @Test fun recycleBinIsNeverPromisedOnPlatformsWithPermanentDeleteOnly() {
+        org.junit.Assert.assertFalse(FileManager.supportsRecycleBin(24))
+        org.junit.Assert.assertFalse(FileManager.supportsRecycleBin(29))
+        assertTrue(FileManager.supportsRecycleBin(30))
+        assertTrue(FileManager.supportsRecycleBin(37))
+    }
+
 }

@@ -69,6 +69,8 @@ fun SettingsScreen(
     val c = LocalAppColors.current
     val scope = rememberCoroutineScope()
     val currentVersionName = remember { UpdateManager.getCurrentVersionName(context) }
+    var autoCheckUpdates by remember { mutableStateOf(appPreferences.isAutoCheckUpdatesEnabled()) }
+    val updateError = UpdateManager.errorMessage.value
 
     val primaryAccent = themeController.colorTheme.primaryAccent
     val secondaryAccent = themeController.colorTheme.secondaryAccent
@@ -673,7 +675,7 @@ fun SettingsScreen(
                         onCheckedChange = {
                             autoPlayNext = it
                             appPreferences.setAutoPlayNextEnabled(it)
-                            com.example.ymediaplayer.service.MusicService.isAutoPlayEnabled.value = it
+                            com.example.ymediaplayer.service.MusicService.setAutoPlayEnabled(it)
                         }
                     )
 
@@ -1835,7 +1837,6 @@ fun SettingsScreen(
 
                     SettingsDivider()
 
-                    var autoCheckUpdates by remember { mutableStateOf(appPreferences.isAutoCheckUpdatesEnabled()) }
                     SettingsItemToggle(
                         title = "Auto-Check for Updates",
                         subtitle = "Automatically notify when a new release is available",
@@ -2223,6 +2224,23 @@ fun SettingsScreen(
         null -> {}
     }
 
+    if (updateError != null && !UpdateManager.showUpdateDialog.value) {
+        AlertDialog(
+            onDismissRequest = { UpdateManager.errorMessage.value = null },
+            title = { Text("Couldn't check for updates") },
+            text = { Text(updateError) },
+            confirmButton = { TextButton(onClick = {
+                scope.launch {
+                    val result = UpdateManager.checkForUpdates(context, appPreferences, isManual = true)
+                    if (result.isSuccess && result.getOrNull() == null) {
+                        Toast.makeText(context, "You are using the latest version", Toast.LENGTH_SHORT).show()
+                    }
+                }
+            }) { Text("Retry") } },
+            dismissButton = { TextButton(onClick = { UpdateManager.errorMessage.value = null }) { Text("Close") } }
+        )
+    }
+
     // ─── Update History Dialog ──────────────────────────────────────────
     if (showUpdateHistoryDialog) {
         UpdateHistoryDialog(
@@ -2292,6 +2310,21 @@ fun SettingsScreen(
                 TextButton(
                     onClick = {
                         appPreferences.resetAllSettingsToDefaults()
+                        autoCheckUpdates = appPreferences.isAutoCheckUpdatesEnabled()
+                        com.example.ymediaplayer.service.MusicService.initPreferencesState(context)
+                        com.example.ymediaplayer.service.MusicService.setRepeatMode(0)
+                        com.example.ymediaplayer.service.MusicService.setShuffleEnabled(false)
+                        com.example.ymediaplayer.service.MusicService.setSleepTimer(0)
+                        videoColorProfile = appPreferences.getVideoColorProfile()
+                        videoSharpnessLevel = appPreferences.getVideoSharpnessLevel()
+                        videoContrast = appPreferences.getVideoCustomContrast()
+                        videoSaturation = appPreferences.getVideoCustomSaturation()
+                        videoBrightness = appPreferences.getVideoCustomBrightness()
+                        videoWarmth = appPreferences.getVideoCustomWarmth()
+                        videoSharpness = appPreferences.getVideoCustomSharpness()
+                        videoSoundMode = appPreferences.getVideoSoundMode()
+                        ambientGlowStrength = appPreferences.getAmbientGlowStrength()
+                        uiCornerStyle = appPreferences.getUiCornerStyle()
                         themeController.updateMode(ThemeMode.OLED_BLACK)
                         themeController.updateColorTheme(PlayerTheme.CYBER)
                         resumeMode = appPreferences.getResumeMode()
@@ -2299,7 +2332,7 @@ fun SettingsScreen(
                         seekSeconds = appPreferences.getDoubleTapSeekSeconds()
                         autoPip = appPreferences.isAutoPipEnabled()
                         autoPlayNext = appPreferences.isAutoPlayNextEnabled()
-                        com.example.ymediaplayer.service.MusicService.isAutoPlayEnabled.value = autoPlayNext
+                        com.example.ymediaplayer.service.MusicService.setAutoPlayEnabled(autoPlayNext)
                         rememberPlaylistQueue = appPreferences.isRememberPlaylistQueue()
                         backgroundPlay = appPreferences.isBackgroundPlayEnabled()
                         autoHideTimeoutMs = appPreferences.getControlsAutoHideTimeoutMs()
@@ -2351,13 +2384,6 @@ fun SettingsScreen(
         )
     }
 
-    val updateToDisplay = UpdateManager.availableUpdate.value
-    if (updateToDisplay != null) {
-        UpdateDialog(
-            release = updateToDisplay,
-            onDismiss = { UpdateManager.dismissUpdate() }
-        )
-    }
     }
 }
 

@@ -30,18 +30,22 @@ internal fun VideoSeekPreview(url: String, positionMs: Long) {
     val latestPosition = rememberUpdatedState(positionMs)
     var bitmap by remember(url) { mutableStateOf<Bitmap?>(null) }
     LaunchedEffect(url) {
+        // Older retrievers only decode full-size frames; keep time-based seeking without
+        // allocating a potentially huge 4K frame on low-memory API 24–26 devices.
+        if (Build.VERSION.SDK_INT < 27) return@LaunchedEffect
         withContext(Dispatchers.IO) {
             val retriever = MediaMetadataRetriever()
-            val cache = android.util.LruCache<Long, Bitmap>(12)
+            val cache = object : android.util.LruCache<Long, Bitmap>(2 * 1024 * 1024) {
+                override fun sizeOf(key: Long, value: Bitmap) = value.allocationByteCount
+            }
             try {
                 retriever.setDataSource(context, url.toUri())
                 var lastTime = -1L
                 while (isActive) {
                     val time = latestPosition.value.coerceAtLeast(0L) / 500 * 500
                     if (time != lastTime) {
-                        val result = cache.get(time) ?: if (Build.VERSION.SDK_INT >= 27) {
-                            retriever.getScaledFrameAtTime(time * 1000, MediaMetadataRetriever.OPTION_CLOSEST_SYNC, 240, 136)
-                        } else retriever.getFrameAtTime(time * 1000, MediaMetadataRetriever.OPTION_CLOSEST_SYNC)
+                        val result = cache.get(time) ?: retriever.getScaledFrameAtTime(
+                            time * 1000, MediaMetadataRetriever.OPTION_CLOSEST_SYNC, 240, 136)
                         if (result != null) cache.put(time, result)
                         withContext(Dispatchers.Main) { bitmap = result }
                         lastTime = time
@@ -50,7 +54,7 @@ internal fun VideoSeekPreview(url: String, positionMs: Long) {
                 }
             } catch (_: Exception) {
                 // Seeking remains available for streams or formats without thumbnail extraction.
-            } finally { retriever.release() }
+            } finally { cache.evictAll(); retriever.release() }
         }
     }
     Column(horizontalAlignment = Alignment.CenterHorizontally) {

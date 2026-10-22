@@ -1,0 +1,19 @@
+<?xml version='1.0' encoding='UTF-8' ?>
+<testsuites tests="6" failures="0" errors="0" skipped="0" time="0.000" timestamp="2026-10-14T12:21:03" hostname="localhost">
+  <testsuite name="com.example.ymediaplayer.PermissionScreenTest" tests="1" failures="0" errors="0" skipped="0" time="0.896" timestamp="2026-10-14T12:21:03" hostname="localhost">
+    <properties>
+      <property name="device" value="RZCY803HPZJ" />
+    </properties>
+    <testcase name="permissionFallbackScreen_rendersAndHandlesClicks" classname="com.example.ymediaplayer.PermissionScreenTest" time="0.896" />
+  </testsuite>
+  <testsuite name="com.example.ymediaplayer.ui.UpdateUiTest" tests="5" failures="0" errors="0" skipped="0" time="3.858" timestamp="2026-10-14T12:21:03" hostname="localhost">
+    <properties>
+      <property name="device" value="RZCY803HPZJ" />
+    </properties>
+    <testcase name="updateBannerCannotCollapseLibraryTitleWithLargeText" classname="com.example.ymediaplayer.ui.UpdateUiTest" time="0.763" />
+    <testcase name="shortWindowAndLargeTextCanScrollToActions" classname="com.example.ymediaplayer.ui.UpdateUiTest" time="0.776" />
+    <testcase name="dialogShowsVersionsFormattedFeaturesAndWorkingActions" classname="com.example.ymediaplayer.ui.UpdateUiTest" time="0.773" />
+    <testcase name="downloadingShowsProgressAndPreventsDuplicateDownload" classname="com.example.ymediaplayer.ui.UpdateUiTest" time="0.635" />
+    <testcase name="nativeDialogKeepsDownloadInsideItsWindow" classname="com.example.ymediaplayer.ui.UpdateUiTest" time="0.911" />
+  </testsuite>
+</testsuites>

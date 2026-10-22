@@ -38,7 +38,9 @@ internal class VideoSubtitleState(val videoUrl: String, val prefs: AppPreference
     var error by mutableStateOf<String?>(null)
     var loading by mutableStateOf(false)
     var delayMs by mutableLongStateOf(prefs.getSubtitleDelayMs(videoUrl))
-    fun useEmbedded() {
+    var restoreEmbeddedSelection = true
+    fun useEmbedded(preserveSelection: Boolean = false) {
+        restoreEmbeddedSelection = !preserveSelection
         uri = null; lines = emptyList(); error = null
         prefs.setExternalSubtitleUri(videoUrl, null)
     }
@@ -53,6 +55,7 @@ internal fun rememberVideoSubtitles(url: String, player: ExoPlayer, view: Player
     val state = remember(url) { VideoSubtitleState(url, prefs) }
     LaunchedEffect(state.uri) {
         val uri = state.uri ?: return@LaunchedEffect
+        state.restoreEmbeddedSelection = true
         state.loading = true
         try {
             val text = withContext(Dispatchers.IO) {
@@ -85,8 +88,10 @@ internal fun rememberVideoSubtitles(url: String, player: ExoPlayer, view: Player
             .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, true).build()
         onDispose {
             if (externalActive) {
-                player.trackSelectionParameters = player.trackSelectionParameters.buildUpon()
-                    .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, wasDisabled).build()
+                if (state.restoreEmbeddedSelection) {
+                    player.trackSelectionParameters = player.trackSelectionParameters.buildUpon()
+                        .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, wasDisabled).build()
+                }
                 view.subtitleView?.setCues(emptyList())
             }
         }
@@ -132,7 +137,7 @@ internal fun VideoSubtitleTools(state: VideoSubtitleState, view: PlayerView, des
                     Text("Import an SRT or WebVTT file to adjust timing and search dialogue.", style = MaterialTheme.typography.bodySmall)
                     Row {
                         TextButton(onClick = { import.launch(arrayOf("*/*")) }) { Text("Import subtitles") }
-                        if (state.uri != null) TextButton(onClick = state::useEmbedded) { Text("Use embedded") }
+                        if (state.uri != null) TextButton(onClick = { state.useEmbedded() }) { Text("Use embedded") }
                     }
                     if (state.loading) LinearProgressIndicator(Modifier.fillMaxWidth())
                     state.error?.let { Text(it, color = MaterialTheme.colorScheme.error) }

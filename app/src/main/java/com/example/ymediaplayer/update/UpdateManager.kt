@@ -12,6 +12,10 @@ import androidx.core.content.FileProvider
 import androidx.core.content.pm.PackageInfoCompat
 import com.example.ymediaplayer.data.AppPreferences
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
+import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.withContext
 import org.json.JSONObject
 import java.io.File
@@ -48,6 +52,9 @@ object UpdateManager {
     val downloadProgress = mutableFloatStateOf(0f)
     val downloadStatusText = mutableStateOf("")
     val errorMessage = mutableStateOf<String?>(null)
+    val historyError = mutableStateOf<String?>(null)
+    val readyToInstallTag = mutableStateOf<String?>(null)
+    private val downloadMutex = Mutex()
 
     /**
      * Checks GitHub for the latest release.
@@ -58,6 +65,7 @@ object UpdateManager {
         appPreferences: AppPreferences,
         isManual: Boolean = false
     ): Result<ReleaseInfo?> = withContext(Dispatchers.IO) {
+        var activeConnection: HttpURLConnection? = null
         if (!isManual && !appPreferences.isAutoCheckUpdatesEnabled()) {
             return@withContext Result.success(null)
         }
@@ -85,6 +93,7 @@ object UpdateManager {
                 setRequestProperty("User-Agent", "YMedia-Player-Android")
                 setRequestProperty("Accept", "application/vnd.github.v3+json")
             }
+            activeConnection = connection
 
             val responseCode = connection.responseCode
             if (responseCode == HttpURLConnection.HTTP_NOT_FOUND) {
@@ -136,7 +145,8 @@ object UpdateManager {
             appPreferences.setLastUpdateCheckTime(now)
 
             if (apkUrl.isNullOrBlank()) {
-                // Fallback: Download the committed app-release.apk directly from the GitHub repository
+                // Some releases distribute the APK from the repository. The downloaded
+                // package version is verified below so a stale file cannot be installed.
                 apkUrl = "https://github.com/yashwantmandal26/AllRounderPlayer/raw/main/app-release.apk"
                 apkName = "YMedia_${cleanVersion(tagName)}.apk"
             }
@@ -165,6 +175,7 @@ object UpdateManager {
 
                 withContext(Dispatchers.Main) {
                     availableUpdate.value = release
+                    if (isManual) showUpdateDialog.value = true
                     isChecking.value = false
                 }
                 return@withContext Result.success(release)
@@ -176,12 +187,17 @@ object UpdateManager {
                 return@withContext Result.success(null)
             }
 
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
             withContext(Dispatchers.Main) {
                 isChecking.value = false
                 if (isManual) errorMessage.value = e.message ?: "Failed to check for updates"
             }
             return@withContext Result.failure(e)
+        } finally {
+            activeConnection?.disconnect()
+            withContext(kotlinx.coroutines.NonCancellable + Dispatchers.Main) { isChecking.value = false }
         }
     }
 
@@ -190,22 +206,36 @@ object UpdateManager {
      */
     suspend fun downloadAndInstall(
         context: Context,
-        release: ReleaseInfo
+        release: ReleaseInfo,
+        installationAllowed: () -> Boolean = { hasInstallPermission(context) }
     ) = withContext(Dispatchers.IO) {
-        withContext(Dispatchers.Main) {
-            isDownloading.value = true
-            downloadProgress.floatValue = 0f
-            downloadStatusText.value = "Starting download..."
-            errorMessage.value = null
-        }
-
+        if (!downloadMutex.tryLock()) return@withContext
+        var activeConnection: HttpURLConnection? = null
+        var completed = false
+        // Remote version names must never be interpreted as filesystem paths.
         val targetDir = context.getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS) ?: context.cacheDir
-        val apkFile = File(targetDir, "YMedia_${release.versionName}.apk")
-
+        val apkFile = File(targetDir, "YMedia_${release.versionName.replace(Regex("[^A-Za-z0-9._-]"), "_")}.apk")
         try {
-            if (apkFile.exists()) {
-                apkFile.delete()
+            withContext(Dispatchers.Main) {
+                isDownloading.value = true
+                downloadProgress.floatValue = 0f
+                downloadStatusText.value = "Starting download..."
+                errorMessage.value = null
+                readyToInstallTag.value = null
             }
+            val installState = context.getSharedPreferences("update_install_state", Context.MODE_PRIVATE)
+            if (installState.getString("ready_tag", null) == release.tagName && apkFile.exists() &&
+                isValidApkArchive(apkFile) && isApkSignedByThisApp(context, apkFile)) {
+                completed = true
+                withContext(Dispatchers.Main) {
+                    isDownloading.value = false
+                    readyToInstallTag.value = release.tagName
+                    downloadStatusText.value = "Ready to install"
+                    triggerInstall(context, apkFile, installationAllowed)
+                }
+                return@withContext
+            }
+            if (apkFile.exists()) apkFile.delete()
 
             // Download supporting redirects (GitHub -> AWS S3)
             var currentUrl = release.apkDownloadUrl
@@ -220,6 +250,7 @@ object UpdateManager {
                     readTimeout = 30000
                     setRequestProperty("User-Agent", "YMedia-Player-Android")
                 }
+                activeConnection = connection
                 val code = connection.responseCode
                 if (code == HttpURLConnection.HTTP_MOVED_PERM ||
                     code == HttpURLConnection.HTTP_MOVED_TEMP ||
@@ -228,8 +259,9 @@ object UpdateManager {
                     val newLocation = connection.getHeaderField("Location")
                     connection.disconnect()
                     if (!newLocation.isNullOrEmpty() && redirects < 6) {
-                        require(isAllowedDownloadUrl(newLocation)) { "Update redirect is not trusted" }
-                        currentUrl = newLocation
+                        val redirectedUrl = URL(u, newLocation).toString()
+                        require(isAllowedDownloadUrl(redirectedUrl)) { "Update redirect is not trusted" }
+                        currentUrl = redirectedUrl
                         redirects++
                         continue
                     }
@@ -238,12 +270,14 @@ object UpdateManager {
             }
 
             if (connection.responseCode !in 200..299) {
+                val responseCode = connection.responseCode
                 connection.disconnect()
-                throw IllegalStateException("Update server returned ${connection.responseCode}")
+                throw IllegalStateException("Update server returned $responseCode")
             }
 
             val totalLength = connection.contentLengthLong.takeIf { it > 0 } ?: release.fileSize
             require(totalLength <= MAX_APK_BYTES || totalLength <= 0L) { "Update file is unexpectedly large" }
+            withContext(Dispatchers.Main) { downloadProgress.floatValue = if (totalLength > 0) 0f else -1f }
 
             val buffer = ByteArray(32 * 1024)
             var downloaded = 0L
@@ -253,6 +287,7 @@ object UpdateManager {
                 FileOutputStream(apkFile).use { output ->
                     var bytesRead: Int
                     while (input.read(buffer).also { bytesRead = it } != -1) {
+                        currentCoroutineContext().ensureActive()
                         downloaded += bytesRead
                         require(downloaded <= MAX_APK_BYTES) { "Update file is unexpectedly large" }
                         output.write(buffer, 0, bytesRead)
@@ -260,7 +295,7 @@ object UpdateManager {
                         val now = System.currentTimeMillis()
                         if (now - lastUpdateMs > 100 || downloaded == totalLength) {
                             lastUpdateMs = now
-                            val prog = if (totalLength > 0) (downloaded.toFloat() / totalLength.toFloat()).coerceIn(0f, 1f) else 0f
+                            val prog = if (totalLength > 0) (downloaded.toFloat() / totalLength.toFloat()).coerceIn(0f, 1f) else -1f
                             val downloadedMb = downloaded.toFloat() / (1024 * 1024)
                             val totalMb = totalLength.toFloat() / (1024 * 1024)
 
@@ -277,29 +312,56 @@ object UpdateManager {
                 }
             }
             connection.disconnect()
+            require(downloaded > 0 && (totalLength <= 0 || downloaded == totalLength)) {
+                "Download was interrupted. Please try again."
+            }
+            withContext(Dispatchers.Main) {
+                downloadProgress.floatValue = 1f
+                downloadStatusText.value = "Checking installation file…"
+            }
 
             require(isValidApkArchive(apkFile)) { "Downloaded file is not a valid APK" }
             require(isApkSignedByThisApp(context, apkFile)) { "Update signature does not match this app" }
-
-            withContext(Dispatchers.Main) {
-                isDownloading.value = false
-                downloadStatusText.value = "Ready to install"
-                // Trigger the installation intent
-                triggerInstall(context, apkFile)
+            @Suppress("DEPRECATION")
+            val downloadedPackage = context.packageManager.getPackageArchiveInfo(apkFile.absolutePath, 0)
+            require(cleanVersion(downloadedPackage?.versionName.orEmpty()) == cleanVersion(release.versionName)) {
+                "The installation file does not match this release. Please check again later."
             }
 
+            context.getSharedPreferences("update_install_state", Context.MODE_PRIVATE).edit()
+                .putString("ready_tag", release.tagName).putString("ready_path", apkFile.absolutePath).commit()
+            completed = true
+            withContext(Dispatchers.Main) {
+                isDownloading.value = false
+                readyToInstallTag.value = release.tagName
+                downloadStatusText.value = "Ready to install"
+                // Trigger the installation intent
+                triggerInstall(context, apkFile, installationAllowed)
+            }
+
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
             withContext(Dispatchers.Main) {
                 isDownloading.value = false
                 errorMessage.value = "Download failed: ${e.message ?: "Network error"}"
             }
+        } finally {
+            activeConnection?.disconnect()
+            if (!completed) apkFile.delete()
+            withContext(kotlinx.coroutines.NonCancellable + Dispatchers.Main) { isDownloading.value = false }
+            downloadMutex.unlock()
         }
     }
 
     /**
      * Prompts the Android OS package installer to install the downloaded APK.
      */
-    fun triggerInstall(context: Context, apkFile: File) {
+    private fun hasInstallPermission(context: Context): Boolean =
+        Build.VERSION.SDK_INT < Build.VERSION_CODES.O || context.packageManager.canRequestPackageInstalls()
+
+    fun triggerInstall(context: Context, apkFile: File,
+        installationAllowed: () -> Boolean = { hasInstallPermission(context) }) {
         if (!apkFile.exists()) {
             errorMessage.value = "Installation file not found"
             return
@@ -307,17 +369,23 @@ object UpdateManager {
 
         // On Android 8.0+ (Oreo, API 26+), check if unknown sources permission is granted
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            if (!context.packageManager.canRequestPackageInstalls()) {
+            if (!installationAllowed()) {
                 val permissionIntent = Intent(Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES).apply {
                     data = Uri.parse("package:${context.packageName}")
                     addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
                 }
-                context.startActivity(permissionIntent)
+                context.getSharedPreferences("update_install_state", Context.MODE_PRIVATE).edit()
+                    .putString("ready_path", apkFile.absolutePath).putBoolean("awaiting_permission", true).commit()
+                downloadStatusText.value = "Allow installation, then return to continue"
+                try { context.startActivity(permissionIntent) }
+                catch (e: Exception) { errorMessage.value = "Could not open install permission: ${e.message}" }
                 return
             }
         }
 
         try {
+            context.getSharedPreferences("update_install_state", Context.MODE_PRIVATE).edit()
+                .putBoolean("awaiting_permission", false).apply()
             val apkUri: Uri = FileProvider.getUriForFile(
                 context,
                 "${context.packageName}.provider",
@@ -330,9 +398,29 @@ object UpdateManager {
                 addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
             }
             context.startActivity(installIntent)
+            downloadStatusText.value = "Installer opened. If you cancel, tap Install update to try again."
         } catch (e: Exception) {
             errorMessage.value = "Failed to launch installer: ${e.message}"
         }
+    }
+
+    suspend fun resumePendingInstall(context: Context,
+        installationAllowed: () -> Boolean = { hasInstallPermission(context) }) {
+        val state = context.getSharedPreferences("update_install_state", Context.MODE_PRIVATE)
+        if (!state.getBoolean("awaiting_permission", false)) return
+        if (!installationAllowed()) return
+        val path = state.getString("ready_path", null) ?: return
+        val file = File(path)
+        val valid = withContext(Dispatchers.IO) {
+            val directory = context.getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS) ?: context.cacheDir
+            runCatching {
+                file.parentFile?.canonicalFile == directory.canonicalFile && file.exists() &&
+                    isValidApkArchive(file) && isApkSignedByThisApp(context, file)
+            }.getOrDefault(false)
+        }
+        state.edit().putBoolean("awaiting_permission", false).apply()
+        if (valid) triggerInstall(context, file, installationAllowed)
+        else errorMessage.value = "Installation file is unavailable or invalid. Please download the update again."
     }
 
     fun openUpdateDialog() {
@@ -340,8 +428,8 @@ object UpdateManager {
     }
 
     fun dismissUpdate() {
+        if (isDownloading.value) return
         showUpdateDialog.value = false
-        isDownloading.value = false
         downloadProgress.floatValue = 0f
         errorMessage.value = null
     }
@@ -355,8 +443,10 @@ object UpdateManager {
      * Fetches the complete release history from GitHub Releases API for Update History.
      */
     suspend fun fetchReleaseHistory(context: Context): Result<List<ReleaseInfo>> = withContext(Dispatchers.IO) {
+        var activeConnection: HttpURLConnection? = null
         withContext(Dispatchers.Main) {
             isLoadingHistory.value = true
+            historyError.value = null
         }
         try {
             val url = URL(ALL_RELEASES_API)
@@ -367,11 +457,12 @@ object UpdateManager {
                 setRequestProperty("User-Agent", "YMedia-Player-Android")
                 setRequestProperty("Accept", "application/vnd.github.v3+json")
             }
+            activeConnection = connection
 
             val responseCode = connection.responseCode
             if (responseCode !in 200..299) {
                 withContext(Dispatchers.Main) { isLoadingHistory.value = false }
-                return@withContext Result.failure(Exception("GitHub API returned status $responseCode"))
+                throw IllegalStateException("Unable to load releases (HTTP $responseCode). Please try again.")
             }
 
             val jsonStr = connection.inputStream.bufferedReader().use { it.readText() }
@@ -380,6 +471,7 @@ object UpdateManager {
 
             for (i in 0 until jsonArray.length()) {
                 val json = jsonArray.getJSONObject(i)
+                if (json.optBoolean("draft") || json.optBoolean("prerelease")) continue
                 val tagName = json.optString("tag_name", "")
                 val title = json.optString("name", tagName)
                 val body = json.optString("body", "Bug fixes and performance enhancements.")
@@ -405,7 +497,7 @@ object UpdateManager {
                 }
 
                 if (apkUrl.isNullOrBlank()) {
-                    apkUrl = "https://github.com/yashwantmandal26/AllRounderPlayer/raw/main/app-release.apk"
+                    apkUrl = ""
                     apkName = "YMedia_${remoteVersionName}.apk"
                 }
 
@@ -428,11 +520,17 @@ object UpdateManager {
                 isLoadingHistory.value = false
             }
             Result.success(list)
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
             withContext(Dispatchers.Main) {
                 isLoadingHistory.value = false
+                historyError.value = e.message ?: "Check your connection and try again."
             }
             Result.failure(e)
+        } finally {
+            activeConnection?.disconnect()
+            withContext(kotlinx.coroutines.NonCancellable + Dispatchers.Main) { isLoadingHistory.value = false }
         }
     }
 

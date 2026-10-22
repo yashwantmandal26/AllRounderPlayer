@@ -398,70 +398,57 @@ private const val AGSL_LUMA_UNSHARP_SHADER = """
     }
 """
 
-private const val AGSL_SUPER_AI_ENHANCE_SHADER = """
+// SDR spatial enhancement: bounded luminance detail, shadow separation and restrained vibrance.
+// Internal visibility lets device tests compile the actual production shader.
+internal const val SMART_CLARITY_SHADER = """
     uniform shader image;
     uniform float aiStrength;
 
-    half4 main(float2 fragCoord) {
-        half4 c = image.eval(fragCoord);
-        if (aiStrength <= 0.01) {
-            return c;
-        }
-
-        // Tightly focused micro-sampling kernel for natural clarity (no halos/pixelation)
-        const float r = 1.15;
-        const float d = 0.813; // 1.15 * 0.7071
-
-        half4 up    = image.eval(fragCoord + float2(0.0, -r));
-        half4 down  = image.eval(fragCoord + float2(0.0, r));
-        half4 left  = image.eval(fragCoord + float2(-r, 0.0));
-        half4 right = image.eval(fragCoord + float2(r, 0.0));
-
-        half4 ul    = image.eval(fragCoord + float2(-d, -d));
-        half4 ur    = image.eval(fragCoord + float2(d, -d));
-        half4 dl    = image.eval(fragCoord + float2(-d, d));
-        half4 dr    = image.eval(fragCoord + float2(d, d));
-
+    half4 main(float2 coord) {
+        half4 c = image.eval(coord);
+        if (aiStrength <= 0.01 || c.a <= 0.001) return c;
         const half3 lumaW = half3(0.2126, 0.7152, 0.0722);
-        half cLuma = dot(c.rgb, lumaW);
-
-        half cardLuma = dot(up.rgb + down.rgb + left.rgb + right.rgb, lumaW);
-        half diagLuma = dot(ul.rgb + ur.rgb + dl.rgb + dr.rgb, lumaW);
-        half avgLuma  = (cardLuma + diagLuma * 0.7071) / (4.0 + 2.8284);
-
-        half lumaDiff = cLuma - avgLuma;
-        half absDiff  = abs(lumaDiff);
-
-        // 5% Precision Adaptive Clarity Core (Strict 5% detail enhancement)
-        // Soft noise gate (< 0.003) avoids amplifying flat sensor/compression noise
-        half edgeMask = smoothstep(0.003, 0.025, absDiff);
-        // Anti-ringing boundary damping for high-contrast edges
-        half boundaryDamping = clamp(1.0 - (absDiff - 0.05) * 8.0, 0.35, 1.0);
-        // Calibrated 5% high-frequency sharpness boost (strictly capped at +/- 0.050 delta)
-        half detailDelta = clamp(lumaDiff * (sharpness * 5.0) * edgeMask * boundaryDamping * aiStrength, -0.05, 0.05);
-
-        half3 rgbEnhanced = c.rgb + half3(detailDelta);
-
-        // Calibrated Mid-Shadow Clarification (Never dark, keeps deep blacks rich and natural)
-        // Illuminates shadow details in 0.05..0.60 luma zone without raising true 0.0 black floor
-        half shadowFactor = smoothstep(0.01, 0.22, cLuma) * smoothstep(0.75, 0.35, cLuma);
-        half shadowLift   = 0.045 * shadowFactor * aiStrength;
-        rgbEnhanced += half3(shadowLift);
-
-        // Gentle 3D Cinema Micro-Contrast
-        rgbEnhanced = (rgbEnhanced - half3(0.5)) * (1.0 + 0.035 * aiStrength) + half3(0.5);
-
-        // Skin-Tone Protected Smart Vibrance
-        half rC = rgbEnhanced.r;
-        half gC = rgbEnhanced.g;
-        half bC = rgbEnhanced.b;
-        bool isSkin = (rC > gC) && (gC > bC) && ((rC - bC) > 0.06) && ((rC - gC) < 0.32) && (cLuma > 0.15 && cLuma < 0.85);
-
-        half vibranceFactor = isSkin ? (1.0 + 0.02 * aiStrength) : (1.0 + 0.10 * aiStrength);
-        half enhancedLuma   = dot(rgbEnhanced, lumaW);
-        rgbEnhanced = mix(half3(enhancedLuma), rgbEnhanced, vibranceFactor);
-
-        return half4(clamp(rgbEnhanced, half3(0.0), half3(1.0)), c.a);
+        half y = dot(c.rgb, lumaW);
+        half n = dot(image.eval(coord + float2(0.0, -1.0)).rgb, lumaW);
+        half s = dot(image.eval(coord + float2(0.0,  1.0)).rgb, lumaW);
+        half w = dot(image.eval(coord + float2(-1.0, 0.0)).rgb, lumaW);
+        half e = dot(image.eval(coord + float2( 1.0, 0.0)).rgb, lumaW);
+        half nw = dot(image.eval(coord + float2(-1.0, -1.0)).rgb, lumaW);
+        half ne = dot(image.eval(coord + float2( 1.0, -1.0)).rgb, lumaW);
+        half sw = dot(image.eval(coord + float2(-1.0,  1.0)).rgb, lumaW);
+        half se = dot(image.eval(coord + float2( 1.0,  1.0)).rgb, lumaW);
+        half nearMean = (n + s + w + e) * 0.25;
+        half wideMean = (dot(image.eval(coord + float2(-2.0, 0.0)).rgb, lumaW)
+                       + dot(image.eval(coord + float2( 2.0, 0.0)).rgb, lumaW)
+                       + dot(image.eval(coord + float2(0.0, -2.0)).rgb, lumaW)
+                       + dot(image.eval(coord + float2(0.0,  2.0)).rgb, lumaW)) * 0.25;
+        half localMin = min(y, min(min(n, s), min(w, e)));
+        half localMax = max(y, max(max(n, s), max(w, e)));
+        half range = localMax - localMin;
+        half fine = y - (nearMean * 0.75 + (nw + ne + sw + se) * 0.0625);
+        // Gate tiny fluctuations and isolated noise; dark regions get less sharpening.
+        half edge = max(abs(e - w), abs(s - n));
+        half coherence = smoothstep(0.006, 0.055, edge);
+        half noiseGate = smoothstep(0.004, 0.025, abs(fine));
+        half shadowGuard = 0.42 + 0.58 * smoothstep(0.025, 0.18, y);
+        half edgeGuard = 1.0 - 0.58 * smoothstep(0.12, 0.45, range);
+        // Two scales make small facial / texture detail visible without giving
+        // large object boundaries a white or dark outline.
+        half detail = (fine * 1.35 + (nearMean - wideMean) * 0.34)
+                    * noiseGate * coherence * shadowGuard * edgeGuard * aiStrength;
+        // Stay within existing local extrema: sharpening must not create edge halos.
+        half detailedY = clamp(y + clamp(detail, -0.065, 0.065), localMin, localMax);
+        half shadow = smoothstep(0.015, 0.10, y) * (1.0 - smoothstep(0.35, 0.65, y));
+        half lift = 0.038 * shadow * aiStrength;
+        // Bounded contrast curve leaves pure black and white untouched.
+        half contrast = (y - 0.5) * y * (1.0 - y) * 0.15 * aiStrength;
+        half targetY = clamp(detailedY + lift + contrast, 0.0, c.a);
+        half3 rgb = c.rgb + half3(targetY - y);
+        half chroma = max(c.r, max(c.g, c.b)) - min(c.r, min(c.g, c.b));
+        half skin = (c.r > c.g && c.g > c.b && c.r - c.b > 0.06 && c.r - c.g < 0.32) ? 0.25 : 1.0;
+        half vibrance = 0.09 * (1.0 - smoothstep(0.15, 0.65, chroma)) * skin * aiStrength;
+        rgb = mix(half3(targetY), rgb, 1.0 + vibrance);
+        return half4(clamp(rgb, half3(0.0), half3(c.a)), c.a);
     }
 """
 
@@ -535,8 +522,10 @@ fun createVideoRenderEffect(
     if (isSuperAi) {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             try {
-                val aiShader = RuntimeShader(AGSL_SUPER_AI_ENHANCE_SHADER)
-                aiShader.setFloatUniform("aiStrength", 1.0f)
+                val aiShader = RuntimeShader(SMART_CLARITY_SHADER)
+                // Tuned for a visible improvement on phone displays while the
+                // shader's local-range clamp prevents halos and clipping.
+                aiShader.setFloatUniform("aiStrength", 1.25f)
                 val aiEffect = RenderEffect.createRuntimeShaderEffect(aiShader, "image")
 
                 val isWarmthModified = Math.abs(warmth) > 0.005f
@@ -698,8 +687,7 @@ fun VideoPlayerScreen(
     val subtitlesEnabled = remember { appPreferences.isSubtitlesEnabled() }
 
     val exoPlayer = remember(videoUrl) {
-        val resumeMode = appPreferences.getResumeMode()
-        val initialProgress = if (resumeMode != "START") appPreferences.getVideoProgress(videoUrl) else 0L
+        val initialProgress = appPreferences.getVideoStartPosition(videoUrl)
         VideoPlaybackManager.getOrCreatePlayer(
             context = context,
             url = videoUrl,
@@ -738,7 +726,7 @@ fun VideoPlayerScreen(
         }
         currentUrl = item.uri.toString()
         videoTitle = item.title.substringBeforeLast(".")
-        val itemProgress = if (appPreferences.getResumeMode() == "START") 0L else appPreferences.getVideoProgress(item.uri.toString())
+        val itemProgress = appPreferences.getVideoStartPosition(item.uri.toString())
         if (itemProgress > 0L) {
             exoPlayer.setMediaItem(MediaItem.fromUri(item.uri), itemProgress)
         } else {
@@ -876,8 +864,8 @@ fun VideoPlayerScreen(
     var resumePromptPosition by remember(currentUrl) { mutableLongStateOf(0L) }
 
     // ─── A-B Looping State ───────────────────────────────────────────────────
-    var loopStartMs by remember { mutableStateOf<Long?>(null) }
-    var loopEndMs by remember { mutableStateOf<Long?>(null) }
+    var loopStartMs by remember(currentUrl) { mutableStateOf<Long?>(null) }
+    var loopEndMs by remember(currentUrl) { mutableStateOf<Long?>(null) }
 
     // ─── Bookmarks State ─────────────────────────────────────────────────────
     var bookmarksList by remember(currentUrl) { mutableStateOf(appPreferences.getBookmarks(currentUrl)) }
@@ -1156,7 +1144,7 @@ fun VideoPlayerScreen(
     var currentWarmth by remember { mutableStateOf(appPreferences.getVideoCustomWarmth()) }
     var currentSharpness by remember { mutableStateOf(appPreferences.getVideoCustomSharpness()) }
 
-    // Super AI Video Enhancement Engine (Multi-Scale Neural Clarity, Shadow Lift & Smart Vibrance)
+    // Smart Clarity: adaptive spatial detail, bounded shadow lift and restrained colour.
     var isSuperAiEnhance by remember { mutableStateOf(appPreferences.isSuperAiEnhanceEnabled()) }
 
     val currentVideoRenderEffect = remember(currentContrast, currentSaturation, currentBrightness, currentWarmth, currentSharpness, isSuperAiEnhance, safePlaybackMode, previewOriginal, pictureStrength, sharpnessStrength, isHdrVideo) {
@@ -1195,7 +1183,7 @@ fun VideoPlayerScreen(
 
                 showQuickHUD(
                     "Smart clarity: ON",
-                    "Cinema Clarity • Shadow Clarification • Smart Vibrance",
+                    "Adaptive detail • Clearer shadows • Natural colour",
                     Icons.Rounded.AutoAwesome
                 )
             } else {
@@ -1355,7 +1343,7 @@ fun VideoPlayerScreen(
             videoTitle = nextVideo.title.substringBeforeLast(".")
             VideoPlaybackManager.currentVideoUrl.value = currentUrl
             VideoPlaybackManager.currentVideoTitle.value = videoTitle
-            val nextProgress = appPreferences.getVideoProgress(nextVideo.uri.toString())
+            val nextProgress = appPreferences.getVideoStartPosition(nextVideo.uri.toString())
             val isNextCompleted = appPreferences.isCompleted(nextVideo.uri.toString())
 
             val initialMeta = androidx.media3.common.MediaMetadata.Builder()
@@ -1415,7 +1403,7 @@ fun VideoPlayerScreen(
             videoTitle = prevVideo.title.substringBeforeLast(".")
             VideoPlaybackManager.currentVideoUrl.value = currentUrl
             VideoPlaybackManager.currentVideoTitle.value = videoTitle
-            val prevProgress = appPreferences.getVideoProgress(prevVideo.uri.toString())
+            val prevProgress = appPreferences.getVideoStartPosition(prevVideo.uri.toString())
             val isPrevCompleted = appPreferences.isCompleted(prevVideo.uri.toString())
 
             val initialPrevMeta = androidx.media3.common.MediaMetadata.Builder()
@@ -3700,7 +3688,7 @@ fun VideoPlayerScreen(
                                 horizontalArrangement = Arrangement.spacedBy(8.dp)
                             ) {
                                 OriginalPreviewButton(previewOriginal) { previewOriginal = it }
-                                // Smart clarity button (Multi-frequency neural remaster, shadow lift, and smart vibrance)
+                                // Smart Clarity toggle with original-picture comparison.
                                 PlayerIconButton(
                                     name = "Smart clarity",
                                     description = "Gentle detail enhancement, shadow lift and richer color",
@@ -3843,7 +3831,7 @@ fun VideoPlayerScreen(
 
                         Spacer(Modifier.height(6.dp))
 
-                        // Bottom Controls Row (6 Buttons: Lock, Aspect Ratio, PiP, Background Audio, Repeat, Shuffle)
+                        // Bottom controls: Lock, Aspect Ratio and Picture-in-Picture.
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()
@@ -3874,16 +3862,6 @@ fun VideoPlayerScreen(
                                     tint = primaryAccent,
                                     modifier = Modifier.size(22.dp)
                                 )
-                            }
-
-                            PlayerModeButton("Video", videoColorProfile.shortName, videoColorProfile.icon, primaryAccent) {
-                                modePicker = "Video"
-                            }
-                            PlayerModeButton("Sharpness", videoSharpnessLevel.shortName, videoSharpnessLevel.icon, primaryAccent) {
-                                modePicker = "Sharpness"
-                            }
-                            PlayerModeButton("Audio", videoSoundMode.shortName, videoSoundMode.icon, primaryAccent) {
-                                modePicker = "Audio"
                             }
 
                             // 5. Aspect Ratio / Fit Screen
@@ -4538,7 +4516,7 @@ fun VideoPlayerScreen(
             SubtitlesDialog(
                 exoPlayer = exoPlayer,
                 onOpenTools = { showSubtitleSheet = false; showSubtitleTools = true },
-                onSelectEmbedded = { subtitleState.useEmbedded() },
+                onSelectEmbedded = { subtitleState.useEmbedded(preserveSelection = true) },
                 subtitleDesign = subtitleDesign,
                 onSubtitleDesignChange = { newDesign ->
                     subtitleDesign = newDesign

@@ -28,28 +28,35 @@ data class VideoInfo(
 
 sealed interface FileOperationResult {
     data object Success : FileOperationResult
-    data class NeedsConfirmation(val intentSender: IntentSender) : FileOperationResult
+    data class NeedsConfirmation(val intentSender: IntentSender, val retry: (suspend () -> FileOperationResult)? = null) : FileOperationResult
     data class Failure(val message: String) : FileOperationResult
 }
 
 class FileManager(private val context: Context) {
+    companion object {
+        fun supportsRecycleBin(sdkInt: Int = Build.VERSION.SDK_INT) = sdkInt >= Build.VERSION_CODES.R
+    }
 
     suspend fun deleteVideos(uris: List<Uri>): FileOperationResult = withContext(Dispatchers.IO) {
         if (uris.isEmpty()) return@withContext FileOperationResult.Failure("No videos selected")
+        var remaining = uris
         try {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
                 val pendingIntent = MediaStore.createTrashRequest(context.contentResolver, uris, true)
                 FileOperationResult.NeedsConfirmation(pendingIntent.intentSender)
             } else {
-                val deleted = uris.count { uri ->
-                    context.contentResolver.delete(uri, null, null) > 0
+                var deleted = 0
+                uris.forEachIndexed { index, uri ->
+                    remaining = uris.drop(index)
+                    if (context.contentResolver.delete(uri, null, null) > 0) deleted++
                 }
                 if (deleted == uris.size) FileOperationResult.Success
                 else FileOperationResult.Failure("Only deleted $deleted of ${uris.size} videos")
             }
         } catch (e: SecurityException) {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q && e is RecoverableSecurityException) {
-                FileOperationResult.NeedsConfirmation(e.userAction.actionIntent.intentSender)
+                FileOperationResult.NeedsConfirmation(e.userAction.actionIntent.intentSender,
+                    retry = { deleteVideos(remaining) })
             } else {
                 FileOperationResult.Failure(e.message ?: "Permission denied while deleting video")
             }
@@ -75,7 +82,8 @@ class FileManager(private val context: Context) {
             else FileOperationResult.Failure("Video could not be renamed")
         } catch (e: SecurityException) {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q && e is RecoverableSecurityException) {
-                FileOperationResult.NeedsConfirmation(e.userAction.actionIntent.intentSender)
+                FileOperationResult.NeedsConfirmation(e.userAction.actionIntent.intentSender,
+                    retry = { renameVideo(videoId, newName) })
             } else {
                 FileOperationResult.Failure(e.message ?: "Permission denied while renaming video")
             }

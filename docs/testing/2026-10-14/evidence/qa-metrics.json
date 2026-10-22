@@ -1,0 +1,20 @@
+{
+  "version": "1.7.1",
+  "versionCode": 16,
+  "commit": "4a65cdd9e617c1a04831e46c995981852db102e7",
+  "localUiChangesPresent": true,
+  "device": "Samsung SM-S921E",
+  "androidApi": 37,
+  "jvmTests": 64,
+  "jvmFailures": 0,
+  "deviceTests": 6,
+  "deviceFailures": 0,
+  "newProbes": 13,
+  "newProbeFailures": 11,
+  "newProbeControlPasses": 2,
+  "reproducedFindings": 8,
+  "additionalStaticFindings": 9,
+  "productionSourceModifiedByAudit": false,
+  "generatedMediaRemovedFromPhone": true,
+  "debugPackagesRemovedFromPhone": true
+}
