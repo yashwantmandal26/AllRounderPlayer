@@ -30,6 +30,7 @@ import androidx.media3.exoplayer.SeekParameters
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import androidx.media3.exoplayer.upstream.DefaultLoadErrorHandlingPolicy
 import com.example.ymediaplayer.data.AppPreferences
+import com.example.ymediaplayer.data.VideoItem
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -178,6 +179,7 @@ object VideoPlaybackManager {
 
     private var playerListener: Player.Listener? = null
     private var dynamicsProcessor: VideoDynamicsProcessor? = null
+    var activePlaylistQueue: List<VideoItem>? = null
 
     fun setAudioDynamics(nightStrength: Float, leveling: Boolean) {
         dynamicsProcessor?.settings = VideoDynamicsProcessor.Settings(nightStrength.coerceIn(0f, 1f), leveling)
@@ -424,13 +426,14 @@ object VideoPlaybackManager {
             override fun buildAudioSink(context: Context, enableFloatOutput: Boolean,
                 enableAudioTrackPlaybackParams: Boolean): androidx.media3.exoplayer.audio.AudioSink {
                 return androidx.media3.exoplayer.audio.DefaultAudioSink.Builder(context)
+                    .setEnableFloatOutput(enableFloatOutput)
+                    .setEnableAudioTrackPlaybackParams(enableAudioTrackPlaybackParams)
                     .setAudioProcessors(arrayOf(dynamics))
                     .build()
             }
         }.apply {
             setExtensionRendererMode(DefaultRenderersFactory.EXTENSION_RENDERER_MODE_OFF)
             setEnableDecoderFallback(true)
-            setAllowedVideoJoiningTimeMs(0L)
             setEnableAudioTrackPlaybackParams(true)
         }
 

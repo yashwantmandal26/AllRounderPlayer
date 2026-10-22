@@ -643,27 +643,32 @@ fun VideoPlayerScreen(
     var currentVideoIndex by remember { mutableIntStateOf(-1) }
     var videoTitle by remember { mutableStateOf(videoUrl.substringAfterLast("/").substringBeforeLast(".")) }
 
-    // Load folder playlist
+    // Load playlist (supports custom active queue or folder playlist)
     LaunchedEffect(videoUrl) {
         currentUrl = videoUrl
         withContext(Dispatchers.IO) {
-            val folders = repository.getFoldersWithVideos()
-            allFolders = folders
             val targetUri = try { android.net.Uri.parse(videoUrl) } catch (_: Exception) { null }
-            val parentFolder = folders.find { folder ->
-                folder.id != "all_videos" && folder.videos.any { v ->
-                    v.uri.toString() == videoUrl || (targetUri != null && v.uri == targetUri)
-                }
-            } ?: folders.find { folder ->
-                folder.videos.any { v ->
-                    v.uri.toString() == videoUrl || (targetUri != null && v.uri == targetUri)
-                }
-            } ?: folders.firstOrNull()
-
-            if (parentFolder != null) {
-                playlistVideos = parentFolder.videos
+            val customQueue = VideoPlaybackManager.activePlaylistQueue
+            if (!customQueue.isNullOrEmpty() && customQueue.any { it.uri.toString() == videoUrl || (targetUri != null && it.uri == targetUri) }) {
+                playlistVideos = customQueue
             } else {
-                playlistVideos = folders.flatMap { it.videos }.distinctBy { it.id }
+                val folders = repository.getFoldersWithVideos()
+                allFolders = folders
+                val parentFolder = folders.find { folder ->
+                    folder.id != "all_videos" && folder.videos.any { v ->
+                        v.uri.toString() == videoUrl || (targetUri != null && v.uri == targetUri)
+                    }
+                } ?: folders.find { folder ->
+                    folder.videos.any { v ->
+                        v.uri.toString() == videoUrl || (targetUri != null && v.uri == targetUri)
+                    }
+                } ?: folders.firstOrNull()
+
+                if (parentFolder != null) {
+                    playlistVideos = parentFolder.videos
+                } else {
+                    playlistVideos = folders.flatMap { it.videos }.distinctBy { it.id }
+                }
             }
 
             val index = playlistVideos.indexOfFirst {
@@ -3550,20 +3555,22 @@ fun VideoPlayerScreen(
                         }
                     }
 
-                    // ─── CENTER PLAYBACK CONTROLS (Directly Centered on Video) ───────────────
+                    // ─── CENTER PLAYBACK CONTROLS (Ergonomically Positioned for Thumb Reach) ─
                     if (centerSeekText == null) {
                         Row(
-                            modifier = Modifier.align(Alignment.Center),
+                            modifier = Modifier
+                                .align(Alignment.Center)
+                                .offset(y = if (isLandscape) 16.dp else 42.dp),
                             verticalAlignment = Alignment.CenterVertically,
                             horizontalArrangement = Arrangement.spacedBy(32.dp)
                         ) {
                             // Previous Video
                             PlayerIconButton(
                                 name = "Previous video",
-                                description = "Play previous video in folder queue",
+                                description = "Play previous video in playlist queue",
                                 onClick = playPreviousVideo,
                                 icon = Icons.Rounded.SkipPrevious,
-                                enabled = currentVideoIndex > 0,
+                                enabled = playlistVideos.size > 1,
                                 modifier = Modifier
                                     .size(48.dp)
                                     .shadow(4.dp, CircleShape, ambientColor = Color.Black.copy(0.4f), spotColor = Color.Black.copy(0.4f))
@@ -3574,7 +3581,7 @@ fun VideoPlayerScreen(
                                 Icon(
                                     Icons.Rounded.SkipPrevious,
                                     contentDescription = "Previous video",
-                                    tint = if (currentVideoIndex > 0) Color.White else Color.White.copy(alpha = 0.35f),
+                                    tint = if (playlistVideos.size > 1) Color.White else Color.White.copy(alpha = 0.35f),
                                     modifier = Modifier.size(28.dp)
                                 )
                             }
@@ -3624,10 +3631,10 @@ fun VideoPlayerScreen(
                             // Next Video
                             PlayerIconButton(
                                 name = "Next video",
-                                description = "Play next video in folder queue",
+                                description = "Play next video in playlist queue",
                                 onClick = playNextVideo,
                                 icon = Icons.Rounded.SkipNext,
-                                enabled = currentVideoIndex >= 0 && currentVideoIndex < playlistVideos.size - 1,
+                                enabled = playlistVideos.size > 1,
                                 modifier = Modifier
                                     .size(48.dp)
                                     .shadow(4.dp, CircleShape, ambientColor = Color.Black.copy(0.4f), spotColor = Color.Black.copy(0.4f))
@@ -3638,8 +3645,7 @@ fun VideoPlayerScreen(
                                 Icon(
                                     Icons.Rounded.SkipNext,
                                     contentDescription = "Next video",
-                                    tint = if (currentVideoIndex >= 0 && currentVideoIndex < playlistVideos.size - 1)
-                                        Color.White else Color.White.copy(alpha = 0.35f),
+                                    tint = if (playlistVideos.size > 1) Color.White else Color.White.copy(alpha = 0.35f),
                                     modifier = Modifier.size(28.dp)
                                 )
                             }
@@ -3660,7 +3666,8 @@ fun VideoPlayerScreen(
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .padding(horizontal = 4.dp, vertical = 2.dp),
+                                .padding(horizontal = 4.dp)
+                                .offset(y = 8.dp),
                             horizontalArrangement = Arrangement.SpaceBetween,
                             verticalAlignment = Alignment.CenterVertically
                         ) {
@@ -3678,7 +3685,6 @@ fun VideoPlayerScreen(
                                 verticalAlignment = Alignment.CenterVertically,
                                 horizontalArrangement = Arrangement.spacedBy(8.dp)
                             ) {
-                                OriginalPreviewButton(previewOriginal) { previewOriginal = it }
                                 // Smart Clarity toggle with original-picture comparison.
                                 PlayerIconButton(
                                     name = "Smart clarity",
@@ -3759,8 +3765,6 @@ fun VideoPlayerScreen(
                                 }
                             }
                         }
-
-                        Spacer(Modifier.height(2.dp))
 
                         // Full-Width Seekbar Slider
                         Slider(

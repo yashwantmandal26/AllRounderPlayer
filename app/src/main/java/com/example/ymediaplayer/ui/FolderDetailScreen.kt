@@ -540,7 +540,10 @@ fun FolderDetailScreen(
                         inSelectionMode = inSelectionMode,
                         selectedVideoIds = selectedVideoIds,
                         favorites = favorites,
-                        onVideoClick = { video -> onVideoClick(video.uri.toString()) },
+                        onVideoClick = { video ->
+                            com.example.ymediaplayer.player.VideoPlaybackManager.activePlaylistQueue = displayVideos
+                            onVideoClick(video.uri.toString())
+                        },
                         onVideoLongPress = { video ->
                             view.performHaptic(HapticType.MEDIUM)
                             if (!inSelectionMode) {

@@ -322,8 +322,10 @@ class AudioVisualizerProcessor : BaseAudioProcessor() {
         val outBuffer = replaceOutputBuffer(count)
         val startPos = inputBuffer.position()
 
-        // Asynchronously peek audio samples in AudioReactor without blocking audio render thread
-        AudioReactor.onAudioPcmBuffer(inputBuffer, inputAudioFormat.channelCount)
+        // Safely peek audio samples in AudioReactor without blocking audio render thread
+        try {
+            AudioReactor.onAudioPcmBuffer(inputBuffer, inputAudioFormat.channelCount)
+        } catch (_: Throwable) {}
 
         // Pass through unmodified to audio output sink
         inputBuffer.position(startPos)

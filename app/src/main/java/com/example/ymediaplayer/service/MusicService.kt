@@ -302,45 +302,20 @@ class MusicService : MediaSessionService() {
         private var fadeJob: Job? = null
         private val musicScope = CoroutineScope(Dispatchers.Main + SupervisorJob())
 
-        fun fadeIn(player: Player, durationMs: Long = 250L, onComplete: (() -> Unit)? = null) {
+        fun fadeIn(player: Player, durationMs: Long = 150L, onComplete: (() -> Unit)? = null) {
             fadeJob?.cancel()
-            player.volume = 0f
+            player.volume = 1f
             if (!player.isPlaying) {
                 player.play()
             }
-            fadeJob = musicScope.launch {
-                val steps = 10
-                val stepDelay = durationMs / steps
-                for (i in 1..steps) {
-                    delay(stepDelay)
-                    player.volume = (i.toFloat() / steps).coerceIn(0f, 1f)
-                }
-                player.volume = 1f
-                onComplete?.invoke()
-            }
+            onComplete?.invoke()
         }
 
-        fun fadeOutAndPause(player: Player, durationMs: Long = 250L, onComplete: (() -> Unit)? = null) {
+        fun fadeOutAndPause(player: Player, durationMs: Long = 150L, onComplete: (() -> Unit)? = null) {
             fadeJob?.cancel()
-            val initialVolume = player.volume.coerceIn(0f, 1f)
-            if (initialVolume <= 0.05f || !player.isPlaying) {
-                player.pause()
-                player.volume = 1f
-                onComplete?.invoke()
-                return
-            }
-            fadeJob = musicScope.launch {
-                val steps = 10
-                val stepDelay = durationMs / steps
-                for (i in 1..steps) {
-                    delay(stepDelay)
-                    val fraction = 1f - (i.toFloat() / steps)
-                    player.volume = (initialVolume * fraction).coerceIn(0f, 1f)
-                }
-                player.pause()
-                player.volume = 1f
-                onComplete?.invoke()
-            }
+            player.pause()
+            player.volume = 1f
+            onComplete?.invoke()
         }
 
         fun pauseMusic() {
@@ -411,7 +386,8 @@ class MusicService : MediaSessionService() {
                 if (queued.uri == item.uri) mediaItem else queueMediaItem(queued)
             }, currentSongIndex, 0L)
             player.prepare()
-            fadeIn(player)
+            player.volume = 1f
+            player.play()
             isMusicPlaying.value = true
 
             serviceInstance?.updateSessionCustomLayout()
@@ -441,9 +417,9 @@ class MusicService : MediaSessionService() {
             val player = playerInstance
             if (player != null) {
                 if (player.isPlaying) {
-                    fadeOutAndPause(player) {
-                        isMusicPlaying.value = false
-                    }
+                    player.pause()
+                    player.volume = 1f
+                    isMusicPlaying.value = false
                 } else {
                     com.example.ymediaplayer.player.VideoPlaybackManager.player?.let { vPlayer ->
                         if (vPlayer.isPlaying) {
@@ -453,9 +429,9 @@ class MusicService : MediaSessionService() {
                     if (player.playbackState == Player.STATE_ENDED) {
                         player.seekTo(0L)
                     }
-                    fadeIn(player) {
-                        isMusicPlaying.value = true
-                    }
+                    player.volume = 1f
+                    player.play()
+                    isMusicPlaying.value = true
                 }
                 return
             }
@@ -507,9 +483,15 @@ class MusicService : MediaSessionService() {
                 enableAudioTrackPlaybackParams: Boolean
             ): androidx.media3.exoplayer.audio.AudioSink {
                 return androidx.media3.exoplayer.audio.DefaultAudioSink.Builder(context)
+                    .setEnableFloatOutput(enableFloatOutput)
+                    .setEnableAudioTrackPlaybackParams(enableAudioTrackPlaybackParams)
                     .setAudioProcessors(arrayOf(audioVisualizerProcessor))
                     .build()
             }
+        }.apply {
+            setExtensionRendererMode(androidx.media3.exoplayer.DefaultRenderersFactory.EXTENSION_RENDERER_MODE_OFF)
+            setEnableDecoderFallback(true)
+            setEnableAudioTrackPlaybackParams(true)
         }
 
         val appPreferences = AppPreferences(this)
@@ -726,19 +708,20 @@ class MusicService : MediaSessionService() {
 
         val forwardingPlayer = object : ForwardingPlayer(player) {
             override fun play() {
-                fadeIn(player)
+                player.volume = 1f
+                player.play()
             }
 
             override fun pause() {
-                fadeOutAndPause(player)
+                player.pause()
+                player.volume = 1f
             }
 
             override fun setPlayWhenReady(playWhenReady: Boolean) {
                 if (playWhenReady) {
-                    fadeIn(player)
-                } else {
-                    fadeOutAndPause(player)
+                    player.volume = 1f
                 }
+                super.setPlayWhenReady(playWhenReady)
             }
 
             override fun isCommandAvailable(command: Int): Boolean {

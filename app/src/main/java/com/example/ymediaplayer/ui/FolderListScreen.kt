@@ -772,6 +772,7 @@ fun FolderListScreen(
                                                 if (inSelectionMode) {
                                                     selectedVideoIds = if (selectedVideoIds.contains(video.id)) selectedVideoIds - video.id else selectedVideoIds + video.id
                                                 } else {
+                                                    com.example.ymediaplayer.player.VideoPlaybackManager.activePlaylistQueue = searchMatchingVideos
                                                     onVideoClick(video.uri.toString())
                                                 }
                                             },
@@ -826,7 +827,10 @@ fun FolderListScreen(
                                             isFavorite = favorites.contains(video.uri.toString()),
                                             inSelectionMode = inSelectionMode,
                                             isSelected = selectedVideoIds.contains(video.id),
-                                            onClick = { onVideoClick(video.uri.toString()) },
+                                            onClick = {
+                                                com.example.ymediaplayer.player.VideoPlaybackManager.activePlaylistQueue = flatVideos
+                                                onVideoClick(video.uri.toString())
+                                            },
                                             onLongPress = {
                                                 haptic.performHapticFeedback(HapticFeedbackType.LongPress)
                                                 if (!inSelectionMode) videoActionTarget = video
@@ -859,6 +863,7 @@ fun FolderListScreen(
                                                     selectedVideoIds = if (selectedVideoIds.contains(video.id))
                                                         selectedVideoIds - video.id else selectedVideoIds + video.id
                                                 } else {
+                                                    com.example.ymediaplayer.player.VideoPlaybackManager.activePlaylistQueue = searchMatchingVideos
                                                     onVideoClick(video.uri.toString())
                                                 }
                                             },
@@ -885,6 +890,7 @@ fun FolderListScreen(
                                                     selectedVideoIds = if (selectedVideoIds.contains(video.id))
                                                         selectedVideoIds - video.id else selectedVideoIds + video.id
                                                 } else {
+                                                    com.example.ymediaplayer.player.VideoPlaybackManager.activePlaylistQueue = searchMatchingVideos
                                                     onVideoClick(video.uri.toString())
                                                 }
                                             },
@@ -998,7 +1004,10 @@ fun FolderListScreen(
                                             ContinueWatchingCard(
                                                 video = video,
                                                 appPreferences = appPreferences,
-                                                onClick = { onVideoClick(video.uri.toString()) },
+                                                onClick = {
+                                                com.example.ymediaplayer.player.VideoPlaybackManager.activePlaylistQueue = continueWatchingVideos
+                                                onVideoClick(video.uri.toString())
+                                            },
                                                 onLongPress = {
                                                     view.performHaptic(HapticType.HEAVY)
                                                     if (!inSelectionMode) videoActionTarget = video
@@ -1049,7 +1058,16 @@ fun FolderListScreen(
                                         RecentlyAddedVideoCard(
                                             video = video,
                                             appPreferences = appPreferences,
-                                            onClick = { onVideoClick(video.uri.toString()) },
+                                            onClick = {
+                                                val excludeSec = appPreferences.getExcludeShortClipsSeconds()
+                                                val recentSortedQueue = allUniqueVideos.filter { v ->
+                                                    excludeSec == 0 || v.duration >= excludeSec * 1000L
+                                                }.sortedWith(
+                                                    compareByDescending<VideoItem> { it.dateAdded }.thenByDescending { it.id }
+                                                )
+                                                com.example.ymediaplayer.player.VideoPlaybackManager.activePlaylistQueue = recentSortedQueue
+                                                onVideoClick(video.uri.toString())
+                                            },
                                             onLongPress = {
                                                 view.performHaptic(HapticType.HEAVY)
                                                 if (!inSelectionMode) videoActionTarget = video
