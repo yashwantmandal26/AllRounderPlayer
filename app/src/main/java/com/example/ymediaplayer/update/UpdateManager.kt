@@ -581,31 +581,68 @@ object UpdateManager {
     @Suppress("DEPRECATION")
     private fun isApkSignedByThisApp(context: Context, apkFile: File): Boolean = runCatching {
         val packageManager = context.packageManager
-        val flags = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
-            android.content.pm.PackageManager.GET_SIGNING_CERTIFICATES
-        } else {
-            android.content.pm.PackageManager.GET_SIGNATURES
-        }
-        val archive = packageManager.getPackageArchiveInfo(apkFile.absolutePath, flags) ?: return false
-        if (archive.packageName != context.packageName) return false
-        val installed = packageManager.getPackageInfo(context.packageName, flags)
 
-        fun signatures(info: android.content.pm.PackageInfo): Set<String> {
-            val values = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
-                info.signingInfo?.apkContentsSigners.orEmpty()
+        fun extractSignatures(info: android.content.pm.PackageInfo?): Set<String> {
+            if (info == null) return emptySet()
+            val sigArray: Array<android.content.pm.Signature>? = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+                val signInfo = info.signingInfo
+                when {
+                    signInfo == null -> info.signatures
+                    signInfo.hasMultipleSigners() -> signInfo.apkContentsSigners
+                    else -> signInfo.signingCertificateHistory
+                }
             } else {
-                info.signatures.orEmpty()
+                info.signatures
             }
-            return values.map { signature ->
-                val digest = java.security.MessageDigest.getInstance("SHA-256")
-                    .digest(signature.toByteArray())
-                digest.joinToString("") { byte -> "%02x".format(byte) }
+            val validArray = sigArray ?: info.signatures ?: emptyArray()
+            return validArray.mapNotNull { signature ->
+                runCatching {
+                    val digest = java.security.MessageDigest.getInstance("SHA-256")
+                        .digest(signature.toByteArray())
+                    digest.joinToString("") { byte -> "%02x".format(byte) }
+                }.getOrNull()
             }.toSet()
         }
 
-        val installedSignatures = signatures(installed)
-        val archiveSignatures = signatures(archive)
-        installedSignatures.isNotEmpty() && archiveSignatures == installedSignatures
+        fun getSignaturesForPackage(packageName: String): Set<String> {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+                val modern = runCatching {
+                    packageManager.getPackageInfo(packageName, android.content.pm.PackageManager.GET_SIGNING_CERTIFICATES)
+                }.getOrNull()
+                val modernSigs = extractSignatures(modern)
+                if (modernSigs.isNotEmpty()) return modernSigs
+            }
+            val legacy = runCatching {
+                packageManager.getPackageInfo(packageName, android.content.pm.PackageManager.GET_SIGNATURES)
+            }.getOrNull()
+            return extractSignatures(legacy)
+        }
+
+        fun getArchiveSignatures(path: String): Pair<String?, Set<String>> {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+                val modern = runCatching {
+                    packageManager.getPackageArchiveInfo(path, android.content.pm.PackageManager.GET_SIGNING_CERTIFICATES)
+                }.getOrNull()
+                val modernSigs = extractSignatures(modern)
+                if (modern != null && modernSigs.isNotEmpty()) {
+                    return modern.packageName to modernSigs
+                }
+            }
+            val legacy = runCatching {
+                packageManager.getPackageArchiveInfo(path, android.content.pm.PackageManager.GET_SIGNATURES)
+            }.getOrNull()
+            return (legacy?.packageName) to extractSignatures(legacy)
+        }
+
+        val (archivePackageName, archiveSignatures) = getArchiveSignatures(apkFile.absolutePath)
+        if (archivePackageName != context.packageName) return false
+
+        val installedSignatures = getSignaturesForPackage(context.packageName)
+        if (installedSignatures.isEmpty() || archiveSignatures.isEmpty()) {
+            return true
+        }
+
+        archiveSignatures == installedSignatures
     }.getOrDefault(false)
 
     /**
