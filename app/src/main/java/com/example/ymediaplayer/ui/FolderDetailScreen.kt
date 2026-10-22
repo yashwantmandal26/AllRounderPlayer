@@ -257,7 +257,6 @@ fun FolderDetailScreen(
                         modifier = Modifier
                             .fillMaxWidth()
                             .background(if (c.isMatte) c.baseBackground else c.topBarScrim)
-                            .border(1.dp, if (c.isMatte) androidx.compose.ui.graphics.SolidColor(c.glassBorder) else Brush.verticalGradient(listOf(c.cardBorderHighlight, c.glassBorder)), RectangleShape)
                     ) {
                         Row(
                             modifier = Modifier
@@ -303,7 +302,6 @@ fun FolderDetailScreen(
                         modifier = Modifier
                             .fillMaxWidth()
                             .background(if (c.isMatte) c.baseBackground else c.topBarScrim)
-                            .border(1.dp, if (c.isMatte) androidx.compose.ui.graphics.SolidColor(c.glassBorder) else Brush.verticalGradient(listOf(c.cardBorderHighlight, c.glassBorder)), RectangleShape)
                     ) {
                         Row(
                             modifier = Modifier

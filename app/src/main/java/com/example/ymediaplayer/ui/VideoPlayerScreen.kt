@@ -3216,17 +3216,22 @@ fun VideoPlayerScreen(
                             .padding(top = if (!isLandscape) 14.dp else 4.dp)
                             .fillMaxWidth()
                     ) {
+                        val topBarPaddingH = if (isLandscape) 16.dp else 10.dp
+                        val topBtnSize = if (isLandscape) 38.dp else 34.dp
+                        val topBtnSpacing = if (isLandscape) 6.dp else 4.dp
+                        val topIconSize = if (isLandscape) 20.dp else 18.dp
+
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .padding(horizontal = 16.dp, vertical = 6.dp),
+                                .padding(horizontal = topBarPaddingH, vertical = 6.dp),
                             verticalAlignment = Alignment.CenterVertically,
                             horizontalArrangement = Arrangement.SpaceBetween
                         ) {
                             // Left: Back button + Video Title + Resolution Badge
                             Row(
                                 verticalAlignment = Alignment.CenterVertically,
-                                modifier = Modifier.weight(1f).padding(end = 8.dp)
+                                modifier = Modifier.weight(1f).padding(end = if (isLandscape) 8.dp else 4.dp)
                             ) {
                                 PlayerIconButton(
                                     name = "Back",
@@ -3237,7 +3242,7 @@ fun VideoPlayerScreen(
                                     },
                                     icon = Icons.AutoMirrored.Rounded.ArrowBack,
                                     modifier = Modifier
-                                        .size(38.dp)
+                                        .size(topBtnSize)
                                         .shadow(6.dp, CircleShape, ambientColor = Color.Black.copy(0.7f))
                                         .clip(CircleShape)
                                         .background(Brush.verticalGradient(listOf(Color(0xFF252636), Color(0xFF11121C))))
@@ -3247,21 +3252,25 @@ fun VideoPlayerScreen(
                                         Icons.AutoMirrored.Rounded.ArrowBack,
                                         contentDescription = "Back",
                                         tint = Color.White,
-                                        modifier = Modifier.size(22.dp)
+                                        modifier = Modifier.size(if (isLandscape) 22.dp else 19.dp)
                                     )
                                 }
-                                Spacer(Modifier.width(10.dp))
-                                Column(modifier = Modifier.weight(1f)) {
+                                Spacer(Modifier.width(if (isLandscape) 10.dp else 6.dp))
+                                Column(
+                                    modifier = Modifier.weight(1f),
+                                    verticalArrangement = Arrangement.Center
+                                ) {
                                     Row(
                                         verticalAlignment = Alignment.CenterVertically,
-                                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                        horizontalArrangement = Arrangement.spacedBy(4.dp)
                                     ) {
                                         Text(
                                             text = videoTitle,
                                             color = Color.White,
-                                            fontSize = 15.sp,
+                                            fontSize = if (isLandscape) 15.sp else 13.5.sp,
                                             fontWeight = FontWeight.Bold,
                                             maxLines = 1,
+                                            softWrap = false,
                                             overflow = TextOverflow.Ellipsis,
                                             modifier = Modifier.weight(1f, fill = false)
                                         )
@@ -3276,7 +3285,9 @@ fun VideoPlayerScreen(
                                                     color = Color(0xFFFFCC80),
                                                     fontSize = 10.sp,
                                                     fontWeight = FontWeight.ExtraBold,
-                                                    modifier = Modifier.padding(horizontal = 5.dp, vertical = 1.dp)
+                                                    maxLines = 1,
+                                                    softWrap = false,
+                                                    modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.dp)
                                                 )
                                             }
                                         }
@@ -3287,7 +3298,10 @@ fun VideoPlayerScreen(
                                             color = Color.White.copy(alpha = 0.65f),
                                             fontSize = 11.sp,
                                             fontWeight = FontWeight.Medium,
-                                            fontFamily = FontFamily.Monospace
+                                            fontFamily = FontFamily.Monospace,
+                                            maxLines = 1,
+                                            softWrap = false,
+                                            overflow = TextOverflow.Ellipsis
                                         )
                                     }
                                 }
@@ -3296,7 +3310,7 @@ fun VideoPlayerScreen(
                             // Right: Playlist, Speed, Audio, Subtitles, More
                             Row(
                                 verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                horizontalArrangement = Arrangement.spacedBy(topBtnSpacing)
                             ) {
                                 // 1. Playlist / Queue
                                 PlayerIconButton(
@@ -3305,7 +3319,7 @@ fun VideoPlayerScreen(
                                     onClick = { showPlaylistSheet = true },
                                     icon = Icons.AutoMirrored.Rounded.QueueMusic,
                                     modifier = Modifier
-                                        .size(38.dp)
+                                        .size(topBtnSize)
                                         .shadow(6.dp, CircleShape, ambientColor = Color.Black.copy(0.7f))
                                         .clip(CircleShape)
                                         .background(Brush.verticalGradient(listOf(Color(0xFF252636), Color(0xFF11121C))))
@@ -3315,7 +3329,7 @@ fun VideoPlayerScreen(
                                         Icons.AutoMirrored.Rounded.QueueMusic,
                                         contentDescription = "Playlist",
                                         tint = Color.White,
-                                        modifier = Modifier.size(20.dp)
+                                        modifier = Modifier.size(topIconSize)
                                     )
                                 }
 
@@ -3323,7 +3337,7 @@ fun VideoPlayerScreen(
                                 val isCustomSpeed = playbackSpeed != 1.0f
                                 Row(
                                     modifier = Modifier
-                                        .height(38.dp)
+                                        .height(topBtnSize)
                                         .shadow(6.dp, CircleShape, ambientColor = Color.Black.copy(0.7f))
                                         .clip(CircleShape)
                                         .background(
@@ -3349,7 +3363,7 @@ fun VideoPlayerScreen(
                                                 }
                                             )
                                         }
-                                        .padding(horizontal = if (isCustomSpeed) 10.dp else 9.dp),
+                                        .padding(horizontal = if (isCustomSpeed) 8.dp else (if (isLandscape) 9.dp else 7.dp)),
                                     verticalAlignment = Alignment.CenterVertically,
                                     horizontalArrangement = Arrangement.Center
                                 ) {
@@ -3357,15 +3371,17 @@ fun VideoPlayerScreen(
                                         Icons.Rounded.Speed,
                                         contentDescription = "Playback speed",
                                         tint = if (isCustomSpeed) primaryAccent else Color.White,
-                                        modifier = Modifier.size(19.dp)
+                                        modifier = Modifier.size(topIconSize)
                                     )
                                     if (isCustomSpeed) {
-                                        Spacer(Modifier.width(4.dp))
+                                        Spacer(Modifier.width(3.dp))
                                         Text(
                                             text = "${playbackSpeed}x",
                                             color = primaryAccent,
-                                            fontSize = 12.sp,
-                                            fontWeight = FontWeight.Bold
+                                            fontSize = 11.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            maxLines = 1,
+                                            softWrap = false
                                         )
                                     }
                                 }
@@ -3377,7 +3393,7 @@ fun VideoPlayerScreen(
                                     onClick = { showAudioTrackSheet = true },
                                     icon = Icons.Rounded.MusicNote,
                                     modifier = Modifier
-                                        .size(38.dp)
+                                        .size(topBtnSize)
                                         .shadow(6.dp, CircleShape, ambientColor = Color.Black.copy(0.7f))
                                         .clip(CircleShape)
                                         .background(Brush.verticalGradient(listOf(Color(0xFF252636), Color(0xFF11121C))))
@@ -3387,7 +3403,7 @@ fun VideoPlayerScreen(
                                         Icons.Rounded.MusicNote,
                                         contentDescription = "Audio track",
                                         tint = Color.White,
-                                        modifier = Modifier.size(20.dp)
+                                        modifier = Modifier.size(topIconSize)
                                     )
                                 }
 
@@ -3398,7 +3414,7 @@ fun VideoPlayerScreen(
                                     onClick = { showSubtitleSheet = true },
                                     icon = Icons.Rounded.Subtitles,
                                     modifier = Modifier
-                                        .size(38.dp)
+                                        .size(topBtnSize)
                                         .shadow(6.dp, CircleShape, ambientColor = Color.Black.copy(0.7f))
                                         .clip(CircleShape)
                                         .background(Brush.verticalGradient(listOf(Color(0xFF252636), Color(0xFF11121C))))
@@ -3408,7 +3424,7 @@ fun VideoPlayerScreen(
                                         Icons.Rounded.Subtitles,
                                         contentDescription = "Subtitles",
                                         tint = Color.White,
-                                        modifier = Modifier.size(20.dp)
+                                        modifier = Modifier.size(topIconSize)
                                     )
                                 }
 
@@ -3422,7 +3438,7 @@ fun VideoPlayerScreen(
                                     },
                                     icon = Icons.Default.MoreVert,
                                     modifier = Modifier
-                                        .size(38.dp)
+                                        .size(topBtnSize)
                                         .shadow(6.dp, CircleShape, ambientColor = Color.Black.copy(0.7f))
                                         .clip(CircleShape)
                                         .background(
@@ -3440,7 +3456,7 @@ fun VideoPlayerScreen(
                                         Icons.Default.MoreVert,
                                         contentDescription = "More",
                                         tint = if (isMoreExpanded) primaryAccent else Color.White,
-                                        modifier = Modifier.size(20.dp)
+                                        modifier = Modifier.size(topIconSize)
                                     )
                                 }
                             }

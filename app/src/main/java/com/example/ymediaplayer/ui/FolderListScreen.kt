@@ -442,7 +442,6 @@ fun FolderListScreen(
                             Column(
                                 modifier = Modifier.fillMaxWidth()
                                     .background(if (c.isMatte) c.baseBackground else c.topBarScrim.copy(alpha = 0.75f))
-                                    .border(if (c.isMatte) 1.dp else 0.5.dp, c.glassBorder)
                             ) {
                             Row(
                                 modifier = Modifier.fillMaxWidth().statusBarsPadding().padding(horizontal = 16.dp, vertical = 6.dp),
@@ -515,7 +514,7 @@ fun FolderListScreen(
                                         // 1. Color Theme Palette button
                                         Box(
                                             modifier = Modifier
-                                                .size(48.dp)
+                                                .size(40.dp)
                                                 .clip(CircleShape)
                                                 .combinedClickable(
                                                     onClick = {
@@ -535,7 +534,7 @@ fun FolderListScreen(
                                         // 2. Light / Dark Mode button
                                         Box(
                                             modifier = Modifier
-                                                .size(48.dp)
+                                                .size(40.dp)
                                                 .clip(CircleShape)
                                                 .combinedClickable(
                                                     onClick = {
@@ -561,7 +560,7 @@ fun FolderListScreen(
                                         if (currentTab == "Video") {
                                             Box(
                                                 modifier = Modifier
-                                                    .size(48.dp)
+                                                    .size(40.dp)
                                                     .clip(CircleShape)
                                                     .combinedClickable(
                                                         onClick = {
@@ -582,7 +581,7 @@ fun FolderListScreen(
                                         // 4. Settings button
                                         Box(
                                             modifier = Modifier
-                                                .size(48.dp)
+                                                .size(40.dp)
                                                 .clip(CircleShape)
                                                 .combinedClickable(
                                                     onClick = {
@@ -1647,7 +1646,7 @@ private fun MultiSelectTopBar(
     onSelectAll: () -> Unit
 ) {
     val c = LocalAppColors.current
-    Column(modifier = Modifier.fillMaxWidth().background(if (c.isMatte) c.baseBackground else c.topBarScrim).border(1.dp, if (c.isMatte) androidx.compose.ui.graphics.SolidColor(c.glassBorder) else Brush.verticalGradient(listOf(c.cardBorderHighlight, c.glassBorder)), RectangleShape)) {
+    Column(modifier = Modifier.fillMaxWidth().background(if (c.isMatte) c.baseBackground else c.topBarScrim)) {
         Row(
             modifier = Modifier.fillMaxWidth().statusBarsPadding().padding(horizontal = 8.dp, vertical = 8.dp),
             verticalAlignment = Alignment.CenterVertically

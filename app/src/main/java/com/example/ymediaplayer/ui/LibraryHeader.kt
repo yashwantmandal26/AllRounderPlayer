@@ -51,9 +51,9 @@ internal fun LibraryHeader(
 
     Column(modifier = modifier.fillMaxWidth()) {
         BoxWithConstraints(modifier = Modifier.fillMaxWidth()) {
-            val actionsWidth = (actionCount * 48 + (actionCount - 1).coerceAtLeast(0) * 4).dp
-            // On compact displays or larger system text, give the title its own row.
-            val stacked = maxWidth < actionsWidth + (120f * fontScale).dp + 8.dp
+            val actionsWidth = (actionCount * 40 + (actionCount - 1).coerceAtLeast(0) * 4).dp
+            // Keep header on a single row across phones like S24; stack only on very narrow windows or extreme font scaling.
+            val stacked = maxWidth < 240.dp || (fontScale > 1.5f && maxWidth < 280.dp)
             if (stacked) {
                 Column(modifier = Modifier.fillMaxWidth()) {
                     LibraryTitle(title, summary, Modifier.fillMaxWidth())
