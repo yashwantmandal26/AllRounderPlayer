@@ -75,9 +75,14 @@ fun MyCinemaDownloadsModal(
     LaunchedEffect(refreshTrigger, downloadsMap) {
         val dir = TorrentEngine.getDownloadDir(context)
         val files = mutableListOf<DownloadedFileItem>()
+        val inProgressPaths = activeDownloads.mapNotNull { it.savePath }.toSet()
+        val inProgressIds = activeDownloads.map { it.id.lowercase() }.toSet()
         if (dir.exists() && dir.isDirectory) {
-            dir.walkTopDown().filter {
-                it.isFile && it.length() > 0 && isVideoFile(it.name)
+            dir.walkTopDown().filter { file ->
+                file.isFile && file.length() > 0 && isVideoFile(file.name) &&
+                TorrentEngine.getActiveTorrent(file.absolutePath) == null &&
+                !inProgressPaths.contains(file.absolutePath) &&
+                !inProgressIds.any { file.name.lowercase().contains(it) }
             }.forEach { file ->
                 val sizeStr = formatFileSize(file.length())
                 val dateStr = SimpleDateFormat("dd MMM, hh:mm a", Locale.getDefault()).format(Date(file.lastModified()))
@@ -198,11 +203,12 @@ fun MyCinemaDownloadsModal(
                                     TorrentEngine.cancel(dl.id)
                                 },
                                 onPlay = {
+                                    TorrentEngine.setSequential(dl.id, true)
                                     val path = TorrentEngine.getFilePath(context, dl.id)
-                                    if (path != null) {
+                                    if (path != null && TorrentEngine.isStreamBufferReady(context, dl.id)) {
                                         onPlayVideo(path)
                                     } else {
-                                        Toast.makeText(context, "Waiting for initial buffer...", Toast.LENGTH_SHORT).show()
+                                        Toast.makeText(context, "Buffering initial chunks... Playback will begin shortly", Toast.LENGTH_SHORT).show()
                                     }
                                 }
                             )

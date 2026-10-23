@@ -137,6 +137,13 @@ fun MyCinemaScreen(
         kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
             val list = mutableListOf<OfflineCinemaMovie>()
             val downloadDir = com.example.ymediaplayer.mycinema.service.TorrentEngine.getDownloadDir(context)
+            val inProgressPaths = cinemaDownloadsMap.values.filter {
+                it.status != com.example.ymediaplayer.mycinema.service.TorrentDownloadState.Status.FINISHED
+            }.mapNotNull { it.savePath }.toSet()
+            val inProgressIds = cinemaDownloadsMap.values.filter {
+                it.status != com.example.ymediaplayer.mycinema.service.TorrentDownloadState.Status.FINISHED
+            }.map { it.id.lowercase() }.toSet()
+
             if (downloadDir.exists() && downloadDir.isDirectory) {
                 downloadDir.walkTopDown().filter { file ->
                     file.isFile && file.length() > 0 &&
@@ -145,7 +152,10 @@ fun MyCinemaScreen(
                      file.extension.equals("webm", true) ||
                      file.extension.equals("avi", true) ||
                      file.extension.equals("mov", true) ||
-                     file.extension.equals("ts", true))
+                     file.extension.equals("ts", true)) &&
+                    com.example.ymediaplayer.mycinema.service.TorrentEngine.getActiveTorrent(file.absolutePath) == null &&
+                    !inProgressPaths.contains(file.absolutePath) &&
+                    !inProgressIds.any { file.name.lowercase().contains(it) }
                 }.forEach { file ->
                     val sizeStr = com.example.ymediaplayer.mycinema.service.formatTorrentBytes(file.length())
                     val durationMs = try {

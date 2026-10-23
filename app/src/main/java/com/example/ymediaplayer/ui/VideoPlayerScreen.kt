@@ -669,6 +669,8 @@ fun VideoPlayerScreen(
         )
     }
 
+    val cinemaDownloads by TorrentEngine.downloads.collectAsState()
+
     // Load playlist (supports custom active queue or folder playlist)
     LaunchedEffect(videoUrl) {
         currentUrl = videoUrl
@@ -3971,6 +3973,15 @@ fun VideoPlayerScreen(
                                 val curVal = if (isDraggingSeek) scrubPosition else currentPosition.toFloat()
                                 val playFraction = (curVal / dur).coerceIn(0f, 1f)
 
+                                // Active torrent or buffered download fraction
+                                val activeHash = streamTorrentHash ?: TorrentEngine.getActiveTorrent(currentUrl)
+                                val torrentProgress = activeHash?.let { cinemaDownloads[it]?.progress }
+                                val bufferFraction = when {
+                                    torrentProgress != null && torrentProgress > 0f -> torrentProgress.coerceIn(0f, 1f)
+                                    bufferedPosition > 0L -> (bufferedPosition.toFloat() / dur).coerceIn(0f, 1f)
+                                    else -> 0f
+                                }
+
                                 Box(
                                     modifier = Modifier
                                         .fillMaxWidth()
@@ -3978,6 +3989,16 @@ fun VideoPlayerScreen(
                                         .clip(RoundedCornerShape(2.dp))
                                         .background(Color.White.copy(alpha = 0.22f))
                                 ) {
+                                    // Downloaded portion highlighted in YELLOW
+                                    if (bufferFraction > 0f) {
+                                        Box(
+                                            modifier = Modifier
+                                                .fillMaxWidth(bufferFraction)
+                                                .fillMaxHeight()
+                                                .background(Color(0xFFFFD600).copy(alpha = 0.90f))
+                                        )
+                                    }
+
                                     // Active played layer
                                     Box(
                                         modifier = Modifier

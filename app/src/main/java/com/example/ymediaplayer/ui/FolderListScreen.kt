@@ -421,10 +421,21 @@ fun FolderListScreen(
     val totalVideoCount = remember(allUniqueVideos) { allUniqueVideos.size }
     val totalSize = remember(allUniqueVideos) { allUniqueVideos.sumOf { it.size } }
 
-    val movieVideos = remember(allUniqueVideos) {
+    val movieVideos = remember(allUniqueVideos, cinemaDownloads) {
+        val inProgressPaths = cinemaDownloads.values.filter {
+            it.status != TorrentDownloadState.Status.FINISHED
+        }.mapNotNull { it.savePath }.toSet()
+        val inProgressTitles = cinemaDownloads.values.filter {
+            it.status != TorrentDownloadState.Status.FINISHED
+        }.map { it.title.lowercase().trim() }.toSet()
+
         allUniqueVideos.filter { video ->
-            // Filter by movie duration (>= 60 minutes = 3600_000 ms) as movies are >= 1 hour, or in MYCinema folder
-            video.duration >= 3600_000L || video.bucketName.equals("MYCinema", ignoreCase = true)
+            val vUri = video.uri.toString()
+            val vTitle = video.title.lowercase()
+            val isDownloading = inProgressPaths.any { path -> vUri.contains(path) } ||
+                inProgressTitles.any { title -> vTitle.contains(title) || title.contains(vTitle) }
+
+            !isDownloading && (video.duration >= 3600_000L || video.bucketName.equals("MYCinema", ignoreCase = true))
         }
     }
     val totalMovieCount = movieVideos.size
@@ -2028,7 +2039,21 @@ fun FolderListScreen(
                 onDismiss = { showCinemaDownloads = false },
                 onPlayVideo = { videoPath ->
                     showCinemaDownloads = false
-                    onVideoClick(videoPath)
+                    val activeHash = TorrentEngine.getActiveTorrent(videoPath)
+                    val activeDl = activeHash?.let { TorrentEngine.downloads.value[it] }
+                    if (activeDl != null) {
+                        TorrentEngine.setSequential(activeDl.id, true)
+                        val streamIntent = Intent(context, com.example.ymediaplayer.ui.VideoPlayerActivity::class.java).apply {
+                            flags = Intent.FLAG_ACTIVITY_REORDER_TO_FRONT or Intent.FLAG_ACTIVITY_SINGLE_TOP
+                            putExtra(com.example.ymediaplayer.ui.VideoPlayerActivity.EXTRA_VIDEO_URL, videoPath)
+                            putExtra(com.example.ymediaplayer.ui.VideoPlayerActivity.EXTRA_VIDEO_TITLE, activeDl.title)
+                            putExtra(com.example.ymediaplayer.ui.VideoPlayerActivity.EXTRA_TORRENT_HASH, activeDl.id)
+                            putExtra(com.example.ymediaplayer.ui.VideoPlayerActivity.EXTRA_IS_STREAMING, false)
+                        }
+                        context.startActivity(streamIntent)
+                    } else {
+                        onVideoClick(videoPath)
+                    }
                 }
             )
         }

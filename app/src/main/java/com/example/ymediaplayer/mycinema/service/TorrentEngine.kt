@@ -393,6 +393,21 @@ object TorrentEngine {
         } catch (_: Exception) {}
     }
 
+    fun setSequential(hash: String, sequential: Boolean) {
+        try {
+            val sha1 = Sha1Hash.parseHex(hash)
+            val handle = sessionManager?.find(sha1)
+            if (handle != null && handle.isValid) {
+                if (sequential) {
+                    handle.setFlags(TorrentFlags.SEQUENTIAL_DOWNLOAD)
+                } else {
+                    handle.unsetFlags(TorrentFlags.SEQUENTIAL_DOWNLOAD)
+                }
+                updateState(hash) { it.copy(isSequential = sequential) }
+            }
+        } catch (_: Exception) {}
+    }
+
     fun cancel(hash: String) {
         try {
             val sha1 = Sha1Hash.parseHex(hash)

@@ -253,6 +253,40 @@ fun MyCinemaDetailModal(
                     }
                 }
 
+                // Actual Release Date below About Movie
+                val releaseDateFormatted = item.formattedReleaseDate.ifBlank { item.displayYear }
+                if (releaseDateFormatted.isNotBlank()) {
+                    Spacer(Modifier.height(10.dp))
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(8.dp))
+                            .background(Color.White.copy(alpha = 0.07f))
+                            .border(1.dp, Color.White.copy(alpha = 0.12f), RoundedCornerShape(8.dp))
+                            .padding(horizontal = 10.dp, vertical = 6.dp)
+                    ) {
+                        Icon(
+                            Icons.Rounded.Event,
+                            contentDescription = null,
+                            tint = Color(0xFF00E5FF),
+                            modifier = Modifier.size(15.dp)
+                        )
+                        Spacer(Modifier.width(6.dp))
+                        Text(
+                            text = if (item.isSeries) "First Aired: " else "Release Date: ",
+                            color = Color.White.copy(alpha = 0.6f),
+                            fontSize = 12.5.sp,
+                            fontWeight = FontWeight.Medium
+                        )
+                        Text(
+                            text = releaseDateFormatted,
+                            color = Color.White,
+                            fontSize = 12.5.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
+                }
+
                 Spacer(Modifier.height(20.dp))
 
                 // Primary CTA Button: CHOOSE SOURCE
@@ -401,14 +435,14 @@ fun MyCinemaDetailModal(
                     horizontalArrangement = Arrangement.spacedBy(10.dp),
                     verticalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
-                    // 1. TRAILER (Official YouTube app or browser)
+                    // 1. TRAILER (Official YouTube app or browser with real YouTube logo)
                     ReviewExternalPill(
                         label = "TRAILER",
                         icon = {
                             Box(
                                 modifier = Modifier
-                                    .size(width = 20.dp, height = 14.dp)
-                                    .clip(RoundedCornerShape(3.5.dp))
+                                    .size(width = 22.dp, height = 15.dp)
+                                    .clip(RoundedCornerShape(4.dp))
                                     .background(Color(0xFFFF0000)),
                                 contentAlignment = Alignment.Center
                             ) {
@@ -416,7 +450,7 @@ fun MyCinemaDetailModal(
                                     Icons.Rounded.PlayArrow,
                                     contentDescription = "YouTube",
                                     tint = Color.White,
-                                    modifier = Modifier.size(10.dp)
+                                    modifier = Modifier.size(11.dp)
                                 )
                             }
                         },
@@ -430,24 +464,52 @@ fun MyCinemaDetailModal(
                         }
                     )
 
-                    // 2. MOCTALE (Moctale app or web)
+                    // 2. MOCTALE (Official Moctale App or Web Movie Reviews)
                     ReviewExternalPill(
                         label = "MOCTALE",
                         icon = {
-                            Icon(Icons.AutoMirrored.Rounded.OpenInNew, contentDescription = "Moctale", tint = Color.White, modifier = Modifier.size(15.dp))
+                            Box(
+                                modifier = Modifier
+                                    .size(19.dp)
+                                    .clip(RoundedCornerShape(4.dp))
+                                    .background(Color(0xFF673AB7)),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                AsyncImage(
+                                    model = "https://play-lh.googleusercontent.com/3FlgjFk6If6cGdYc19cJoZqgFdWG9JOCeLn_NNPQ8ypxg9QYzNi7dlX0dv1Z-UyUFNDU_A1ZiHqhlXNKPxFpfA=s128",
+                                    contentDescription = "Moctale",
+                                    contentScale = ContentScale.Crop,
+                                    modifier = Modifier.fillMaxSize()
+                                )
+                            }
                         },
                         onClick = {
-                            val q = URLEncoder.encode(item.displayName, "UTF-8")
-                            val url = "https://moctale.com/search?q=$q"
-                            launchAppOrWeb(context, url)
+                            val pm = context.packageManager
+                            val appIntent = pm.getLaunchIntentForPackage("moctale.android.app")
+                            if (appIntent != null) {
+                                appIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                                context.startActivity(appIntent)
+                            } else {
+                                val q = URLEncoder.encode("${item.displayName} moctale reviews", "UTF-8")
+                                launchAppOrWeb(context, "https://www.google.com/search?q=$q")
+                            }
                         }
                     )
 
-                    // 3. GOOGLE (Google app or browser)
+                    // 3. GOOGLE (Official 4-Color Google 'G' Logo)
                     ReviewExternalPill(
                         label = "GOOGLE",
                         icon = {
-                            Text("G", color = Color(0xFF4285F4), fontWeight = FontWeight.Black, fontSize = 14.sp)
+                            Box(
+                                modifier = Modifier.size(18.dp),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                AsyncImage(
+                                    model = "https://upload.wikimedia.org/wikipedia/commons/thumb/c/c1/Google_%22G%22_logo.svg/120px-Google_%22G%22_logo.svg.png",
+                                    contentDescription = "Google",
+                                    modifier = Modifier.fillMaxSize()
+                                )
+                            }
                         },
                         onClick = {
                             val q = URLEncoder.encode("${item.displayName} movie reviews", "UTF-8")
@@ -455,11 +517,19 @@ fun MyCinemaDetailModal(
                         }
                     )
 
-                    // 4. LETTERBOXD (Letterboxd app or browser)
+                    // 4. LETTERBOXD (Authentic Letterboxd 3-Dots Logo)
                     ReviewExternalPill(
                         label = "LETTERBOXD",
                         icon = {
-                            Text("★", color = Color(0xFF00E054), fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                            Row(
+                                modifier = Modifier.height(14.dp),
+                                horizontalArrangement = Arrangement.spacedBy((-3).dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Box(modifier = Modifier.size(8.dp).clip(CircleShape).background(Color(0xFF00E054))) // Green
+                                Box(modifier = Modifier.size(8.dp).clip(CircleShape).background(Color(0xFFFF8000))) // Orange
+                                Box(modifier = Modifier.size(8.dp).clip(CircleShape).background(Color(0xFF40BCF4))) // Blue
+                            }
                         },
                         onClick = {
                             val q = URLEncoder.encode(item.displayName, "UTF-8")
@@ -467,11 +537,24 @@ fun MyCinemaDetailModal(
                         }
                     )
 
-                    // 5. IMDB (IMDb app or browser)
+                    // 5. IMDB (Authentic Yellow IMDb Badge)
                     ReviewExternalPill(
                         label = "IMDb",
                         icon = {
-                            Text("IMDb", color = Color(0xFFF5C518), fontWeight = FontWeight.Black, fontSize = 12.sp)
+                            Box(
+                                modifier = Modifier
+                                    .clip(RoundedCornerShape(3.dp))
+                                    .background(Color(0xFFF5C518))
+                                    .padding(horizontal = 4.dp, vertical = 1.dp)
+                            ) {
+                                Text(
+                                    text = "IMDb",
+                                    color = Color.Black,
+                                    fontWeight = FontWeight.Black,
+                                    fontSize = 9.5.sp,
+                                    letterSpacing = (-0.3).sp
+                                )
+                            }
                         },
                         onClick = {
                             val q = URLEncoder.encode(item.displayName, "UTF-8")
