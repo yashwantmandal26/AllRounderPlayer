@@ -2209,8 +2209,9 @@ fun MusicScreen(
             exit = fadeOut(animationSpec = tween(180)) + scaleOut(targetScale = 0.96f, animationSpec = tween(180)),
             modifier = Modifier
                 .align(Alignment.BottomCenter)
+                .fillMaxWidth()
                 .navigationBarsPadding()
-                .padding(bottom = 76.dp, start = 12.dp, end = 12.dp)
+                .padding(bottom = 76.dp, start = 14.dp, end = 14.dp)
         ) {
             val liveSong = currentlyPlaying ?: MusicService.currentMusicItem.value
             val displayTitle = liveSong?.title ?: MusicService.nowPlayingTitle.value

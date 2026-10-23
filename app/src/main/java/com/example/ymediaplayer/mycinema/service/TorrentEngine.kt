@@ -20,6 +20,7 @@ data class TorrentDownloadState(
     val downloadedBytes: Long = 0L,
     val seeds: Int = 0,
     val isSequential: Boolean = false,
+    val isStream: Boolean = false,
     val status: Status = Status.CONNECTING,
     val savePath: String? = null,
     val error: String? = null
@@ -149,6 +150,50 @@ object TorrentEngine {
         return dir
     }
 
+    fun getStreamCacheDir(context: Context): File {
+        val dir = File(context.cacheDir, "stream_cache")
+        if (!dir.exists()) {
+            dir.mkdirs()
+        }
+        return dir
+    }
+
+    fun purgeStreamCache(context: Context) {
+        try {
+            val dir = File(context.cacheDir, "stream_cache")
+            if (dir.exists()) {
+                dir.deleteRecursively()
+                dir.mkdirs()
+            }
+        } catch (_: Exception) {}
+    }
+
+    fun cleanupStream(context: Context, hash: String) {
+        try {
+            val state = _downloads.value[hash]
+            val filePath = state?.savePath ?: getFilePath(context, hash)
+            cancel(hash)
+            if (filePath != null) {
+                val file = File(filePath)
+                if (file.exists() && file.absolutePath.contains("stream_cache")) {
+                    file.delete()
+                    val parent = file.parentFile
+                    if (parent != null && parent.name != "stream_cache" && parent.isDirectory && parent.listFiles()?.isEmpty() == true) {
+                        parent.delete()
+                    }
+                }
+            }
+        } catch (_: Exception) {}
+    }
+
+    fun startStream(
+        context: Context,
+        source: TorrentSource,
+        title: String
+    ): String? {
+        return startDownload(context, source, title, isSequential = true, isStream = true)
+    }
+
     @Synchronized
     fun initialize(context: Context) {
         if (isInitialized) return
@@ -241,13 +286,14 @@ object TorrentEngine {
         context: Context,
         source: TorrentSource,
         title: String,
-        isSequential: Boolean = false
+        isSequential: Boolean = false,
+        isStream: Boolean = false
     ): String? {
         initialize(context)
         val sm = sessionManager ?: return null
-        val saveDir = getDownloadDir(context)
+        val saveDir = if (isStream) getStreamCacheDir(context) else getDownloadDir(context)
         val appPrefs = com.example.ymediaplayer.data.AppPreferences(context)
-        if (!isSequential && appPrefs.isWifiOnlyDownloadEnabled() && !isConnectedToWifi(context)) {
+        if (!isStream && !isSequential && appPrefs.isWifiOnlyDownloadEnabled() && !isConnectedToWifi(context)) {
             android.os.Handler(android.os.Looper.getMainLooper()).post {
                 android.widget.Toast.makeText(context, "Wi-Fi Only is enabled: Download will proceed on Wi-Fi", android.widget.Toast.LENGTH_LONG).show()
             }
@@ -262,6 +308,7 @@ object TorrentEngine {
                 title = title,
                 magnet = source.magnet,
                 isSequential = isSequential,
+                isStream = isStream,
                 status = if (isSequential) TorrentDownloadState.Status.STREAMING else TorrentDownloadState.Status.CONNECTING
             )
             _downloads.value = _downloads.value + (infoHash to initialState)
@@ -359,10 +406,18 @@ object TorrentEngine {
 
     private fun sanitizePath(context: Context, relPath: String): String? {
         return try {
+            val streamDir = getStreamCacheDir(context).canonicalFile
+            val streamTarget = File(streamDir, relPath).canonicalFile
+            if (streamTarget.path.startsWith(streamDir.path) && streamTarget.exists()) {
+                return streamTarget.absolutePath
+            }
+
             val baseDir = getDownloadDir(context).canonicalFile
             val target = File(baseDir, relPath).canonicalFile
             if (target.path.startsWith(baseDir.path)) {
                 target.absolutePath
+            } else if (streamTarget.path.startsWith(streamDir.path)) {
+                streamTarget.absolutePath
             } else {
                 android.util.Log.e("TorrentEngine", "Path traversal blocked: $relPath")
                 null

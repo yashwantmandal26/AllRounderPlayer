@@ -25,11 +25,18 @@ class VideoPlayerActivity : ComponentActivity() {
     companion object {
         const val EXTRA_VIDEO_URL = "EXTRA_VIDEO_URL"
         const val EXTRA_VIDEO_TITLE = "EXTRA_VIDEO_TITLE"
+        const val EXTRA_TORRENT_HASH = "EXTRA_TORRENT_HASH"
+        const val EXTRA_POSTER_URL = "EXTRA_POSTER_URL"
+        const val EXTRA_IS_STREAMING = "EXTRA_IS_STREAMING"
         var onUserLeaveHintListener: (() -> Unit)? = null
     }
 
     private var currentUrl by mutableStateOf("")
     private var requestSequence by mutableIntStateOf(0)
+    private var streamTorrentHash by mutableStateOf<String?>(null)
+    private var isStreaming by mutableStateOf(false)
+    private var streamTitle by mutableStateOf("")
+    private var streamPosterUrl by mutableStateOf("")
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -40,6 +47,10 @@ class VideoPlayerActivity : ComponentActivity() {
         window.attributes = initialLp
 
         currentUrl = savedInstanceState?.getString(EXTRA_VIDEO_URL) ?: intent.getStringExtra(EXTRA_VIDEO_URL) ?: ""
+        streamTorrentHash = savedInstanceState?.getString(EXTRA_TORRENT_HASH) ?: intent.getStringExtra(EXTRA_TORRENT_HASH)
+        isStreaming = savedInstanceState?.getBoolean(EXTRA_IS_STREAMING) ?: intent.getBooleanExtra(EXTRA_IS_STREAMING, false)
+        streamTitle = savedInstanceState?.getString(EXTRA_VIDEO_TITLE) ?: intent.getStringExtra(EXTRA_VIDEO_TITLE) ?: ""
+        streamPosterUrl = savedInstanceState?.getString(EXTRA_POSTER_URL) ?: intent.getStringExtra(EXTRA_POSTER_URL) ?: ""
 
         val prefs = com.example.ymediaplayer.data.AppPreferences(this)
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
@@ -58,19 +69,22 @@ class VideoPlayerActivity : ComponentActivity() {
                     modifier = Modifier.fillMaxSize(),
                     color = Color.Black
                 ) {
-                    if (currentUrl.isNotEmpty()) {
-                        key(currentUrl, requestSequence) {
-                        VideoPlayerScreen(
-                            videoUrl = currentUrl,
-                            onBack = { finish() },
-                            onOpenSettings = {
-                                val intent = Intent(this@VideoPlayerActivity, MainActivity::class.java).apply {
-                                    flags = Intent.FLAG_ACTIVITY_REORDER_TO_FRONT or Intent.FLAG_ACTIVITY_SINGLE_TOP
-                                    putExtra("OPEN_SETTINGS", true)
+                    if (currentUrl.isNotEmpty() || (isStreaming && !streamTorrentHash.isNullOrBlank())) {
+                        key(currentUrl, requestSequence, streamTorrentHash) {
+                            VideoPlayerScreen(
+                                videoUrl = currentUrl,
+                                streamTorrentHash = if (isStreaming) streamTorrentHash else null,
+                                streamTitle = streamTitle,
+                                streamPosterUrl = streamPosterUrl,
+                                onBack = { finish() },
+                                onOpenSettings = {
+                                    val intent = Intent(this@VideoPlayerActivity, MainActivity::class.java).apply {
+                                        flags = Intent.FLAG_ACTIVITY_REORDER_TO_FRONT or Intent.FLAG_ACTIVITY_SINGLE_TOP
+                                        putExtra("OPEN_SETTINGS", true)
+                                    }
+                                    startActivity(intent)
                                 }
-                                startActivity(intent)
-                            }
-                        )
+                            )
                         }
                     }
                 }
@@ -96,16 +110,27 @@ class VideoPlayerActivity : ComponentActivity() {
         super.onNewIntent(intent)
         setIntent(intent)
         val newUrl = intent.getStringExtra(EXTRA_VIDEO_URL)
-        val manager = com.example.ymediaplayer.player.VideoPlaybackManager
-        if (!newUrl.isNullOrEmpty() && newUrl != manager.currentVideoUrl.value) {
-            manager.player?.let { player ->
-                manager.currentVideoUrl.value?.let { url ->
-                    com.example.ymediaplayer.data.AppPreferences(this).saveVideoProgress(
-                        url, player.currentPosition, player.duration.coerceAtLeast(0L))
-                }
-            }
+        val newHash = intent.getStringExtra(EXTRA_TORRENT_HASH)
+        val newStream = intent.getBooleanExtra(EXTRA_IS_STREAMING, false)
+        if (newStream && !newHash.isNullOrBlank()) {
+            streamTorrentHash = newHash
+            isStreaming = true
+            streamTitle = intent.getStringExtra(EXTRA_VIDEO_TITLE) ?: ""
+            streamPosterUrl = intent.getStringExtra(EXTRA_POSTER_URL) ?: ""
+            currentUrl = newUrl ?: ""
             requestSequence++
-            currentUrl = newUrl
+        } else {
+            val manager = com.example.ymediaplayer.player.VideoPlaybackManager
+            if (!newUrl.isNullOrEmpty() && newUrl != manager.currentVideoUrl.value) {
+                manager.player?.let { player ->
+                    manager.currentVideoUrl.value?.let { url ->
+                        com.example.ymediaplayer.data.AppPreferences(this).saveVideoProgress(
+                            url, player.currentPosition, player.duration.coerceAtLeast(0L))
+                    }
+                }
+                requestSequence++
+                currentUrl = newUrl
+            }
         }
     }
 
@@ -153,6 +178,9 @@ class VideoPlayerActivity : ComponentActivity() {
     override fun onDestroy() {
         super.onDestroy()
         onUserLeaveHintListener = null
+        if (isStreaming && !streamTorrentHash.isNullOrBlank()) {
+            com.example.ymediaplayer.mycinema.service.TorrentEngine.cleanupStream(this, streamTorrentHash!!)
+        }
         if (!isChangingConfigurations && !com.example.ymediaplayer.player.VideoPlaybackManager.isMiniPlayerActive.value) {
             com.example.ymediaplayer.player.VideoPlaybackManager.releasePlayer()
         }

@@ -124,11 +124,13 @@ class TorrentDownloadService : Service() {
                 for (d in activeList) {
                     if (d.status == TorrentDownloadState.Status.FINISHED && !notifiedFinishedHashes.contains(d.id)) {
                         notifiedFinishedHashes.add(d.id)
-                        val path = d.savePath ?: TorrentEngine.getFilePath(this@TorrentDownloadService, d.id)
-                        if (path != null) {
-                            MediaScannerConnection.scanFile(this@TorrentDownloadService, arrayOf(path), null) { _, _ -> }
-                            showCompletedNotification(d.title, path)
-                            com.example.ymediaplayer.data.VideoRepository.invalidateCache()
+                        if (!d.isStream) {
+                            val path = d.savePath ?: TorrentEngine.getFilePath(this@TorrentDownloadService, d.id)
+                            if (path != null) {
+                                MediaScannerConnection.scanFile(this@TorrentDownloadService, arrayOf(path), null) { _, _ -> }
+                                showCompletedNotification(d.title, path)
+                                com.example.ymediaplayer.data.VideoRepository.invalidateCache()
+                            }
                         }
                     }
                 }

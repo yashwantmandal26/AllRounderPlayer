@@ -53,7 +53,7 @@ fun MusicMiniPlayerPill(
     onNext: () -> Unit,
     onPrev: () -> Unit,
     onClick: () -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier.fillMaxWidth().padding(horizontal = 14.dp)
 ) {
     val c = LocalAppColors.current
     val view = LocalView.current
@@ -61,6 +61,7 @@ fun MusicMiniPlayerPill(
 
     Box(
         modifier = modifier
+            .fillMaxWidth()
             .then(
                 if (c.isMatte) Modifier
                 else Modifier.shadow(
@@ -117,48 +118,75 @@ fun MusicMiniPlayerPill(
                     }
                 )
             }
-            .padding(horizontal = 10.dp, vertical = 7.dp)
+            .padding(horizontal = 12.dp, vertical = 7.dp)
     ) {
         Row(
+            modifier = Modifier.fillMaxWidth(),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(8.dp)
         ) {
             // ─── Album Art Box ──────────────────────────────────────────
+            val hasArt = remember(artUri) {
+                when (artUri) {
+                    null -> false
+                    is String -> artUri.isNotBlank()
+                    is android.net.Uri -> artUri != android.net.Uri.EMPTY && artUri.toString().isNotBlank()
+                    else -> true
+                }
+            }
+            var imageLoadFailed by remember(artUri) { mutableStateOf(false) }
+
             Box(
                 modifier = Modifier
-                    .size(38.dp)
+                    .size(40.dp)
                     .clip(RoundedCornerShape(10.dp))
                     .background(Color(0xFF1E2136))
                     .border(0.8.dp, c.cardBorderHighlight, RoundedCornerShape(10.dp)),
                 contentAlignment = Alignment.Center
             ) {
-                if (artUri != null) {
+                if (hasArt && !imageLoadFailed) {
                     AsyncImage(
                         model = artUri,
                         contentDescription = null,
                         contentScale = ContentScale.Crop,
+                        onError = { imageLoadFailed = true },
                         modifier = Modifier.fillMaxSize()
                     )
-                } else {
-                    Icon(
-                        Icons.Rounded.MusicNote,
-                        contentDescription = null,
-                        tint = c.accentBlue,
-                        modifier = Modifier.size(20.dp)
-                    )
+                }
+                if (!hasArt || imageLoadFailed) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .background(
+                                Brush.radialGradient(
+                                    listOf(
+                                        c.accentBlue.copy(alpha = 0.28f),
+                                        Color(0xFF161928)
+                                    )
+                                )
+                            ),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            imageVector = Icons.Rounded.MusicNote,
+                            contentDescription = "Music",
+                            tint = c.accentBlue,
+                            modifier = Modifier.size(22.dp)
+                        )
+                    }
                 }
             }
 
             // ─── Song Title & Artist ────────────────────────────────────
             Column(
                 modifier = Modifier
-                    .weight(1f, fill = false)
-                    .widthIn(min = 70.dp, max = 145.dp)
+                    .weight(1f)
+                    .padding(horizontal = 4.dp)
             ) {
                 Text(
                     text = title.ifBlank { "Now Playing" },
                     color = Color.White,
-                    fontSize = 12.5.sp,
+                    fontSize = 13.sp,
                     fontWeight = FontWeight.Bold,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
@@ -167,7 +195,7 @@ fun MusicMiniPlayerPill(
                 Text(
                     text = artist.ifBlank { "Unknown Artist" },
                     color = c.accentBlue,
-                    fontSize = 10.5.sp,
+                    fontSize = 11.sp,
                     fontWeight = FontWeight.Medium,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis

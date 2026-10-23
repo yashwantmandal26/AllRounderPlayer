@@ -508,29 +508,31 @@ object VideoPlaybackManager {
                     volume = 0f
                 }
 
-                val initialMetadata = androidx.media3.common.MediaMetadata.Builder()
-                    .setTitle(title)
-                    .setArtist("Video")
-                    .build()
+                if (url.isNotBlank()) {
+                    val initialMetadata = androidx.media3.common.MediaMetadata.Builder()
+                        .setTitle(title)
+                        .setArtist("Video")
+                        .build()
 
-                val mediaUri = if (url.startsWith("/")) {
-                    android.net.Uri.fromFile(java.io.File(url))
-                } else {
-                    android.net.Uri.parse(url)
+                    val mediaUri = if (url.startsWith("/")) {
+                        android.net.Uri.fromFile(java.io.File(url))
+                    } else {
+                        android.net.Uri.parse(url)
+                    }
+
+                    val mItem = MediaItem.Builder()
+                        .setUri(mediaUri)
+                        .setMediaMetadata(initialMetadata)
+                        .build()
+
+                    if (initialProgress > 0L) {
+                        setMediaItem(mItem, initialProgress)
+                    } else {
+                        setMediaItem(mItem)
+                    }
+                    prepare()
+                    playWhenReady = true
                 }
-
-                val mItem = MediaItem.Builder()
-                    .setUri(mediaUri)
-                    .setMediaMetadata(initialMetadata)
-                    .build()
-
-                if (initialProgress > 0L) {
-                    setMediaItem(mItem, initialProgress)
-                } else {
-                    setMediaItem(mItem)
-                }
-                prepare()
-                playWhenReady = true
             }
 
         val listener = object : Player.Listener {

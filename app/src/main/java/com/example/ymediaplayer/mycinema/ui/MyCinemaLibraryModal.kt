@@ -36,7 +36,7 @@ import com.example.ymediaplayer.theme.LocalAppColors
 
 @Composable
 fun MyCinemaLibraryModal(
-    initialTab: String = "favorites", // "favorites" or "watchlist"
+    initialTab: String = "favorites", // "favorites", "watchlist", or "history"
     onDismiss: () -> Unit,
     onItemClick: (TmdbItem) -> Unit
 ) {
@@ -46,13 +46,18 @@ fun MyCinemaLibraryModal(
     val context = LocalContext.current
     val appPreferences = remember { AppPreferences(context) }
 
-    var selectedTab by remember { mutableStateOf(initialTab) } // "favorites" or "watchlist"
+    var selectedTab by remember { mutableStateOf(initialTab) } // "favorites", "watchlist", or "history"
     var refreshKey by remember { mutableIntStateOf(0) }
 
     val favorites = remember(refreshKey) { appPreferences.getCinemaFavorites() }
     val watchlist = remember(refreshKey) { appPreferences.getCinemaWatchlist() }
+    val history = remember(refreshKey) { appPreferences.getCinemaWatchHistory() }
 
-    val currentList = if (selectedTab == "favorites") favorites else watchlist
+    val currentList = when (selectedTab) {
+        "favorites" -> favorites
+        "watchlist" -> watchlist
+        else -> emptyList()
+    }
 
     Box(
         modifier = Modifier
@@ -97,6 +102,34 @@ fun MyCinemaLibraryModal(
                     modifier = Modifier.weight(1f)
                 )
 
+                if (selectedTab == "history" && history.isNotEmpty()) {
+                    TextButton(
+                        onClick = {
+                            appPreferences.clearCinemaWatchHistory()
+                            refreshKey++
+                        },
+                        contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
+                        modifier = Modifier
+                            .padding(end = 4.dp)
+                            .clip(RoundedCornerShape(12.dp))
+                            .background(Color.White.copy(alpha = 0.06f))
+                    ) {
+                        Icon(
+                            Icons.Rounded.DeleteSweep,
+                            contentDescription = null,
+                            tint = Color(0xFFEF5350),
+                            modifier = Modifier.size(16.dp)
+                        )
+                        Spacer(Modifier.width(4.dp))
+                        Text(
+                            text = "Clear",
+                            color = Color(0xFFEF5350),
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
+                }
+
                 IconButton(
                     onClick = onDismiss,
                     modifier = Modifier
@@ -117,8 +150,8 @@ fun MyCinemaLibraryModal(
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 16.dp, vertical = 6.dp),
-                horizontalArrangement = Arrangement.spacedBy(10.dp)
+                    .padding(horizontal = 14.dp, vertical = 6.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
                 // Favorites Tab Pill
                 val isFavSelected = selectedTab == "favorites"
@@ -129,7 +162,7 @@ fun MyCinemaLibraryModal(
                     border = BorderStroke(1.dp, if (isFavSelected) Color(0xFFE50914) else Color.White.copy(alpha = 0.12f)),
                     modifier = Modifier
                         .weight(1f)
-                        .height(42.dp)
+                        .height(38.dp)
                 ) {
                     Row(
                         modifier = Modifier.fillMaxSize(),
@@ -140,13 +173,13 @@ fun MyCinemaLibraryModal(
                             Icons.Rounded.Favorite,
                             contentDescription = null,
                             tint = if (isFavSelected) Color.White else Color(0xFFE50914),
-                            modifier = Modifier.size(17.dp)
+                            modifier = Modifier.size(15.dp)
                         )
-                        Spacer(Modifier.width(6.dp))
+                        Spacer(Modifier.width(4.dp))
                         Text(
-                            text = "Favorites (${favorites.size})",
+                            text = "Favs (${favorites.size})",
                             color = Color.White,
-                            fontSize = 13.sp,
+                            fontSize = 12.sp,
                             fontWeight = if (isFavSelected) FontWeight.Bold else FontWeight.Medium
                         )
                     }
@@ -161,7 +194,7 @@ fun MyCinemaLibraryModal(
                     border = BorderStroke(1.dp, if (isWatchSelected) Color(0xFFFFB300) else Color.White.copy(alpha = 0.12f)),
                     modifier = Modifier
                         .weight(1f)
-                        .height(42.dp)
+                        .height(38.dp)
                 ) {
                     Row(
                         modifier = Modifier.fillMaxSize(),
@@ -172,14 +205,46 @@ fun MyCinemaLibraryModal(
                             Icons.Rounded.Bookmark,
                             contentDescription = null,
                             tint = if (isWatchSelected) Color.Black else Color(0xFFFFB300),
-                            modifier = Modifier.size(17.dp)
+                            modifier = Modifier.size(15.dp)
                         )
-                        Spacer(Modifier.width(6.dp))
+                        Spacer(Modifier.width(4.dp))
                         Text(
                             text = "Watchlist (${watchlist.size})",
                             color = if (isWatchSelected) Color.Black else Color.White,
-                            fontSize = 13.sp,
+                            fontSize = 12.sp,
                             fontWeight = if (isWatchSelected) FontWeight.Bold else FontWeight.Medium
+                        )
+                    }
+                }
+
+                // History Tab Pill
+                val isHistSelected = selectedTab == "history"
+                Surface(
+                    onClick = { selectedTab = "history" },
+                    shape = RoundedCornerShape(20.dp),
+                    color = if (isHistSelected) Color(0xFF29B6F6) else Color.White.copy(alpha = 0.08f),
+                    border = BorderStroke(1.dp, if (isHistSelected) Color(0xFF29B6F6) else Color.White.copy(alpha = 0.12f)),
+                    modifier = Modifier
+                        .weight(1f)
+                        .height(38.dp)
+                ) {
+                    Row(
+                        modifier = Modifier.fillMaxSize(),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.Center
+                    ) {
+                        Icon(
+                            Icons.Rounded.History,
+                            contentDescription = null,
+                            tint = if (isHistSelected) Color.Black else Color(0xFF29B6F6),
+                            modifier = Modifier.size(15.dp)
+                        )
+                        Spacer(Modifier.width(4.dp))
+                        Text(
+                            text = "History (${history.size})",
+                            color = if (isHistSelected) Color.Black else Color.White,
+                            fontSize = 12.sp,
+                            fontWeight = if (isHistSelected) FontWeight.Bold else FontWeight.Medium
                         )
                     }
                 }
@@ -188,7 +253,74 @@ fun MyCinemaLibraryModal(
             Spacer(Modifier.height(8.dp))
 
             // Main Content Area
-            if (currentList.isEmpty()) {
+            if (selectedTab == "history") {
+                if (history.isEmpty()) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .padding(horizontal = 32.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Column(
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            verticalArrangement = Arrangement.Center
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .size(72.dp)
+                                    .clip(CircleShape)
+                                    .background(Color.White.copy(alpha = 0.06f)),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Icon(
+                                    Icons.Rounded.History,
+                                    contentDescription = null,
+                                    tint = Color(0xFF29B6F6).copy(alpha = 0.6f),
+                                    modifier = Modifier.size(36.dp)
+                                )
+                            }
+
+                            Spacer(Modifier.height(16.dp))
+
+                            Text(
+                                text = "No Watch History",
+                                color = Color.White,
+                                fontSize = 18.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+
+                            Spacer(Modifier.height(8.dp))
+
+                            Text(
+                                text = "Movies and series you stream or play in MYCinema will appear here automatically.",
+                                color = Color.White.copy(alpha = 0.6f),
+                                fontSize = 13.5.sp,
+                                textAlign = TextAlign.Center,
+                                lineHeight = 19.sp
+                            )
+                        }
+                    }
+                } else {
+                    LazyVerticalGrid(
+                        columns = GridCells.Adaptive(minSize = 110.dp),
+                        contentPadding = PaddingValues(start = 14.dp, end = 14.dp, top = 8.dp, bottom = 48.dp),
+                        horizontalArrangement = Arrangement.spacedBy(10.dp),
+                        verticalArrangement = Arrangement.spacedBy(14.dp),
+                        modifier = Modifier.fillMaxSize()
+                    ) {
+                        items(history, key = { "${it.id}_${it.isSeries}" }) { item ->
+                            SavedHistoryCard(
+                                item = item,
+                                onClick = { onItemClick(item.toTmdbItem()) },
+                                onRemove = {
+                                    appPreferences.removeCinemaWatchHistory(item.id, item.isSeries)
+                                    refreshKey++
+                                }
+                            )
+                        }
+                    }
+                }
+            } else if (currentList.isEmpty()) {
                 Box(
                     modifier = Modifier
                         .fillMaxSize()
@@ -261,6 +393,129 @@ fun MyCinemaLibraryModal(
                         )
                     }
                 }
+            }
+        }
+    }
+}
+
+@Composable
+private fun SavedHistoryCard(
+    item: com.example.ymediaplayer.mycinema.data.CinemaWatchHistoryItem,
+    onClick: () -> Unit,
+    onRemove: () -> Unit
+) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onClick)
+    ) {
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .aspectRatio(0.67f)
+                .clip(RoundedCornerShape(12.dp))
+                .background(Color.White.copy(alpha = 0.08f))
+                .border(1.dp, Color.White.copy(alpha = 0.12f), RoundedCornerShape(12.dp))
+        ) {
+            AsyncImage(
+                model = item.posterUrl,
+                contentDescription = item.title,
+                contentScale = ContentScale.Crop,
+                modifier = Modifier.fillMaxSize()
+            )
+
+            // Top gradient for badge and remove button readability
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(36.dp)
+                    .background(Brush.verticalGradient(listOf(Color.Black.copy(alpha = 0.75f), Color.Transparent)))
+            )
+
+            // Series / Movie Badge
+            if (item.isSeries) {
+                Box(
+                    modifier = Modifier
+                        .align(Alignment.TopStart)
+                        .padding(6.dp)
+                        .clip(RoundedCornerShape(4.dp))
+                        .background(Color(0xFF00E5FF).copy(alpha = 0.88f))
+                        .padding(horizontal = 4.dp, vertical = 2.dp)
+                ) {
+                    Text(
+                        text = "SERIES",
+                        color = Color.Black,
+                        fontSize = 8.sp,
+                        fontWeight = FontWeight.Black
+                    )
+                }
+            }
+
+            // Quick Remove Button
+            IconButton(
+                onClick = onRemove,
+                modifier = Modifier
+                    .align(Alignment.TopEnd)
+                    .padding(4.dp)
+                    .size(26.dp)
+                    .clip(CircleShape)
+                    .background(Color.Black.copy(alpha = 0.65f))
+            ) {
+                Icon(
+                    Icons.Rounded.Close,
+                    contentDescription = "Remove",
+                    tint = Color.White.copy(alpha = 0.85f),
+                    modifier = Modifier.size(14.dp)
+                )
+            }
+
+            // Bottom Progress Bar if watched partially
+            if (item.progressPercent > 0) {
+                Box(
+                    modifier = Modifier
+                        .align(Alignment.BottomCenter)
+                        .fillMaxWidth()
+                        .height(4.dp)
+                        .background(Color.Black.copy(alpha = 0.6f))
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxHeight()
+                            .fillMaxWidth(fraction = (item.progressPercent / 100f).coerceIn(0.05f, 1f))
+                            .background(Color(0xFF29B6F6))
+                    )
+                }
+            }
+        }
+
+        Spacer(Modifier.height(6.dp))
+
+        Text(
+            text = item.title,
+            color = Color.White,
+            fontSize = 12.sp,
+            fontWeight = FontWeight.Medium,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis
+        )
+
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                text = item.timeAgoFormatted,
+                color = Color(0xFF29B6F6).copy(alpha = 0.85f),
+                fontSize = 11.sp,
+                fontWeight = FontWeight.Medium
+            )
+            if (item.progressPercent > 0) {
+                Text(
+                    text = "${item.progressPercent}%",
+                    color = Color.White.copy(alpha = 0.5f),
+                    fontSize = 10.5.sp
+                )
             }
         }
     }

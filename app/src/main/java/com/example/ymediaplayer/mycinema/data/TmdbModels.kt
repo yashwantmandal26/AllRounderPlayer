@@ -63,6 +63,48 @@ data class TmdbItem(
 }
 
 @Serializable
+data class CinemaWatchHistoryItem(
+    val id: Int,
+    val title: String,
+    val posterUrl: String? = null,
+    val isSeries: Boolean = false,
+    val year: String = "",
+    val timestamp: Long = System.currentTimeMillis(),
+    val progressMs: Long = 0L,
+    val durationMs: Long = 0L
+) {
+    val progressPercent: Int
+        get() = if (durationMs > 0L) ((progressMs * 100) / durationMs).toInt().coerceIn(0, 100) else 0
+
+    val timeAgoFormatted: String
+        get() {
+            val diffSec = (System.currentTimeMillis() - timestamp) / 1000
+            return when {
+                diffSec < 60 -> "Just now"
+                diffSec < 3600 -> "${diffSec / 60}m ago"
+                diffSec < 86400 -> "${diffSec / 3600}h ago"
+                diffSec < 604800 -> "${diffSec / 86400}d ago"
+                else -> "${diffSec / 604800}w ago"
+            }
+        }
+
+    fun toTmdbItem(): TmdbItem {
+        return TmdbItem(
+            id = id,
+            title = if (!isSeries) title else null,
+            name = if (isSeries) title else null,
+            mediaType = if (isSeries) "tv" else "movie",
+            posterPath = posterUrl,
+            backdropPath = null,
+            overview = "",
+            releaseDate = if (!isSeries) year else null,
+            firstAirDate = if (isSeries) year else null,
+            voteAverage = 0.0
+        )
+    }
+}
+
+@Serializable
 data class TmdbExternalIds(
     val id: Int = 0,
     @SerialName("imdb_id") val imdbId: String? = null

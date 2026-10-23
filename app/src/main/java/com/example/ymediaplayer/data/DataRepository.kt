@@ -2,6 +2,7 @@ package com.example.ymediaplayer.data
 
 import android.content.Context
 import android.content.SharedPreferences
+import com.example.ymediaplayer.mycinema.data.CinemaWatchHistoryItem
 import com.example.ymediaplayer.mycinema.data.TmdbItem
 
 class AppPreferences(private val prefs: SharedPreferences) {
@@ -243,6 +244,84 @@ class AppPreferences(private val prefs: SharedPreferences) {
             val str = prefs.getString("cinema_item_$id", null) ?: return@mapNotNull null
             try { json.decodeFromString(TmdbItem.serializer(), str) } catch (_: Exception) { null }
         }
+    }
+
+    // ─── Cinema Watch History ──────────────────────────────────────────────────
+    fun saveCinemaWatchHistory(item: TmdbItem, progressMs: Long = 0L, durationMs: Long = 0L) {
+        saveCinemaWatchHistory(
+            id = item.id,
+            title = item.displayName,
+            posterUrl = item.fullPosterUrl,
+            isSeries = item.isSeries,
+            year = item.displayYear,
+            progressMs = progressMs,
+            durationMs = durationMs
+        )
+    }
+
+    fun saveCinemaWatchHistory(
+        id: Int,
+        title: String,
+        posterUrl: String?,
+        isSeries: Boolean,
+        year: String,
+        progressMs: Long = 0L,
+        durationMs: Long = 0L
+    ) {
+        val current = getCinemaWatchHistory().toMutableList()
+        current.removeAll { it.id == id && it.isSeries == isSeries }
+        current.add(
+            0,
+            CinemaWatchHistoryItem(
+                id = id,
+                title = title,
+                posterUrl = posterUrl,
+                isSeries = isSeries,
+                year = year,
+                timestamp = System.currentTimeMillis(),
+                progressMs = progressMs,
+                durationMs = durationMs
+            )
+        )
+        val capped = current.take(50)
+        try {
+            val json = kotlinx.serialization.json.Json { ignoreUnknownKeys = true }
+            val jsonStr = json.encodeToString(
+                kotlinx.serialization.builtins.ListSerializer(CinemaWatchHistoryItem.serializer()),
+                capped
+            )
+            prefs.edit().putString("cinema_watch_history", jsonStr).apply()
+        } catch (_: Exception) {}
+    }
+
+    fun getCinemaWatchHistory(): List<CinemaWatchHistoryItem> {
+        val jsonStr = prefs.getString("cinema_watch_history", null) ?: return emptyList()
+        return try {
+            val json = kotlinx.serialization.json.Json { ignoreUnknownKeys = true }
+            json.decodeFromString(
+                kotlinx.serialization.builtins.ListSerializer(CinemaWatchHistoryItem.serializer()),
+                jsonStr
+            )
+        } catch (_: Exception) {
+            emptyList()
+        }
+    }
+
+    fun removeCinemaWatchHistory(id: Int, isSeries: Boolean) {
+        val current = getCinemaWatchHistory().toMutableList()
+        current.removeAll { it.id == id && it.isSeries == isSeries }
+        try {
+            val json = kotlinx.serialization.json.Json { ignoreUnknownKeys = true }
+            val jsonStr = json.encodeToString(
+                kotlinx.serialization.builtins.ListSerializer(CinemaWatchHistoryItem.serializer()),
+                current
+            )
+            prefs.edit().putString("cinema_watch_history", jsonStr).apply()
+        } catch (_: Exception) {}
+    }
+
+    fun clearCinemaWatchHistory() {
+        prefs.edit().remove("cinema_watch_history").apply()
     }
 
     // Default Home / Starting Tab

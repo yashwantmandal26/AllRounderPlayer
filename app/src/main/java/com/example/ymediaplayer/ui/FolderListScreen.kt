@@ -1,6 +1,7 @@
 package com.example.ymediaplayer.ui
 
 import android.app.Activity
+import android.content.Intent
 import com.example.ymediaplayer.MainActivity
 import android.content.ClipData
 import android.content.ClipboardManager
@@ -751,6 +752,14 @@ fun FolderListScreen(
                                                         }
                                                     )
                                                     DropdownMenuItem(
+                                                        text = { Text("Watch History", color = c.textPrimary, fontSize = 13.5.sp) },
+                                                        leadingIcon = { Icon(Icons.Rounded.History, contentDescription = null, tint = Color(0xFF29B6F6), modifier = Modifier.size(20.dp)) },
+                                                        onClick = {
+                                                            showCinemaMenu = false
+                                                            cinemaLibraryOpenType = "history"
+                                                        }
+                                                    )
+                                                    DropdownMenuItem(
                                                         text = { Text("Refresh Feeds", color = c.textPrimary, fontSize = 13.5.sp) },
                                                         leadingIcon = { Icon(Icons.Rounded.Refresh, contentDescription = null, tint = c.accentBlue, modifier = Modifier.size(20.dp)) },
                                                         onClick = {
@@ -850,23 +859,23 @@ fun FolderListScreen(
                             onDetailStateChanged = { isCinemaDetailOpen = it },
                             onPlayOfflineMovie = { path -> onVideoClick(path) },
                             onStreamSource = { item, source ->
-                                val hash = TorrentEngine.startDownload(context, source, item.displayName, isSequential = true)
+                                val hash = TorrentEngine.startStream(context, source, item.displayName)
                                 if (hash != null) {
                                     if (!item.fullPosterUrl.isNullOrBlank()) {
                                         appPreferences.saveCinemaPoster(item.displayName, item.fullPosterUrl)
                                         appPreferences.saveCinemaPoster(hash, item.fullPosterUrl)
                                     }
+                                    appPreferences.saveCinemaWatchHistory(item)
                                     TorrentDownloadService.start(context, hash, item.displayName)
-                                    if (TorrentEngine.isStreamBufferReady(context, hash)) {
-                                        val path = TorrentEngine.getFilePath(context, hash)
-                                        if (path != null) {
-                                            appPreferences.saveVideoTitle(path, item.displayName)
-                                            item.fullPosterUrl?.let { appPreferences.saveCinemaPoster(path, it) }
-                                            onVideoClick(path)
-                                        }
-                                    } else {
-                                        activeStreamSession = CinemaStreamSession(hash, item.displayName, item.fullPosterUrl ?: "")
+                                    val streamIntent = Intent(context, com.example.ymediaplayer.ui.VideoPlayerActivity::class.java).apply {
+                                        flags = Intent.FLAG_ACTIVITY_REORDER_TO_FRONT or Intent.FLAG_ACTIVITY_SINGLE_TOP
+                                        putExtra(com.example.ymediaplayer.ui.VideoPlayerActivity.EXTRA_VIDEO_URL, TorrentEngine.getFilePath(context, hash) ?: "")
+                                        putExtra(com.example.ymediaplayer.ui.VideoPlayerActivity.EXTRA_VIDEO_TITLE, item.displayName)
+                                        putExtra(com.example.ymediaplayer.ui.VideoPlayerActivity.EXTRA_POSTER_URL, item.fullPosterUrl ?: "")
+                                        putExtra(com.example.ymediaplayer.ui.VideoPlayerActivity.EXTRA_TORRENT_HASH, hash)
+                                        putExtra(com.example.ymediaplayer.ui.VideoPlayerActivity.EXTRA_IS_STREAMING, true)
                                     }
+                                    context.startActivity(streamIntent)
                                 } else {
                                     android.widget.Toast.makeText(context, "Failed to start streaming", android.widget.Toast.LENGTH_SHORT).show()
                                 }
@@ -1678,11 +1687,13 @@ fun FolderListScreen(
                 AnimatedVisibility(
                     visible = (isMusicPlaying || nowPlayingTitle.isNotBlank()),
                     enter = slideInVertically(initialOffsetY = { it / 2 }) + fadeIn(),
-                    exit = slideOutVertically(targetOffsetY = { it / 2 }) + fadeOut()
+                    exit = slideOutVertically(targetOffsetY = { it / 2 }) + fadeOut(),
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 14.dp)
                 ) {
                     Box(
                         modifier = Modifier
-                            .padding(bottom = 10.dp, start = 12.dp, end = 12.dp)
+                            .fillMaxWidth()
+                            .padding(bottom = 10.dp)
                     ) {
                         MusicMiniPlayerPill(
                             title = nowPlayingTitle,
@@ -2008,23 +2019,6 @@ fun FolderListScreen(
                 onDismiss = {
                     showHomeGuide = false
                     appPreferences.setSeenHomeGuide(true)
-                }
-            )
-        }
-
-        activeStreamSession?.let { session ->
-            StreamBufferingDialog(
-                hash = session.hash,
-                title = session.title,
-                posterUrl = session.posterUrl,
-                onStreamReady = { readyPath ->
-                    activeStreamSession = null
-                    appPreferences.saveVideoTitle(readyPath, session.title)
-                    onVideoClick(readyPath)
-                },
-                onCancel = {
-                    TorrentEngine.cancel(session.hash)
-                    activeStreamSession = null
                 }
             )
         }

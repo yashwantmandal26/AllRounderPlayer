@@ -11,6 +11,8 @@ import androidx.media.app.NotificationCompat.MediaStyle
 import com.example.ymediaplayer.MainActivity
 import com.example.ymediaplayer.R
 import com.example.ymediaplayer.player.VideoPlaybackManager
+import com.example.ymediaplayer.mycinema.service.TorrentEngine
+import com.example.ymediaplayer.mycinema.service.TorrentDownloadState
 import android.content.BroadcastReceiver
 import android.content.ClipData
 import android.content.ClipboardManager
@@ -59,6 +61,7 @@ import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.clipToBounds
@@ -623,6 +626,9 @@ private enum class PlayerGestureMode {
 @Composable
 fun VideoPlayerScreen(
     videoUrl: String,
+    streamTorrentHash: String? = null,
+    streamTitle: String = "",
+    streamPosterUrl: String = "",
     onBack: () -> Unit,
     onOpenSettings: (() -> Unit)? = null
 ) {
@@ -650,7 +656,18 @@ fun VideoPlayerScreen(
     var allFolders by remember { mutableStateOf<List<VideoFolder>>(emptyList()) }
     var playlistVideos by remember { mutableStateOf<List<VideoItem>>(emptyList()) }
     var currentVideoIndex by remember { mutableIntStateOf(-1) }
-    var videoTitle by remember { mutableStateOf(videoUrl.substringAfterLast("/").substringBeforeLast(".")) }
+    var videoTitle by remember {
+        mutableStateOf(
+            if (streamTitle.isNotBlank()) streamTitle
+            else videoUrl.substringAfterLast("/").substringBeforeLast(".")
+        )
+    }
+
+    var isStreamReady by remember {
+        mutableStateOf(
+            streamTorrentHash == null || (videoUrl.isNotBlank() && com.example.ymediaplayer.mycinema.service.TorrentEngine.isStreamBufferReady(context, streamTorrentHash))
+        )
+    }
 
     // Load playlist (supports custom active queue or folder playlist)
     LaunchedEffect(videoUrl) {
@@ -718,6 +735,35 @@ fun VideoPlayerScreen(
     val safePlaybackMode by VideoPlaybackManager.safeModeActive
     val playbackRecoveryMessage by VideoPlaybackManager.recoveryMessage
     val compatibilityFallback by VideoPlaybackManager.compatibilityFallbackRequest
+
+    LaunchedEffect(streamTorrentHash) {
+        val hash = streamTorrentHash ?: return@LaunchedEffect
+        while (true) {
+            if (com.example.ymediaplayer.mycinema.service.TorrentEngine.isStreamBufferReady(context, hash)) {
+                val path = com.example.ymediaplayer.mycinema.service.TorrentEngine.getFilePath(context, hash)
+                if (path != null) {
+                    currentUrl = path
+                    if (exoPlayer.currentMediaItem == null) {
+                        val mItem = androidx.media3.common.MediaItem.Builder()
+                            .setUri(android.net.Uri.fromFile(java.io.File(path)))
+                            .setMediaMetadata(
+                                androidx.media3.common.MediaMetadata.Builder()
+                                    .setTitle(videoTitle)
+                                    .setArtist("Cinema")
+                                    .build()
+                            )
+                            .build()
+                        exoPlayer.setMediaItem(mItem)
+                        exoPlayer.prepare()
+                        exoPlayer.play()
+                    }
+                    isStreamReady = true
+                    break
+                }
+            }
+            kotlinx.coroutines.delay(350)
+        }
+    }
 
     LaunchedEffect(compatibilityFallback?.requestId) {
         val request = compatibilityFallback ?: return@LaunchedEffect
@@ -2165,6 +2211,24 @@ fun VideoPlayerScreen(
                 val dur = exoPlayer.duration.coerceAtLeast(0L)
                 if (pos > 1000L) {
                     appPreferences.saveVideoProgress(currentUrl, pos, dur)
+                    if (streamTorrentHash != null) {
+                        val historyList = appPreferences.getCinemaWatchHistory()
+                        val existing = historyList.find {
+                            it.title.equals(streamTitle, ignoreCase = true) ||
+                            it.title.equals(videoTitle, ignoreCase = true)
+                        }
+                        if (existing != null) {
+                            appPreferences.saveCinemaWatchHistory(
+                                id = existing.id,
+                                title = existing.title,
+                                posterUrl = existing.posterUrl ?: streamPosterUrl,
+                                isSeries = existing.isSeries,
+                                year = existing.year,
+                                progressMs = pos,
+                                durationMs = dur
+                            )
+                        }
+                    }
                 }
             }
         }
@@ -2462,6 +2526,7 @@ fun VideoPlayerScreen(
 
     BackHandler(enabled = true) {
         when {
+            streamTorrentHash != null && !isStreamReady -> handleExit()
             isLocked -> isLocked = false
             showQuickControlsBar -> showQuickControlsBar = false
             showSettingsOverlay -> showSettingsOverlay = false
@@ -4978,8 +5043,18 @@ fun VideoPlayerScreen(
             }
         }
 
+        // ─── Pre-Roll Torrent Stream Buffering Overlay ────────────────────────
+        if (streamTorrentHash != null && !isStreamReady && !isInPiP) {
+            StreamPreRollBufferingOverlay(
+                title = if (streamTitle.isNotBlank()) streamTitle else videoTitle,
+                posterUrl = streamPosterUrl,
+                streamHash = streamTorrentHash,
+                onCancel = { handleExit() }
+            )
+        }
+
         // ─── First-Time Contextual Feature & Gesture Guide ───────────────────────
-        if (showFeatureGuide && !isInPiP) {
+        if (showFeatureGuide && !isInPiP && isStreamReady) {
             VideoPlayerFeatureGuide(
                 onDismiss = {
                     showFeatureGuide = false
@@ -4988,6 +5063,225 @@ fun VideoPlayerScreen(
             )
         }
 
+    }
+}
+
+// ─── PRE-ROLL TORRENT STREAM BUFFERING OVERLAY ──────────────────────────────
+@Composable
+private fun StreamPreRollBufferingOverlay(
+    title: String,
+    posterUrl: String,
+    streamHash: String,
+    onCancel: () -> Unit
+) {
+    val allDownloads by TorrentEngine.downloads.collectAsState()
+    val state = allDownloads[streamHash]
+    val dlBytes = state?.downloadedBytes ?: 0L
+    val targetBufferBytes = 8 * 1024 * 1024L // ~8MB initial playback buffer
+    val progressFraction = (dlBytes.toFloat() / targetBufferBytes.toFloat()).coerceIn(0f, 1f)
+
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(Color(0xFF0C0D14))
+            .clickable(interactionSource = remember { androidx.compose.foundation.interaction.MutableInteractionSource() }, indication = null) {}
+    ) {
+        // Blurred backdrop poster if available
+        if (posterUrl.isNotBlank()) {
+            AsyncImage(
+                model = posterUrl,
+                contentDescription = null,
+                contentScale = ContentScale.Crop,
+                modifier = Modifier
+                    .fillMaxSize()
+                    .alpha(0.2f)
+                    .blur(32.dp)
+            )
+        }
+
+        // Top bar with Back button
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .statusBarsPadding()
+                .padding(horizontal = 16.dp, vertical = 12.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            IconButton(
+                onClick = onCancel,
+                modifier = Modifier
+                    .size(40.dp)
+                    .clip(CircleShape)
+                    .background(Color.White.copy(alpha = 0.12f))
+            ) {
+                Icon(
+                    Icons.AutoMirrored.Rounded.ArrowBack,
+                    contentDescription = "Cancel Stream",
+                    tint = Color.White,
+                    modifier = Modifier.size(20.dp)
+                )
+            }
+            Spacer(Modifier.width(12.dp))
+            Text(
+                text = "STREAMING CINEMA",
+                color = Color.White.copy(alpha = 0.85f),
+                fontSize = 14.sp,
+                fontWeight = FontWeight.Bold,
+                letterSpacing = 1.sp
+            )
+        }
+
+        // Center card with loading indicators
+        Column(
+            modifier = Modifier
+                .align(Alignment.Center)
+                .padding(horizontal = 28.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.Center
+        ) {
+            if (posterUrl.isNotBlank()) {
+                Box(
+                    modifier = Modifier
+                        .size(width = 110.dp, height = 160.dp)
+                        .clip(RoundedCornerShape(14.dp))
+                        .border(1.dp, Color.White.copy(alpha = 0.2f), RoundedCornerShape(14.dp))
+                        .background(Color.White.copy(alpha = 0.08f))
+                ) {
+                    AsyncImage(
+                        model = posterUrl,
+                        contentDescription = title,
+                        contentScale = ContentScale.Crop,
+                        modifier = Modifier.fillMaxSize()
+                    )
+                }
+                Spacer(Modifier.height(18.dp))
+            }
+
+            Text(
+                text = title,
+                color = Color.White,
+                fontSize = 18.sp,
+                fontWeight = FontWeight.Bold,
+                textAlign = TextAlign.Center,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis
+            )
+
+            Spacer(Modifier.height(8.dp))
+
+            // Status message
+            val statusText = when {
+                state?.status == com.example.ymediaplayer.mycinema.service.TorrentDownloadState.Status.ERROR ->
+                    "Connection error: " + (state.error ?: "Failed to connect")
+                state == null || state.seeds == 0 -> "Finding seeders & connecting..."
+                dlBytes < 1024 * 1024 -> "Connecting to peers..."
+                else -> "Buffering stream chunks..."
+            }
+
+            Text(
+                text = statusText,
+                color = Color(0xFF29B6F6),
+                fontSize = 13.sp,
+                fontWeight = FontWeight.Medium
+            )
+
+            Spacer(Modifier.height(18.dp))
+
+            // Smooth linear progress bar
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth(0.78f)
+                    .height(6.dp)
+                    .clip(RoundedCornerShape(3.dp))
+                    .background(Color.White.copy(alpha = 0.12f))
+            ) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxHeight()
+                        .fillMaxWidth(progressFraction)
+                        .background(
+                            Brush.horizontalGradient(
+                                listOf(Color(0xFF00E5FF), Color(0xFF29B6F6))
+                            )
+                        )
+                )
+            }
+
+            Spacer(Modifier.height(10.dp))
+
+            // Downloaded vs Buffer size
+            val mbBuffered = String.format(java.util.Locale.US, "%.1f MB", dlBytes / (1024.0 * 1024.0))
+            Text(
+                text = "$mbBuffered / ~8 MB ready",
+                color = Color.White.copy(alpha = 0.6f),
+                fontSize = 12.sp
+            )
+
+            Spacer(Modifier.height(16.dp))
+
+            // Peer & Speed Stats Row
+            Row(
+                modifier = Modifier
+                    .clip(RoundedCornerShape(20.dp))
+                    .background(Color.White.copy(alpha = 0.08f))
+                    .padding(horizontal = 14.dp, vertical = 6.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(14.dp)
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(
+                        Icons.Rounded.Speed,
+                        contentDescription = null,
+                        tint = Color(0xFF00E676),
+                        modifier = Modifier.size(15.dp)
+                    )
+                    Spacer(Modifier.width(4.dp))
+                    Text(
+                        text = state?.speedFormatted ?: "0 KB/s",
+                        color = Color.White,
+                        fontSize = 12.5.sp,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
+
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(
+                        Icons.Rounded.CloudDownload,
+                        contentDescription = null,
+                        tint = Color(0xFF29B6F6),
+                        modifier = Modifier.size(15.dp)
+                    )
+                    Spacer(Modifier.width(4.dp))
+                    Text(
+                        text = "${state?.seeds ?: 0} seeds",
+                        color = Color.White,
+                        fontSize = 12.5.sp,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
+            }
+
+            Spacer(Modifier.height(28.dp))
+
+            // Cancel Button
+            OutlinedButton(
+                onClick = onCancel,
+                shape = RoundedCornerShape(24.dp),
+                border = BorderStroke(1.dp, Color.White.copy(alpha = 0.25f)),
+                colors = ButtonDefaults.outlinedButtonColors(
+                    contentColor = Color.White.copy(alpha = 0.9f)
+                ),
+                contentPadding = PaddingValues(horizontal = 24.dp, vertical = 8.dp)
+            ) {
+                Icon(
+                    Icons.Rounded.Close,
+                    contentDescription = null,
+                    modifier = Modifier.size(16.dp)
+                )
+                Spacer(Modifier.width(6.dp))
+                Text("Cancel", fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+            }
+        }
     }
 }
 
