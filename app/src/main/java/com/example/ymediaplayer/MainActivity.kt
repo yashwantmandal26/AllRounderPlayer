@@ -282,10 +282,26 @@ fun MainApp(
             backStack = backStack,
             onBack = { if (backStack.size > 1) backStack.removeLastOrNull() },
             transitionSpec = {
-                EnterTransition.None.togetherWith(ExitTransition.None)
+                (slideInHorizontally(
+                    initialOffsetX = { fullWidth -> (fullWidth * 0.15f).toInt() },
+                    animationSpec = tween(durationMillis = 240, easing = FastOutSlowInEasing)
+                ) + fadeIn(animationSpec = tween(durationMillis = 200))).togetherWith(
+                    slideOutHorizontally(
+                        targetOffsetX = { fullWidth -> -(fullWidth * 0.08f).toInt() },
+                        animationSpec = tween(durationMillis = 220, easing = FastOutSlowInEasing)
+                    ) + fadeOut(animationSpec = tween(durationMillis = 180))
+                )
             },
             popTransitionSpec = {
-                EnterTransition.None.togetherWith(ExitTransition.None)
+                (slideInHorizontally(
+                    initialOffsetX = { fullWidth -> -(fullWidth * 0.08f).toInt() },
+                    animationSpec = tween(durationMillis = 220, easing = FastOutSlowInEasing)
+                ) + fadeIn(animationSpec = tween(durationMillis = 180))).togetherWith(
+                    slideOutHorizontally(
+                        targetOffsetX = { fullWidth -> (fullWidth * 0.15f).toInt() },
+                        animationSpec = tween(durationMillis = 240, easing = FastOutSlowInEasing)
+                    ) + fadeOut(animationSpec = tween(durationMillis = 200))
+                )
             },
             entryProvider = entryProvider {
                 entry<FolderList> {

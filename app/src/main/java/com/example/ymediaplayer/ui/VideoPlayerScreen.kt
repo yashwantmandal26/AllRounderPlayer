@@ -2415,6 +2415,7 @@ fun VideoPlayerScreen(
         var lastTapTime = 0L
         var lastTapX = 0f
         var lastTapY = 0f
+        var preTapShowControls = showControls
 
         awaitEachGesture {
             var didActivateSpeedHold = false
@@ -2788,6 +2789,7 @@ fun VideoPlayerScreen(
                         // Quick stationary tap!
                         if (isDoubleTap) {
                             lastTapTime = 0L // consume double tap
+                            showControls = preTapShowControls // Restore controls state so seeking doesn't flash the UI
                             if (videoZoomScale != 1.0f) {
                                 videoZoomScale = 1.0f
                                 videoPanX = 0f
@@ -2824,6 +2826,7 @@ fun VideoPlayerScreen(
                                 }
                             }
                         } else {
+                            preTapShowControls = showControls
                             lastTapTime = downTime
                             lastTapX = startX
                             lastTapY = startY
@@ -3054,32 +3057,37 @@ fun VideoPlayerScreen(
         // ─── 6. Double Tap Ripple Indicator ───────────────────────────────────
         AnimatedVisibility(
             visible = doubleTapSeekSeconds > 0 && !isInPiP,
-            enter = fadeIn(tween(100)),
-            exit = fadeOut(tween(200)),
+            enter = fadeIn(tween(100)) + scaleIn(initialScale = 0.88f, animationSpec = tween(100)),
+            exit = fadeOut(tween(180)) + scaleOut(targetScale = 0.90f, animationSpec = tween(180)),
             modifier = Modifier.fillMaxSize()
         ) {
             Box(Modifier.fillMaxSize()) {
                 val align = if (doubleTapIsForward) Alignment.CenterEnd else Alignment.CenterStart
-                val padding = if (doubleTapIsForward) PaddingValues(end = 64.dp) else PaddingValues(start = 64.dp)
-                Box(
+                val padding = if (doubleTapIsForward) {
+                    PaddingValues(end = if (isLandscape) 96.dp else 28.dp)
+                } else {
+                    PaddingValues(start = if (isLandscape) 96.dp else 28.dp)
+                }
+                Surface(
                     modifier = Modifier
                         .align(align)
-                        .padding(padding)
-                        .clip(RoundedCornerShape(24.dp))
-                        .background(Color.Black.copy(alpha = 0.72f))
-                        .border(1.dp, primaryAccent.copy(alpha = 0.40f), RoundedCornerShape(24.dp))
-                        .padding(horizontal = 22.dp, vertical = 14.dp),
-                    contentAlignment = Alignment.Center
+                        .padding(padding),
+                    shape = RoundedCornerShape(26.dp),
+                    color = Color(0xEE14141F),
+                    border = BorderStroke(1.2.dp, primaryAccent.copy(alpha = 0.55f)),
+                    shadowElevation = 10.dp
                 ) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
+                    Row(
+                        modifier = Modifier.padding(horizontal = 18.dp, vertical = 11.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(7.dp)
+                    ) {
                         if (!doubleTapIsForward) {
-                            Icon(Icons.Rounded.FastRewind, contentDescription = null, tint = primaryAccent, modifier = Modifier.size(26.dp))
-                            Spacer(Modifier.width(6.dp))
-                            Text("-$doubleTapSeekSeconds s", color = Color.White, fontSize = 16.sp, fontWeight = FontWeight.Bold)
+                            Icon(Icons.Rounded.FastRewind, contentDescription = null, tint = primaryAccent, modifier = Modifier.size(24.dp))
+                            Text("-$doubleTapSeekSeconds s", color = Color.White, fontSize = 15.sp, fontWeight = FontWeight.Bold)
                         } else {
-                            Text("+$doubleTapSeekSeconds s", color = Color.White, fontSize = 16.sp, fontWeight = FontWeight.Bold)
-                            Spacer(Modifier.width(6.dp))
-                            Icon(Icons.Rounded.FastForward, contentDescription = null, tint = primaryAccent, modifier = Modifier.size(26.dp))
+                            Text("+$doubleTapSeekSeconds s", color = Color.White, fontSize = 15.sp, fontWeight = FontWeight.Bold)
+                            Icon(Icons.Rounded.FastForward, contentDescription = null, tint = primaryAccent, modifier = Modifier.size(24.dp))
                         }
                     }
                 }
@@ -3524,7 +3532,7 @@ fun VideoPlayerScreen(
                     }
 
                     // ─── CENTER PLAYBACK CONTROLS (Centered on Active Video Frame) ─
-                    if (centerSeekText == null) {
+                    if (centerSeekText == null && doubleTapSeekSeconds == 0) {
                         Row(
                             modifier = Modifier.align(Alignment.Center),
                             verticalAlignment = Alignment.CenterVertically,

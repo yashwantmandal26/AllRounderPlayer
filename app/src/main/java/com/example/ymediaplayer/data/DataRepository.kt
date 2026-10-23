@@ -658,6 +658,24 @@ class AppPreferences(private val prefs: SharedPreferences) {
     fun isGaplessPlaybackEnabled(): Boolean = prefs.getBoolean("gapless_playback_enabled", true)
     fun setGaplessPlaybackEnabled(enabled: Boolean) { prefs.edit().putBoolean("gapless_playback_enabled", enabled).apply() }
 
+    fun isResumeOnHeadsetConnect(): Boolean = prefs.getBoolean("resume_on_headset_connect", false)
+    fun setResumeOnHeadsetConnect(enabled: Boolean) { prefs.edit().putBoolean("resume_on_headset_connect", enabled).apply() }
+
+    fun getCrossfadeDurationSeconds(): Int = prefs.getInt("crossfade_duration_seconds", 0)
+    fun setCrossfadeDurationSeconds(seconds: Int) { prefs.edit().putInt("crossfade_duration_seconds", seconds).apply() }
+
+    fun getDefaultSleepTimerMinutes(): Int = prefs.getInt("default_sleep_timer_minutes", 30)
+    fun setDefaultSleepTimerMinutes(minutes: Int) { prefs.edit().putInt("default_sleep_timer_minutes", minutes).apply() }
+
+    fun isSleepTimerFadeOutEnabled(): Boolean = prefs.getBoolean("sleep_timer_fade_out", true)
+    fun setSleepTimerFadeOutEnabled(enabled: Boolean) { prefs.edit().putBoolean("sleep_timer_fade_out", enabled).apply() }
+
+    fun isAudioFocusDuckingEnabled(): Boolean = prefs.getBoolean("audio_focus_ducking", true)
+    fun setAudioFocusDuckingEnabled(enabled: Boolean) { prefs.edit().putBoolean("audio_focus_ducking", enabled).apply() }
+
+    fun isLockscreenControlsEnabled(): Boolean = prefs.getBoolean("lockscreen_controls_enabled", true)
+    fun setLockscreenControlsEnabled(enabled: Boolean) { prefs.edit().putBoolean("lockscreen_controls_enabled", enabled).apply() }
+
     // ─── UI & Visual Customization Preferences ─────────────────────────────────
     fun getAmbientGlowStrength(): Float = prefs.getFloat("ambient_glow_strength", 1.0f)
     fun setAmbientGlowStrength(strength: Float) {
@@ -755,6 +773,12 @@ class AppPreferences(private val prefs: SharedPreferences) {
             .remove("exclude_hidden_folders")
             .remove("confirm_delete_enabled")
             .remove("gapless_playback_enabled")
+            .remove("resume_on_headset_connect")
+            .remove("crossfade_duration_seconds")
+            .remove("default_sleep_timer_minutes")
+            .remove("sleep_timer_fade_out")
+            .remove("audio_focus_ducking")
+            .remove("lockscreen_controls_enabled")
             .remove("signature_view_enabled")
             .remove("signature_saturation")
             .remove("signature_sharpness")

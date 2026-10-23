@@ -41,9 +41,11 @@ import coil3.imageLoader
 import com.example.ymediaplayer.data.AppPreferences
 import com.example.ymediaplayer.data.MediaViewType
 import com.example.ymediaplayer.data.SortOrder
+import com.example.ymediaplayer.service.MusicService
 import com.example.ymediaplayer.theme.LocalAppColors
 import com.example.ymediaplayer.theme.LocalThemeController
 import com.example.ymediaplayer.theme.ThemeMode
+import com.example.ymediaplayer.ui.MusicSoundMode
 import com.example.ymediaplayer.update.UpdateManager
 import kotlinx.coroutines.launch
 
@@ -150,6 +152,13 @@ fun SettingsScreen(
     // ─── Music States ─────────────────────────────────────────────────────────
     var musicArtworkStyle by remember { mutableStateOf(appPreferences.getMusicArtworkStyle()) }
     var gaplessPlayback by remember { mutableStateOf(appPreferences.isGaplessPlaybackEnabled()) }
+    var resumeOnHeadsetConnect by remember { mutableStateOf(appPreferences.isResumeOnHeadsetConnect()) }
+    var crossfadeSeconds by remember { mutableIntStateOf(appPreferences.getCrossfadeDurationSeconds()) }
+    var defaultSleepMinutes by remember { mutableIntStateOf(appPreferences.getDefaultSleepTimerMinutes()) }
+    var sleepTimerFadeOut by remember { mutableStateOf(appPreferences.isSleepTimerFadeOutEnabled()) }
+    var audioFocusDucking by remember { mutableStateOf(appPreferences.isAudioFocusDuckingEnabled()) }
+    var lockscreenControls by remember { mutableStateOf(appPreferences.isLockscreenControlsEnabled()) }
+    var musicSoundMode by remember { mutableStateOf(appPreferences.getMusicSoundMode()) }
 
     val glowVersion = appPreferences.lastProgressUpdate.longValue
     val glowStrength = remember(glowVersion) { appPreferences.getAmbientGlowStrength() }
@@ -196,12 +205,17 @@ fun SettingsScreen(
         Scaffold(
             containerColor = Color.Transparent,
         topBar = {
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .statusBarsPadding()
-                    .padding(top = 8.dp, bottom = 4.dp)
+            Surface(
+                modifier = Modifier.fillMaxWidth(),
+                color = c.topBarScrim,
+                shadowElevation = 3.dp
             ) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .statusBarsPadding()
+                        .padding(top = 8.dp, bottom = 4.dp)
+                ) {
                 // Row 1: Header Bar
                 Box(
                     modifier = Modifier
@@ -352,7 +366,8 @@ fun SettingsScreen(
                 }
             }
         }
-    ) { paddingValues ->
+    }
+) { paddingValues ->
         val q = searchQuery.trim()
 
         fun itemMatches(title: String, subtitle: String = ""): Boolean {
@@ -374,9 +389,7 @@ fun SettingsScreen(
                     itemMatches("Default Video Fit Mode", "Fit to Screen Zoom Crop Fixed Width Stretch Fill") ||
                     itemMatches("Hardware Acceleration", "GPU decoders 4K 60fps") ||
                     itemMatches("Keep Screen Awake", "display sleeping") ||
-                    itemMatches("Play During Phone Calls", "video music phone calls") ||
-                    itemMatches("Video Picture Profiles", "color profile Normal Cinema Warm Vivid Punch AMOLED Black contrast saturation brightness warmth") ||
-                    itemMatches("Video Sharpness Enhancement", "sharpness Off Subtle Crisp Enhanced Detail Ultra Sharp clarity unsharp mask")
+                    itemMatches("Play During Phone Calls", "video music phone calls")
                 ))
 
         val showGestures = (q.isBlank() && (selectedCategory == SettingsCategory.ALL || selectedCategory == SettingsCategory.GESTURES)) ||
@@ -387,19 +400,17 @@ fun SettingsScreen(
                     itemMatches("Horizontal Seek Swipe", "scrub timeline preview") ||
                     itemMatches("Center Double-Tap: Play / Pause", "toggles playback") ||
                     itemMatches("Press & Hold Speed Boost", "speed boost hold 2x") ||
-                    itemMatches("Haptic Vibration Feedback", "Tactile feedback sliders vibration") ||
-                    itemMatches("HDR Video Playback", "High Dynamic Range HDR10 HLG Dolby Vision")
+                    itemMatches("Haptic Vibration Feedback", "Tactile feedback sliders vibration")
                 ))
 
         val showSubtitles = (q.isBlank() && (selectedCategory == SettingsCategory.ALL || selectedCategory == SettingsCategory.SUBTITLES)) ||
                 (q.isNotBlank() && (
-                    "Subtitles & Audio Engine".contains(q, ignoreCase = true) ||
+                    "Subtitles & Styling".contains(q, ignoreCase = true) ||
                     itemMatches("Subtitle Font Size", "size sp") ||
                     itemMatches("Subtitle Text Color", "color text White Yellow Cyan Neon") ||
                     itemMatches("Subtitle Background Box", "background box overlay toggle without") ||
                     itemMatches("Subtitle Background Style", "Semi-transparent Solid Deep Black Frosted Dark Glass Blur Slate Blue Amber") ||
-                    itemMatches("Text Outline & Shadow", "Drop Shadow Bold Outline") ||
-                    itemMatches("Pause on Headset Disconnect", "headphones Bluetooth disconnect")
+                    itemMatches("Text Outline & Shadow", "Drop Shadow Bold Outline")
                 ))
 
         val showAppearance = (q.isBlank() && (selectedCategory == SettingsCategory.ALL || selectedCategory == SettingsCategory.APPEARANCE)) ||
@@ -409,7 +420,6 @@ fun SettingsScreen(
                     itemMatches("Color Accent Theme", "Cyber Neon Amber Emerald Rose Sapphire") ||
                     itemMatches("Ambient Gradient Glow", "Subtle Vibrant Neon Boost glow gradient") ||
                     itemMatches("Card Corner Style", "Sleek Modern Extra corners") ||
-                    itemMatches("Signature Video Enhancement", "Vibrance Saturation color boost dynamic range") ||
                     itemMatches("Dynamic Video Ambient Mode", "soft lighting halo video")
                 ))
 
@@ -430,7 +440,15 @@ fun SettingsScreen(
                 (q.isNotBlank() && (
                     "Music Player".contains(q, ignoreCase = true) ||
                     itemMatches("Now Playing Screen Style", "Vinyl Card Sonic Reactor Cassette Cyber Orb Wave") ||
-                    itemMatches("Gapless Playback", "silence songs zero preload")
+                    itemMatches("Gapless Playback", "silence songs zero preload") ||
+                    itemMatches("Pause on Headset / Bluetooth Disconnect", "headphones Bluetooth disconnect pause unplug") ||
+                    itemMatches("Resume on Headset Connect", "headphones Bluetooth reconnect auto play") ||
+                    itemMatches("Crossfade Between Tracks", "seconds DJ transition fade blend") ||
+                    itemMatches("Default Sleep Timer", "minutes timer sleep duration") ||
+                    itemMatches("Sleep Timer Fade Out", "gradual volume decrease smooth fade") ||
+                    itemMatches("Audio Focus & Call Ducking", "duck notifications phone calls") ||
+                    itemMatches("Lock Screen Controls & Album Art", "lockscreen widget cover art") ||
+                    itemMatches("Default Equalizer Sound Profile", "Balanced Bass Boost Vocal Rock Club Acoustic EQ preset")
                 ))
 
         val showStorage = (q.isBlank() && (selectedCategory == SettingsCategory.ALL || selectedCategory == SettingsCategory.STORAGE)) ||
@@ -756,419 +774,6 @@ fun SettingsScreen(
                 }
             }
 
-            // ─── 1b. Video Picture & Sharpness Enhancement ────────────────────
-            if (showPlayback) {
-                item {
-                    SettingsCategorySection(
-                        title = "Video Picture & Sharpness Enhancement",
-                        icon = Icons.Rounded.Tune,
-                        accentColor = primaryAccent
-                    ) {
-                        // Picture Profiles Selector
-                        Column(modifier = Modifier.padding(14.dp)) {
-                            Text(
-                                text = "Video Picture Profile",
-                                fontSize = 14.sp,
-                                fontWeight = FontWeight.SemiBold,
-                                color = c.textPrimary
-                            )
-                            Text(
-                                text = "Color grading and dynamic range calibrated for mobile screens (without affecting sharpness)",
-                                fontSize = 11.sp,
-                                color = c.textSecondary
-                            )
-                            Spacer(Modifier.height(10.dp))
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.spacedBy(8.dp)
-                            ) {
-                                val profiles = listOf(
-                                    Triple("NORMAL", "Normal", Icons.Rounded.Tune),
-                                    Triple("HDR_DYNAMIC", "Dynamic", Icons.Rounded.HdrOn),
-                                    Triple("VIVID_POP", "Vivid", Icons.Rounded.AutoFixHigh),
-                                    Triple("NIGHT_CLARITY", "Night", Icons.Rounded.BrightnessMedium)
-                                )
-                                profiles.forEach { (id, label, icon) ->
-                                    val isSelected = videoColorProfile.equals(id, ignoreCase = true)
-                                    Box(
-                                        modifier = Modifier
-                                            .weight(1f)
-                                            .clip(RoundedCornerShape(12.dp))
-                                            .background(if (isSelected) primaryAccent.copy(alpha = 0.22f) else Color.White.copy(alpha = 0.06f))
-                                            .border(1.2.dp, if (isSelected) primaryAccent else Color.Transparent, RoundedCornerShape(12.dp))
-                                            .clickable {
-                                                videoColorProfile = id
-                                                appPreferences.setVideoColorProfile(id)
-                                                when (id) {
-                                                    "NORMAL" -> {
-                                                        videoContrast = 1.0f
-                                                        videoSaturation = 1.0f
-                                                        videoBrightness = 0.0f
-                                                        videoWarmth = 0.0f
-                                                    }
-                                                    "HDR_DYNAMIC" -> {
-                                                        videoContrast = 1.04f
-                                                        videoSaturation = 1.12f
-                                                        videoBrightness = 0.04f
-                                                        videoWarmth = 0.0f
-                                                    }
-                                                    "VIVID_POP" -> {
-                                                        videoContrast = 1.07f
-                                                        videoSaturation = 1.18f
-                                                        videoBrightness = 0.02f
-                                                        videoWarmth = 0.0f
-                                                    }
-                                                    "NIGHT_CLARITY" -> {
-                                                        videoContrast = 1.02f
-                                                        videoSaturation = 1.06f
-                                                        videoBrightness = 0.07f
-                                                        videoWarmth = 0.0f
-                                                    }
-                                                }
-                                                appPreferences.setVideoCustomContrast(videoContrast)
-                                                appPreferences.setVideoCustomSaturation(videoSaturation)
-                                                appPreferences.setVideoCustomBrightness(videoBrightness)
-                                                appPreferences.setVideoCustomWarmth(videoWarmth)
-                                            }
-                                            .padding(vertical = 10.dp, horizontal = 4.dp),
-                                        contentAlignment = Alignment.Center
-                                    ) {
-                                        Column(
-                                            horizontalAlignment = Alignment.CenterHorizontally,
-                                            verticalArrangement = Arrangement.spacedBy(4.dp)
-                                        ) {
-                                            Icon(
-                                                imageVector = icon,
-                                                contentDescription = label,
-                                                tint = if (isSelected) primaryAccent else c.textSecondary,
-                                                modifier = Modifier.size(18.dp)
-                                            )
-                                            Text(
-                                                text = label,
-                                                fontSize = 11.sp,
-                                                fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
-                                                color = if (isSelected) primaryAccent else c.textPrimary,
-                                                maxLines = 1
-                                            )
-                                        }
-                                    }
-                                }
-                            }
-                        }
-
-                        SettingsDivider()
-
-                        // Custom Sliders for Picture Tuning
-                        Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp)) {
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.SpaceBetween
-                            ) {
-                                Text("Contrast", fontSize = 12.sp, color = c.textSecondary)
-                                Text("${(videoContrast * 100).toInt()}%", fontSize = 12.sp, color = primaryAccent, fontWeight = FontWeight.Bold)
-                            }
-                            Slider(
-                                value = videoContrast,
-                                onValueChange = {
-                                    videoContrast = it
-                                    appPreferences.setVideoCustomContrast(it)
-                                },
-                                valueRange = 0.6f..1.8f,
-                                colors = SliderDefaults.colors(thumbColor = primaryAccent, activeTrackColor = primaryAccent)
-                            )
-                        }
-
-                        Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp)) {
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.SpaceBetween
-                            ) {
-                                Text("Saturation", fontSize = 12.sp, color = c.textSecondary)
-                                Text("${(videoSaturation * 100).toInt()}%", fontSize = 12.sp, color = primaryAccent, fontWeight = FontWeight.Bold)
-                            }
-                            Slider(
-                                value = videoSaturation,
-                                onValueChange = {
-                                    videoSaturation = it
-                                    appPreferences.setVideoCustomSaturation(it)
-                                },
-                                valueRange = 0.0f..2.0f,
-                                colors = SliderDefaults.colors(thumbColor = primaryAccent, activeTrackColor = primaryAccent)
-                            )
-                        }
-
-                        Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp)) {
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.SpaceBetween
-                            ) {
-                                Text("Brightness / Exposure", fontSize = 12.sp, color = c.textSecondary)
-                                val bPct = (videoBrightness * 100).toInt()
-                                Text(if (bPct >= 0) "+$bPct%" else "$bPct%", fontSize = 12.sp, color = primaryAccent, fontWeight = FontWeight.Bold)
-                            }
-                            Slider(
-                                value = videoBrightness,
-                                onValueChange = {
-                                    videoBrightness = it
-                                    appPreferences.setVideoCustomBrightness(it)
-                                },
-                                valueRange = -0.3f..0.3f,
-                                colors = SliderDefaults.colors(thumbColor = primaryAccent, activeTrackColor = primaryAccent)
-                            )
-                        }
-
-                        Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp)) {
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.SpaceBetween
-                            ) {
-                                Text("Color Temperature (Warmth)", fontSize = 12.sp, color = c.textSecondary)
-                                val wPct = (videoWarmth * 100).toInt()
-                                val label = when {
-                                    wPct > 0 -> "Warm +$wPct%"
-                                    wPct < 0 -> "Cool $wPct%"
-                                    else -> "Neutral (0%)"
-                                }
-                                Text(label, fontSize = 12.sp, color = primaryAccent, fontWeight = FontWeight.Bold)
-                            }
-                            Slider(
-                                value = videoWarmth,
-                                onValueChange = {
-                                    videoWarmth = it
-                                    appPreferences.setVideoCustomWarmth(it)
-                                },
-                                valueRange = -0.5f..0.5f,
-                                colors = SliderDefaults.colors(thumbColor = primaryAccent, activeTrackColor = primaryAccent)
-                            )
-                        }
-
-                        // Reset Picture Settings Button
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(horizontal = 16.dp, vertical = 4.dp),
-                            horizontalArrangement = Arrangement.End
-                        ) {
-                            TextButton(
-                                onClick = {
-                                    videoColorProfile = "NORMAL"
-                                    videoContrast = 1.0f
-                                    videoSaturation = 1.0f
-                                    videoBrightness = 0.0f
-                                    videoWarmth = 0.0f
-                                    appPreferences.setVideoColorProfile("NORMAL")
-                                    appPreferences.setVideoCustomContrast(1.0f)
-                                    appPreferences.setVideoCustomSaturation(1.0f)
-                                    appPreferences.setVideoCustomBrightness(0.0f)
-                                    appPreferences.setVideoCustomWarmth(0.0f)
-                                }
-                            ) {
-                                Icon(Icons.Rounded.RestartAlt, contentDescription = null, tint = primaryAccent, modifier = Modifier.size(16.dp))
-                                Spacer(Modifier.width(4.dp))
-                                Text("Reset Color to Default", fontSize = 12.sp, color = primaryAccent)
-                            }
-                        }
-
-                        SettingsDivider()
-
-                        // Sharpness Levels Selector
-                        Column(modifier = Modifier.padding(14.dp)) {
-                            Text(
-                                text = "Video Sharpness & Edge Clarity",
-                                fontSize = 14.sp,
-                                fontWeight = FontWeight.SemiBold,
-                                color = c.textPrimary
-                            )
-                            Text(
-                                text = "Real-time AGSL luminance unsharp mask shader for enhanced texture and detail",
-                                fontSize = 11.sp,
-                                color = c.textSecondary
-                            )
-                            Spacer(Modifier.height(10.dp))
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.spacedBy(8.dp)
-                            ) {
-                                val sharpnessLevels = listOf(
-                                    Triple("OFF", "Off", Icons.Rounded.BlurOff),
-                                    Triple("SUBTLE", "5%", Icons.Rounded.Details),
-                                    Triple("ENHANCED", "15%", Icons.Rounded.HighQuality),
-                                    Triple("ULTRA", "25%", Icons.Rounded.CenterFocusStrong)
-                                )
-                                sharpnessLevels.forEach { (id, label, icon) ->
-                                    val isSelected = videoSharpnessLevel.equals(id, ignoreCase = true)
-                                    Box(
-                                        modifier = Modifier
-                                            .weight(1f)
-                                            .clip(RoundedCornerShape(12.dp))
-                                            .background(if (isSelected) primaryAccent.copy(alpha = 0.22f) else Color.White.copy(alpha = 0.06f))
-                                            .border(1.2.dp, if (isSelected) primaryAccent else Color.Transparent, RoundedCornerShape(12.dp))
-                                            .clickable {
-                                                videoSharpnessLevel = id
-                                                appPreferences.setVideoSharpnessLevel(id)
-                                                videoSharpness = when (id) {
-                                                    "OFF" -> 0.0f
-                                                    "SUBTLE" -> 0.05f
-                                                    "ENHANCED" -> 0.15f
-                                                    "ULTRA" -> 0.25f
-                                                    else -> 0.0f
-                                                }
-                                                appPreferences.setVideoCustomSharpness(videoSharpness)
-                                            }
-                                            .padding(vertical = 10.dp, horizontal = 4.dp),
-                                        contentAlignment = Alignment.Center
-                                    ) {
-                                        Column(
-                                            horizontalAlignment = Alignment.CenterHorizontally,
-                                            verticalArrangement = Arrangement.spacedBy(4.dp)
-                                        ) {
-                                            Icon(
-                                                imageVector = icon,
-                                                contentDescription = label,
-                                                tint = if (isSelected) primaryAccent else c.textSecondary,
-                                                modifier = Modifier.size(18.dp)
-                                            )
-                                            Text(
-                                                text = label,
-                                                fontSize = 11.sp,
-                                                fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
-                                                color = if (isSelected) primaryAccent else c.textPrimary,
-                                                maxLines = 1
-                                            )
-                                        }
-                                    }
-                                }
-                            }
-                        }
-
-                        // Sharpness Intensity Slider
-                        Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp)) {
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.SpaceBetween
-                            ) {
-                                Text("Sharpness Intensity", fontSize = 12.sp, color = c.textSecondary)
-                                val sPct = (videoSharpness * 100).toInt()
-                                Text(if (videoSharpness <= 0.005f) "Off (0%)" else "$sPct%", fontSize = 12.sp, color = primaryAccent, fontWeight = FontWeight.Bold)
-                            }
-                            Slider(
-                                value = videoSharpness,
-                                onValueChange = {
-                                    videoSharpness = it
-                                    appPreferences.setVideoCustomSharpness(it)
-                                    videoSharpnessLevel = when {
-                                        it <= 0.005f -> "OFF"
-                                        it < 0.10f -> "SUBTLE"
-                                        it < 0.20f -> "ENHANCED"
-                                        else -> "ULTRA"
-                                    }
-                                    appPreferences.setVideoSharpnessLevel(videoSharpnessLevel)
-                                },
-                                valueRange = 0.0f..0.50f,
-                                colors = SliderDefaults.colors(thumbColor = primaryAccent, activeTrackColor = primaryAccent)
-                            )
-                        }
-
-                        // Reset Sharpness Button
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(horizontal = 16.dp, vertical = 4.dp),
-                            horizontalArrangement = Arrangement.End
-                        ) {
-                            TextButton(
-                                onClick = {
-                                    videoSharpnessLevel = "OFF"
-                                    videoSharpness = 0.0f
-                                    appPreferences.setVideoSharpnessLevel("OFF")
-                                    appPreferences.setVideoCustomSharpness(0.0f)
-                                }
-                            ) {
-                                Icon(Icons.Rounded.RestartAlt, contentDescription = null, tint = primaryAccent, modifier = Modifier.size(16.dp))
-                                Spacer(Modifier.width(4.dp))
-                                Text("Reset Sharpness to Off", fontSize = 12.sp, color = primaryAccent)
-                            }
-                        }
-
-                        SettingsDivider()
-
-                        // 3. Video Acoustic Sound Profiles
-                        Column(modifier = Modifier.padding(14.dp)) {
-                            Text(
-                                text = "Video Acoustic Sound Profile",
-                                fontSize = 14.sp,
-                                fontWeight = FontWeight.SemiBold,
-                                color = c.textPrimary
-                            )
-                            Text(
-                                text = "Acoustically tuned equalizer & soundstage profiles for movie audio and dialogue",
-                                fontSize = 11.sp,
-                                color = c.textSecondary
-                            )
-                            Spacer(Modifier.height(10.dp))
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.spacedBy(6.dp)
-                            ) {
-                                val soundModes = listOf(
-                                    Triple("NORMAL", "Normal", Icons.Rounded.MusicNote),
-                                    Triple("CINEMA", "Cinema", Icons.Rounded.Theaters),
-                                    Triple("CLEAR_VOICE", "Voice", Icons.Rounded.RecordVoiceOver),
-                                    Triple("ACTION_PUNCH", "Action", Icons.Rounded.Bolt),
-                                    Triple("NIGHT_MODE", "Night", Icons.Rounded.NightsStay)
-                                )
-                                soundModes.forEach { (id, label, icon) ->
-                                    val isSelected = videoSoundMode.equals(id, ignoreCase = true)
-                                    Box(
-                                        modifier = Modifier
-                                            .weight(1f)
-                                            .clip(RoundedCornerShape(12.dp))
-                                            .background(
-                                                if (isSelected && id != "NORMAL") primaryAccent.copy(alpha = 0.22f)
-                                                else if (isSelected) Color.White.copy(alpha = 0.12f)
-                                                else Color.White.copy(alpha = 0.06f)
-                                            )
-                                            .border(
-                                                1.2.dp,
-                                                if (isSelected && id != "NORMAL") primaryAccent
-                                                else if (isSelected) Color.White.copy(alpha = 0.4f)
-                                                else Color.Transparent,
-                                                RoundedCornerShape(12.dp)
-                                            )
-                                            .clickable {
-                                                videoSoundMode = id
-                                                appPreferences.setVideoSoundMode(id)
-                                            }
-                                            .padding(vertical = 10.dp, horizontal = 2.dp),
-                                        contentAlignment = Alignment.Center
-                                    ) {
-                                        Column(
-                                            horizontalAlignment = Alignment.CenterHorizontally,
-                                            verticalArrangement = Arrangement.spacedBy(4.dp)
-                                        ) {
-                                            Icon(
-                                                imageVector = icon,
-                                                contentDescription = label,
-                                                tint = if (isSelected && id != "NORMAL") primaryAccent else if (isSelected) Color.White else c.textSecondary,
-                                                modifier = Modifier.size(18.dp)
-                                            )
-                                            Text(
-                                                text = label,
-                                                fontSize = 11.sp,
-                                                fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
-                                                color = if (isSelected && id != "NORMAL") primaryAccent else if (isSelected) Color.White else c.textPrimary,
-                                                maxLines = 1
-                                            )
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        }
-
         // ─── 2. Gestures & Touch Controls ─────────────────────────────────
         if (showGestures) {
             item {
@@ -1249,18 +854,7 @@ fun SettingsScreen(
                         }
                     )
 
-                    SettingsDivider()
 
-                    SettingsItemToggle(
-                        title = "HDR Video Playback",
-                        subtitle = "High Dynamic Range (HDR10, HLG, Dolby Vision) with wide color gamut",
-                        icon = Icons.Rounded.HighQuality,
-                        checked = hdrEnabled,
-                        onCheckedChange = {
-                            hdrEnabled = it
-                            appPreferences.setHdrEnabled(it)
-                        }
-                    )
                 }
             }
         }
@@ -1269,7 +863,7 @@ fun SettingsScreen(
         if (showSubtitles) {
             item {
                 SettingsCategorySection(
-                    title = "Subtitles & Audio Engine",
+                    title = "Subtitles & Styling",
                     icon = Icons.Rounded.Subtitles,
                     accentColor = primaryAccent
                 ) {
@@ -1396,18 +990,7 @@ fun SettingsScreen(
                         onClick = { activeDialog = SettingsDialogType.SUB_OUTLINE_STYLE }
                     )
 
-                    SettingsDivider()
 
-                    SettingsItemToggle(
-                        title = "Pause on Headset Disconnect",
-                        subtitle = "Auto-pause when headphones or Bluetooth disconnect",
-                        icon = Icons.Rounded.HeadsetOff,
-                        checked = pauseHeadsetDisconnect,
-                        onCheckedChange = {
-                            pauseHeadsetDisconnect = it
-                            appPreferences.setPauseOnHeadsetDisconnect(it)
-                        }
-                    )
                 }
             }
         }
@@ -1589,39 +1172,7 @@ fun SettingsScreen(
                         }
                     }
 
-                    SettingsDivider()
 
-                    SettingsItemToggle(
-                        title = "Signature Video Enhancement",
-                        subtitle = "Boost colors, dynamic range and visual depth",
-                        icon = Icons.Rounded.AutoAwesome,
-                        checked = signatureViewEnabled,
-                        onCheckedChange = {
-                            signatureViewEnabled = it
-                            appPreferences.setSignatureViewEnabled(it)
-                        }
-                    )
-
-                    if (signatureViewEnabled) {
-                        Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp)) {
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.SpaceBetween
-                            ) {
-                                Text("Vibrance & Saturation", fontSize = 12.sp, color = c.textSecondary)
-                                Text("${(signatureSaturation * 100).toInt()}%", fontSize = 12.sp, color = primaryAccent, fontWeight = FontWeight.Bold)
-                            }
-                            Slider(
-                                value = signatureSaturation,
-                                onValueChange = {
-                                    signatureSaturation = it
-                                    appPreferences.setSignatureSaturation(it)
-                                },
-                                valueRange = 1.0f..1.8f,
-                                colors = SliderDefaults.colors(thumbColor = primaryAccent, activeTrackColor = primaryAccent)
-                            )
-                        }
-                    }
 
                     SettingsDivider()
 
@@ -1771,6 +1322,98 @@ fun SettingsScreen(
                             gaplessPlayback = it
                             appPreferences.setGaplessPlaybackEnabled(it)
                         }
+                    )
+
+                    SettingsDivider()
+
+                    SettingsItemToggle(
+                        title = "Pause on Headset / Bluetooth Disconnect",
+                        subtitle = "Instantly pause playback when headphones or Bluetooth audio disconnect",
+                        icon = Icons.Rounded.HeadsetOff,
+                        checked = pauseHeadsetDisconnect,
+                        onCheckedChange = {
+                            pauseHeadsetDisconnect = it
+                            appPreferences.setPauseOnHeadsetDisconnect(it)
+                        }
+                    )
+
+                    SettingsDivider()
+
+                    SettingsItemToggle(
+                        title = "Resume on Headset Connect",
+                        subtitle = "Automatically resume playing when headphones or Bluetooth reconnect",
+                        icon = Icons.Rounded.Headphones,
+                        checked = resumeOnHeadsetConnect,
+                        onCheckedChange = {
+                            resumeOnHeadsetConnect = it
+                            appPreferences.setResumeOnHeadsetConnect(it)
+                        }
+                    )
+
+                    SettingsDivider()
+
+                    SettingsItemPicker(
+                        title = "Crossfade Between Tracks",
+                        subtitle = if (crossfadeSeconds == 0) "Off (Direct transition)" else "$crossfadeSeconds seconds",
+                        icon = Icons.Rounded.Shuffle,
+                        onClick = { activeDialog = SettingsDialogType.CROSSFADE_DURATION }
+                    )
+
+                    SettingsDivider()
+
+                    SettingsItemPicker(
+                        title = "Default Sleep Timer Duration",
+                        subtitle = if (defaultSleepMinutes == 0) "Off (Manual only)" else "$defaultSleepMinutes minutes",
+                        icon = Icons.Rounded.Bedtime,
+                        onClick = { activeDialog = SettingsDialogType.DEFAULT_SLEEP_TIMER }
+                    )
+
+                    SettingsDivider()
+
+                    SettingsItemToggle(
+                        title = "Sleep Timer Fade Out",
+                        subtitle = "Gradually decrease audio volume over the final 20 seconds before pausing",
+                        icon = Icons.Rounded.VolumeDown,
+                        checked = sleepTimerFadeOut,
+                        onCheckedChange = {
+                            sleepTimerFadeOut = it
+                            appPreferences.setSleepTimerFadeOutEnabled(it)
+                        }
+                    )
+
+                    SettingsDivider()
+
+                    SettingsItemToggle(
+                        title = "Audio Focus & Call Ducking",
+                        subtitle = "Temporarily lower or pause music when phone calls, alarms, or notifications sound",
+                        icon = Icons.Rounded.VolumeMute,
+                        checked = audioFocusDucking,
+                        onCheckedChange = {
+                            audioFocusDucking = it
+                            appPreferences.setAudioFocusDuckingEnabled(it)
+                        }
+                    )
+
+                    SettingsDivider()
+
+                    SettingsItemToggle(
+                        title = "Lock Screen Controls & Album Art",
+                        subtitle = "Display media player controls and high-resolution album cover on device lock screen",
+                        icon = Icons.Rounded.ScreenLockPortrait,
+                        checked = lockscreenControls,
+                        onCheckedChange = {
+                            lockscreenControls = it
+                            appPreferences.setLockscreenControlsEnabled(it)
+                        }
+                    )
+
+                    SettingsDivider()
+
+                    SettingsItemPicker(
+                        title = "Default Equalizer Sound Profile",
+                        subtitle = MusicSoundMode.fromId(musicSoundMode).displayName,
+                        icon = Icons.Rounded.Tune,
+                        onClick = { activeDialog = SettingsDialogType.MUSIC_SOUND_MODE }
                     )
                 }
             }
@@ -2221,6 +1864,63 @@ fun SettingsScreen(
                 onDismiss = { activeDialog = null }
             )
         }
+        SettingsDialogType.CROSSFADE_DURATION -> {
+            SettingsOptionDialog(
+                title = "Crossfade Between Tracks",
+                options = listOf(
+                    "0" to "Off (Seamless gapless)",
+                    "2" to "2 seconds",
+                    "4" to "4 seconds (Smooth blend)",
+                    "6" to "6 seconds",
+                    "8" to "8 seconds",
+                    "10" to "10 seconds (Club DJ mix)"
+                ),
+                selectedKey = crossfadeSeconds.toString(),
+                onSelect = {
+                    val s = it.toIntOrNull() ?: 0
+                    crossfadeSeconds = s
+                    appPreferences.setCrossfadeDurationSeconds(s)
+                    activeDialog = null
+                },
+                onDismiss = { activeDialog = null }
+            )
+        }
+        SettingsDialogType.DEFAULT_SLEEP_TIMER -> {
+            SettingsOptionDialog(
+                title = "Default Sleep Timer Duration",
+                options = listOf(
+                    "0" to "Off (Manual start only)",
+                    "15" to "15 minutes",
+                    "30" to "30 minutes (Standard)",
+                    "45" to "45 minutes",
+                    "60" to "60 minutes (1 hour)",
+                    "90" to "90 minutes (1.5 hours)"
+                ),
+                selectedKey = defaultSleepMinutes.toString(),
+                onSelect = {
+                    val m = it.toIntOrNull() ?: 30
+                    defaultSleepMinutes = m
+                    appPreferences.setDefaultSleepTimerMinutes(m)
+                    activeDialog = null
+                },
+                onDismiss = { activeDialog = null }
+            )
+        }
+        SettingsDialogType.MUSIC_SOUND_MODE -> {
+            SettingsOptionDialog(
+                title = "Default Equalizer Sound Profile",
+                options = MusicSoundMode.entries.map { it.id to it.displayName },
+                selectedKey = musicSoundMode,
+                onSelect = {
+                    musicSoundMode = it
+                    appPreferences.setMusicSoundMode(it)
+                    val mode = MusicSoundMode.fromId(it)
+                    MusicService.applySoundMode(context, mode)
+                    activeDialog = null
+                },
+                onDismiss = { activeDialog = null }
+            )
+        }
         null -> {}
     }
 
@@ -2384,6 +2084,7 @@ fun SettingsScreen(
         )
     }
 
+    }
     }
 }
 
@@ -2651,5 +2352,8 @@ private enum class SettingsDialogType {
     DEFAULT_SORT,
     CW_LIMIT,
     EXCLUDE_SHORT_CLIPS,
-    MUSIC_ARTWORK
+    MUSIC_ARTWORK,
+    CROSSFADE_DURATION,
+    DEFAULT_SLEEP_TIMER,
+    MUSIC_SOUND_MODE
 }

@@ -275,10 +275,20 @@ class MusicService : MediaSessionService() {
             sleepTimerSecondsRemaining.intValue = ((durationMs.coerceAtLeast(0L) + 999) / 1000).toInt()
             if (durationMs <= 0) return
             sleepTimerJob = musicScope.launch {
+                val appPrefs = AppPreferences(serviceInstance ?: return@launch)
+                val fadeOut = appPrefs.isSleepTimerFadeOutEnabled()
                 while (true) {
                     val remaining = (sleepDeadlineMs - android.os.SystemClock.elapsedRealtime()).coerceAtLeast(0L)
                     sleepTimerSecondsRemaining.intValue = ((remaining + 999) / 1000).toInt()
-                    if (remaining == 0L) { playerInstance?.pause(); break }
+                    if (fadeOut && remaining <= 20_000L && remaining > 0L) {
+                        val factor = (remaining / 20_000f).coerceIn(0.05f, 1f)
+                        (playerInstance as? ExoPlayer)?.volume = factor
+                    }
+                    if (remaining == 0L) {
+                        playerInstance?.pause()
+                        (playerInstance as? ExoPlayer)?.volume = 1f
+                        break
+                    }
                     delay(minOf(remaining, 250L))
                 }
             }
@@ -519,6 +529,7 @@ class MusicService : MediaSessionService() {
                     .build(),
                 handleAudioFocus
             )
+            .setHandleAudioBecomingNoisy(appPreferences.isPauseOnHeadsetDisconnect())
             .build()
 
         playerInstance = player
