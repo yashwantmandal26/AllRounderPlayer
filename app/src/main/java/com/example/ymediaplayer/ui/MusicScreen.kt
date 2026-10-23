@@ -5556,13 +5556,13 @@ private fun EqualizerDialog(
                         fontSize = 12.sp,
                         modifier = Modifier.width(55.dp)
                     )
-                    Slider(
+                    AppSlider(
                         value = gainDb,
                         onValueChange = { onBandChange(index, it) },
                         valueRange = -10f..10f,
                         enabled = enabled,
                         modifier = Modifier.weight(1f),
-                        colors = SliderDefaults.colors(activeTrackColor = c.accentBlue, thumbColor = Color.White)
+                        accentColor = c.accentBlue
                     )
                     Text(
                         "${if (gainDb >= 0) "+" else ""}${gainDb.toInt()}dB",
@@ -5581,20 +5581,20 @@ private fun EqualizerDialog(
             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(16.dp)) {
                 Column(modifier = Modifier.weight(1f)) {
                     Text("Bass Boost", color = c.textSecondary, fontSize = 12.sp)
-                    Slider(
+                    AppSlider(
                         value = bassStrength,
                         onValueChange = onBassChange,
                         enabled = enabled,
-                        colors = SliderDefaults.colors(activeTrackColor = c.accentBlue, thumbColor = Color.White)
+                        accentColor = c.accentBlue
                     )
                 }
                 Column(modifier = Modifier.weight(1f)) {
                     Text("3D Virtualizer", color = c.textSecondary, fontSize = 12.sp)
-                    Slider(
+                    AppSlider(
                         value = virtualizerStrength,
                         onValueChange = onVirtualizerChange,
                         enabled = enabled,
-                        colors = SliderDefaults.colors(activeTrackColor = c.accentBlue, thumbColor = Color.White)
+                        accentColor = c.accentBlue
                     )
                 }
             }

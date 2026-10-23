@@ -1167,7 +1167,7 @@ fun SettingsScreen(
                                 color = primaryAccent
                             )
                         }
-                        Slider(
+                        AppSlider(
                             value = ambientGlowSpread,
                             onValueChange = {
                                 ambientGlowSpread = it
@@ -1178,11 +1178,7 @@ fun SettingsScreen(
                                 }
                             },
                             valueRange = 0.5f..1.8f,
-                            colors = SliderDefaults.colors(
-                                thumbColor = primaryAccent,
-                                activeTrackColor = primaryAccent,
-                                inactiveTrackColor = primaryAccent.copy(0.2f)
-                            )
+                            accentColor = primaryAccent
                         )
                         Row(
                             modifier = Modifier.fillMaxWidth(),
@@ -1213,7 +1209,7 @@ fun SettingsScreen(
                                 color = primaryAccent
                             )
                         }
-                        Slider(
+                        AppSlider(
                             value = ambientGlowSaturation,
                             onValueChange = {
                                 ambientGlowSaturation = it
@@ -1224,11 +1220,7 @@ fun SettingsScreen(
                                 }
                             },
                             valueRange = 0.5f..2.0f,
-                            colors = SliderDefaults.colors(
-                                thumbColor = primaryAccent,
-                                activeTrackColor = primaryAccent,
-                                inactiveTrackColor = primaryAccent.copy(0.2f)
-                            )
+                            accentColor = primaryAccent
                         )
                         Row(
                             modifier = Modifier.fillMaxWidth(),
@@ -1311,18 +1303,14 @@ fun SettingsScreen(
                                 Text("Video Ambient Spread", fontSize = 13.sp, color = c.textPrimary)
                                 Text("${(videoAmbientSpread * 100).toInt()}%", fontSize = 13.sp, fontWeight = FontWeight.Bold, color = primaryAccent)
                             }
-                            Slider(
+                            AppSlider(
                                 value = videoAmbientSpread,
                                 onValueChange = {
                                     videoAmbientSpread = it
                                     appPreferences.setVideoAmbientSpread(it)
                                 },
                                 valueRange = 0.2f..1.0f,
-                                colors = SliderDefaults.colors(
-                                    thumbColor = primaryAccent,
-                                    activeTrackColor = primaryAccent,
-                                    inactiveTrackColor = primaryAccent.copy(0.2f)
-                                )
+                                accentColor = primaryAccent
                             )
 
                             Spacer(Modifier.height(8.dp))
@@ -1335,18 +1323,14 @@ fun SettingsScreen(
                                 Text("Video Ambient Saturation", fontSize = 13.sp, color = c.textPrimary)
                                 Text("${(videoAmbientSaturation * 100).toInt()}%", fontSize = 13.sp, fontWeight = FontWeight.Bold, color = primaryAccent)
                             }
-                            Slider(
+                            AppSlider(
                                 value = videoAmbientSaturation,
                                 onValueChange = {
                                     videoAmbientSaturation = it
                                     appPreferences.setVideoAmbientSaturation(it)
                                 },
                                 valueRange = 0.5f..2.0f,
-                                colors = SliderDefaults.colors(
-                                    thumbColor = primaryAccent,
-                                    activeTrackColor = primaryAccent,
-                                    inactiveTrackColor = primaryAccent.copy(0.2f)
-                                )
+                                accentColor = primaryAccent
                             )
 
                             Spacer(Modifier.height(4.dp))

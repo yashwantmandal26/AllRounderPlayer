@@ -30,14 +30,29 @@ internal fun PlayerAmbientSettings(
                 Switch(enabled, onEnabled)
             }
             Text("Intensity · ${(intensity * 100).toInt()}%")
-            Slider(intensity, onIntensity, valueRange = 0.2f..1.8f, enabled = enabled,
-                modifier = Modifier.semantics { contentDescription = "Ambient intensity" })
+            AppSlider(
+                value = intensity,
+                onValueChange = onIntensity,
+                valueRange = 0.2f..1.8f,
+                enabled = enabled,
+                modifier = Modifier.semantics { contentDescription = "Ambient intensity" }
+            )
             Text("Spread · ${(spread * 100).toInt()}%")
-            Slider(spread, onSpread, enabled = enabled,
-                modifier = Modifier.semantics { contentDescription = "Ambient spread" })
+            AppSlider(
+                value = spread,
+                onValueChange = onSpread,
+                valueRange = 0.2f..1.0f,
+                enabled = enabled,
+                modifier = Modifier.semantics { contentDescription = "Ambient spread" }
+            )
             Text("Saturation · ${(saturation * 100).toInt()}%")
-            Slider(saturation, onSaturation, valueRange = 0.5f..2.0f, enabled = enabled,
-                modifier = Modifier.semantics { contentDescription = "Ambient saturation" })
+            AppSlider(
+                value = saturation,
+                onValueChange = onSaturation,
+                valueRange = 0.5f..2.0f,
+                enabled = enabled,
+                modifier = Modifier.semantics { contentDescription = "Ambient saturation" }
+            )
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                 Column(Modifier.weight(1f)) {
                     Text("Battery saver")

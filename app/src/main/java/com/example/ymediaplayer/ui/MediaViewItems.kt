@@ -149,11 +149,11 @@ fun VideoDetailedListItem(
                 ) {
                     Text(formatTime(video.duration), color = Color.White, fontSize = 10.sp, fontWeight = FontWeight.SemiBold)
                 }
-                // Watch Progress
+                // Watch Progress (Bold)
                 if (progress > 0 && video.duration > 0) {
                     val r = (progress.toFloat() / video.duration).coerceIn(0f, 1f)
-                    Box(modifier = Modifier.align(Alignment.BottomStart).fillMaxWidth().height(3.dp).background(Color.Black.copy(0.5f))) {
-                        Box(modifier = Modifier.fillMaxWidth(r).height(3.dp).background(c.accentBlue))
+                    Box(modifier = Modifier.align(Alignment.BottomStart).fillMaxWidth().height(5.dp).background(Color.Black.copy(0.65f))) {
+                        Box(modifier = Modifier.fillMaxWidth(r).height(5.dp).clip(RoundedCornerShape(topEnd = 2.5.dp, bottomEnd = 2.5.dp)).background(c.accentBlue))
                     }
                 }
             }
@@ -295,8 +295,8 @@ fun VideoCompactListItem(
             }
             if (progress > 0 && video.duration > 0) {
                 val r = (progress.toFloat() / video.duration).coerceIn(0f, 1f)
-                Box(modifier = Modifier.align(Alignment.BottomStart).fillMaxWidth().height(2.5.dp).background(Color.Black.copy(0.5f))) {
-                    Box(modifier = Modifier.fillMaxWidth(r).height(2.5.dp).background(c.accentBlue))
+                Box(modifier = Modifier.align(Alignment.BottomStart).fillMaxWidth().height(4.5.dp).background(Color.Black.copy(0.65f))) {
+                    Box(modifier = Modifier.fillMaxWidth(r).height(4.5.dp).clip(RoundedCornerShape(topEnd = 2.dp, bottomEnd = 2.dp)).background(c.accentBlue))
                 }
             }
         }
@@ -454,11 +454,11 @@ fun VideoGridItem2(
                 }
             }
 
-            // Progress bar
+            // Progress bar (Bold)
             if (progress > 0 && video.duration > 0) {
                 val r = (progress.toFloat() / video.duration).coerceIn(0f, 1f)
-                Box(modifier = Modifier.align(Alignment.BottomStart).fillMaxWidth().height(3.dp).background(Color.Black.copy(0.5f))) {
-                    Box(modifier = Modifier.fillMaxWidth(r).height(3.dp).background(c.accentBlue))
+                Box(modifier = Modifier.align(Alignment.BottomStart).fillMaxWidth().height(5.dp).background(Color.Black.copy(0.65f))) {
+                    Box(modifier = Modifier.fillMaxWidth(r).height(5.dp).clip(RoundedCornerShape(topEnd = 2.5.dp, bottomEnd = 2.5.dp)).background(c.accentBlue))
                 }
             }
         }
@@ -599,8 +599,8 @@ fun VideoGridItem3(
             // Progress line
             if (progress > 0 && video.duration > 0) {
                 val r = (progress.toFloat() / video.duration).coerceIn(0f, 1f)
-                Box(modifier = Modifier.align(Alignment.BottomStart).fillMaxWidth().height(2.5.dp).background(Color.Black.copy(0.5f))) {
-                    Box(modifier = Modifier.fillMaxWidth(r).height(2.5.dp).background(c.accentBlue))
+                Box(modifier = Modifier.align(Alignment.BottomStart).fillMaxWidth().height(4.5.dp).background(Color.Black.copy(0.65f))) {
+                    Box(modifier = Modifier.fillMaxWidth(r).height(4.5.dp).clip(RoundedCornerShape(topEnd = 2.dp, bottomEnd = 2.dp)).background(c.accentBlue))
                 }
             }
         }
@@ -804,11 +804,11 @@ fun VideoLargeCard(
                 }
             }
 
-            // Progress bar along the very bottom of the thumbnail
+            // Progress bar along the very bottom of the thumbnail (Bold)
             if (progress > 0 && video.duration > 0) {
                 val r = (progress.toFloat() / video.duration).coerceIn(0f, 1f)
-                Box(modifier = Modifier.align(Alignment.BottomStart).fillMaxWidth().height(3.5.dp).background(Color.Black.copy(0.5f))) {
-                    Box(modifier = Modifier.fillMaxWidth(r).height(3.5.dp).background(c.accentBlue))
+                Box(modifier = Modifier.align(Alignment.BottomStart).fillMaxWidth().height(5.dp).background(Color.Black.copy(0.65f))) {
+                    Box(modifier = Modifier.fillMaxWidth(r).height(5.dp).clip(RoundedCornerShape(topEnd = 2.5.dp, bottomEnd = 2.5.dp)).background(c.accentBlue))
                 }
             }
         }

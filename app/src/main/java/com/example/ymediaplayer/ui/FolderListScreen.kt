@@ -1954,11 +1954,23 @@ private fun ContinueWatchingCard(
         Text(
             video.title.substringBeforeLast("."), color = Color.White, fontSize = 10.sp, fontWeight = FontWeight.Medium,
             maxLines = 1, overflow = TextOverflow.Ellipsis,
-            modifier = Modifier.align(Alignment.BottomStart).padding(start = 8.dp, end = 8.dp, bottom = 9.dp)
+            modifier = Modifier.align(Alignment.BottomStart).padding(start = 8.dp, end = 8.dp, bottom = 11.dp)
         )
-        // Progress bar
-        Box(modifier = Modifier.align(Alignment.BottomStart).fillMaxWidth().height(3.dp).background(Color.White.copy(0.25f))) {
-            Box(modifier = Modifier.fillMaxWidth(ratio).height(3.dp).background(c.accentBlue))
+        // Bold Watch Progress bar
+        Box(
+            modifier = Modifier
+                .align(Alignment.BottomStart)
+                .fillMaxWidth()
+                .height(5.dp)
+                .background(Color.Black.copy(alpha = 0.65f))
+        ) {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth(ratio)
+                    .height(5.dp)
+                    .clip(RoundedCornerShape(topEnd = 2.5.dp, bottomEnd = 2.5.dp))
+                    .background(c.accentBlue)
+            )
         }
     }
 }
@@ -2023,12 +2035,25 @@ private fun RecentlyAddedVideoCard(
         Text(
             video.title.substringBeforeLast("."), color = Color.White, fontSize = 10.sp, fontWeight = FontWeight.Medium,
             maxLines = 1, overflow = TextOverflow.Ellipsis,
-            modifier = Modifier.align(Alignment.BottomStart).padding(start = 8.dp, end = 8.dp, bottom = if (progress > 0) 9.dp else 7.dp)
+            modifier = Modifier.align(Alignment.BottomStart).padding(start = 8.dp, end = 8.dp, bottom = if (progress > 0) 11.dp else 7.dp)
         )
         if (progress > 0 && video.duration > 0) {
             val ratio = (progress.toFloat() / video.duration).coerceIn(0f, 1f)
-            Box(modifier = Modifier.align(Alignment.BottomStart).fillMaxWidth().height(3.dp).background(Color.White.copy(0.25f))) {
-                Box(modifier = Modifier.fillMaxWidth(ratio).height(3.dp).background(c.accentBlue))
+            // Bold Watch Progress bar
+            Box(
+                modifier = Modifier
+                    .align(Alignment.BottomStart)
+                    .fillMaxWidth()
+                    .height(5.dp)
+                    .background(Color.Black.copy(alpha = 0.65f))
+            ) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth(ratio)
+                        .height(5.dp)
+                        .clip(RoundedCornerShape(topEnd = 2.5.dp, bottomEnd = 2.5.dp))
+                        .background(c.accentBlue)
+                )
             }
         }
     }

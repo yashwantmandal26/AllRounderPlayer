@@ -142,15 +142,25 @@ internal fun VideoSubtitleTools(state: VideoSubtitleState, view: PlayerView, des
                     if (state.loading) LinearProgressIndicator(Modifier.fillMaxWidth())
                     state.error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
                     Text("Text size · ${fontSize.toInt()} sp")
-                    Slider(fontSize, onValueChange = {
-                        fontSize = it; prefs.setSubtitleFontSize(it.toInt()); applySubtitleDesign(view, design, prefs)
-                    }, valueRange = 12f..36f,
-                        modifier = Modifier.semantics { contentDescription = "Subtitle text size" })
+                    AppSlider(
+                        value = fontSize,
+                        onValueChange = {
+                            fontSize = it; prefs.setSubtitleFontSize(it.toInt()); applySubtitleDesign(view, design, prefs)
+                        },
+                        valueRange = 12f..36f,
+                        modifier = Modifier.semantics { contentDescription = "Subtitle text size" },
+                        accentColor = MaterialTheme.colorScheme.primary
+                    )
                     Text("Position above bottom · ${(position * 100).toInt()}%")
-                    Slider(position, onValueChange = {
-                        position = it; prefs.setSubtitleBottomPadding(it); applySubtitleDesign(view, design, prefs)
-                    }, valueRange = 0f..0.4f,
-                        modifier = Modifier.semantics { contentDescription = "Subtitle vertical position" })
+                    AppSlider(
+                        value = position,
+                        onValueChange = {
+                            position = it; prefs.setSubtitleBottomPadding(it); applySubtitleDesign(view, design, prefs)
+                        },
+                        valueRange = 0f..0.4f,
+                        modifier = Modifier.semantics { contentDescription = "Subtitle vertical position" },
+                        accentColor = MaterialTheme.colorScheme.primary
+                    )
                     if (state.lines.isNotEmpty()) {
                         Text("Timing · ${state.delayMs} ms (positive = later)")
                         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {

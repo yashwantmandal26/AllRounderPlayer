@@ -98,9 +98,12 @@ internal fun PlayerModePicker(
                 }
                 if (unavailable == null) {
                     Text("Intensity · ${(strength * 100).toInt()}%", color = Color.White, fontSize = 13.sp)
-                    Slider(value = strength, onValueChange = onStrengthChange,
+                    AppSlider(
+                        value = strength,
+                        onValueChange = onStrengthChange,
                         modifier = Modifier.semantics { contentDescription = "$title intensity" },
-                        colors = SliderDefaults.colors(thumbColor = accent, activeTrackColor = accent))
+                        accentColor = accent
+                    )
                 }
                 normalize?.let {
                     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {

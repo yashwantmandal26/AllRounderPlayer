@@ -5960,7 +5960,7 @@ private fun ExpandedOptionChip(
     }
 }
 
-// ─── Right-Docked Side Panel Dialog (Touching Full Right Border, Zero Gap, Dark Grey + Theme Gradient) ──
+// ─── Adaptive Player Sheet Dialog (Bottom Sheet in Portrait, Right-Docked Panel in Landscape) ──
 @Composable
 private fun RightSidePanelDialog(
     onDismiss: () -> Unit,
@@ -5972,6 +5972,9 @@ private fun RightSidePanelDialog(
     content: @Composable ColumnScope.() -> Unit
 ) {
     val c = LocalAppColors.current
+    val configuration = LocalConfiguration.current
+    val isLandscape = configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
+
     Dialog(
         onDismissRequest = onDismiss,
         properties = DialogProperties(usePlatformDefaultWidth = false)
@@ -5982,12 +5985,31 @@ private fun RightSidePanelDialog(
                 .background(Color.Black.copy(alpha = 0.55f))
                 .pointerInput(Unit) { detectTapGestures { onDismiss() } }
         ) {
-            Box(
-                modifier = Modifier
+            val panelShape = if (isLandscape) {
+                RoundedCornerShape(topStart = 20.dp, bottomStart = 20.dp, topEnd = 0.dp, bottomEnd = 0.dp)
+            } else {
+                RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp, bottomStart = 0.dp, bottomEnd = 0.dp)
+            }
+
+            val panelModifier = if (isLandscape) {
+                Modifier
                     .align(Alignment.CenterEnd)
                     .fillMaxHeight()
                     .widthIn(min = 280.dp, max = maxWidthDp.dp)
                     .fillMaxWidth(0.85f)
+                    .systemBarsPadding()
+            } else {
+                Modifier
+                    .align(Alignment.BottomCenter)
+                    .fillMaxWidth()
+                    .widthIn(max = 520.dp)
+                    .wrapContentHeight()
+                    .heightIn(max = (configuration.screenHeightDp * 0.75f).dp)
+                    .navigationBarsPadding()
+            }
+
+            Box(
+                modifier = panelModifier
                     .background(
                         Brush.linearGradient(
                             listOf(
@@ -5995,30 +6017,45 @@ private fun RightSidePanelDialog(
                                 Color(0xFF10111A),
                                 accentColor.copy(alpha = 0.14f)
                             )
-                        )
+                        ),
+                        shape = panelShape
                     )
                     .border(
                         width = 1.2.dp,
                         brush = Brush.verticalGradient(
                             listOf(
-                                accentColor.copy(alpha = 0.6f),
+                                accentColor.copy(alpha = 0.65f),
                                 Color.White.copy(alpha = 0.18f),
                                 Color.Transparent
                             )
                         ),
-                        shape = RoundedCornerShape(topStart = 20.dp, bottomStart = 20.dp, topEnd = 0.dp, bottomEnd = 0.dp)
+                        shape = panelShape
                     )
-                    .clip(RoundedCornerShape(topStart = 20.dp, bottomStart = 20.dp, topEnd = 0.dp, bottomEnd = 0.dp))
+                    .clip(panelShape)
                     .pointerInput(Unit) { detectTapGestures { /* consume inside */ } }
-                    .systemBarsPadding()
-                    .padding(horizontal = 18.dp, vertical = 16.dp)
+                    .padding(horizontal = 18.dp, vertical = if (isLandscape) 16.dp else 12.dp)
             ) {
-                Column(modifier = Modifier.fillMaxSize()) {
+                Column(
+                    modifier = if (isLandscape) Modifier.fillMaxSize() else Modifier.fillMaxWidth().wrapContentHeight()
+                ) {
+                    // Top drag handle indicator in portrait
+                    if (!isLandscape) {
+                        Box(
+                            modifier = Modifier
+                                .align(Alignment.CenterHorizontally)
+                                .padding(bottom = 10.dp)
+                                .width(36.dp)
+                                .height(4.dp)
+                                .clip(CircleShape)
+                                .background(Color.White.copy(alpha = 0.32f))
+                        )
+                    }
+
                     // Header
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .padding(bottom = 12.dp),
+                            .padding(bottom = 10.dp),
                         horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
@@ -6272,10 +6309,20 @@ private fun SubtitlesDialog(
         onDismiss = onDismiss,
         accentColor = accentColor,
         title = "Subtitles & Captions",
-        icon = Icons.Rounded.Subtitles
+        icon = Icons.Rounded.Subtitles,
+        headerAction = {
+            IconButton(
+                onClick = onOpenTools,
+                modifier = Modifier
+                    .size(32.dp)
+                    .clip(CircleShape)
+                    .background(c.glassBgNested)
+            ) {
+                Icon(Icons.Rounded.Tune, contentDescription = "Subtitle tools & timing", tint = accentColor, modifier = Modifier.size(18.dp))
+            }
+        }
     ) {
 
-                TextButton(onClick = onOpenTools) { Text("Timing, position & subtitle search") }
                 // 2 Tabs: Tracks & Styles
                 TabRow(
                     selectedTabIndex = selectedTab,
@@ -6622,32 +6669,59 @@ private fun MiniSpeedDialog(
     onDismiss: () -> Unit
 ) {
     val c = LocalAppColors.current
+    val view = LocalView.current
+
     RightSidePanelDialog(
         onDismiss = onDismiss,
         accentColor = accentColor,
         title = "Playback Speed",
-        icon = Icons.Rounded.Speed
+        icon = Icons.Rounded.Speed,
+        headerAction = {
+            if (abs(currentSpeed - 1.0f) >= 0.01f) {
+                TextButton(
+                    onClick = {
+                        view.performHaptic(HapticType.LIGHT)
+                        onSpeedChange(1.0f)
+                    },
+                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp)
+                ) {
+                    Text("Reset 1.0x", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = accentColor)
+                }
+            }
+        }
     ) {
-
-                // User Defined Speed with [-] and [+] Increment/Decrement Buttons
+        Column(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            // User Defined Speed with [-] and [+] Increment/Decrement Buttons
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(16.dp))
+                    .background(c.cardBgElevated)
+                    .border(1.dp, c.glassBorder, RoundedCornerShape(16.dp))
+                    .padding(vertical = 10.dp, horizontal = 16.dp)
+            ) {
                 Row(
                     modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceEvenly,
+                    horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     // Decrement Button (-)
                     IconButton(
                         onClick = {
+                            view.performHaptic(HapticType.LIGHT)
                             val newSpd = ((currentSpeed - 0.05f) * 100).roundToInt() / 100f
-                            onSpeedChange(newSpd.coerceIn(0.25f, 4.0f))
+                            onSpeedChange(newSpd.coerceIn(0.25f, 3.0f))
                         },
                         modifier = Modifier
-                            .size(46.dp)
+                            .size(42.dp)
                             .clip(CircleShape)
-                            .background(c.cardBgElevated)
+                            .background(c.glassBgNested)
                             .border(1.dp, c.glassBorder, CircleShape)
                     ) {
-                        Icon(Icons.Rounded.Remove, contentDescription = "Decrease speed", tint = c.textPrimary, modifier = Modifier.size(24.dp))
+                        Icon(Icons.Rounded.Remove, contentDescription = "Decrease speed", tint = c.textPrimary, modifier = Modifier.size(20.dp))
                     }
 
                     // Speed Display (e.g. 1.25x)
@@ -6655,95 +6729,122 @@ private fun MiniSpeedDialog(
                         Text(
                             text = String.format(LocalConfiguration.current.locales[0], "%.2fx", currentSpeed),
                             color = accentColor,
-                            fontSize = 32.sp,
+                            fontSize = 30.sp,
                             fontWeight = FontWeight.ExtraBold,
                             fontFamily = FontFamily.Monospace
                         )
                         Text(
-                            text = if (abs(currentSpeed - 1.0f) < 0.01f) "Normal Speed" else "Custom Speed",
+                            text = when {
+                                abs(currentSpeed - 1.0f) < 0.01f -> "Normal Speed"
+                                currentSpeed < 1.0f -> "Slower"
+                                else -> "Faster"
+                            },
                             color = c.textSecondary,
-                            fontSize = 11.sp
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Medium
                         )
                     }
 
                     // Increment Button (+)
                     IconButton(
                         onClick = {
+                            view.performHaptic(HapticType.LIGHT)
                             val newSpd = ((currentSpeed + 0.05f) * 100).roundToInt() / 100f
-                            onSpeedChange(newSpd.coerceIn(0.25f, 4.0f))
+                            onSpeedChange(newSpd.coerceIn(0.25f, 3.0f))
                         },
                         modifier = Modifier
-                            .size(46.dp)
+                            .size(42.dp)
                             .clip(CircleShape)
-                            .background(c.cardBgElevated)
+                            .background(c.glassBgNested)
                             .border(1.dp, c.glassBorder, CircleShape)
                     ) {
-                        Icon(Icons.Rounded.Add, contentDescription = "Increase speed", tint = c.textPrimary, modifier = Modifier.size(24.dp))
+                        Icon(Icons.Rounded.Add, contentDescription = "Increase speed", tint = c.textPrimary, modifier = Modifier.size(20.dp))
                     }
                 }
+            }
 
-                Spacer(Modifier.height(16.dp))
+            Spacer(Modifier.height(10.dp))
 
-                // Reset to 1.0x Chip Button
-                Box(
-                    modifier = Modifier
-                        .clip(RoundedCornerShape(12.dp))
-                        .background(if (abs(currentSpeed - 1.0f) < 0.01f) accentColor.copy(alpha = 0.25f) else c.cardBgElevated)
-                        .border(1.dp, if (abs(currentSpeed - 1.0f) < 0.01f) accentColor else c.glassBorder, RoundedCornerShape(12.dp))
-                        .clickable { onSpeedChange(1.0f) }
-                        .padding(horizontal = 18.dp, vertical = 6.dp)
-                ) {
-                    Text(
-                        text = "Reset to 1.0x",
-                        color = if (abs(currentSpeed - 1.0f) < 0.01f) accentColor else c.textPrimary,
-                        fontSize = 12.sp,
-                        fontWeight = FontWeight.SemiBold
-                    )
-                }
+            // Smooth Continuous Slider with Round Thumb!
+            AppSlider(
+                value = currentSpeed.coerceIn(0.25f, 3.0f),
+                onValueChange = {
+                    val rounded = (it * 20).roundToInt() / 20f
+                    if (abs(rounded - currentSpeed) >= 0.02f) {
+                        view.performHaptic(HapticType.LIGHT)
+                        onSpeedChange(rounded)
+                    }
+                },
+                valueRange = 0.25f..3.0f,
+                accentColor = accentColor,
+                trackHeight = 5.dp,
+                thumbSize = 16.dp,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 4.dp)
+            )
 
-                Spacer(Modifier.height(18.dp))
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 4.dp),
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Text("0.25x", fontSize = 10.sp, color = c.textSecondary)
+                Text("1.0x", fontSize = 10.sp, color = if (abs(currentSpeed - 1.0f) < 0.05f) accentColor else c.textSecondary, fontWeight = FontWeight.Bold)
+                Text("2.0x", fontSize = 10.sp, color = c.textSecondary)
+                Text("3.0x", fontSize = 10.sp, color = c.textSecondary)
+            }
 
-                HorizontalDivider(color = c.glassBorder)
+            Spacer(Modifier.height(12.dp))
 
-                Spacer(Modifier.height(12.dp))
-
-                // Presets Title & Row
+            // Presets Title & Row
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
                 Text(
                     text = "Quick Presets",
                     color = c.textSecondary,
-                    fontSize = 11.sp,
-                    fontWeight = FontWeight.Medium,
-                    modifier = Modifier.align(Alignment.Start)
+                    fontSize = 11.5.sp,
+                    fontWeight = FontWeight.SemiBold
                 )
-                Spacer(Modifier.height(8.dp))
+            }
+            Spacer(Modifier.height(8.dp))
 
-                val presets = listOf(0.5f, 0.75f, 1.0f, 1.25f, 1.5f, 2.0f)
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween
-                ) {
-                    presets.forEach { preset ->
-                        val isSelected = abs(currentSpeed - preset) < 0.01f
-                        Box(
-                            modifier = Modifier
-                                .clip(RoundedCornerShape(8.dp))
-                                .background(if (isSelected) accentColor else c.cardBgElevated)
-                                .border(1.dp, if (isSelected) accentColor else c.glassBorder, RoundedCornerShape(8.dp))
-                                .clickable { onSpeedChange(preset) }
-                                .padding(horizontal = 8.dp, vertical = 6.dp),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Text(
-                                text = "${preset}x",
-                                color = if (isSelected) Color.White else c.textPrimary,
-                                fontSize = 11.sp,
-                                fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal
-                            )
-                        }
+            val presets = listOf(0.5f, 0.75f, 1.0f, 1.25f, 1.5f, 2.0f)
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(6.dp)
+            ) {
+                presets.forEach { preset ->
+                    val isSelected = abs(currentSpeed - preset) < 0.01f
+                    Box(
+                        modifier = Modifier
+                            .weight(1f)
+                            .clip(RoundedCornerShape(10.dp))
+                            .background(if (isSelected) accentColor else c.cardBgElevated)
+                            .border(1.dp, if (isSelected) accentColor else c.glassBorder, RoundedCornerShape(10.dp))
+                            .clickable {
+                                view.performHaptic(HapticType.LIGHT)
+                                onSpeedChange(preset)
+                            }
+                            .padding(vertical = 8.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(
+                            text = "${preset}x",
+                            color = if (isSelected) Color.White else c.textPrimary,
+                            fontSize = 11.5.sp,
+                            fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium
+                        )
+                    }
                 }
             }
         }
     }
+}
 
 // ─── Mini Sleep Timer Dialog ──────────────────────────────────────────────────
 @Composable
@@ -6928,44 +7029,56 @@ private fun MiniVideoDetailsDialog(
             }
         }
     ) {
+        val resText = videoFormat?.let { "${it.width} × ${it.height}" } ?: "Hardware Adapted"
+        val fpsText = videoFormat?.frameRate?.takeIf { it > 0 }?.let { "${it.roundToInt()} fps" } ?: "Auto"
+        val vCodec = videoFormat?.sampleMimeType?.substringAfterLast("/")?.uppercase() ?: "Hardware Decoded"
+        val colorInfo = videoFormat?.colorInfo
+        val isHdr = colorInfo != null && (ColorInfo.isTransferHdr(colorInfo) || colorInfo.colorTransfer == C.COLOR_TRANSFER_ST2084 || colorInfo.colorTransfer == C.COLOR_TRANSFER_HLG) || videoFormat?.sampleMimeType?.contains("dolby", ignoreCase = true) == true
+        val hdrText = when {
+            videoFormat?.sampleMimeType?.contains("dolby", ignoreCase = true) == true -> "Dolby Vision"
+            colorInfo?.colorTransfer == C.COLOR_TRANSFER_HLG -> "HLG (BT.2020)"
+            colorInfo?.colorTransfer == C.COLOR_TRANSFER_ST2084 -> "HDR10 (ST2084 / BT.2020)"
+            isHdr -> "HDR (Wide Color Gamut)"
+            else -> "SDR (Standard Dynamic Range)"
+        }
+        val aCodec = audioFormat?.sampleMimeType?.substringAfterLast("/")?.uppercase() ?: "AAC / Auto"
+        val channels = audioFormat?.channelCount?.let { if (it == 2) "Stereo (2ch)" else "$it Channels" } ?: "Stereo"
+        val sampleRate = audioFormat?.sampleRate?.takeIf { it > 0 }?.let { "${it} Hz" } ?: "48,000 Hz"
+
         // Scrollable details list
         Column(
             modifier = Modifier
                 .fillMaxWidth()
                 .verticalScroll(rememberScrollState()),
-            verticalArrangement = Arrangement.spacedBy(8.dp)
+            verticalArrangement = Arrangement.spacedBy(6.dp)
         ) {
+            // Title card
             DetailItemRow("Title", title, accentColor)
-            DetailItemRow("Duration", formatTime(durationMs), accentColor)
-            if (fileSize > 0) {
-                DetailItemRow("File Size", formatSize(fileSize), accentColor)
+
+            // Specs in 2-column grid
+            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                DetailSpecCell("Resolution", resText)
+                DetailSpecCell("Frame Rate", fpsText)
             }
-            val resText = videoFormat?.let { "${it.width} × ${it.height}" } ?: "Hardware Adapted"
-            DetailItemRow("Resolution", resText, accentColor)
-            val fpsText = videoFormat?.frameRate?.takeIf { it > 0 }?.let { "${it.roundToInt()} fps" } ?: "Auto"
-            DetailItemRow("Frame Rate", fpsText, accentColor)
-            val vCodec = videoFormat?.sampleMimeType?.substringAfterLast("/")?.uppercase() ?: "Hardware Decoded"
-            DetailItemRow("Video Codec", vCodec, accentColor)
-            val colorInfo = videoFormat?.colorInfo
-            val isHdr = colorInfo != null && (ColorInfo.isTransferHdr(colorInfo) || colorInfo.colorTransfer == C.COLOR_TRANSFER_ST2084 || colorInfo.colorTransfer == C.COLOR_TRANSFER_HLG) || videoFormat?.sampleMimeType?.contains("dolby", ignoreCase = true) == true
-            val hdrText = when {
-                videoFormat?.sampleMimeType?.contains("dolby", ignoreCase = true) == true -> "Dolby Vision"
-                colorInfo?.colorTransfer == C.COLOR_TRANSFER_HLG -> "HLG (BT.2020)"
-                colorInfo?.colorTransfer == C.COLOR_TRANSFER_ST2084 -> "HDR10 (ST2084 / BT.2020)"
-                isHdr -> "HDR (Wide Color Gamut)"
-                else -> "SDR (Standard Dynamic Range)"
+            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                DetailSpecCell("Duration", formatTime(durationMs))
+                DetailSpecCell("File Size", if (fileSize > 0) formatSize(fileSize) else "—")
             }
-            DetailItemRow("Dynamic Range", hdrText, accentColor)
-            val aCodec = audioFormat?.sampleMimeType?.substringAfterLast("/")?.uppercase() ?: "AAC / Auto"
-            DetailItemRow("Audio Codec", aCodec, accentColor)
-            val channels = audioFormat?.channelCount?.let { if (it == 2) "Stereo (2ch)" else "$it Channels" } ?: "Stereo"
-            DetailItemRow("Audio Channels", channels, accentColor)
-            val sampleRate = audioFormat?.sampleRate?.takeIf { it > 0 }?.let { "${it} Hz" } ?: "48,000 Hz"
-            DetailItemRow("Sample Rate", sampleRate, accentColor)
-            if (fileSize > 0 && durationMs > 0) {
-                val bitrateKbps = (fileSize * 8) / (durationMs)
-                DetailItemRow("Overall Bitrate", "${bitrateKbps} kbps", accentColor)
+            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                DetailSpecCell("Video Codec", vCodec)
+                DetailSpecCell("Dynamic Range", hdrText)
             }
+            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                DetailSpecCell("Audio Codec", aCodec)
+                DetailSpecCell("Channels", channels)
+            }
+            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                DetailSpecCell("Sample Rate", sampleRate)
+                val bitrateText = if (fileSize > 0 && durationMs > 0) "${(fileSize * 8) / durationMs} kbps" else "—"
+                DetailSpecCell("Bitrate", bitrateText)
+            }
+
+            // Path Card
             DetailItemRow(
                 label = "Storage Path",
                 value = filePath,
@@ -6977,6 +7090,25 @@ private fun MiniVideoDetailsDialog(
                     Toast.makeText(context, "Location copied", Toast.LENGTH_SHORT).show()
                 }
             )
+        }
+    }
+}
+
+@Composable
+private fun RowScope.DetailSpecCell(label: String, value: String) {
+    val c = LocalAppColors.current
+    Box(
+        modifier = Modifier
+            .weight(1f)
+            .clip(RoundedCornerShape(10.dp))
+            .background(c.cardBgElevated)
+            .border(0.7.dp, c.glassBorder, RoundedCornerShape(10.dp))
+            .padding(horizontal = 10.dp, vertical = 7.dp)
+    ) {
+        Column {
+            Text(label, color = c.textSecondary, fontSize = 10.sp, fontWeight = FontWeight.Medium)
+            Spacer(Modifier.height(2.dp))
+            Text(value, color = c.textPrimary, fontSize = 12.5.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
         }
     }
 }

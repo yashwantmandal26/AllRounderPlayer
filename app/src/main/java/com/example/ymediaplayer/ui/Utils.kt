@@ -23,6 +23,7 @@ import androidx.compose.ui.composed
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.BlendMode
@@ -46,11 +47,7 @@ import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.rounded.Favorite
 import androidx.compose.material.icons.rounded.FavoriteBorder
 import androidx.compose.material.icons.rounded.PlayArrow
-import androidx.compose.material3.Checkbox
-import androidx.compose.material3.CheckboxDefaults
-import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
-import androidx.compose.material3.Text
+import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -585,5 +582,84 @@ internal fun sliderToScreenBrightness(sliderPct: Float): Float {
 internal fun screenBrightnessToSlider(brightness: Float): Float {
     val clamped = brightness.coerceIn(0.005f, 1f)
     return clamped.toDouble().pow(1.0 / 2.2).toFloat().coerceIn(0.01f, 1f)
+}
+
+/**
+ * Reusable circular slider thumb that replaces Material3's vertical bar thumb with a clean,
+ * round knob and subtle shadow.
+ */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun RoundSliderThumb(
+    thumbColor: Color,
+    modifier: Modifier = Modifier,
+    size: Dp = 16.dp,
+    borderColor: Color = Color.White,
+    borderWidth: Dp = 2.dp,
+    elevation: Dp = 3.dp
+) {
+    Box(
+        modifier = modifier
+            .size(size)
+            .shadow(elevation, androidx.compose.foundation.shape.CircleShape)
+            .clip(androidx.compose.foundation.shape.CircleShape)
+            .background(thumbColor)
+            .border(borderWidth, borderColor, androidx.compose.foundation.shape.CircleShape)
+    )
+}
+
+/**
+ * Standard app slider featuring a round thumb and smooth rounded track.
+ */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun AppSlider(
+    value: Float,
+    onValueChange: (Float) -> Unit,
+    modifier: Modifier = Modifier,
+    enabled: Boolean = true,
+    valueRange: ClosedFloatingPointRange<Float> = 0f..1f,
+    steps: Int = 0,
+    onValueChangeFinished: (() -> Unit)? = null,
+    accentColor: Color = MaterialTheme.colorScheme.primary,
+    trackHeight: Dp = 5.dp,
+    thumbSize: Dp = 16.dp
+) {
+    Slider(
+        value = value,
+        onValueChange = onValueChange,
+        modifier = modifier,
+        enabled = enabled,
+        valueRange = valueRange,
+        steps = steps,
+        onValueChangeFinished = onValueChangeFinished,
+        thumb = {
+            RoundSliderThumb(
+                thumbColor = accentColor,
+                size = thumbSize,
+                borderColor = Color.White,
+                borderWidth = 2.dp
+            )
+        },
+        track = { sliderState ->
+            SliderDefaults.Track(
+                sliderState = sliderState,
+                modifier = Modifier
+                    .height(trackHeight)
+                    .clip(androidx.compose.foundation.shape.RoundedCornerShape(trackHeight / 2)),
+                colors = SliderDefaults.colors(
+                    activeTrackColor = accentColor,
+                    inactiveTrackColor = accentColor.copy(alpha = 0.22f),
+                    disabledActiveTrackColor = accentColor.copy(alpha = 0.4f),
+                    disabledInactiveTrackColor = Color.White.copy(alpha = 0.12f)
+                )
+            )
+        },
+        colors = SliderDefaults.colors(
+            thumbColor = accentColor,
+            activeTrackColor = accentColor,
+            inactiveTrackColor = accentColor.copy(alpha = 0.22f)
+        )
+    )
 }
 
