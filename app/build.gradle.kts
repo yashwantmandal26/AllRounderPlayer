@@ -21,8 +21,8 @@ android {
         applicationId = "com.example.ymediaplayer"
         minSdk = 24
         targetSdk = 37
-        versionCode = 23
-        versionName = "1.7.8"
+        versionCode = 25
+        versionName = "1.7.10"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         ndk {
             abiFilters += listOf("arm64-v8a")

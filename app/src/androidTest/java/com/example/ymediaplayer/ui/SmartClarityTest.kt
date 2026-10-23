@@ -62,7 +62,7 @@ class SmartClarityTest {
         fun sample(image: Bitmap, fraction: Float): Int = Color.red(image.getPixel((image.width * fraction).toInt(), image.height / 2))
         assertTrue("Black must remain black", sample(enhanced, 0.125f) <= 1)
         assertTrue("White must remain white", sample(enhanced, 0.875f) >= 254)
-        assertTrue("Shadow detail should be visibly lifted", sample(enhanced, 0.375f) >= sample(original, 0.375f) + 8)
+        assertTrue("Shadows must remain deep and unbleached", sample(enhanced, 0.375f) in (sample(original, 0.375f) - 6)..(sample(original, 0.375f) + 6))
         val flat = sample(enhanced, 0.375f)
         for (x in (enhanced.width * 0.30f).toInt()..(enhanced.width * 0.45f).toInt()) {
             assertTrue("Flat areas must not gain texture", abs(Color.red(enhanced.getPixel(x, enhanced.height / 2)) - flat) <= 1)

@@ -398,7 +398,7 @@ private const val AGSL_LUMA_UNSHARP_SHADER = """
     }
 """
 
-// SDR spatial enhancement: bounded luminance detail, shadow separation and restrained vibrance.
+// Enhanced Mode SDR spatial enhancement: multiscale texture definition, dynamic contrast and intelligent vibrance.
 // Internal visibility lets device tests compile the actual production shader.
 internal const val SMART_CLARITY_SHADER = """
     uniform shader image;
@@ -428,25 +428,22 @@ internal const val SMART_CLARITY_SHADER = """
         half fine = y - (nearMean * 0.75 + (nw + ne + sw + se) * 0.0625);
         // Gate tiny fluctuations and isolated noise; dark regions get less sharpening.
         half edge = max(abs(e - w), abs(s - n));
-        half coherence = smoothstep(0.006, 0.055, edge);
-        half noiseGate = smoothstep(0.004, 0.025, abs(fine));
-        half shadowGuard = 0.42 + 0.58 * smoothstep(0.025, 0.18, y);
-        half edgeGuard = 1.0 - 0.58 * smoothstep(0.12, 0.45, range);
-        // Two scales make small facial / texture detail visible without giving
-        // large object boundaries a white or dark outline.
-        half detail = (fine * 1.35 + (nearMean - wideMean) * 0.34)
+        half coherence = smoothstep(0.004, 0.045, edge);
+        half noiseGate = smoothstep(0.003, 0.020, abs(fine));
+        half shadowGuard = 0.50 + 0.50 * smoothstep(0.02, 0.16, y);
+        half edgeGuard = 1.0 - 0.45 * smoothstep(0.15, 0.55, range);
+        // Multiscale detail extraction: crisp texture, facial features and fabric definition
+        half detail = (fine * 1.85 + (nearMean - wideMean) * 0.55)
                     * noiseGate * coherence * shadowGuard * edgeGuard * aiStrength;
-        // Stay within existing local extrema: sharpening must not create edge halos.
-        half detailedY = clamp(y + clamp(detail, -0.065, 0.065), localMin, localMax);
-        half shadow = smoothstep(0.015, 0.10, y) * (1.0 - smoothstep(0.35, 0.65, y));
-        half lift = 0.038 * shadow * aiStrength;
-        // Bounded contrast curve leaves pure black and white untouched.
-        half contrast = (y - 0.5) * y * (1.0 - y) * 0.15 * aiStrength;
-        half targetY = clamp(detailedY + lift + contrast, 0.0, c.a);
+        // Bounded extrema strictly within local envelope - zero halo, zero whitening
+        half detailedY = clamp(y + clamp(detail, -0.09, 0.09), localMin, localMax);
+        // Zero-DC micro-contrast curve: keeps blacks deep and highlights crisp without lifting shadow luma
+        half microContrast = (y - 0.5) * y * (1.0 - y) * 0.20 * aiStrength;
+        half targetY = clamp(detailedY + microContrast, 0.0, c.a);
         half3 rgb = c.rgb + half3(targetY - y);
         half chroma = max(c.r, max(c.g, c.b)) - min(c.r, min(c.g, c.b));
-        half skin = (c.r > c.g && c.g > c.b && c.r - c.b > 0.06 && c.r - c.g < 0.32) ? 0.25 : 1.0;
-        half vibrance = 0.09 * (1.0 - smoothstep(0.15, 0.65, chroma)) * skin * aiStrength;
+        half skin = (c.r > c.g && c.g > c.b && c.r - c.b > 0.06 && c.r - c.g < 0.32) ? 0.35 : 1.0;
+        half vibrance = 0.15 * (1.0 - smoothstep(0.12, 0.70, chroma)) * skin * aiStrength;
         rgb = mix(half3(targetY), rgb, 1.0 + vibrance);
         return half4(clamp(rgb, half3(0.0), half3(c.a)), c.a);
     }
@@ -520,31 +517,37 @@ fun createVideoRenderEffect(
     }
 
     if (isSuperAi) {
+        // Enhanced Mode:
+        // 1. Saturation boosted (+14%) for punchy, vibrant cinematic colors
+        // 2. Subtle warmth boost of +2% (+0.02f) for pleasant skin tones & golden depth
+        // 3. Crisp micro-contrast boost (+3%) with strictly ZERO whitening (brightness = 0.0f)
+        val effectiveWarmth = (warmth + 0.02f).coerceIn(-1.0f, 1.0f)
+        val effectiveSaturation = (saturation * 1.14f).coerceIn(0.5f, 2.5f)
+        val effectiveContrast = (contrast * 1.03f).coerceIn(0.5f, 2.5f)
+
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             try {
                 val aiShader = RuntimeShader(SMART_CLARITY_SHADER)
-                // Tuned for a visible improvement on phone displays while the
-                // shader's local-range clamp prevents halos and clipping.
-                aiShader.setFloatUniform("aiStrength", 1.25f)
+                aiShader.setFloatUniform("aiStrength", 1.30f)
                 val aiEffect = RenderEffect.createRuntimeShaderEffect(aiShader, "image")
 
-                val isWarmthModified = Math.abs(warmth) > 0.005f
-                return if (isWarmthModified) {
-                    val wm = buildVideoColorMatrix(1.0f, 1.0f, 0.0f, warmth)
-                    val wEffect = RenderEffect.createColorFilterEffect(ColorMatrixColorFilter(wm))
-                    RenderEffect.createChainEffect(wEffect, aiEffect)
-                } else {
-                    aiEffect
-                }
+                val cm = buildVideoColorMatrix(
+                    contrast = effectiveContrast,
+                    saturation = effectiveSaturation,
+                    brightness = 0.0f,
+                    warmth = effectiveWarmth
+                )
+                val colorEffect = RenderEffect.createColorFilterEffect(ColorMatrixColorFilter(cm))
+                return RenderEffect.createChainEffect(colorEffect, aiEffect)
             } catch (_: Throwable) {}
         }
 
-        // Fallback for API 31-32: Calibrated Super AI Color Matrix (never dark: brightens mid-shadows + gentle vibrance)
+        // Fallback for API 31-32: Calibrated Enhanced Mode Color Matrix (crisp contrast + punchy saturation + 2% warmth, strictly zero whitening)
         val aiCm = buildVideoColorMatrix(
-            contrast = 1.035f,
-            saturation = 1.10f,
-            brightness = 0.035f,
-            warmth = warmth
+            contrast = 1.05f,
+            saturation = 1.15f,
+            brightness = 0.0f,
+            warmth = effectiveWarmth
         )
         return RenderEffect.createColorFilterEffect(ColorMatrixColorFilter(aiCm))
     }
@@ -1175,7 +1178,7 @@ fun VideoPlayerScreen(
         view.performHaptic(HapticType.MEDIUM)
         val newState = !isSuperAiEnhance
         if (newState && (isHdrVideo || safePlaybackMode || Build.VERSION.SDK_INT < 31)) {
-            showQuickHUD("Smart clarity unavailable", "Available for SDR playback on Android 12 or newer", Icons.Rounded.Info)
+            showQuickHUD("Enhanced mode unavailable", "Available for SDR playback on Android 12 or newer", Icons.Rounded.Info)
         } else {
             isSuperAiEnhance = newState
             appPreferences.setSuperAiEnhanceEnabled(newState)
@@ -1187,14 +1190,14 @@ fun VideoPlayerScreen(
                 }
 
                 showQuickHUD(
-                    "Smart clarity: ON",
-                    "Adaptive detail • Clearer shadows • Natural colour",
+                    "Enhanced mode: ON",
+                    "Crisp detail • Punchy color • Gentle warmth",
                     Icons.Rounded.AutoAwesome
                 )
             } else {
 
                 showQuickHUD(
-                    "Smart clarity: OFF",
+                    "Enhanced mode: OFF",
                     "Standard video playback restored",
                     Icons.Rounded.AutoAwesome
                 )
@@ -3648,10 +3651,10 @@ fun VideoPlayerScreen(
                                 verticalAlignment = Alignment.CenterVertically,
                                 horizontalArrangement = Arrangement.spacedBy(8.dp)
                             ) {
-                                // Smart Clarity toggle with original-picture comparison.
+                                // Enhanced mode toggle with original-picture comparison.
                                 PlayerIconButton(
-                                    name = "Smart clarity",
-                                    description = "Gentle detail enhancement, shadow lift and richer color",
+                                    name = "Enhanced mode",
+                                    description = "Crisp detail, deep dynamic range, and rich cinematic color",
                                     onClick = toggleSuperAiEnhance,
                                     icon = Icons.Rounded.AutoAwesome,
                                     modifier = Modifier
@@ -3690,7 +3693,7 @@ fun VideoPlayerScreen(
                                 ) {
                                     Icon(
                                         imageVector = Icons.Rounded.AutoAwesome,
-                                        contentDescription = "Smart clarity",
+                                        contentDescription = "Enhanced mode",
                                         tint = if (isSuperAiEnhance) Color.White else Color.White.copy(alpha = 0.85f),
                                         modifier = Modifier.size(19.dp)
                                     )
@@ -3899,16 +3902,16 @@ fun VideoPlayerScreen(
             // ─── Sleek Instant Element Tooltip HUD Badge (Auto-Collapses in 2 Seconds) ───
             AnimatedVisibility(
                 visible = activeElementTooltip != null,
-                enter = fadeIn(tween(140)) + scaleIn(initialScale = 0.85f, animationSpec = tween(140)),
-                exit = fadeOut(tween(180)) + scaleOut(targetScale = 0.85f, animationSpec = tween(180)),
+                enter = fadeIn(tween(140)) + scaleIn(initialScale = 0.90f, animationSpec = tween(140)),
+                exit = fadeOut(tween(180)) + scaleOut(targetScale = 0.90f, animationSpec = tween(180)),
                 modifier = Modifier
                     .align(Alignment.TopCenter)
                     .statusBarsPadding()
-                    .padding(top = if (!isLandscape) 28.dp else 16.dp)
+                    .padding(top = if (!isLandscape) 78.dp else 56.dp)
                     .zIndex(9999f)
             ) {
                 activeElementTooltip?.let { tooltip ->
-                    TextOnlyPlayerFeedback(tooltip.name, tooltip.description)
+                    ElementTooltipPill(tooltip, primaryAccent)
                 }
             }
         } // End of outer Box
@@ -4506,7 +4509,7 @@ fun VideoPlayerScreen(
                 category == "Audio" -> null
                 safePlaybackMode -> "Picture adjustments are unavailable in compatibility mode."
                 isHdrVideo -> "Original HDR is preserved. Picture adjustments are available for SDR videos."
-                isSuperAiEnhance -> "Turn off Smart clarity to adjust these settings."
+                isSuperAiEnhance -> "Turn off Enhanced mode to adjust these settings."
                 Build.VERSION.SDK_INT < 31 -> "Picture adjustments require Android 12 or newer."
                 category == "Sharpness" && Build.VERSION.SDK_INT < 33 -> "Sharpness requires Android 13 or newer."
                 else -> null
@@ -5052,6 +5055,67 @@ data class ElementTooltipData(
     val icon: ImageVector? = null,
     val timestamp: Long = System.currentTimeMillis()
 )
+
+// ─── Sleek Instant Element Tooltip HUD Pill (Frosted Card with Crisp Separation) ───
+@Composable
+private fun ElementTooltipPill(
+    tooltip: ElementTooltipData,
+    accentColor: Color,
+    modifier: Modifier = Modifier
+) {
+    Surface(
+        shape = RoundedCornerShape(18.dp),
+        color = Color(0xEE161724),
+        border = BorderStroke(1.2.dp, Color.White.copy(alpha = 0.22f)),
+        shadowElevation = 10.dp,
+        modifier = modifier
+            .padding(horizontal = 24.dp)
+            .clip(RoundedCornerShape(18.dp))
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            if (tooltip.icon != null) {
+                Box(
+                    modifier = Modifier
+                        .size(28.dp)
+                        .clip(CircleShape)
+                        .background(accentColor.copy(alpha = 0.22f)),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        imageVector = tooltip.icon,
+                        contentDescription = null,
+                        tint = accentColor,
+                        modifier = Modifier.size(16.dp)
+                    )
+                }
+            }
+            Column(
+                horizontalAlignment = if (tooltip.icon == null) Alignment.CenterHorizontally else Alignment.Start
+            ) {
+                Text(
+                    text = tooltip.name,
+                    color = Color.White,
+                    fontSize = 13.5.sp,
+                    fontWeight = FontWeight.Bold,
+                    maxLines = 1
+                )
+                if (!tooltip.description.isNullOrBlank()) {
+                    Text(
+                        text = tooltip.description,
+                        color = Color.White.copy(alpha = 0.80f),
+                        fontSize = 11.sp,
+                        lineHeight = 14.sp,
+                        maxLines = 2
+                    )
+                }
+            }
+        }
+    }
+}
 
 val LocalElementTooltipHandler = staticCompositionLocalOf<((String, String?, ImageVector?) -> Unit)?> { null }
 
