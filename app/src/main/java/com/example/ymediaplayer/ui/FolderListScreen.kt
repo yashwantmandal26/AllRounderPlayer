@@ -21,6 +21,10 @@ import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.*
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.drawscope.Fill
+import androidx.compose.ui.graphics.StrokeJoin
+import androidx.compose.ui.unit.TextUnit
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
@@ -1743,6 +1747,55 @@ private fun ChipItem(
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
+// OUTLINED TEXT (Crisp black text border, no background card)
+// ═══════════════════════════════════════════════════════════════════════════════
+@Composable
+internal fun OutlinedText(
+    text: String,
+    modifier: Modifier = Modifier,
+    fillColor: Color = Color.White,
+    outlineColor: Color = Color.Black,
+    strokeWidth: Float = 2.8f,
+    fontSize: TextUnit = 10.sp,
+    fontWeight: FontWeight = FontWeight.Bold,
+    fontFamily: FontFamily? = null,
+    maxLines: Int = 1,
+    overflow: TextOverflow = TextOverflow.Clip
+) {
+    Box(modifier = modifier, contentAlignment = Alignment.Center) {
+        // Outline layer
+        Text(
+            text = text,
+            color = outlineColor,
+            fontSize = fontSize,
+            fontWeight = fontWeight,
+            fontFamily = fontFamily,
+            maxLines = maxLines,
+            overflow = overflow,
+            style = TextStyle(
+                drawStyle = Stroke(
+                    width = strokeWidth,
+                    join = StrokeJoin.Round
+                )
+            )
+        )
+        // Fill layer
+        Text(
+            text = text,
+            color = fillColor,
+            fontSize = fontSize,
+            fontWeight = fontWeight,
+            fontFamily = fontFamily,
+            maxLines = maxLines,
+            overflow = overflow,
+            style = TextStyle(
+                drawStyle = Fill
+            )
+        )
+    }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
 // CONTINUE WATCHING CARD
 // ═══════════════════════════════════════════════════════════════════════════════
 @Composable
@@ -1783,33 +1836,41 @@ private fun ContinueWatchingCard(
             model = remember(video.uri) { buildVideoThumbnailRequest(context, video.uri, video.duration) },
             contentDescription = null, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize()
         )
-        // Top right duration + percentage badge
-        Box(
+        // Top right duration + percentage (no background card, crisp outlined text)
+        Row(
             modifier = Modifier
                 .align(Alignment.TopEnd)
-                .padding(6.dp)
-                .then(if (c.isMatte) Modifier else Modifier.shadow(4.dp, RoundedCornerShape(8.dp), ambientColor = Color.Black.copy(0.6f)))
-                .clip(RoundedCornerShape(8.dp))
-                .background(Color(0xD90E0F16))
-                .border(1.dp, Color.White.copy(alpha = 0.28f), RoundedCornerShape(8.dp))
-                .padding(horizontal = 6.dp, vertical = 2.5.dp)
+                .padding(top = 6.dp, end = 6.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(3.dp)
         ) {
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(3.dp)
-            ) {
-                if (dur > 0L) {
-                    Text(
-                        formatTime(dur),
-                        color = Color.White,
-                        fontSize = 9.sp,
-                        fontWeight = FontWeight.Bold,
-                        fontFamily = FontFamily.Monospace
-                    )
-                    Text("•", color = Color.White.copy(alpha = 0.5f), fontSize = 9.sp)
-                }
-                Text("$pct%", color = c.accentBlue, fontSize = 9.sp, fontWeight = FontWeight.Bold)
+            if (dur > 0L) {
+                OutlinedText(
+                    text = formatTime(dur),
+                    fillColor = Color.White,
+                    outlineColor = Color.Black,
+                    strokeWidth = 2.8f,
+                    fontSize = 9.5.sp,
+                    fontWeight = FontWeight.Bold,
+                    fontFamily = FontFamily.Monospace
+                )
+                OutlinedText(
+                    text = "•",
+                    fillColor = Color.White.copy(alpha = 0.85f),
+                    outlineColor = Color.Black,
+                    strokeWidth = 2.5f,
+                    fontSize = 9.5.sp,
+                    fontWeight = FontWeight.Bold
+                )
             }
+            OutlinedText(
+                text = "$pct%",
+                fillColor = c.accentBlue,
+                outlineColor = Color.Black,
+                strokeWidth = 2.8f,
+                fontSize = 9.5.sp,
+                fontWeight = FontWeight.Bold
+            )
         }
         // Bottom scrim & title
         Box(
@@ -1868,26 +1929,20 @@ private fun RecentlyAddedVideoCard(
             model = remember(video.uri) { buildVideoThumbnailRequest(context, video.uri, video.duration) },
             contentDescription = null, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize()
         )
-        // Top right total duration badge
+        // Top right total duration (no background card, crisp outlined text)
         if (video.duration > 0L) {
-            Box(
+            OutlinedText(
+                text = formatTime(video.duration),
+                fillColor = Color.White,
+                outlineColor = Color.Black,
+                strokeWidth = 2.8f,
+                fontSize = 9.5.sp,
+                fontWeight = FontWeight.Bold,
+                fontFamily = FontFamily.Monospace,
                 modifier = Modifier
                     .align(Alignment.TopEnd)
-                    .padding(6.dp)
-                    .then(if (c.isMatte) Modifier else Modifier.shadow(4.dp, RoundedCornerShape(8.dp), ambientColor = Color.Black.copy(0.6f)))
-                    .clip(RoundedCornerShape(8.dp))
-                    .background(Color(0xD90E0F16))
-                    .border(1.dp, Color.White.copy(alpha = 0.28f), RoundedCornerShape(8.dp))
-                    .padding(horizontal = 6.dp, vertical = 2.5.dp)
-            ) {
-                Text(
-                    formatTime(video.duration),
-                    color = Color.White,
-                    fontSize = 9.sp,
-                    fontWeight = FontWeight.Bold,
-                    fontFamily = FontFamily.Monospace
-                )
-            }
+                    .padding(top = 6.dp, end = 6.dp)
+            )
         }
         Box(modifier = Modifier.align(Alignment.BottomCenter).fillMaxWidth().height(44.dp)
             .background(Brush.verticalGradient(listOf(Color.Transparent, Color.Black.copy(0.88f)))))
@@ -2024,18 +2079,18 @@ fun FolderItem(
                     Text(subtitleText, fontSize = 11.sp, color = c.textSecondary, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 }
             }
-            Spacer(Modifier.width(10.dp))
-            // Count badge
-            Box(
-                modifier = Modifier
-                    .clip(RoundedCornerShape(10.dp))
-                    .background(c.cardBgElevated)
-                    .border(1.dp, c.glassBorder, RoundedCornerShape(10.dp))
-                    .padding(horizontal = 10.dp, vertical = 5.dp)
-            ) {
-                Text(folder.videos.size.toString(), fontSize = 13.sp, fontWeight = FontWeight.Bold, color = c.accentBlue)
-            }
-            Spacer(Modifier.width(6.dp))
+            Spacer(Modifier.width(8.dp))
+            // Video count value with subtle black outline (no card box)
+            OutlinedText(
+                text = folder.videos.size.toString(),
+                fillColor = c.accentBlue,
+                outlineColor = Color.Black,
+                strokeWidth = 2.6f,
+                fontSize = 13.sp,
+                fontWeight = FontWeight.Bold,
+                modifier = Modifier.padding(horizontal = 4.dp)
+            )
+            Spacer(Modifier.width(4.dp))
             Icon(Icons.AutoMirrored.Rounded.ArrowForwardIos, contentDescription = null, tint = c.textSecondary, modifier = Modifier.size(14.dp))
         }
 
@@ -2320,18 +2375,19 @@ fun VideoListItem(
                     model = remember(video.uri) { buildVideoThumbnailRequest(context, video.uri, video.duration) },
                     contentDescription = null, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize()
                 )
-                Box(
+                // Duration text at bottom right of thumbnail (clean outlined text, no card)
+                OutlinedText(
+                    text = formatTime(video.duration),
+                    fillColor = Color.White,
+                    outlineColor = Color.Black,
+                    strokeWidth = 2.8f,
+                    fontSize = 10.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    fontFamily = FontFamily.Monospace,
                     modifier = Modifier
                         .align(Alignment.BottomEnd)
-                        .padding(4.dp)
-                        .shadow(2.dp, RoundedCornerShape(4.dp))
-                        .clip(RoundedCornerShape(4.dp))
-                        .background(Color.Black.copy(alpha = 0.85f))
-                        .border(0.6.dp, Color.White.copy(alpha = 0.22f), RoundedCornerShape(4.dp))
-                        .padding(horizontal = 5.dp, vertical = 2.dp)
-                ) {
-                    Text(formatTime(video.duration), color = Color.White, fontSize = 10.sp, fontWeight = FontWeight.SemiBold)
-                }
+                        .padding(bottom = 4.dp, end = 5.dp)
+                )
                 if (progress > 0 && video.duration > 0) {
                     val r = (progress.toFloat() / video.duration).coerceIn(0f, 1f)
                     Box(modifier = Modifier.align(Alignment.BottomStart).fillMaxWidth().height(3.dp).background(Color.Black.copy(0.5f))) {

@@ -7549,22 +7549,19 @@ private fun ExplorerVideoRow(
                 modifier = Modifier.fillMaxSize()
             )
 
-            Box(
+            // Duration text at bottom right of thumbnail (clean outlined text, no card)
+            OutlinedText(
+                text = formatTime(video.duration),
+                fillColor = Color.White,
+                outlineColor = Color.Black,
+                strokeWidth = 2.8f,
+                fontSize = 10.sp,
+                fontFamily = FontFamily.Monospace,
+                fontWeight = FontWeight.SemiBold,
                 modifier = Modifier
                     .align(Alignment.BottomEnd)
-                    .padding(4.dp)
-                    .clip(RoundedCornerShape(4.dp))
-                    .background(Color.Black.copy(alpha = 0.82f))
-                    .padding(horizontal = 4.dp, vertical = 1.dp)
-            ) {
-                Text(
-                    text = formatTime(video.duration),
-                    color = Color.White,
-                    fontSize = 10.sp,
-                    fontFamily = FontFamily.Monospace,
-                    fontWeight = FontWeight.SemiBold
-                )
-            }
+                    .padding(bottom = 3.dp, end = 4.dp)
+            )
 
             if (isCurrent) {
                 Box(
