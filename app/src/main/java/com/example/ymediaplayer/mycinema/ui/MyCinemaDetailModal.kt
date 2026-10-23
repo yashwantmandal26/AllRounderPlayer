@@ -6,6 +6,7 @@ import android.net.Uri
 import android.widget.Toast
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.*
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -299,59 +300,86 @@ fun MyCinemaDetailModal(
                     horizontalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
                     // Watchlist / Bookmark
-                    LibraryActionButton(
-                        icon = if (isBookmarked) Icons.Rounded.Bookmark else Icons.Rounded.BookmarkBorder,
-                        isActive = isBookmarked,
+                    Surface(
                         onClick = {
-                            isBookmarked = appPreferences.toggleCinemaWatchlist(itemKey)
+                            isBookmarked = appPreferences.toggleCinemaWatchlist(item)
                             Toast.makeText(
                                 context,
                                 if (isBookmarked) "Added to Watchlist" else "Removed from Watchlist",
                                 Toast.LENGTH_SHORT
                             ).show()
+                        },
+                        shape = RoundedCornerShape(12.dp),
+                        color = if (isBookmarked) Color(0xFFFFC107).copy(alpha = 0.20f) else Color.White.copy(alpha = 0.08f),
+                        border = BorderStroke(
+                            1.dp,
+                            if (isBookmarked) Color(0xFFFFC107) else Color.White.copy(alpha = 0.15f)
+                        ),
+                        modifier = Modifier
+                            .weight(1f)
+                            .height(46.dp)
+                    ) {
+                        Row(
+                            modifier = Modifier.fillMaxSize().padding(horizontal = 12.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.Center
+                        ) {
+                            Icon(
+                                if (isBookmarked) Icons.Rounded.Bookmark else Icons.Rounded.BookmarkBorder,
+                                contentDescription = null,
+                                tint = if (isBookmarked) Color(0xFFFFC107) else Color.White,
+                                modifier = Modifier.size(20.dp)
+                            )
+                            Spacer(Modifier.width(8.dp))
+                            Text(
+                                text = if (isBookmarked) "Watchlisted" else "Watchlist",
+                                color = if (isBookmarked) Color(0xFFFFC107) else Color.White,
+                                fontSize = 13.sp,
+                                fontWeight = FontWeight.SemiBold
+                            )
                         }
-                    )
-
-                    // Collection / Layers
-                    LibraryActionButton(
-                        icon = Icons.Rounded.Layers,
-                        isActive = false,
-                        onClick = {
-                            Toast.makeText(context, "Added to Collection", Toast.LENGTH_SHORT).show()
-                        }
-                    )
+                    }
 
                     // Favorite / Heart
-                    LibraryActionButton(
-                        icon = if (isFavorite) Icons.Rounded.Favorite else Icons.Rounded.FavoriteBorder,
-                        isActive = isFavorite,
-                        activeColor = Color(0xFFE50914),
+                    Surface(
                         onClick = {
-                            isFavorite = appPreferences.toggleCinemaFavorite(itemKey)
+                            isFavorite = appPreferences.toggleCinemaFavorite(item)
                             Toast.makeText(
                                 context,
                                 if (isFavorite) "Added to Favorites" else "Removed from Favorites",
                                 Toast.LENGTH_SHORT
                             ).show()
+                        },
+                        shape = RoundedCornerShape(12.dp),
+                        color = if (isFavorite) Color(0xFFE50914).copy(alpha = 0.20f) else Color.White.copy(alpha = 0.08f),
+                        border = BorderStroke(
+                            1.dp,
+                            if (isFavorite) Color(0xFFE50914) else Color.White.copy(alpha = 0.15f)
+                        ),
+                        modifier = Modifier
+                            .weight(1f)
+                            .height(46.dp)
+                    ) {
+                        Row(
+                            modifier = Modifier.fillMaxSize().padding(horizontal = 12.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.Center
+                        ) {
+                            Icon(
+                                if (isFavorite) Icons.Rounded.Favorite else Icons.Rounded.FavoriteBorder,
+                                contentDescription = null,
+                                tint = if (isFavorite) Color(0xFFE50914) else Color.White,
+                                modifier = Modifier.size(20.dp)
+                            )
+                            Spacer(Modifier.width(8.dp))
+                            Text(
+                                text = if (isFavorite) "Favorited" else "Favorite",
+                                color = if (isFavorite) Color(0xFFE50914) else Color.White,
+                                fontSize = 13.sp,
+                                fontWeight = FontWeight.SemiBold
+                            )
                         }
-                    )
-
-                    // Share
-                    LibraryActionButton(
-                        icon = Icons.Rounded.Share,
-                        isActive = false,
-                        onClick = {
-                            val shareIntent = Intent(Intent.ACTION_SEND).apply {
-                                type = "text/plain"
-                                val mediaType = if (item.isSeries) "tv" else "movie"
-                                putExtra(
-                                    Intent.EXTRA_TEXT,
-                                    "Check out \"${item.displayName}\" on AllRounder Media Player! https://www.themoviedb.org/$mediaType/${item.id}"
-                                )
-                            }
-                            context.startActivity(Intent.createChooser(shareIntent, "Share with"))
-                        }
-                    )
+                    }
                 }
 
                 Spacer(Modifier.height(24.dp))

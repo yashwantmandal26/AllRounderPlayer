@@ -121,7 +121,8 @@ fun FolderListScreen(
     var refreshTrigger by remember { mutableIntStateOf(0) }
 
     // Navigation state
-    var currentTab by rememberSaveable { mutableStateOf("MYCinema") }
+    var currentTab by rememberSaveable { mutableStateOf(appPreferences.getDefaultStartTab()) }
+    var cinemaLibraryOpenType by rememberSaveable { mutableStateOf<String?>(null) }
     var musicPlayerExpanded by rememberSaveable { mutableStateOf(false) }
 
     // Search & sort state
@@ -734,6 +735,22 @@ fun FolderListScreen(
                                                     containerColor = c.dropdownBg
                                                 ) {
                                                     DropdownMenuItem(
+                                                        text = { Text("My Favorites", color = c.textPrimary, fontSize = 13.5.sp) },
+                                                        leadingIcon = { Icon(Icons.Rounded.Favorite, contentDescription = null, tint = Color(0xFFE50914), modifier = Modifier.size(20.dp)) },
+                                                        onClick = {
+                                                            showCinemaMenu = false
+                                                            cinemaLibraryOpenType = "favorites"
+                                                        }
+                                                    )
+                                                    DropdownMenuItem(
+                                                        text = { Text("My Watchlist", color = c.textPrimary, fontSize = 13.5.sp) },
+                                                        leadingIcon = { Icon(Icons.Rounded.Bookmark, contentDescription = null, tint = Color(0xFFFFB300), modifier = Modifier.size(20.dp)) },
+                                                        onClick = {
+                                                            showCinemaMenu = false
+                                                            cinemaLibraryOpenType = "watchlist"
+                                                        }
+                                                    )
+                                                    DropdownMenuItem(
                                                         text = { Text("Refresh Feeds", color = c.textPrimary, fontSize = 13.5.sp) },
                                                         leadingIcon = { Icon(Icons.Rounded.Refresh, contentDescription = null, tint = c.accentBlue, modifier = Modifier.size(20.dp)) },
                                                         onClick = {
@@ -857,7 +874,9 @@ fun FolderListScreen(
                                 } else {
                                     android.widget.Toast.makeText(context, "Failed to start download", android.widget.Toast.LENGTH_SHORT).show()
                                 }
-                            }
+                            },
+                            libraryOpenType = cinemaLibraryOpenType,
+                            onCloseLibrary = { cinemaLibraryOpenType = null }
                         )
 
                         if (!isCinema) {
@@ -917,12 +936,77 @@ fun FolderListScreen(
                 }
 
             } else {
-                LazyColumn(
-                    modifier = Modifier.fillMaxSize().padding(top = paddingValues.calculateTopPadding()),
-                    contentPadding = PaddingValues(bottom = 160.dp)
+                Column(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(top = paddingValues.calculateTopPadding())
                 ) {
+                    // Expanded Search Bar
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 16.dp, vertical = 6.dp)
+                    ) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(48.dp)
+                                .clip(RoundedCornerShape(24.dp))
+                                .background(c.cardBgElevated)
+                                .border(1.dp, c.glassBorder, RoundedCornerShape(24.dp))
+                                .padding(horizontal = 14.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Icon(
+                                Icons.Rounded.Search,
+                                contentDescription = "Search",
+                                tint = c.textSecondary,
+                                modifier = Modifier.size(20.dp)
+                            )
+                            Spacer(Modifier.width(10.dp))
+                            BasicTextField(
+                                value = searchQuery,
+                                onValueChange = { searchQuery = it },
+                                textStyle = TextStyle(
+                                    color = c.textPrimary,
+                                    fontSize = 15.sp,
+                                    fontWeight = FontWeight.Medium
+                                ),
+                                cursorBrush = SolidColor(c.accentBlue),
+                                singleLine = true,
+                                modifier = Modifier.weight(1f),
+                                decorationBox = { innerTextField ->
+                                    if (searchQuery.isEmpty()) {
+                                        Text(
+                                            text = "Search videos, folders...",
+                                            color = c.textSecondary.copy(alpha = 0.7f),
+                                            fontSize = 14.sp
+                                        )
+                                    }
+                                    innerTextField()
+                                }
+                            )
+                            if (searchQuery.isNotEmpty()) {
+                                IconButton(
+                                    onClick = { searchQuery = "" },
+                                    modifier = Modifier.size(28.dp)
+                                ) {
+                                    Icon(
+                                        Icons.Rounded.Close,
+                                        contentDescription = "Clear",
+                                        tint = c.textSecondary,
+                                        modifier = Modifier.size(16.dp)
+                                    )
+                                }
+                            }
+                        }
+                    }
 
-                    if (isSearching) {
+                    LazyColumn(
+                        modifier = Modifier.fillMaxSize(),
+                        contentPadding = PaddingValues(bottom = 160.dp)
+                    ) {
+                        if (searchQuery.isNotBlank() || isSearching) {
                         if (searchQuery.isBlank()) {
                             item {
                                 Box(
@@ -1478,7 +1562,8 @@ fun FolderListScreen(
                             }
                         }
                     }
-                }
+                } // end LazyColumn
+                } // end Column
                 if (!isVideo) {
                     Box(
                         modifier = Modifier
@@ -2179,69 +2264,81 @@ private fun ContinueWatchingCard(
             model = remember(video.uri) { buildVideoThumbnailRequest(context, video.uri, video.duration) },
             contentDescription = null, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize()
         )
-        if (video.bucketName.equals("MYCinema", ignoreCase = true) || video.relativePath.contains("MYCinema", ignoreCase = true) || video.uri.toString().startsWith("http")) {
-            Box(
-                modifier = Modifier
-                    .align(Alignment.TopStart)
-                    .padding(top = 6.dp, start = 6.dp)
-                    .clip(RoundedCornerShape(4.dp))
-                    .background(Color(0xFFE50914).copy(alpha = 0.88f))
-                    .padding(horizontal = 4.dp, vertical = 2.dp)
-            ) {
-                Text(
-                    text = "🍿 MYCinema",
-                    color = Color.White,
-                    fontSize = 8.sp,
-                    fontWeight = FontWeight.Bold
-                )
-            }
-        }
-        // Top right duration + percentage (no background card, crisp outlined text)
+        // Top scrim & title (swapped with bottom)
+        Box(
+            modifier = Modifier
+                .align(Alignment.TopCenter)
+                .fillMaxWidth()
+                .height(42.dp)
+                .background(Brush.verticalGradient(listOf(Color.Black.copy(alpha = 0.88f), Color.Transparent)))
+        )
         Row(
             modifier = Modifier
-                .align(Alignment.TopEnd)
-                .padding(top = 6.dp, end = 6.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(3.dp)
+                .align(Alignment.TopStart)
+                .fillMaxWidth()
+                .padding(start = 7.dp, end = 7.dp, top = 6.dp),
+            verticalAlignment = Alignment.CenterVertically
         ) {
-            if (dur > 0L) {
-                OutlinedText(
-                    text = formatTime(dur),
-                    fillColor = Color.White,
-                    outlineColor = Color.Black,
-                    strokeWidth = 2.8f,
-                    fontSize = 9.5.sp,
-                    fontWeight = FontWeight.Bold,
-                    fontFamily = FontFamily.Monospace
-                )
-                OutlinedText(
-                    text = "•",
-                    fillColor = Color.White.copy(alpha = 0.85f),
-                    outlineColor = Color.Black,
-                    strokeWidth = 2.5f,
-                    fontSize = 9.5.sp,
+            if (video.bucketName.equals("MYCinema", ignoreCase = true) || video.relativePath.contains("MYCinema", ignoreCase = true) || video.uri.toString().startsWith("http")) {
+                Box(
+                    modifier = Modifier
+                        .padding(end = 4.dp)
+                        .clip(RoundedCornerShape(4.dp))
+                        .background(Color(0xFFE50914).copy(alpha = 0.88f))
+                        .padding(horizontal = 4.dp, vertical = 1.5.dp)
+                ) {
+                    Text(
+                        text = "🍿",
+                        fontSize = 8.sp
+                    )
+                }
+            }
+            Text(
+                text = video.title.substringBeforeLast("."),
+                color = Color.White,
+                fontSize = 10.sp,
+                fontWeight = FontWeight.SemiBold,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+        }
+        // Bottom right duration + percentage badge with frosted blur background (swapped with top)
+        Box(
+            modifier = Modifier
+                .align(Alignment.BottomEnd)
+                .padding(end = 6.dp, bottom = 9.dp)
+                .clip(RoundedCornerShape(6.dp))
+                .background(Color.Black.copy(alpha = 0.65f))
+                .border(0.6.dp, Color.White.copy(alpha = 0.20f), RoundedCornerShape(6.dp))
+                .padding(horizontal = 5.dp, vertical = 2.dp)
+        ) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(3.dp)
+            ) {
+                if (dur > 0L) {
+                    Text(
+                        text = formatTime(dur),
+                        color = Color.White,
+                        fontSize = 9.sp,
+                        fontWeight = FontWeight.Bold,
+                        fontFamily = FontFamily.Monospace
+                    )
+                    Text(
+                        text = "•",
+                        color = Color.White.copy(alpha = 0.85f),
+                        fontSize = 9.sp,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
+                Text(
+                    text = "$pct%",
+                    color = c.accentBlue,
+                    fontSize = 9.sp,
                     fontWeight = FontWeight.Bold
                 )
             }
-            OutlinedText(
-                text = "$pct%",
-                fillColor = c.accentBlue,
-                outlineColor = Color.Black,
-                strokeWidth = 2.8f,
-                fontSize = 9.5.sp,
-                fontWeight = FontWeight.Bold
-            )
         }
-        // Bottom scrim & title
-        Box(
-            modifier = Modifier.align(Alignment.BottomCenter).fillMaxWidth().height(44.dp)
-                .background(Brush.verticalGradient(listOf(Color.Transparent, Color.Black.copy(0.88f))))
-        )
-        Text(
-            video.title.substringBeforeLast("."), color = Color.White, fontSize = 10.sp, fontWeight = FontWeight.Medium,
-            maxLines = 1, overflow = TextOverflow.Ellipsis,
-            modifier = Modifier.align(Alignment.BottomStart).padding(start = 8.dp, end = 8.dp, bottom = 11.dp)
-        )
         // Bold Watch Progress bar
         Box(
             modifier = Modifier
@@ -2301,45 +2398,64 @@ private fun RecentlyAddedVideoCard(
             model = remember(video.uri) { buildVideoThumbnailRequest(context, video.uri, video.duration) },
             contentDescription = null, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize()
         )
-        if (video.bucketName.equals("MYCinema", ignoreCase = true) || video.relativePath.contains("MYCinema", ignoreCase = true) || video.uri.toString().startsWith("http")) {
+        // Top scrim & title (swapped with bottom)
+        Box(
+            modifier = Modifier
+                .align(Alignment.TopCenter)
+                .fillMaxWidth()
+                .height(42.dp)
+                .background(Brush.verticalGradient(listOf(Color.Black.copy(alpha = 0.88f), Color.Transparent)))
+        )
+        Row(
+            modifier = Modifier
+                .align(Alignment.TopStart)
+                .fillMaxWidth()
+                .padding(start = 7.dp, end = 7.dp, top = 6.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            if (video.bucketName.equals("MYCinema", ignoreCase = true) || video.relativePath.contains("MYCinema", ignoreCase = true) || video.uri.toString().startsWith("http")) {
+                Box(
+                    modifier = Modifier
+                        .padding(end = 4.dp)
+                        .clip(RoundedCornerShape(4.dp))
+                        .background(Color(0xFFE50914).copy(alpha = 0.88f))
+                        .padding(horizontal = 4.dp, vertical = 1.5.dp)
+                ) {
+                    Text(
+                        text = "🍿",
+                        fontSize = 8.sp
+                    )
+                }
+            }
+            Text(
+                text = video.title.substringBeforeLast("."),
+                color = Color.White,
+                fontSize = 10.sp,
+                fontWeight = FontWeight.SemiBold,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+        }
+        // Bottom right duration badge with frosted blur background (swapped with top)
+        if (video.duration > 0L) {
             Box(
                 modifier = Modifier
-                    .align(Alignment.TopStart)
-                    .padding(top = 6.dp, start = 6.dp)
-                    .clip(RoundedCornerShape(4.dp))
-                    .background(Color(0xFFE50914).copy(alpha = 0.88f))
-                    .padding(horizontal = 4.dp, vertical = 2.dp)
+                    .align(Alignment.BottomEnd)
+                    .padding(end = 6.dp, bottom = if (progress > 0) 9.dp else 6.dp)
+                    .clip(RoundedCornerShape(6.dp))
+                    .background(Color.Black.copy(alpha = 0.65f))
+                    .border(0.6.dp, Color.White.copy(alpha = 0.20f), RoundedCornerShape(6.dp))
+                    .padding(horizontal = 5.dp, vertical = 2.dp)
             ) {
                 Text(
-                    text = "🍿 MYCinema",
+                    text = formatTime(video.duration),
                     color = Color.White,
-                    fontSize = 8.sp,
-                    fontWeight = FontWeight.Bold
+                    fontSize = 9.sp,
+                    fontWeight = FontWeight.Bold,
+                    fontFamily = FontFamily.Monospace
                 )
             }
         }
-        // Top right total duration (no background card, crisp outlined text)
-        if (video.duration > 0L) {
-            OutlinedText(
-                text = formatTime(video.duration),
-                fillColor = Color.White,
-                outlineColor = Color.Black,
-                strokeWidth = 2.8f,
-                fontSize = 9.5.sp,
-                fontWeight = FontWeight.Bold,
-                fontFamily = FontFamily.Monospace,
-                modifier = Modifier
-                    .align(Alignment.TopEnd)
-                    .padding(top = 6.dp, end = 6.dp)
-            )
-        }
-        Box(modifier = Modifier.align(Alignment.BottomCenter).fillMaxWidth().height(44.dp)
-            .background(Brush.verticalGradient(listOf(Color.Transparent, Color.Black.copy(0.88f)))))
-        Text(
-            video.title.substringBeforeLast("."), color = Color.White, fontSize = 10.sp, fontWeight = FontWeight.Medium,
-            maxLines = 1, overflow = TextOverflow.Ellipsis,
-            modifier = Modifier.align(Alignment.BottomStart).padding(start = 8.dp, end = 8.dp, bottom = if (progress > 0) 11.dp else 7.dp)
-        )
         if (progress > 0 && video.duration > 0) {
             val ratio = (progress.toFloat() / video.duration).coerceIn(0f, 1f)
             // Bold Watch Progress bar

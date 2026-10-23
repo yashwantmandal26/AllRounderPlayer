@@ -39,6 +39,9 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -717,75 +720,60 @@ fun MusicScreen(
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.SpaceBetween
                 ) {
-                    if (isSearching) {
-                        TextField(
+                    Row(
+                        modifier = Modifier
+                            .weight(1f)
+                            .height(48.dp)
+                            .clip(RoundedCornerShape(24.dp))
+                            .background(c.cardBgElevated)
+                            .border(1.dp, c.glassBorder, RoundedCornerShape(24.dp))
+                            .padding(horizontal = 14.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(
+                            Icons.Rounded.Search,
+                            contentDescription = "Search",
+                            tint = c.textSecondary,
+                            modifier = Modifier.size(20.dp)
+                        )
+                        Spacer(Modifier.width(10.dp))
+                        BasicTextField(
                             value = searchQuery,
                             onValueChange = { searchQuery = it },
-                            placeholder = { Text("Search songs, artists, albums...", color = c.textHint) },
-                            singleLine = true,
-                            leadingIcon = {
-                                Icon(
-                                    Icons.Rounded.Search,
-                                    contentDescription = "Search",
-                                    tint = c.accentBlue,
-                                    modifier = Modifier.size(20.dp)
-                                )
-                            },
-                            colors = TextFieldDefaults.colors(
-                                focusedContainerColor = c.glassBg,
-                                unfocusedContainerColor = c.glassBg,
-                                focusedTextColor = c.textPrimary,
-                                unfocusedTextColor = c.textPrimary,
-                                cursorColor = c.accentBlue,
-                                focusedIndicatorColor = Color.Transparent,
-                                unfocusedIndicatorColor = Color.Transparent
+                            textStyle = TextStyle(
+                                color = c.textPrimary,
+                                fontSize = 15.sp,
+                                fontWeight = FontWeight.Medium
                             ),
-                            trailingIcon = {
-                                Row(verticalAlignment = Alignment.CenterVertically) {
-                                    if (searchQuery.isNotEmpty()) {
-                                        IconButton(onClick = { searchQuery = "" }) {
-                                            Icon(Icons.Rounded.Close, contentDescription = "Clear", tint = c.textSecondary, modifier = Modifier.size(18.dp))
-                                        }
-                                    }
-                                    IconButton(onClick = {
-                                        searchQuery = ""
-                                        isSearching = false
-                                    }) {
-                                        Icon(Icons.AutoMirrored.Rounded.ArrowForward, contentDescription = "Close", tint = c.textSecondary, modifier = Modifier.size(18.dp))
-                                    }
+                            cursorBrush = SolidColor(c.accentBlue),
+                            singleLine = true,
+                            modifier = Modifier.weight(1f),
+                            decorationBox = { innerTextField ->
+                                if (searchQuery.isEmpty()) {
+                                    Text(
+                                        text = "Search songs, artists, albums...",
+                                        color = c.textSecondary.copy(alpha = 0.7f),
+                                        fontSize = 14.sp
+                                    )
                                 }
-                            },
-                            shape = RoundedCornerShape(14.dp),
-                            modifier = Modifier
-                                .weight(1f)
-                                .focusRequester(searchFocusRequester)
-                                .shadow(elevation = if (c.isMatte && c.isDark) 0.dp else 6.dp, shape = RoundedCornerShape(14.dp), ambientColor = c.cardShadowColor, spotColor = c.cardShadowColor)
-                                .clip(RoundedCornerShape(14.dp))
-                                .background((if (c.isMatte && c.isDark) androidx.compose.ui.graphics.SolidColor(c.cardBg) else Brush.verticalGradient(listOf(c.cardBgElevated, c.cardBg))))
-                                .border(1.2.dp, (if (c.isMatte && c.isDark) androidx.compose.ui.graphics.SolidColor(c.glassBorder) else Brush.verticalGradient(listOf(c.cardBorderHighlight, c.glassBorder, c.cardBorderShadow))), RoundedCornerShape(14.dp))
+                                innerTextField()
+                            }
                         )
-                    } else {
-                        Row(
-                            modifier = Modifier
-                                .weight(1f)
-                                .height(42.dp)
-                                .clip(RoundedCornerShape(21.dp))
-                                .background((if (c.isMatte && c.isDark) androidx.compose.ui.graphics.SolidColor(c.cardBg) else Brush.verticalGradient(listOf(c.cardBgElevated, c.cardBg))))
-                                .border(1.2.dp, (if (c.isMatte && c.isDark) androidx.compose.ui.graphics.SolidColor(c.glassBorder) else Brush.verticalGradient(listOf(c.cardBorderHighlight, c.glassBorder, c.cardBorderShadow))), RoundedCornerShape(21.dp))
-                                .clickable { isSearching = true }
-                                .padding(horizontal = 14.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Icon(Icons.Rounded.Search, contentDescription = "Search", tint = c.textSecondary, modifier = Modifier.size(19.dp))
-                            Spacer(Modifier.width(10.dp))
-                            Text(
-                                "Search songs, artists, albums...",
-                                fontSize = 13.sp,
-                                color = c.textSecondary.copy(alpha = 0.85f),
-                                maxLines = 1
-                            )
+                        if (searchQuery.isNotEmpty()) {
+                            IconButton(
+                                onClick = { searchQuery = "" },
+                                modifier = Modifier.size(28.dp)
+                            ) {
+                                Icon(
+                                    Icons.Rounded.Close,
+                                    contentDescription = "Clear",
+                                    tint = c.textSecondary,
+                                    modifier = Modifier.size(16.dp)
+                                )
+                            }
                         }
-                        Spacer(Modifier.width(10.dp))
+                    }
+                            Spacer(Modifier.width(10.dp))
                         Box {
                             IconButton(
                                 onClick = { showSortMenu = true },
@@ -856,7 +844,6 @@ fun MusicScreen(
                                     }
                                 }
                             }
-                        }
                     }
 
                 // ─── Modern Online Category Pills ───────────────────────────

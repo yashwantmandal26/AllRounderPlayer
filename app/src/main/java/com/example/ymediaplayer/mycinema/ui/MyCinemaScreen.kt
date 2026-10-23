@@ -57,6 +57,8 @@ fun MyCinemaScreen(
     onPlayOfflineMovie: (String) -> Unit = {},
     onStreamSource: (TmdbItem, TorrentSource) -> Unit,
     onDownloadSource: (TmdbItem, TorrentSource) -> Unit,
+    libraryOpenType: String? = null,
+    onCloseLibrary: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     val c = LocalAppColors.current
@@ -88,8 +90,8 @@ fun MyCinemaScreen(
     var itemSources by remember { mutableStateOf<List<TorrentSource>>(emptyList()) }
     var isLoadingSources by remember { mutableStateOf(false) }
 
-    LaunchedEffect(activeDetailItem) {
-        onDetailStateChanged(activeDetailItem != null)
+    LaunchedEffect(activeDetailItem, libraryOpenType) {
+        onDetailStateChanged(activeDetailItem != null || libraryOpenType != null)
     }
 
     // Scan offline downloaded movies
@@ -495,6 +497,23 @@ fun MyCinemaScreen(
                             itemSources = sources
                             isLoadingSources = false
                         }
+                    }
+                )
+            }
+        }
+
+        // Cinema Library Modal (Favorites & Watchlist)
+        AnimatedVisibility(
+            visible = libraryOpenType != null,
+            enter = slideInVertically(initialOffsetY = { it }) + fadeIn(),
+            exit = slideOutVertically(targetOffsetY = { it }) + fadeOut()
+        ) {
+            libraryOpenType?.let { tab ->
+                MyCinemaLibraryModal(
+                    initialTab = tab,
+                    onDismiss = onCloseLibrary,
+                    onItemClick = { item ->
+                        activeDetailItem = item
                     }
                 )
             }

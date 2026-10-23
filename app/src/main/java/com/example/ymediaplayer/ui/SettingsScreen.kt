@@ -145,6 +145,7 @@ fun SettingsScreen(
     var videoAmbientBatterySaver by remember { mutableStateOf(appPreferences.isVideoAmbientBatterySaver()) }
 
     // ─── Library States ───────────────────────────────────────────────────────
+    var defaultStartTab by remember { mutableStateOf(appPreferences.getDefaultStartTab()) }
     var mediaViewType by remember { mutableStateOf(appPreferences.getMediaViewType()) }
     var defaultSortOrder by remember { mutableStateOf(SortOrder.fromString(appPreferences.getSortOrder())) }
     var showContinueWatching by remember { mutableStateOf(appPreferences.isShowContinueWatching()) }
@@ -435,6 +436,7 @@ fun SettingsScreen(
         val showLibrary = (q.isBlank() && (selectedCategory == SettingsCategory.ALL || selectedCategory == SettingsCategory.LIBRARY)) ||
                 (q.isNotBlank() && (
                     "Library & Folders".contains(q, ignoreCase = true) ||
+                    itemMatches("Default Starting Tab", "Video MYCinema Music home tab screen") ||
                     itemMatches("Default Media View", "Grid List Detailed") ||
                     itemMatches("Default Sort Order", "Sort Name Date Size") ||
                     itemMatches("Show Continue Watching", "in-progress videos carousel") ||
@@ -1360,6 +1362,19 @@ fun SettingsScreen(
                     accentColor = primaryAccent
                 ) {
                     SettingsItemPicker(
+                        title = "Default Starting Tab",
+                        subtitle = when (defaultStartTab) {
+                            "MYCinema" -> "MYCinema (Movies & Series)"
+                            "Music" -> "Music (Audio & Tracks)"
+                            else -> "Video (Default)"
+                        },
+                        icon = Icons.Rounded.Home,
+                        onClick = { activeDialog = SettingsDialogType.DEFAULT_START_TAB }
+                    )
+
+                    SettingsDivider()
+
+                    SettingsItemPicker(
                         title = "Default Media View",
                         subtitle = mediaViewType.displayName,
                         icon = Icons.Rounded.GridView,
@@ -1930,6 +1945,23 @@ fun SettingsScreen(
                 onSelect = {
                     subOutlineStyle = it
                     appPreferences.setSubtitleOutlineStyle(it)
+                    activeDialog = null
+                },
+                onDismiss = { activeDialog = null }
+            )
+        }
+        SettingsDialogType.DEFAULT_START_TAB -> {
+            SettingsOptionDialog(
+                title = "Default Starting Tab",
+                options = listOf(
+                    "Video" to "Video (Default)",
+                    "MYCinema" to "MYCinema (Movies & Series)",
+                    "Music" to "Music (Audio & Tracks)"
+                ),
+                selectedKey = defaultStartTab,
+                onSelect = {
+                    defaultStartTab = it
+                    appPreferences.setDefaultStartTab(it)
                     activeDialog = null
                 },
                 onDismiss = { activeDialog = null }
@@ -2511,6 +2543,7 @@ private enum class SettingsDialogType {
     SUB_COLOR,
     SUB_BG_STYLE,
     SUB_OUTLINE_STYLE,
+    DEFAULT_START_TAB,
     MEDIA_VIEW,
     DEFAULT_SORT,
     CW_LIMIT,

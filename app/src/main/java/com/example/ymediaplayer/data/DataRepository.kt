@@ -2,6 +2,7 @@ package com.example.ymediaplayer.data
 
 import android.content.Context
 import android.content.SharedPreferences
+import com.example.ymediaplayer.mycinema.data.TmdbItem
 
 class AppPreferences(private val prefs: SharedPreferences) {
     constructor(context: Context) : this(context.getSharedPreferences("ymedia_prefs", Context.MODE_PRIVATE))
@@ -136,10 +137,34 @@ class AppPreferences(private val prefs: SharedPreferences) {
         return set.contains(id)
     }
 
+    fun toggleCinemaWatchlist(item: TmdbItem): Boolean {
+        val id = item.id.toString()
+        val set = (prefs.getStringSet("cinema_watchlist", emptySet()) ?: emptySet()).toMutableSet()
+        val newState = if (set.contains(id)) {
+            set.remove(id)
+            if (!isCinemaFavorite(id)) {
+                prefs.edit().remove("cinema_item_$id").apply()
+            }
+            false
+        } else {
+            set.add(id)
+            try {
+                val jsonStr = kotlinx.serialization.json.Json { ignoreUnknownKeys = true }.encodeToString(TmdbItem.serializer(), item)
+                prefs.edit().putString("cinema_item_$id", jsonStr).apply()
+            } catch (_: Exception) {}
+            true
+        }
+        prefs.edit().putStringSet("cinema_watchlist", set).apply()
+        return newState
+    }
+
     fun toggleCinemaWatchlist(id: String): Boolean {
         val set = (prefs.getStringSet("cinema_watchlist", emptySet()) ?: emptySet()).toMutableSet()
         val newState = if (set.contains(id)) {
             set.remove(id)
+            if (!isCinemaFavorite(id)) {
+                prefs.edit().remove("cinema_item_$id").apply()
+            }
             false
         } else {
             set.add(id)
@@ -149,15 +174,48 @@ class AppPreferences(private val prefs: SharedPreferences) {
         return newState
     }
 
+    fun getCinemaWatchlist(): List<TmdbItem> {
+        val ids = prefs.getStringSet("cinema_watchlist", emptySet()) ?: emptySet()
+        val json = kotlinx.serialization.json.Json { ignoreUnknownKeys = true }
+        return ids.mapNotNull { id ->
+            val str = prefs.getString("cinema_item_$id", null) ?: return@mapNotNull null
+            try { json.decodeFromString(TmdbItem.serializer(), str) } catch (_: Exception) { null }
+        }
+    }
+
     fun isCinemaFavorite(id: String): Boolean {
         val set = prefs.getStringSet("cinema_favorites", emptySet()) ?: emptySet()
         return set.contains(id)
+    }
+
+    fun toggleCinemaFavorite(item: TmdbItem): Boolean {
+        val id = item.id.toString()
+        val set = (prefs.getStringSet("cinema_favorites", emptySet()) ?: emptySet()).toMutableSet()
+        val newState = if (set.contains(id)) {
+            set.remove(id)
+            if (!isCinemaWatchlisted(id)) {
+                prefs.edit().remove("cinema_item_$id").apply()
+            }
+            false
+        } else {
+            set.add(id)
+            try {
+                val jsonStr = kotlinx.serialization.json.Json { ignoreUnknownKeys = true }.encodeToString(TmdbItem.serializer(), item)
+                prefs.edit().putString("cinema_item_$id", jsonStr).apply()
+            } catch (_: Exception) {}
+            true
+        }
+        prefs.edit().putStringSet("cinema_favorites", set).apply()
+        return newState
     }
 
     fun toggleCinemaFavorite(id: String): Boolean {
         val set = (prefs.getStringSet("cinema_favorites", emptySet()) ?: emptySet()).toMutableSet()
         val newState = if (set.contains(id)) {
             set.remove(id)
+            if (!isCinemaWatchlisted(id)) {
+                prefs.edit().remove("cinema_item_$id").apply()
+            }
             false
         } else {
             set.add(id)
@@ -165,6 +223,24 @@ class AppPreferences(private val prefs: SharedPreferences) {
         }
         prefs.edit().putStringSet("cinema_favorites", set).apply()
         return newState
+    }
+
+    fun getCinemaFavorites(): List<TmdbItem> {
+        val ids = prefs.getStringSet("cinema_favorites", emptySet()) ?: emptySet()
+        val json = kotlinx.serialization.json.Json { ignoreUnknownKeys = true }
+        return ids.mapNotNull { id ->
+            val str = prefs.getString("cinema_item_$id", null) ?: return@mapNotNull null
+            try { json.decodeFromString(TmdbItem.serializer(), str) } catch (_: Exception) { null }
+        }
+    }
+
+    // Default Home / Starting Tab
+    fun getDefaultStartTab(): String {
+        return prefs.getString("default_start_tab", "Video") ?: "Video"
+    }
+
+    fun setDefaultStartTab(tab: String) {
+        prefs.edit().putString("default_start_tab", tab).apply()
     }
 
     // Sort Order
