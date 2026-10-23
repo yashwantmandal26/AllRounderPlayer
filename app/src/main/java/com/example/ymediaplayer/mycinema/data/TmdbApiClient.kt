@@ -207,10 +207,17 @@ class TmdbApiClient(
                 if (!response.isSuccessful) return@withContext null
                 val body = response.body?.string() ?: return@withContext null
                 val parsed = json.decodeFromString<TmdbVideosResponse>(body)
-                val trailer = parsed.results.firstOrNull {
-                    it.site.equals("YouTube", ignoreCase = true) &&
-                    (it.type.equals("Trailer", ignoreCase = true) || it.type.equals("Teaser", ignoreCase = true))
-                }
+                val trailer = parsed.results
+                    .filter { it.site.equals("YouTube", ignoreCase = true) && it.key.isNotBlank() }
+                    .maxByOrNull { item ->
+                        var score = 0
+                        if (item.official) score += 20
+                        if (item.type.equals("Trailer", ignoreCase = true)) score += 10
+                        if (item.name.contains("Official Trailer", ignoreCase = true)) score += 15
+                        else if (item.name.contains("Trailer", ignoreCase = true)) score += 5
+                        else if (item.type.equals("Teaser", ignoreCase = true)) score += 2
+                        score
+                    }
                 trailer?.key
             }
         } catch (_: Exception) {

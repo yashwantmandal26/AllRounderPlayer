@@ -186,13 +186,15 @@ object TorrentEngine {
                                     val state = _downloads.value[hash]
                                     if (state?.isSequential == true && numPieces > 0) {
                                         handle.setFlags(TorrentFlags.SEQUENTIAL_DOWNLOAD)
-                                        val headLimit = minOf(8, numPieces)
+                                        val headLimit = minOf(12, numPieces)
                                         for (i in 0 until headLimit) {
                                             handle.piecePriority(i, Priority.TOP_PRIORITY)
+                                            try { handle.setPieceDeadline(i, 0) } catch (_: Exception) {}
                                         }
-                                        val tailStart = maxOf(0, numPieces - 8)
+                                        val tailStart = maxOf(0, numPieces - 6)
                                         for (i in tailStart until numPieces) {
                                             handle.piecePriority(i, Priority.TOP_PRIORITY)
+                                            try { handle.setPieceDeadline(i, 0) } catch (_: Exception) {}
                                         }
                                     }
                                 }
@@ -414,6 +416,22 @@ object TorrentEngine {
         val path = getFilePath(context, hash) ?: return false
         val file = File(path)
         if (!file.exists()) return false
+
+        val sm = sessionManager ?: return false
+        val sha1 = try { Sha1Hash.parseHex(hash) } catch (_: Exception) { return false }
+        val handle = sm.find(sha1) ?: return false
+        if (!handle.isValid) return false
+
+        val tf = handle.torrentFile()
+        val numPieces = tf?.numPieces() ?: 0
+
+        // If metadata is present, check that the container header (piece 0) is ready!
+        if (numPieces > 0) {
+            val pieces = handle.status().pieces()
+            if (pieces != null && pieces.size() > 0 && !pieces.getBit(0)) {
+                return false
+            }
+        }
 
         val done = getDownloadedBytes(hash)
         val required = getRequiredBufferBytes(hash)

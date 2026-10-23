@@ -7,6 +7,7 @@ import android.content.Intent
 import android.net.Uri
 import android.widget.Toast
 import androidx.compose.animation.*
+import androidx.compose.animation.core.*
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -225,26 +226,52 @@ fun TorrentSourcesBottomSheet(
 
             HorizontalDivider(color = c.glassBorder, thickness = 1.dp)
 
+            AnimatedVisibility(
+                visible = isLoading,
+                enter = fadeIn() + expandVertically(),
+                exit = fadeOut() + shrinkVertically()
+            ) {
+                LinearProgressIndicator(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(2.5.dp),
+                    color = c.accentBlue,
+                    trackColor = c.accentBlue.copy(alpha = 0.15f)
+                )
+            }
+
             // Sources List or Loading State
             if (isLoading && sources.isEmpty()) {
-                Box(
+                LazyColumn(
                     modifier = Modifier
                         .fillMaxWidth()
                         .weight(1f),
-                    contentAlignment = Alignment.Center
+                    contentPadding = PaddingValues(vertical = 12.dp),
+                    verticalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
-                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        CircularProgressIndicator(
-                            color = c.accentBlue,
-                            modifier = Modifier.size(36.dp),
-                            strokeWidth = 3.dp
-                        )
-                        Spacer(Modifier.height(12.dp))
-                        Text(
-                            text = "Querying Torrentio, MediaFusion & YTS...",
-                            color = c.textSecondary,
-                            fontSize = 13.sp
-                        )
+                    item {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(vertical = 4.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.Center
+                        ) {
+                            CircularProgressIndicator(
+                                color = c.accentBlue,
+                                modifier = Modifier.size(16.dp),
+                                strokeWidth = 2.dp
+                            )
+                            Spacer(Modifier.width(8.dp))
+                            Text(
+                                text = "Searching high-speed sources (Torrentio, YTS)...",
+                                color = c.textSecondary,
+                                fontSize = 12.sp
+                            )
+                        }
+                    }
+                    items(4) {
+                        TorrentSourceSkeletonCard()
                     }
                 }
             } else if (filteredSources.isEmpty()) {
@@ -468,22 +495,15 @@ private fun TorrentSourceCard(
                     )
                 }
 
-                if (source.isHindi) {
-                    Text(
-                        text = "🇮🇳 HINDI",
-                        color = Color(0xFFFF7043),
-                        fontSize = 10.5.sp,
-                        fontWeight = FontWeight.Bold
-                    )
-                }
-
                 Spacer(Modifier.weight(1f))
 
-                // Provider Tag
+                // Provider Tag (single-line, never hyphenates)
                 Text(
                     text = source.provider,
-                    color = c.textSecondary.copy(alpha = 0.6f),
-                    fontSize = 10.5.sp
+                    color = c.textSecondary.copy(alpha = 0.7f),
+                    fontSize = 11.sp,
+                    maxLines = 1,
+                    softWrap = false
                 )
             }
 
@@ -643,6 +663,88 @@ private fun TorrentSourceCard(
                 ) {
                     Icon(Icons.AutoMirrored.Rounded.OpenInNew, contentDescription = "External App", tint = c.textSecondary, modifier = Modifier.size(16.dp))
                 }
+            }
+        }
+    }
+}
+
+@Composable
+private fun TorrentSourceSkeletonCard() {
+    val c = LocalAppColors.current
+    val infiniteTransition = rememberInfiniteTransition(label = "skeleton")
+    val alpha by infiniteTransition.animateFloat(
+        initialValue = 0.25f,
+        targetValue = 0.65f,
+        animationSpec = infiniteRepeatable(
+            animation = androidx.compose.animation.core.tween(750, easing = androidx.compose.animation.core.LinearEasing),
+            repeatMode = androidx.compose.animation.core.RepeatMode.Reverse
+        ),
+        label = "skeletonAlpha"
+    )
+
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(14.dp))
+            .background(c.cardBg)
+            .border(1.dp, c.glassBorder, RoundedCornerShape(14.dp))
+            .padding(12.dp)
+    ) {
+        Column {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                Box(
+                    modifier = Modifier
+                        .size(width = 54.dp, height = 20.dp)
+                        .clip(RoundedCornerShape(6.dp))
+                        .background(c.textSecondary.copy(alpha = alpha * 0.45f))
+                )
+                Box(
+                    modifier = Modifier
+                        .size(width = 60.dp, height = 16.dp)
+                        .clip(RoundedCornerShape(4.dp))
+                        .background(c.textSecondary.copy(alpha = alpha * 0.35f))
+                )
+                Box(
+                    modifier = Modifier
+                        .size(width = 40.dp, height = 16.dp)
+                        .clip(RoundedCornerShape(4.dp))
+                        .background(c.textSecondary.copy(alpha = alpha * 0.35f))
+                )
+                Spacer(Modifier.weight(1f))
+                Box(
+                    modifier = Modifier
+                        .size(width = 65.dp, height = 14.dp)
+                        .clip(RoundedCornerShape(4.dp))
+                        .background(c.textSecondary.copy(alpha = alpha * 0.3f))
+                )
+            }
+            Spacer(Modifier.height(10.dp))
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth(0.85f)
+                    .height(14.dp)
+                    .clip(RoundedCornerShape(4.dp))
+                    .background(c.textSecondary.copy(alpha = alpha * 0.3f))
+            )
+            Spacer(Modifier.height(12.dp))
+            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                Box(
+                    modifier = Modifier
+                        .weight(1f)
+                        .height(34.dp)
+                        .clip(RoundedCornerShape(8.dp))
+                        .background(c.accentBlue.copy(alpha = alpha * 0.25f))
+                )
+                Box(
+                    modifier = Modifier
+                        .weight(1f)
+                        .height(34.dp)
+                        .clip(RoundedCornerShape(8.dp))
+                        .background(c.textSecondary.copy(alpha = alpha * 0.2f))
+                )
             }
         }
     }

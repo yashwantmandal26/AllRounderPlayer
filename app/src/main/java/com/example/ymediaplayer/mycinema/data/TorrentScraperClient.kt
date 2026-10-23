@@ -5,11 +5,14 @@ import okhttp3.Request
 import org.json.JSONArray
 import org.json.JSONObject
 import java.net.URLEncoder
+import java.util.concurrent.ConcurrentHashMap
 import java.util.regex.Pattern
 
 class TorrentScraperClient {
 
     private val httpClient = DnsOverHttpsClient.client
+    private val sourcesCache = ConcurrentHashMap<String, Pair<Long, List<TorrentSource>>>()
+    private val CACHE_TTL_MS = 30 * 60 * 1000L // 30 minutes cache
 
     companion object {
         val EXTRA_TRACKERS = listOf(
@@ -44,12 +47,30 @@ class TorrentScraperClient {
             return@withContext emptyList()
         }
 
+        val cacheKey = "$imdbId:$isSeries"
+        sourcesCache[cacheKey]?.let { (timestamp, cached) ->
+            if (System.currentTimeMillis() - timestamp < CACHE_TTL_MS && cached.isNotEmpty()) {
+                return@withContext cached
+            }
+        }
+
+        // Fast scrapers run concurrently, slow scrapers capped at 3500ms
         val deferredResults = listOf(
             async { fetchTorrentioSources(imdbId, fallbackTitle, isSeries, isHindiSpecific = false) },
             async { fetchTorrentioSources(imdbId, fallbackTitle, isSeries, isHindiSpecific = true) },
-            async { fetchMediaFusionSources(imdbId, fallbackTitle, isSeries) },
+            async {
+                withTimeoutOrNull(3500L) {
+                    fetchMediaFusionSources(imdbId, fallbackTitle, isSeries)
+                } ?: emptyList()
+            },
             async { if (!isSeries) fetchYtsSources(imdbId, fallbackTitle) else emptyList() },
-            async { if (isSeries) fetchEztvSources(imdbId) else emptyList() }
+            async {
+                if (isSeries) {
+                    withTimeoutOrNull(3500L) {
+                        fetchEztvSources(imdbId)
+                    } ?: emptyList()
+                } else emptyList()
+            }
         )
 
         val allResults = deferredResults.awaitAll().flatten()
@@ -66,7 +87,11 @@ class TorrentScraperClient {
             }
         }
 
-        uniqueSources.values.sortedByDescending { it.healthScore }
+        val sorted = uniqueSources.values.sortedByDescending { it.healthScore }
+        if (sorted.isNotEmpty()) {
+            sourcesCache[cacheKey] = Pair(System.currentTimeMillis(), sorted)
+        }
+        sorted
     }
 
     private fun extractInfoHash(magnet: String): String? {

@@ -395,18 +395,30 @@ fun MyCinemaDetailModal(
 
                 Spacer(Modifier.height(10.dp))
 
-                // Row of external app / review buttons
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .horizontalScroll(rememberScrollState()),
-                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                // Flow of external app / review buttons (wraps cleanly to next line, no sliding)
+                FlowRow(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                    verticalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
-                    // 1. TRAILER (YouTube app or browser)
+                    // 1. TRAILER (Official YouTube app or browser)
                     ReviewExternalPill(
                         label = "TRAILER",
                         icon = {
-                            Icon(Icons.Rounded.Movie, contentDescription = "Trailer", tint = Color.White, modifier = Modifier.size(16.dp))
+                            Box(
+                                modifier = Modifier
+                                    .size(width = 20.dp, height = 14.dp)
+                                    .clip(RoundedCornerShape(3.5.dp))
+                                    .background(Color(0xFFFF0000)),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Icon(
+                                    Icons.Rounded.PlayArrow,
+                                    contentDescription = "YouTube",
+                                    tint = Color.White,
+                                    modifier = Modifier.size(10.dp)
+                                )
+                            }
                         },
                         onClick = {
                             if (!youtubeTrailerKey.isNullOrBlank()) {

@@ -369,6 +369,17 @@ object VideoPlaybackManager {
             recoveryMessage.value = friendlyError(error)
             return
         }
+
+        // Torrent streaming guard:
+        // If the video being played is an actively downloading torrent file (in /torrents/ or MYCinema),
+        // do NOT dump into CompatibilityPlayerActivity! Doing so causes a black screen because VLC
+        // cannot play partial/sparse torrent files. Instead, wait for stream pieces and retry in ExoPlayer!
+        if (uri.contains("/torrents/", ignoreCase = true) || uri.contains("MYCinema", ignoreCase = true)) {
+            recoveryMessage.value = "Buffering stream... Please wait"
+            scheduleRetry(context, targetPlayer, safe = true, disableAudio = false)
+            return
+        }
+
         targetPlayer.pause()
         val reason = "${error.errorCodeName}: ${error.message.orEmpty()}".trim()
         recoveryMessage.value = "Opening extended compatibility player"

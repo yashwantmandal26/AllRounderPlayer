@@ -78,5 +78,7 @@ data class TmdbVideosResponse(
 data class TmdbVideoItem(
     val key: String = "",
     val site: String = "",
-    val type: String = ""
+    val type: String = "",
+    val name: String = "",
+    val official: Boolean = false
 )

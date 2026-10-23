@@ -58,6 +58,7 @@ import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.zIndex
+import androidx.compose.ui.graphics.asComposeRenderEffect
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
@@ -1636,15 +1637,24 @@ fun FolderListScreen(
                     modifier = Modifier
                         .fillMaxWidth()
                         .matchParentSize()
+                        .then(
+                            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.S) {
+                                Modifier.graphicsLayer {
+                                    renderEffect = android.graphics.RenderEffect.createBlurEffect(
+                                        24f, 24f, android.graphics.Shader.TileMode.CLAMP
+                                    ).asComposeRenderEffect()
+                                }
+                            } else {
+                                Modifier
+                            }
+                        )
                         .background(
                             Brush.verticalGradient(
-                                colors = listOf(
-                                    Color.Transparent,
-                                    c.baseBackground.copy(alpha = 0.35f),
-                                    c.baseBackground.copy(alpha = 0.75f),
-                                    c.baseBackground.copy(alpha = 0.94f),
-                                    c.baseBackground
-                                )
+                                0.0f to Color.Transparent,
+                                0.25f to c.baseBackground.copy(alpha = 0.18f),
+                                0.55f to c.baseBackground.copy(alpha = 0.45f),
+                                0.80f to c.baseBackground.copy(alpha = 0.72f),
+                                1.0f to c.baseBackground.copy(alpha = 0.88f)
                             )
                         )
                 )
@@ -1653,7 +1663,7 @@ fun FolderListScreen(
                     modifier = Modifier
                         .fillMaxWidth()
                         .navigationBarsPadding()
-                        .padding(top = 28.dp, bottom = 16.dp),
+                        .padding(top = 14.dp, bottom = 12.dp),
                     horizontalAlignment = Alignment.CenterHorizontally
                 ) {
                 // Animated "Now Playing" pill visible across both tabs with controls & 100% opaque background
