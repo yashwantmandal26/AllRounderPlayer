@@ -855,6 +855,19 @@ fun SettingsScreen(
                         }
                     )
 
+                    SettingsDivider()
+
+                    SettingsItemAction(
+                        title = "Replay Feature Guides",
+                        subtitle = "Show the interactive gesture and button placement guides on next playback",
+                        icon = Icons.Rounded.HelpOutline,
+                        iconTint = primaryAccent,
+                        onClick = {
+                            appPreferences.resetAllGuides()
+                            Toast.makeText(context, "Feature guides will appear on your next video and music playback", Toast.LENGTH_SHORT).show()
+                        }
+                    )
+
 
                 }
             }
@@ -1305,7 +1318,6 @@ fun SettingsScreen(
                             "SONIC_REACTOR" -> "Sonic Reactor (Audio-Reactive)"
                             "CASSETTE" -> "Retro Cassette Tape"
                             "CYBER_ORB" -> "Cyber Neon Orb"
-                            "WAVE" -> "Waveform Stage"
                             else -> "Modern Album Card"
                         },
                         icon = Icons.Rounded.Album,
@@ -1854,7 +1866,6 @@ fun SettingsScreen(
                     "SONIC_REACTOR" to "Sonic Reactor (Audio-Reactive)",
                     "CASSETTE" to "Retro Cassette Tape",
                     "CYBER_ORB" to "Cyber Neon Orb",
-                    "WAVE" to "Waveform Stage"
                 ),
                 selectedKey = musicArtworkStyle,
                 onSelect = {
@@ -2195,7 +2206,7 @@ private fun SettingsItemAction(
     title: String,
     subtitle: String,
     icon: ImageVector,
-    iconTint: Color,
+    iconTint: Color = Color.Unspecified,
     onClick: () -> Unit
 ) {
     val c = LocalAppColors.current

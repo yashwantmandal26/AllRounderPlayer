@@ -782,6 +782,7 @@ fun VideoPlayerScreen(
     var bufferedPosition by remember { mutableLongStateOf(0L) }
     var duration by remember { mutableLongStateOf(0L) }
     var showControls by remember { mutableStateOf(true) }
+    var showFeatureGuide by remember { mutableStateOf(!appPreferences.hasSeenVideoPlayerGuide()) }
     var isTouchingControls by remember { mutableStateOf(false) }
     var controlsInteractionTimestamp by remember { mutableLongStateOf(0L) }
     val optionsScrollState = rememberScrollState()
@@ -4824,6 +4825,16 @@ fun VideoPlayerScreen(
                     Spacer(Modifier.height(16.dp))
                 }
             }
+        }
+
+        // ─── First-Time Contextual Feature & Gesture Guide ───────────────────────
+        if (showFeatureGuide && !isInPiP) {
+            VideoPlayerFeatureGuide(
+                onDismiss = {
+                    showFeatureGuide = false
+                    appPreferences.setSeenVideoPlayerGuide(true)
+                }
+            )
         }
 
     }

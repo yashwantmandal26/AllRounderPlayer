@@ -203,13 +203,29 @@ class AppPreferences(private val prefs: SharedPreferences) {
         return getMusicFavorites().contains(uri)
     }
 
-    // Music Artwork Mode: "VINYL", "CARD"
+    // Music Artwork Mode: "VINYL", "CARD", "SONIC_REACTOR", "CASSETTE", "CYBER_ORB"
     fun getMusicArtworkStyle(): String {
-        return prefs.getString("music_artwork_style", "VINYL") ?: "VINYL"
+        val style = prefs.getString("music_artwork_style", "VINYL") ?: "VINYL"
+        return if (style == "WAVE") "SONIC_REACTOR" else style
     }
 
     fun setMusicArtworkStyle(style: String) {
-        prefs.edit().putString("music_artwork_style", style).apply()
+        val validStyle = if (style == "WAVE") "SONIC_REACTOR" else style
+        prefs.edit().putString("music_artwork_style", validStyle).apply()
+    }
+
+    // Feature Introductions & Tour Guides (One-Time Spotlights)
+    fun hasSeenVideoPlayerGuide(): Boolean = prefs.getBoolean("has_seen_video_guide", false)
+    fun setSeenVideoPlayerGuide(seen: Boolean = true) { prefs.edit().putBoolean("has_seen_video_guide", seen).apply() }
+
+    fun hasSeenMusicGuide(): Boolean = prefs.getBoolean("has_seen_music_guide", false)
+    fun setSeenMusicGuide(seen: Boolean = true) { prefs.edit().putBoolean("has_seen_music_guide", seen).apply() }
+
+    fun resetAllGuides() {
+        prefs.edit()
+            .putBoolean("has_seen_video_guide", false)
+            .putBoolean("has_seen_music_guide", false)
+            .apply()
     }
 
     // Recently Played Music Tracks
