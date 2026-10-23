@@ -1,6 +1,9 @@
 package com.example.ymediaplayer.mycinema.data
 
 import kotlinx.coroutines.*
+import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.flow
 import okhttp3.Request
 import org.json.JSONArray
 import org.json.JSONObject
@@ -36,6 +39,76 @@ class TorrentScraperClient {
         private val QUALITY_REGEX = Pattern.compile("(?i)\\b(2160p|4k|1080p|720p|480p)\\b")
         private val SEEDS_REGEX = Pattern.compile("(?:👤|Seeders:|Seeds:)\\s*([0-9]+)", Pattern.CASE_INSENSITIVE)
         private val SIZE_REGEX = Pattern.compile("([0-9.]+)\\s*(TB|GB|MB|KB|GiB|MiB|KiB)", Pattern.CASE_INSENSITIVE)
+    }
+
+    fun searchSourcesFlow(
+        imdbId: String,
+        fallbackTitle: String,
+        isSeries: Boolean
+    ): Flow<List<TorrentSource>> = flow {
+        if (imdbId.isBlank() || !imdbId.startsWith("tt", ignoreCase = true)) {
+            emit(emptyList())
+            return@flow
+        }
+
+        val cacheKey = "$imdbId:$isSeries"
+        sourcesCache[cacheKey]?.let { (timestamp, cached) ->
+            if (System.currentTimeMillis() - timestamp < CACHE_TTL_MS && cached.isNotEmpty()) {
+                emit(cached)
+                return@flow
+            }
+        }
+
+        val accumulatedSources = mutableMapOf<String, TorrentSource>()
+
+        coroutineScope {
+            val scrapers = listOf<suspend () -> List<TorrentSource>>(
+                { fetchTorrentioSources(imdbId, fallbackTitle, isSeries, isHindiSpecific = false) },
+                { fetchTorrentioSources(imdbId, fallbackTitle, isSeries, isHindiSpecific = true) },
+                { if (!isSeries) fetchYtsSources(imdbId, fallbackTitle) else emptyList() },
+                { withTimeoutOrNull(3500L) { fetchMediaFusionSources(imdbId, fallbackTitle, isSeries) } ?: emptyList() },
+                { if (isSeries) withTimeoutOrNull(3500L) { fetchEztvSources(imdbId) } ?: emptyList() else emptyList() }
+            )
+
+            val channel = Channel<List<TorrentSource>>(Channel.UNLIMITED)
+            val jobs = scrapers.map { scraper ->
+                launch(Dispatchers.IO) {
+                    val results = try { scraper() } catch (_: Exception) { emptyList() }
+                    channel.send(results)
+                }
+            }
+
+            launch {
+                jobs.joinAll()
+                channel.close()
+            }
+
+            for (newSources in channel) {
+                if (newSources.isNotEmpty()) {
+                    var addedNew = false
+                    for (source in newSources) {
+                        val hash = extractInfoHash(source.magnet)
+                        if (hash != null) {
+                            val existing = accumulatedSources[hash]
+                            if (existing == null || source.seeds > existing.seeds) {
+                                accumulatedSources[hash] = source
+                                addedNew = true
+                            }
+                        }
+                    }
+                    if (addedNew) {
+                        val currentList = accumulatedSources.values.sortedByDescending { it.seeds }
+                        emit(currentList)
+                    }
+                }
+            }
+        }
+
+        val finalList = accumulatedSources.values.sortedByDescending { it.healthScore }
+        if (finalList.isNotEmpty()) {
+            sourcesCache[cacheKey] = Pair(System.currentTimeMillis(), finalList)
+            emit(finalList)
+        }
     }
 
     suspend fun fetchAllSources(

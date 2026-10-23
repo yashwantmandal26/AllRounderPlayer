@@ -1382,9 +1382,42 @@ fun VideoPlayerScreen(
     val configuredSeekStepSec = remember { appPreferences.getDoubleTapSeekSeconds().coerceAtLeast(1) }
     val configuredSeekStepMs = remember(configuredSeekStepSec) { configuredSeekStepSec * 1000L }
 
+    val activeTorrentHash = remember(videoUrl) {
+        com.example.ymediaplayer.mycinema.service.TorrentEngine.getActiveTorrent(videoUrl)
+    }
+    var torrentSeekBufferingTarget by remember { mutableStateOf<Long?>(null) }
+    var torrentSeekJob by remember { mutableStateOf<kotlinx.coroutines.Job?>(null) }
+
     // ─── Helper Functions ─────────────────────────────────────────────────────
     fun safeSeek(targetMs: Long) {
         val target = if (duration > 0L) targetMs.coerceIn(0L, duration) else targetMs.coerceAtLeast(0L)
+        val hash = activeTorrentHash
+        if (hash != null && duration > 0L) {
+            val frac = (target.toDouble() / duration.toDouble()).coerceIn(0.0, 1.0)
+            if (!com.example.ymediaplayer.mycinema.service.TorrentEngine.isPieceAvailable(hash, frac)) {
+                exoPlayer.pause()
+                torrentSeekBufferingTarget = target
+                currentPosition = target
+                com.example.ymediaplayer.mycinema.service.TorrentEngine.prioritizeStreamSeek(hash, frac)
+                torrentSeekJob?.cancel()
+                torrentSeekJob = coroutineScope.launch {
+                    val startWait = System.currentTimeMillis()
+                    while (System.currentTimeMillis() - startWait < 25_000L) {
+                        if (com.example.ymediaplayer.mycinema.service.TorrentEngine.isSeekBufferReady(hash, frac)) {
+                            break
+                        }
+                        kotlinx.coroutines.delay(200L)
+                    }
+                    exoPlayer.seekTo(target)
+                    currentPosition = target
+                    torrentSeekBufferingTarget = null
+                    VideoPlaybackManager.manualPlay()
+                }
+                return
+            }
+        }
+        torrentSeekJob?.cancel()
+        torrentSeekBufferingTarget = null
         exoPlayer.seekTo(target)
         currentPosition = target
     }
@@ -3186,6 +3219,49 @@ fun VideoPlayerScreen(
                 .padding(top = 68.dp)
         ) {
             TextOnlyPlayerFeedback(quickHUDText.orEmpty(), quickHUDSubtext)
+        }
+
+        // ─── Torrent Stream Seek Buffering HUD ─────────────────────────────
+        AnimatedVisibility(
+            visible = torrentSeekBufferingTarget != null && !isInPiP,
+            enter = fadeIn(tween(160)) + scaleIn(initialScale = 0.90f),
+            exit = fadeOut(tween(180)) + scaleOut(targetScale = 0.90f),
+            modifier = Modifier.align(Alignment.Center)
+        ) {
+            Box(
+                modifier = Modifier
+                    .clip(RoundedCornerShape(22.dp))
+                    .background(Color.Black.copy(alpha = 0.85f))
+                    .border(1.2.dp, Color(0xFF00E676).copy(alpha = 0.6f), RoundedCornerShape(22.dp))
+                    .padding(horizontal = 24.dp, vertical = 16.dp),
+                contentAlignment = Alignment.Center
+            ) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(14.dp)
+                ) {
+                    CircularProgressIndicator(
+                        modifier = Modifier.size(24.dp),
+                        color = Color(0xFF00E676),
+                        strokeWidth = 2.5.dp
+                    )
+                    Column {
+                        Text(
+                            text = "Buffering stream at ${formatTime(torrentSeekBufferingTarget ?: 0L)}",
+                            color = Color.White,
+                            fontSize = 13.5.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+                        val speedStr = activeTorrentHash?.let { com.example.ymediaplayer.mycinema.service.TorrentEngine.getDownloadSpeedFormatted(it) } ?: "Connecting..."
+                        Text(
+                            text = "Downloading pieces • $speedStr",
+                            color = Color(0xFF00E676),
+                            fontSize = 11.5.sp,
+                            fontWeight = FontWeight.Medium
+                        )
+                    }
+                }
+            }
         }
 
         // ─── 6b. Press-Hold Speed HUD (Small Pill with Animated ">>" Icon) ───

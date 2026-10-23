@@ -438,6 +438,87 @@ object TorrentEngine {
         return done >= required
     }
 
+    fun getActiveTorrent(filePath: String): String? {
+        if (filePath.isBlank()) return null
+        val targetFile = File(filePath)
+        val targetName = targetFile.name.lowercase()
+        val targetNorm = targetFile.absolutePath.replace("\\", "/").lowercase()
+
+        for ((hash, state) in _downloads.value) {
+            if (state.status == TorrentDownloadState.Status.FINISHED) continue
+            val savePathNorm = state.savePath?.replace("\\", "/")?.lowercase()
+            if (savePathNorm != null && (savePathNorm == targetNorm || targetNorm.endsWith(savePathNorm) || savePathNorm.endsWith(targetNorm))) {
+                return hash
+            }
+            val sm = sessionManager ?: continue
+            val sha1 = try { Sha1Hash.parseHex(hash) } catch (_: Exception) { continue }
+            val handle = sm.find(sha1) ?: continue
+            val tf = handle.torrentFile() ?: continue
+            val files = tf.files()
+            for (i in 0 until files.numFiles()) {
+                val fName = File(files.filePath(i)).name.lowercase()
+                if (fName == targetName) {
+                    return hash
+                }
+            }
+        }
+        return null
+    }
+
+    fun isPieceAvailable(hash: String, progressFraction: Double): Boolean {
+        val sm = sessionManager ?: return false
+        val sha1 = try { Sha1Hash.parseHex(hash) } catch (_: Exception) { return false }
+        val handle = sm.find(sha1) ?: return false
+        if (!handle.isValid) return false
+        val tf = handle.torrentFile() ?: return false
+        val numPieces = tf.numPieces()
+        if (numPieces <= 0) return false
+        val targetPiece = (progressFraction * numPieces).toInt().coerceIn(0, numPieces - 1)
+        val pieces = handle.status().pieces() ?: return false
+        return pieces.size() > targetPiece && pieces.getBit(targetPiece)
+    }
+
+    fun prioritizeStreamSeek(hash: String, progressFraction: Double) {
+        val sm = sessionManager ?: return
+        val sha1 = try { Sha1Hash.parseHex(hash) } catch (_: Exception) { return }
+        val handle = sm.find(sha1) ?: return
+        if (!handle.isValid) return
+        val tf = handle.torrentFile() ?: return
+        val numPieces = tf.numPieces()
+        if (numPieces <= 0) return
+
+        val targetPiece = (progressFraction * numPieces).toInt().coerceIn(0, numPieces - 1)
+        try {
+            handle.clearPieceDeadlines()
+        } catch (_: Exception) {}
+
+        val window = minOf(targetPiece + 15, numPieces)
+        for (p in targetPiece until window) {
+            try {
+                handle.piecePriority(p, Priority.TOP_PRIORITY)
+                handle.setPieceDeadline(p, ((p - targetPiece) * 120).coerceAtLeast(0))
+            } catch (_: Exception) {}
+        }
+    }
+
+    fun isSeekBufferReady(hash: String, progressFraction: Double): Boolean {
+        val sm = sessionManager ?: return false
+        val sha1 = try { Sha1Hash.parseHex(hash) } catch (_: Exception) { return false }
+        val handle = sm.find(sha1) ?: return false
+        if (!handle.isValid) return false
+        val tf = handle.torrentFile() ?: return false
+        val numPieces = tf.numPieces()
+        if (numPieces <= 0) return false
+
+        val targetPiece = (progressFraction * numPieces).toInt().coerceIn(0, numPieces - 1)
+        val pieces = handle.status().pieces() ?: return false
+        return pieces.size() > targetPiece && pieces.getBit(targetPiece)
+    }
+
+    fun getDownloadSpeedFormatted(hash: String): String {
+        return _downloads.value[hash]?.speedFormatted ?: "0 KB/s"
+    }
+
     private fun updateState(hash: String, transform: (TorrentDownloadState) -> TorrentDownloadState) {
         val current = _downloads.value[hash] ?: return
         _downloads.value = _downloads.value + (hash to transform(current))

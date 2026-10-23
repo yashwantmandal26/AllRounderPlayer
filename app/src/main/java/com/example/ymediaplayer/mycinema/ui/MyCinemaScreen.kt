@@ -1,9 +1,13 @@
 package com.example.ymediaplayer.mycinema.ui
 
+import android.content.Intent
+import android.widget.Toast
 import androidx.compose.animation.*
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
@@ -24,14 +28,18 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.core.content.FileProvider
 import coil3.compose.AsyncImage
 import com.example.ymediaplayer.data.AppPreferences
 import com.example.ymediaplayer.mycinema.data.MyCinemaRepository
@@ -114,13 +122,18 @@ fun MyCinemaScreen(
     var activeItemForSources by remember { mutableStateOf<TmdbItem?>(null) }
     var itemSources by remember { mutableStateOf<List<TorrentSource>>(emptyList()) }
     var isLoadingSources by remember { mutableStateOf(false) }
+    var sourcesSearchJob by remember { mutableStateOf<kotlinx.coroutines.Job?>(null) }
+    var localOfflineRefreshTrigger by remember { mutableIntStateOf(0) }
+    var selectedOfflineMovieForOptions by remember { mutableStateOf<OfflineCinemaMovie?>(null) }
+    var movieToDelete by remember { mutableStateOf<OfflineCinemaMovie?>(null) }
+    var movieForDetails by remember { mutableStateOf<OfflineCinemaMovie?>(null) }
 
     LaunchedEffect(activeDetailItem, libraryOpenType) {
         onDetailStateChanged(activeDetailItem != null || libraryOpenType != null)
     }
 
     // Scan offline downloaded movies
-    LaunchedEffect(refreshTrigger, cinemaDownloadsMap) {
+    LaunchedEffect(refreshTrigger, cinemaDownloadsMap, localOfflineRefreshTrigger) {
         kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
             val list = mutableListOf<OfflineCinemaMovie>()
             val downloadDir = com.example.ymediaplayer.mycinema.service.TorrentEngine.getDownloadDir(context)
@@ -372,6 +385,7 @@ fun MyCinemaScreen(
                                     OfflineMovieCinemaCard(
                                         movie = movie,
                                         onClick = { onPlayOfflineMovie(movie.file.absolutePath) },
+                                        onLongClick = { selectedOfflineMovieForOptions = movie },
                                         modifier = Modifier.width(movieCardWidth)
                                     )
                                 }
@@ -542,9 +556,11 @@ fun MyCinemaScreen(
                         activeItemForSources = targetItem
                         itemSources = emptyList()
                         isLoadingSources = true
-                        coroutineScope.launch {
-                            val sources = repository.getSources(targetItem)
-                            itemSources = sources
+                        sourcesSearchJob?.cancel()
+                        sourcesSearchJob = coroutineScope.launch {
+                            repository.getSourcesFlow(targetItem).collect { progressiveSources ->
+                                itemSources = progressiveSources
+                            }
                             isLoadingSources = false
                         }
                     }
@@ -575,7 +591,10 @@ fun MyCinemaScreen(
                 item = item,
                 sources = itemSources,
                 isLoading = isLoadingSources,
-                onDismiss = { activeItemForSources = null },
+                onDismiss = { 
+                    activeItemForSources = null
+                    sourcesSearchJob?.cancel()
+                },
                 onStreamClick = { source ->
                     activeItemForSources = null
                     activeDetailItem = null
@@ -584,6 +603,128 @@ fun MyCinemaScreen(
                 onDownloadClick = { source ->
                     onDownloadSource(item, source)
                 }
+            )
+        }
+
+        // Offline Movie Options Bottom Sheet (Long Press)
+        selectedOfflineMovieForOptions?.let { movie ->
+            OfflineMovieOptionsBottomSheet(
+                movie = movie,
+                onDismiss = { selectedOfflineMovieForOptions = null },
+                onPlay = {
+                    selectedOfflineMovieForOptions = null
+                    onPlayOfflineMovie(movie.file.absolutePath)
+                },
+                onShare = {
+                    selectedOfflineMovieForOptions = null
+                    try {
+                        val contentUri = FileProvider.getUriForFile(
+                            context,
+                            "${context.packageName}.provider",
+                            movie.file
+                        )
+                        val shareIntent = Intent(Intent.ACTION_SEND).apply {
+                            type = "video/*"
+                            putExtra(Intent.EXTRA_STREAM, contentUri)
+                            putExtra(Intent.EXTRA_TEXT, movie.title)
+                            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                        }
+                        context.startActivity(Intent.createChooser(shareIntent, "Share Movie File"))
+                    } catch (e: Exception) {
+                        Toast.makeText(context, "Could not share: ${e.message}", Toast.LENGTH_SHORT).show()
+                    }
+                },
+                onShowInfo = {
+                    selectedOfflineMovieForOptions = null
+                    movieForDetails = movie
+                },
+                onDelete = {
+                    selectedOfflineMovieForOptions = null
+                    movieToDelete = movie
+                }
+            )
+        }
+
+        // Delete Confirmation Dialog
+        movieToDelete?.let { movie ->
+            AlertDialog(
+                onDismissRequest = { movieToDelete = null },
+                title = {
+                    Text("Delete Movie?", fontWeight = FontWeight.Bold, color = c.textPrimary)
+                },
+                text = {
+                    Text(
+                        "Are you sure you want to permanently delete \"${movie.title}\"?\nThis will free up ${movie.sizeFormatted} of storage.",
+                        color = c.textSecondary,
+                        fontSize = 13.5.sp
+                    )
+                },
+                confirmButton = {
+                    TextButton(
+                        onClick = {
+                            val target = movie
+                            movieToDelete = null
+                            coroutineScope.launch(kotlinx.coroutines.Dispatchers.IO) {
+                                try {
+                                    val hash = com.example.ymediaplayer.mycinema.service.TorrentEngine.getActiveTorrent(target.file.absolutePath)
+                                    if (hash != null) {
+                                        com.example.ymediaplayer.mycinema.service.TorrentEngine.cancel(hash)
+                                    }
+                                    if (target.file.exists()) {
+                                        target.file.delete()
+                                    }
+                                    val parent = target.file.parentFile
+                                    val baseDownloadDir = com.example.ymediaplayer.mycinema.service.TorrentEngine.getDownloadDir(context)
+                                    if (parent != null && parent != baseDownloadDir && parent.isDirectory && parent.listFiles()?.isEmpty() == true) {
+                                        parent.delete()
+                                    }
+                                } catch (_: Exception) {}
+                                kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
+                                    localOfflineRefreshTrigger++
+                                    Toast.makeText(context, "Deleted: ${target.title}", Toast.LENGTH_SHORT).show()
+                                }
+                            }
+                        }
+                    ) {
+                        Text("Delete", color = Color(0xFFFF5252), fontWeight = FontWeight.Bold)
+                    }
+                },
+                dismissButton = {
+                    TextButton(onClick = { movieToDelete = null }) {
+                        Text("Cancel", color = c.textSecondary)
+                    }
+                },
+                containerColor = c.cardBgElevated,
+                shape = RoundedCornerShape(20.dp)
+            )
+        }
+
+        // Movie Details Dialog
+        movieForDetails?.let { movie ->
+            AlertDialog(
+                onDismissRequest = { movieForDetails = null },
+                title = {
+                    Text("Movie Details", fontWeight = FontWeight.Bold, color = c.textPrimary)
+                },
+                text = {
+                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        OfflineDetailRow("Title", movie.title)
+                        OfflineDetailRow("File Name", movie.file.name)
+                        OfflineDetailRow("File Size", movie.sizeFormatted)
+                        if (movie.durationFormatted.isNotEmpty()) {
+                            OfflineDetailRow("Duration", movie.durationFormatted)
+                        }
+                        OfflineDetailRow("Format", movie.file.extension.uppercase())
+                        OfflineDetailRow("Path", movie.file.absolutePath)
+                    }
+                },
+                confirmButton = {
+                    TextButton(onClick = { movieForDetails = null }) {
+                        Text("Close", color = c.accentBlue, fontWeight = FontWeight.Bold)
+                    }
+                },
+                containerColor = c.cardBgElevated,
+                shape = RoundedCornerShape(20.dp)
             )
         }
     }
@@ -733,19 +874,28 @@ private fun MyCinemaCard(
     }
 }
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun OfflineMovieCinemaCard(
     movie: OfflineCinemaMovie,
     onClick: () -> Unit,
+    onLongClick: () -> Unit,
     modifier: Modifier = Modifier.width(128.dp)
 ) {
     val c = LocalAppColors.current
     val context = androidx.compose.ui.platform.LocalContext.current
+    val haptic = LocalHapticFeedback.current
 
     Column(
         modifier = modifier
             .clip(RoundedCornerShape(12.dp))
-            .clickable(onClick = onClick)
+            .combinedClickable(
+                onClick = onClick,
+                onLongClick = {
+                    haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                    onLongClick()
+                }
+            )
     ) {
         Box(
             modifier = Modifier
@@ -847,5 +997,192 @@ private fun UpcomingFilterChip(
             fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
             modifier = Modifier.padding(horizontal = 12.dp, vertical = 5.dp)
         )
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun OfflineMovieOptionsBottomSheet(
+    movie: OfflineCinemaMovie,
+    onDismiss: () -> Unit,
+    onPlay: () -> Unit,
+    onShare: () -> Unit,
+    onShowInfo: () -> Unit,
+    onDelete: () -> Unit
+) {
+    val c = LocalAppColors.current
+
+    ModalBottomSheet(
+        onDismissRequest = onDismiss,
+        containerColor = c.dropdownBg,
+        dragHandle = {
+            Box(
+                modifier = Modifier
+                    .padding(vertical = 10.dp)
+                    .width(36.dp)
+                    .height(4.dp)
+                    .clip(CircleShape)
+                    .background(c.textSecondary.copy(alpha = 0.4f))
+            )
+        }
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .navigationBarsPadding()
+                .padding(horizontal = 20.dp, vertical = 8.dp)
+        ) {
+            // Header: Poster + Title + Details
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(bottom = 16.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Box(
+                    modifier = Modifier
+                        .size(width = 54.dp, height = 76.dp)
+                        .clip(RoundedCornerShape(10.dp))
+                        .background(c.cardBgElevated)
+                        .border(1.dp, c.glassBorder, RoundedCornerShape(10.dp))
+                ) {
+                    val thumb = movie.posterUrl ?: movie.file
+                    AsyncImage(
+                        model = thumb,
+                        contentDescription = movie.title,
+                        contentScale = ContentScale.Crop,
+                        modifier = Modifier.fillMaxSize()
+                    )
+                }
+
+                Spacer(Modifier.width(14.dp))
+
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = movie.title,
+                        color = c.textPrimary,
+                        fontSize = 16.sp,
+                        fontWeight = FontWeight.Bold,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                    Spacer(Modifier.height(4.dp))
+                    Text(
+                        text = if (movie.durationFormatted.isNotEmpty()) "${movie.sizeFormatted} • ${movie.durationFormatted}" else movie.sizeFormatted,
+                        color = Color(0xFF00E676),
+                        fontSize = 12.5.sp,
+                        fontWeight = FontWeight.SemiBold
+                    )
+                    Spacer(Modifier.height(2.dp))
+                    Text(
+                        text = movie.file.name,
+                        color = c.textSecondary,
+                        fontSize = 11.sp,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
+            }
+
+            HorizontalDivider(color = c.glassBorder, thickness = 1.dp)
+            Spacer(Modifier.height(8.dp))
+
+            // Action: Play
+            OfflineActionRow(
+                icon = Icons.Rounded.PlayArrow,
+                title = "Play Movie",
+                subtitle = "Watch in video player",
+                iconColor = c.accentBlue,
+                onClick = onPlay
+            )
+
+            // Action: Share
+            OfflineActionRow(
+                icon = Icons.Rounded.Share,
+                title = "Share Movie File",
+                subtitle = "Send via WhatsApp, Bluetooth, Nearby Share",
+                iconColor = Color(0xFF29B6F6),
+                onClick = onShare
+            )
+
+            // Action: File Details
+            OfflineActionRow(
+                icon = Icons.Rounded.Info,
+                title = "File Details",
+                subtitle = "Size, format, storage location",
+                iconColor = Color(0xFFFFB74D),
+                onClick = onShowInfo
+            )
+
+            // Action: Delete
+            OfflineActionRow(
+                icon = Icons.Rounded.Delete,
+                title = "Delete File",
+                subtitle = "Remove from device and free up ${movie.sizeFormatted}",
+                iconColor = Color(0xFFFF5252),
+                titleColor = Color(0xFFFF5252),
+                onClick = onDelete
+            )
+
+            Spacer(Modifier.height(16.dp))
+        }
+    }
+}
+
+@Composable
+private fun OfflineActionRow(
+    icon: ImageVector,
+    title: String,
+    subtitle: String,
+    iconColor: Color,
+    titleColor: Color? = null,
+    onClick: () -> Unit
+) {
+    val c = LocalAppColors.current
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(12.dp))
+            .clickable(onClick = onClick)
+            .padding(vertical = 11.dp, horizontal = 8.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Box(
+            modifier = Modifier
+                .size(38.dp)
+                .clip(CircleShape)
+                .background(iconColor.copy(alpha = 0.14f)),
+            contentAlignment = Alignment.Center
+        ) {
+            Icon(
+                imageVector = icon,
+                contentDescription = title,
+                tint = iconColor,
+                modifier = Modifier.size(20.dp)
+            )
+        }
+        Spacer(Modifier.width(14.dp))
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                text = title,
+                color = titleColor ?: c.textPrimary,
+                fontSize = 14.sp,
+                fontWeight = FontWeight.SemiBold
+            )
+            Text(
+                text = subtitle,
+                color = c.textSecondary,
+                fontSize = 11.5.sp
+            )
+        }
+    }
+}
+
+@Composable
+private fun OfflineDetailRow(label: String, value: String) {
+    val c = LocalAppColors.current
+    Column(modifier = Modifier.fillMaxWidth()) {
+        Text(text = label, color = c.textSecondary, fontSize = 11.sp, fontWeight = FontWeight.Medium)
+        Text(text = value, color = c.textPrimary, fontSize = 13.5.sp, fontWeight = FontWeight.SemiBold)
     }
 }

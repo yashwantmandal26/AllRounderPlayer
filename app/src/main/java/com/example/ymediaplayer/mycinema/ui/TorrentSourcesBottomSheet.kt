@@ -128,7 +128,7 @@ fun TorrentSourcesBottomSheet(
                     )
                     Spacer(Modifier.height(2.dp))
                     Text(
-                        text = "${item.displayYear} • ${if (isLoading) "Searching sources..." else "${sources.size} sources available"}",
+                        text = "${item.displayYear} • ${if (isLoading && sources.isEmpty()) "Searching fastest scrapers..." else if (isLoading) "Found ${sources.size} • Searching more..." else "${sources.size} sources available"}",
                         color = c.textSecondary,
                         fontSize = 12.5.sp
                     )

@@ -84,6 +84,10 @@ fun MusicMiniPlayerPill(
                 ),
                 pillShape
             )
+            .clickable(onClick = {
+                view.performHaptic(HapticType.LIGHT)
+                onClick()
+            })
             .pointerInput(Unit) {
                 var totalDragX = 0f
                 var totalDragY = 0f
@@ -93,25 +97,26 @@ fun MusicMiniPlayerPill(
                         totalDragY = 0f
                     },
                     onDrag = { change, dragAmount ->
-                        change.consume()
                         totalDragX += dragAmount.x
                         totalDragY += dragAmount.y
+                        if (abs(totalDragX) > 20f || abs(totalDragY) > 20f) {
+                            change.consume()
+                        }
                     },
                     onDragEnd = {
-                        if (totalDragY < -35f && abs(totalDragY) > abs(totalDragX)) {
+                        if (totalDragY < -30f && abs(totalDragY) > abs(totalDragX)) {
                             view.performHaptic(HapticType.LIGHT)
                             onClick()
-                        } else if (totalDragX < -50f) {
+                        } else if (totalDragX < -45f) {
                             view.performHaptic(HapticType.LIGHT)
                             onNext()
-                        } else if (totalDragX > 50f) {
+                        } else if (totalDragX > 45f) {
                             view.performHaptic(HapticType.LIGHT)
                             onPrev()
                         }
                     }
                 )
             }
-            .clickable(onClick = onClick)
             .padding(horizontal = 10.dp, vertical = 7.dp)
     ) {
         Row(

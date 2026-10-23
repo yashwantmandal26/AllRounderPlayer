@@ -278,7 +278,6 @@ fun FolderListScreen(
     LaunchedEffect(com.example.ymediaplayer.MainActivity.openMusicTrigger.value) {
         if (com.example.ymediaplayer.MainActivity.openMusicTrigger.value) {
             currentTab = "Music"
-            com.example.ymediaplayer.MainActivity.openMusicTrigger.value = false
         }
     }
 

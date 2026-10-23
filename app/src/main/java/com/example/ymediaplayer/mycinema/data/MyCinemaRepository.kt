@@ -3,6 +3,8 @@ package com.example.ymediaplayer.mycinema.data
 import android.content.Context
 import com.example.ymediaplayer.YMediaApplication
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.builtins.ListSerializer
 import kotlinx.serialization.json.Json
@@ -149,6 +151,27 @@ class MyCinemaRepository(
             saveDiskCache("upcoming_$key", items)
         }
         return items
+    }
+
+    fun getSourcesFlow(item: TmdbItem): Flow<List<TorrentSource>> = flow {
+        val cacheKey = "${if (item.isSeries) "series" else "movie"}_${item.id}"
+        sourcesCache[cacheKey]?.let {
+            emit(it)
+            return@flow
+        }
+
+        val imdbId = tmdbClient.getImdbIdForTmdb(item.isSeries, item.id)
+        if (imdbId.isBlank()) {
+            emit(emptyList())
+            return@flow
+        }
+
+        scraperClient.searchSourcesFlow(imdbId, item.displayName, item.isSeries).collect { progressiveList ->
+            if (progressiveList.isNotEmpty()) {
+                sourcesCache[cacheKey] = progressiveList
+            }
+            emit(progressiveList)
+        }
     }
 
     suspend fun getSources(item: TmdbItem): List<TorrentSource> = withContext(Dispatchers.IO) {

@@ -243,6 +243,9 @@ fun MusicScreen(
     var showFullScreenPlayer by remember { mutableStateOf(false) }
 
     LaunchedEffect(showFullScreenPlayer) {
+        if (showFullScreenPlayer && currentlyPlaying == null) {
+            currentlyPlaying = MusicService.currentMusicItem.value
+        }
         onFullScreenChanged(showFullScreenPlayer)
     }
 
@@ -375,6 +378,9 @@ fun MusicScreen(
 
     // Inform parent of full screen state so floating pill navigation hides
     LaunchedEffect(showFullScreenPlayer) {
+        if (showFullScreenPlayer && currentlyPlaying == null) {
+            currentlyPlaying = MusicService.currentMusicItem.value
+        }
         onFullScreenChanged(showFullScreenPlayer)
     }
 
@@ -2234,7 +2240,8 @@ fun MusicScreen(
             enter = slideInVertically(initialOffsetY = { it }, animationSpec = tween(340, easing = FastOutSlowInEasing)) + fadeIn(animationSpec = tween(280)),
             exit = slideOutVertically(targetOffsetY = { it }, animationSpec = tween(280, easing = FastOutSlowInEasing)) + fadeOut(animationSpec = tween(200))
         ) {
-            currentlyPlaying?.let { song ->
+            val activeSong = currentlyPlaying ?: MusicService.currentMusicItem.value
+            activeSong?.let { song ->
                 FullScreenMusicPlayer(
                     song = song,
                     isPlaying = isPlaying,
