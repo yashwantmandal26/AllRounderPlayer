@@ -11,9 +11,17 @@ import androidx.compose.ui.unit.dp
 
 @Composable
 internal fun PlayerAmbientSettings(
-    enabled: Boolean, intensity: Float, spread: Float, batterySaver: Boolean,
-    onEnabled: (Boolean) -> Unit, onIntensity: (Float) -> Unit, onSpread: (Float) -> Unit,
-    onBatterySaver: (Boolean) -> Unit, onDismiss: () -> Unit
+    enabled: Boolean,
+    intensity: Float,
+    spread: Float,
+    saturation: Float = 1.0f,
+    batterySaver: Boolean,
+    onEnabled: (Boolean) -> Unit,
+    onIntensity: (Float) -> Unit,
+    onSpread: (Float) -> Unit,
+    onSaturation: (Float) -> Unit = {},
+    onBatterySaver: (Boolean) -> Unit,
+    onDismiss: () -> Unit
 ) {
     AlertDialog(onDismissRequest = onDismiss, title = { Text("Ambient lighting") }, text = {
         Column {
@@ -27,6 +35,9 @@ internal fun PlayerAmbientSettings(
             Text("Spread · ${(spread * 100).toInt()}%")
             Slider(spread, onSpread, enabled = enabled,
                 modifier = Modifier.semantics { contentDescription = "Ambient spread" })
+            Text("Saturation · ${(saturation * 100).toInt()}%")
+            Slider(saturation, onSaturation, valueRange = 0.5f..2.0f, enabled = enabled,
+                modifier = Modifier.semantics { contentDescription = "Ambient saturation" })
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                 Column(Modifier.weight(1f)) {
                     Text("Battery saver")

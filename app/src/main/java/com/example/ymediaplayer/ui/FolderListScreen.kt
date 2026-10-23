@@ -125,6 +125,7 @@ fun FolderListScreen(
     var isGridView by rememberSaveable { mutableStateOf(false) }
     var currentMediaViewType by remember { mutableStateOf(appPreferences.getMediaViewType()) }
     var favorites by remember { mutableStateOf(appPreferences.getFavorites()) }
+    var showHomeGuide by remember { mutableStateOf(!appPreferences.hasSeenHomeGuide()) }
 
     val searchFocusRequester = remember { FocusRequester() }
 
@@ -1655,6 +1656,16 @@ fun FolderListScreen(
                 onDismiss = { showThemeDialog = false }
             )
         }
+
+        // ─── First-Time Contextual Home Page Guide ──────────────────────────────────
+        if (showHomeGuide && !musicPlayerExpanded) {
+            HomePageFeatureGuide(
+                onDismiss = {
+                    showHomeGuide = false
+                    appPreferences.setSeenHomeGuide(true)
+                }
+            )
+        }
     }
 }
 
@@ -1668,6 +1679,10 @@ internal fun CanvasBg(offsetProvider: () -> Float = { 0f }) {
     val appPreferences = remember(context) { AppPreferences(context) }
     val glowVersion = appPreferences.lastProgressUpdate.longValue
     val glowStrength = remember(glowVersion) { appPreferences.getAmbientGlowStrength() }
+    val glowSpread = remember(glowVersion) { appPreferences.getAmbientGlowSpread() }
+    val glowSaturation = remember(glowVersion) { appPreferences.getAmbientGlowSaturation() }
+    val satBlue = remember(c.accentBlue, glowSaturation) { c.accentBlue.adjustSaturation(glowSaturation) }
+    val satGreen = remember(c.accentGreen, glowSaturation) { c.accentGreen.adjustSaturation(glowSaturation) }
 
     // Enhanced vivid core & falloff for all 3 modes
     val coreAlpha = when {
@@ -1690,24 +1705,24 @@ internal fun CanvasBg(offsetProvider: () -> Float = { 0f }) {
                     drawRect(
                         brush = Brush.radialGradient(
                             colors = listOf(
-                                c.accentBlue.copy(alpha = coreAlpha),
-                                c.accentBlue.copy(alpha = midAlpha),
-                                c.accentBlue.copy(alpha = edgeAlpha),
+                                satBlue.copy(alpha = coreAlpha),
+                                satBlue.copy(alpha = midAlpha),
+                                satBlue.copy(alpha = edgeAlpha),
                                 Color.Transparent
                             ),
                             center = Offset(size.width * 0.5f, size.height * 0.25f),
-                            radius = size.width * 0.92f
+                            radius = size.width * (0.92f * glowSpread).coerceIn(0.4f, 2.8f)
                         )
                     )
                     // Secondary corner ambient accent for rich dual-tone depth
                     drawRect(
                         brush = Brush.radialGradient(
                             colors = listOf(
-                                c.accentGreen.copy(alpha = secAlpha),
+                                satGreen.copy(alpha = secAlpha),
                                 Color.Transparent
                             ),
                             center = Offset(size.width * 0.88f, size.height * 0.75f),
-                            radius = size.width * 0.75f
+                            radius = size.width * (0.75f * glowSpread).coerceIn(0.3f, 2.5f)
                         )
                     )
                 }

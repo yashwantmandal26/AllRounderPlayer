@@ -799,6 +799,7 @@ fun VideoPlayerScreen(
     var isAmbientMode by remember { mutableStateOf(appPreferences.isAmbientModeEnabled()) }
     var ambientIntensity by remember { mutableFloatStateOf(appPreferences.getAmbientGlowStrength().coerceIn(0.2f, 1.8f)) }
     var ambientSpread by remember { mutableFloatStateOf(appPreferences.getVideoAmbientSpread()) }
+    var ambientSaturation by remember { mutableFloatStateOf(appPreferences.getVideoAmbientSaturation()) }
     var ambientBatterySaver by remember { mutableStateOf(appPreferences.isVideoAmbientBatterySaver()) }
     var showAmbientSettings by remember { mutableStateOf(false) }
 
@@ -2286,6 +2287,7 @@ fun VideoPlayerScreen(
                     isAppInBackground = false
                     ambientIntensity = appPreferences.getAmbientGlowStrength().coerceIn(0.2f, 1.8f)
                     ambientSpread = appPreferences.getVideoAmbientSpread()
+                    ambientSaturation = appPreferences.getVideoAmbientSaturation()
                     ambientBatterySaver = appPreferences.isVideoAmbientBatterySaver()
                     isVideoNotificationDismissed = false
                     // Re-apply settings on resume (preserve current video's resizeMode)
@@ -2911,7 +2913,10 @@ fun VideoPlayerScreen(
                     playerView = playerView,
                     mediaUrl = currentUrl,
                     isPlaying = isPlaying,
-                    glowStrength = ambientIntensity, spread = ambientSpread, batterySaver = ambientBatterySaver
+                    glowStrength = ambientIntensity,
+                    spread = ambientSpread,
+                    saturation = ambientSaturation,
+                    batterySaver = ambientBatterySaver
                 )
             }
 
@@ -4505,12 +4510,19 @@ fun VideoPlayerScreen(
         }
 
         if (showAmbientSettings) {
-            PlayerAmbientSettings(isAmbientMode, ambientIntensity, ambientSpread, ambientBatterySaver,
+            PlayerAmbientSettings(
+                enabled = isAmbientMode,
+                intensity = ambientIntensity,
+                spread = ambientSpread,
+                saturation = ambientSaturation,
+                batterySaver = ambientBatterySaver,
                 onEnabled = { isAmbientMode = it; appPreferences.setAmbientModeEnabled(it) },
                 onIntensity = { ambientIntensity = it; appPreferences.setAmbientGlowStrength(it) },
                 onSpread = { ambientSpread = it; appPreferences.setVideoAmbientSpread(it) },
+                onSaturation = { ambientSaturation = it; appPreferences.setVideoAmbientSaturation(it) },
                 onBatterySaver = { ambientBatterySaver = it; appPreferences.setVideoAmbientBatterySaver(it) },
-                onDismiss = { showAmbientSettings = false })
+                onDismiss = { showAmbientSettings = false }
+            )
         }
 
         modePicker?.let { category ->

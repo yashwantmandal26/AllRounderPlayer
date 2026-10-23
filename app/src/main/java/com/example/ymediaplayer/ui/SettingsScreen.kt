@@ -134,10 +134,15 @@ fun SettingsScreen(
     var currentThemeMode by remember { mutableStateOf(themeController.mode) }
     var currentColorTheme by remember { mutableStateOf(themeController.colorTheme) }
     var ambientGlowStrength by remember { mutableFloatStateOf(appPreferences.getAmbientGlowStrength()) }
+    var ambientGlowSpread by remember { mutableFloatStateOf(appPreferences.getAmbientGlowSpread()) }
+    var ambientGlowSaturation by remember { mutableFloatStateOf(appPreferences.getAmbientGlowSaturation()) }
     var uiCornerStyle by remember { mutableStateOf(appPreferences.getUiCornerStyle()) }
     var signatureViewEnabled by remember { mutableStateOf(appPreferences.isSignatureViewEnabled()) }
     var signatureSaturation by remember { mutableFloatStateOf(appPreferences.getSignatureSaturation()) }
     var ambientGlowEnabled by remember { mutableStateOf(appPreferences.isAmbientGlowEnabled()) }
+    var videoAmbientSpread by remember { mutableFloatStateOf(appPreferences.getVideoAmbientSpread()) }
+    var videoAmbientSaturation by remember { mutableFloatStateOf(appPreferences.getVideoAmbientSaturation()) }
+    var videoAmbientBatterySaver by remember { mutableStateOf(appPreferences.isVideoAmbientBatterySaver()) }
 
     // ─── Library States ───────────────────────────────────────────────────────
     var mediaViewType by remember { mutableStateOf(appPreferences.getMediaViewType()) }
@@ -162,6 +167,10 @@ fun SettingsScreen(
 
     val glowVersion = appPreferences.lastProgressUpdate.longValue
     val glowStrength = remember(glowVersion) { appPreferences.getAmbientGlowStrength() }
+    val glowSpread = remember(glowVersion) { appPreferences.getAmbientGlowSpread() }
+    val glowSaturation = remember(glowVersion) { appPreferences.getAmbientGlowSaturation() }
+    val satBlue = remember(c.accentBlue, glowSaturation) { c.accentBlue.adjustSaturation(glowSaturation) }
+    val satGreen = remember(c.accentGreen, glowSaturation) { c.accentGreen.adjustSaturation(glowSaturation) }
     val coreAlpha = when {
         c.isDark && c.baseBackground == Color(0xFF000000) -> 0.45f * glowStrength
         c.isDark -> 0.38f * glowStrength
@@ -180,23 +189,23 @@ fun SettingsScreen(
                     drawRect(
                         brush = Brush.radialGradient(
                             colors = listOf(
-                                c.accentBlue.copy(alpha = coreAlpha),
-                                c.accentBlue.copy(alpha = midAlpha),
-                                c.accentBlue.copy(alpha = edgeAlpha),
+                                satBlue.copy(alpha = coreAlpha),
+                                satBlue.copy(alpha = midAlpha),
+                                satBlue.copy(alpha = edgeAlpha),
                                 Color.Transparent
                             ),
                             center = Offset(size.width * 0.5f, size.height * 0.25f),
-                            radius = size.width * 0.92f
+                            radius = size.width * (0.92f * glowSpread).coerceIn(0.4f, 2.8f)
                         )
                     )
                     drawRect(
                         brush = Brush.radialGradient(
                             colors = listOf(
-                                c.accentGreen.copy(alpha = secAlpha),
+                                satGreen.copy(alpha = secAlpha),
                                 Color.Transparent
                             ),
                             center = Offset(size.width * 0.88f, size.height * 0.75f),
-                            radius = size.width * 0.75f
+                            radius = size.width * (0.75f * glowSpread).coerceIn(0.3f, 2.5f)
                         )
                     )
                 }
@@ -864,7 +873,7 @@ fun SettingsScreen(
                         iconTint = primaryAccent,
                         onClick = {
                             appPreferences.resetAllGuides()
-                            Toast.makeText(context, "Feature guides will appear on your next video and music playback", Toast.LENGTH_SHORT).show()
+                            Toast.makeText(context, "Feature guides reset! They will appear on Home, Video, and Music", Toast.LENGTH_SHORT).show()
                         }
                     )
 
@@ -1139,6 +1148,97 @@ fun SettingsScreen(
                             }
                         }
 
+                        Spacer(Modifier.height(14.dp))
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text = "Glow Spread / Coverage",
+                                fontSize = 13.sp,
+                                fontWeight = FontWeight.Medium,
+                                color = c.textPrimary
+                            )
+                            Text(
+                                text = "${(ambientGlowSpread * 100).toInt()}%",
+                                fontSize = 13.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = primaryAccent
+                            )
+                        }
+                        Slider(
+                            value = ambientGlowSpread,
+                            onValueChange = {
+                                ambientGlowSpread = it
+                                appPreferences.setAmbientGlowSpread(it)
+                                if (ambientGlowStrength <= 0.05f) {
+                                    ambientGlowStrength = 1.0f
+                                    appPreferences.setAmbientGlowStrength(1.0f)
+                                }
+                            },
+                            valueRange = 0.5f..1.8f,
+                            colors = SliderDefaults.colors(
+                                thumbColor = primaryAccent,
+                                activeTrackColor = primaryAccent,
+                                inactiveTrackColor = primaryAccent.copy(0.2f)
+                            )
+                        )
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Text("Compact (50%)", fontSize = 10.sp, color = c.textSecondary)
+                            Text("Balanced (100%)", fontSize = 10.sp, color = c.textSecondary)
+                            Text("Full Bleed (180%)", fontSize = 10.sp, color = c.textSecondary)
+                        }
+
+                        Spacer(Modifier.height(12.dp))
+
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text = "Glow Saturation & Richness",
+                                fontSize = 13.sp,
+                                fontWeight = FontWeight.Medium,
+                                color = c.textPrimary
+                            )
+                            Text(
+                                text = "${(ambientGlowSaturation * 100).toInt()}%",
+                                fontSize = 13.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = primaryAccent
+                            )
+                        }
+                        Slider(
+                            value = ambientGlowSaturation,
+                            onValueChange = {
+                                ambientGlowSaturation = it
+                                appPreferences.setAmbientGlowSaturation(it)
+                                if (ambientGlowStrength <= 0.05f) {
+                                    ambientGlowStrength = 1.0f
+                                    appPreferences.setAmbientGlowStrength(1.0f)
+                                }
+                            },
+                            valueRange = 0.5f..2.0f,
+                            colors = SliderDefaults.colors(
+                                thumbColor = primaryAccent,
+                                activeTrackColor = primaryAccent,
+                                inactiveTrackColor = primaryAccent.copy(0.2f)
+                            )
+                        )
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Text("Soft Pastel (50%)", fontSize = 10.sp, color = c.textSecondary)
+                            Text("Natural (100%)", fontSize = 10.sp, color = c.textSecondary)
+                            Text("Neon Punch (200%)", fontSize = 10.sp, color = c.textSecondary)
+                        }
+
                         Spacer(Modifier.height(16.dp))
 
                         // UI Corner Style Selector
@@ -1200,6 +1300,69 @@ fun SettingsScreen(
                             appPreferences.setAmbientGlowEnabled(it)
                         }
                     )
+
+                    if (ambientGlowEnabled) {
+                        Column(modifier = Modifier.padding(start = 16.dp, end = 16.dp, bottom = 12.dp)) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text("Video Ambient Spread", fontSize = 13.sp, color = c.textPrimary)
+                                Text("${(videoAmbientSpread * 100).toInt()}%", fontSize = 13.sp, fontWeight = FontWeight.Bold, color = primaryAccent)
+                            }
+                            Slider(
+                                value = videoAmbientSpread,
+                                onValueChange = {
+                                    videoAmbientSpread = it
+                                    appPreferences.setVideoAmbientSpread(it)
+                                },
+                                valueRange = 0.2f..1.0f,
+                                colors = SliderDefaults.colors(
+                                    thumbColor = primaryAccent,
+                                    activeTrackColor = primaryAccent,
+                                    inactiveTrackColor = primaryAccent.copy(0.2f)
+                                )
+                            )
+
+                            Spacer(Modifier.height(8.dp))
+
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text("Video Ambient Saturation", fontSize = 13.sp, color = c.textPrimary)
+                                Text("${(videoAmbientSaturation * 100).toInt()}%", fontSize = 13.sp, fontWeight = FontWeight.Bold, color = primaryAccent)
+                            }
+                            Slider(
+                                value = videoAmbientSaturation,
+                                onValueChange = {
+                                    videoAmbientSaturation = it
+                                    appPreferences.setVideoAmbientSaturation(it)
+                                },
+                                valueRange = 0.5f..2.0f,
+                                colors = SliderDefaults.colors(
+                                    thumbColor = primaryAccent,
+                                    activeTrackColor = primaryAccent,
+                                    inactiveTrackColor = primaryAccent.copy(0.2f)
+                                )
+                            )
+
+                            Spacer(Modifier.height(4.dp))
+
+                            SettingsItemToggle(
+                                title = "Video Ambient Battery Saver",
+                                subtitle = "Lower frame capture rate to conserve battery on long movies",
+                                icon = Icons.Rounded.BatterySaver,
+                                checked = videoAmbientBatterySaver,
+                                onCheckedChange = {
+                                    videoAmbientBatterySaver = it
+                                    appPreferences.setVideoAmbientBatterySaver(it)
+                                }
+                            )
+                        }
+                    }
                 }
             }
         }
@@ -2071,6 +2234,11 @@ fun SettingsScreen(
                         signatureViewEnabled = false
                         signatureSaturation = 1.25f
                         ambientGlowEnabled = true
+                        ambientGlowSpread = 1.0f
+                        ambientGlowSaturation = 1.0f
+                        videoAmbientSpread = 0.5f
+                        videoAmbientSaturation = 1.0f
+                        videoAmbientBatterySaver = false
                         mediaViewType = MediaViewType.DETAILED_LIST
                         defaultSortOrder = SortOrder.DATE
                         showContinueWatching = true

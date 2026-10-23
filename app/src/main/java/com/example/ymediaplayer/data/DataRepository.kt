@@ -215,16 +215,20 @@ class AppPreferences(private val prefs: SharedPreferences) {
     }
 
     // Feature Introductions & Tour Guides (One-Time Visual Spotlights)
-    fun hasSeenVideoPlayerGuide(): Boolean = prefs.getBoolean("has_seen_visual_video_guide_v2", false)
-    fun setSeenVideoPlayerGuide(seen: Boolean = true) { prefs.edit().putBoolean("has_seen_visual_video_guide_v2", seen).apply() }
+    fun hasSeenHomeGuide(): Boolean = prefs.getBoolean("has_seen_visual_home_guide_v4", false)
+    fun setSeenHomeGuide(seen: Boolean = true) { prefs.edit().putBoolean("has_seen_visual_home_guide_v4", seen).apply() }
 
-    fun hasSeenMusicGuide(): Boolean = prefs.getBoolean("has_seen_visual_music_guide_v2", false)
-    fun setSeenMusicGuide(seen: Boolean = true) { prefs.edit().putBoolean("has_seen_visual_music_guide_v2", seen).apply() }
+    fun hasSeenVideoPlayerGuide(): Boolean = prefs.getBoolean("has_seen_visual_video_guide_v4", false)
+    fun setSeenVideoPlayerGuide(seen: Boolean = true) { prefs.edit().putBoolean("has_seen_visual_video_guide_v4", seen).apply() }
+
+    fun hasSeenMusicGuide(): Boolean = prefs.getBoolean("has_seen_visual_music_guide_v4", false)
+    fun setSeenMusicGuide(seen: Boolean = true) { prefs.edit().putBoolean("has_seen_visual_music_guide_v4", seen).apply() }
 
     fun resetAllGuides() {
         prefs.edit()
-            .putBoolean("has_seen_visual_video_guide_v2", false)
-            .putBoolean("has_seen_visual_music_guide_v2", false)
+            .putBoolean("has_seen_visual_home_guide_v4", false)
+            .putBoolean("has_seen_visual_video_guide_v4", false)
+            .putBoolean("has_seen_visual_music_guide_v4", false)
             .apply()
     }
 
@@ -355,6 +359,8 @@ class AppPreferences(private val prefs: SharedPreferences) {
     fun setVideoVolumeLevelingEnabled(route: String, enabled: Boolean) { prefs.edit().putBoolean("video_leveling_$route", enabled).apply() }
     fun getVideoAmbientSpread(): Float = prefs.getFloat("video_ambient_spread", 0.5f).coerceIn(0f, 1f)
     fun setVideoAmbientSpread(value: Float) { prefs.edit().putFloat("video_ambient_spread", value.coerceIn(0f, 1f)).apply() }
+    fun getVideoAmbientSaturation(): Float = prefs.getFloat("video_ambient_saturation", 1.0f).coerceIn(0.5f, 2.0f)
+    fun setVideoAmbientSaturation(value: Float) { prefs.edit().putFloat("video_ambient_saturation", value.coerceIn(0.5f, 2.0f)).apply() }
     fun isVideoAmbientBatterySaver(): Boolean = prefs.getBoolean("video_ambient_battery_saver", false)
     fun setVideoAmbientBatterySaver(enabled: Boolean) { prefs.edit().putBoolean("video_ambient_battery_saver", enabled).apply() }
     fun getExternalSubtitleUri(video: String): String? = prefs.getString("subtitle_uri_$video", null)
@@ -699,6 +705,18 @@ class AppPreferences(private val prefs: SharedPreferences) {
         lastProgressUpdate.longValue++
     }
 
+    fun getAmbientGlowSpread(): Float = prefs.getFloat("ambient_glow_spread", 1.0f).coerceIn(0.5f, 1.8f)
+    fun setAmbientGlowSpread(spread: Float) {
+        prefs.edit().putFloat("ambient_glow_spread", spread.coerceIn(0.5f, 1.8f)).apply()
+        lastProgressUpdate.longValue++
+    }
+
+    fun getAmbientGlowSaturation(): Float = prefs.getFloat("ambient_glow_saturation", 1.0f).coerceIn(0.5f, 2.0f)
+    fun setAmbientGlowSaturation(sat: Float) {
+        prefs.edit().putFloat("ambient_glow_saturation", sat.coerceIn(0.5f, 2.0f)).apply()
+        lastProgressUpdate.longValue++
+    }
+
     fun getUiCornerStyle(): String = prefs.getString("ui_corner_style", "MODERN") ?: "MODERN"
     fun setUiCornerStyle(style: String) {
         prefs.edit().putString("ui_corner_style", style).apply()
@@ -799,6 +817,11 @@ class AppPreferences(private val prefs: SharedPreferences) {
             .remove("signature_saturation")
             .remove("signature_sharpness")
             .remove("ambient_glow_enabled")
+            .remove("ambient_glow_strength")
+            .remove("ambient_glow_spread")
+            .remove("ambient_glow_saturation")
+            .remove("video_ambient_spread")
+            .remove("video_ambient_saturation")
             .remove("media_view_type")
             .remove("sort_order")
             .apply()

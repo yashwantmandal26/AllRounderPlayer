@@ -59,6 +59,7 @@ internal fun VideoAmbientBackdrop(
     isPlaying: Boolean = true,
     glowStrength: Float = 1.0f,
     spread: Float = 0.5f,
+    saturation: Float = 1.0f,
     batterySaver: Boolean = false
 ) {
     val lifecycle = LocalLifecycleOwner.current.lifecycle
@@ -130,14 +131,14 @@ internal fun VideoAmbientBackdrop(
     }
 
     // High-vibrancy Ambilight color matrix: boosts saturation so ambient light radiates rich, vivid color
-    val colorMatrix = remember {
+    val colorMatrix = remember(saturation) {
         ColorMatrix().apply {
-            setToSaturation(1.65f)
+            setToSaturation((1.65f * saturation.coerceIn(0.5f, 2.0f)).coerceIn(0.2f, 3.5f))
         }
     }
 
-    val ambientScale = 1.35f + (spread.coerceIn(0.1f, 1.0f) * 0.35f) // 1.38x - 1.70x projection
-    val blurRadius = (48 + spread.coerceIn(0.1f, 1.0f) * 32).dp     // 51dp - 80dp silky diffusion
+    val ambientScale = 1.25f + (spread.coerceIn(0.1f, 1.2f) * 0.45f) // 1.29x - 1.79x projection
+    val blurRadius = (42 + spread.coerceIn(0.1f, 1.2f) * 40).dp     // 46dp - 90dp silky diffusion
     val effectiveGlow = glowStrength.coerceIn(0.2f, 1.8f)
 
     Box(Modifier.fillMaxSize()) {
