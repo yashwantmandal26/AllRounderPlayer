@@ -853,15 +853,20 @@ fun FolderListScreen(
                             onStreamSource = { item, source ->
                                 val hash = TorrentEngine.startDownload(context, source, item.displayName, isSequential = true)
                                 if (hash != null) {
+                                    if (!item.fullPosterUrl.isNullOrBlank()) {
+                                        appPreferences.saveCinemaPoster(item.displayName, item.fullPosterUrl)
+                                        appPreferences.saveCinemaPoster(hash, item.fullPosterUrl)
+                                    }
                                     TorrentDownloadService.start(context, hash, item.displayName)
                                     if (TorrentEngine.isStreamBufferReady(context, hash)) {
                                         val path = TorrentEngine.getFilePath(context, hash)
                                         if (path != null) {
                                             appPreferences.saveVideoTitle(path, item.displayName)
+                                            item.fullPosterUrl?.let { appPreferences.saveCinemaPoster(path, it) }
                                             onVideoClick(path)
                                         }
                                     } else {
-                                        activeStreamSession = CinemaStreamSession(hash, item.displayName, item.fullPosterUrl)
+                                        activeStreamSession = CinemaStreamSession(hash, item.displayName, item.fullPosterUrl ?: "")
                                     }
                                 } else {
                                     android.widget.Toast.makeText(context, "Failed to start streaming", android.widget.Toast.LENGTH_SHORT).show()
@@ -870,6 +875,10 @@ fun FolderListScreen(
                             onDownloadSource = { item, source ->
                                 val hash = TorrentEngine.startDownload(context, source, item.displayName, isSequential = false)
                                 if (hash != null) {
+                                    if (!item.fullPosterUrl.isNullOrBlank()) {
+                                        appPreferences.saveCinemaPoster(item.displayName, item.fullPosterUrl)
+                                        appPreferences.saveCinemaPoster(hash, item.fullPosterUrl)
+                                    }
                                     TorrentDownloadService.start(context, hash, item.displayName)
                                     android.widget.Toast.makeText(context, "Download started: ${item.displayName}", android.widget.Toast.LENGTH_SHORT).show()
                                 } else {

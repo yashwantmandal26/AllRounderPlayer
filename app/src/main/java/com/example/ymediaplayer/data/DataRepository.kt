@@ -29,6 +29,17 @@ class AppPreferences(private val prefs: SharedPreferences) {
         return prefs.getString("title_$uri", null)
     }
 
+    fun saveCinemaPoster(key: String, posterUrl: String?) {
+        if (key.isNotBlank() && !posterUrl.isNullOrBlank()) {
+            prefs.edit().putString("cinema_poster_${key.lowercase().trim()}", posterUrl).apply()
+        }
+    }
+
+    fun getCinemaPoster(key: String): String? {
+        if (key.isBlank()) return null
+        return prefs.getString("cinema_poster_${key.lowercase().trim()}", null)
+    }
+
     // History: Map of Video URI to Last Played Position (in milliseconds)
     fun saveVideoProgress(uri: String, position: Long, duration: Long = 0L) {
         val isDone = duration > 0L && position >= (duration - 3000L)

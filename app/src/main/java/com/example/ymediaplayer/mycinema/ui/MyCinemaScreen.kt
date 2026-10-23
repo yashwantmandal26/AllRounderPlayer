@@ -33,10 +33,12 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil3.compose.AsyncImage
+import com.example.ymediaplayer.data.AppPreferences
 import com.example.ymediaplayer.mycinema.data.MyCinemaRepository
 import com.example.ymediaplayer.mycinema.data.TmdbItem
 import com.example.ymediaplayer.mycinema.data.TorrentSource
 import com.example.ymediaplayer.theme.LocalAppColors
+import com.example.ymediaplayer.ui.buildVideoThumbnailRequest
 import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
@@ -46,8 +48,22 @@ data class OfflineCinemaMovie(
     val file: java.io.File,
     val title: String,
     val sizeFormatted: String,
-    val durationFormatted: String
+    val durationFormatted: String,
+    val durationMs: Long = 0L,
+    val posterUrl: String? = null
 )
+
+internal fun cleanMovieFileName(rawName: String): String {
+    var name = rawName
+    // Strip site/release group prefixes like "www.1TamilMV.solar - ", "[YTS.MX] ", etc.
+    name = name.replace(Regex("(?i)^(www\\.[a-zA-Z0-9.-]+\\s*[-_]?\\s*|\\[[^\\]]+\\]\\s*)"), "")
+    name = name.replace(Regex("(?i)\\[[^\\]]+\\]"), "")
+    name = name.replace(".", " ").replace("_", " ").replace("-", " ")
+    // Strip codec, resolution, and trailing quality tags
+    name = name.replace(Regex("(?i)\\b(1080p|720p|4k|2160p|480p|bluray|blu-ray|web-?dl|webrip|hdr|hdr10|hevc|x264|x265|h264|h265|aac|ddp|ac3|dts|yify|yts|proper|repack|dvdrip|brrip|bdrip|remux|hindi|tamil|telugu|dual\\s*audio)\\b.*"), "")
+    name = name.replace(Regex("\\b(19\\d\\d|20\\d\\d)\\b.*"), "")
+    return name.trim()
+}
 
 @Composable
 fun MyCinemaScreen(
@@ -65,6 +81,15 @@ fun MyCinemaScreen(
     val context = androidx.compose.ui.platform.LocalContext.current
     val coroutineScope = rememberCoroutineScope()
     val focusManager = LocalFocusManager.current
+    val appPreferences = remember { AppPreferences(context) }
+
+    val configuration = androidx.compose.ui.platform.LocalConfiguration.current
+    val screenWidth = configuration.screenWidthDp.dp
+    // Card width dynamically calculated so 2.45 cards fit horizontally:
+    // This guarantees Card 1 and Card 2 are shown in full, and Card 3 is partially cut off on the right edge!
+    val movieCardWidth = remember(screenWidth) {
+        ((screenWidth - 32.dp - 24.dp) / 2.45f).coerceIn(122.dp, 150.dp)
+    }
 
     var searchQuery by rememberSaveable { mutableStateOf("") }
     var isSearching by remember { mutableStateOf(false) }
@@ -125,12 +150,33 @@ fun MyCinemaScreen(
                         val mins = (totalSecs % 3600) / 60
                         if (hrs > 0) "${hrs}h ${mins}m" else "${mins}m"
                     } else ""
+
+                    val cleanTitle = cleanMovieFileName(file.nameWithoutExtension)
+                    var poster = appPreferences.getCinemaPoster(file.nameWithoutExtension)
+                        ?: appPreferences.getCinemaPoster(file.name)
+                        ?: appPreferences.getCinemaPoster(cleanTitle)
+
+                    if (poster.isNullOrBlank() && cleanTitle.isNotBlank()) {
+                        try {
+                            val searchResults = repository.search(cleanTitle)
+                            val match = searchResults.firstOrNull { !it.fullPosterUrl.isNullOrBlank() }
+                            if (match != null && !match.fullPosterUrl.isNullOrBlank()) {
+                                poster = match.fullPosterUrl
+                                appPreferences.saveCinemaPoster(cleanTitle, poster)
+                                appPreferences.saveCinemaPoster(file.nameWithoutExtension, poster)
+                                appPreferences.saveCinemaPoster(file.name, poster)
+                            }
+                        } catch (_: Exception) {}
+                    }
+
                     list.add(
                         OfflineCinemaMovie(
                             file = file,
-                            title = file.nameWithoutExtension,
+                            title = if (cleanTitle.isNotBlank()) cleanTitle else file.nameWithoutExtension,
                             sizeFormatted = sizeStr,
-                            durationFormatted = durStr
+                            durationFormatted = durStr,
+                            durationMs = durationMs,
+                            posterUrl = poster
                         )
                     )
                 }
@@ -314,7 +360,10 @@ fun MyCinemaScreen(
                     // 0. TOP: Downloaded & Offline Movies
                     if (offlineMovies.isNotEmpty()) {
                         item {
-                            SectionHeader(title = "💾 DOWNLOADED & OFFLINE (${offlineMovies.size})")
+                            SectionHeader(
+                                title = "OFFLINE (${offlineMovies.size})",
+                                titleColor = Color(0xFF00E676)
+                            )
                             LazyRow(
                                 contentPadding = PaddingValues(horizontal = 16.dp),
                                 horizontalArrangement = Arrangement.spacedBy(12.dp)
@@ -322,7 +371,8 @@ fun MyCinemaScreen(
                                 items(offlineMovies, key = { it.file.absolutePath }) { movie ->
                                     OfflineMovieCinemaCard(
                                         movie = movie,
-                                        onClick = { onPlayOfflineMovie(movie.file.absolutePath) }
+                                        onClick = { onPlayOfflineMovie(movie.file.absolutePath) },
+                                        modifier = Modifier.width(movieCardWidth)
                                     )
                                 }
                             }
@@ -339,7 +389,7 @@ fun MyCinemaScreen(
                                 horizontalArrangement = Arrangement.spacedBy(12.dp)
                             ) {
                                 items(recentlyReleased, key = { "recent_${it.mediaType}_${it.id}" }) { item ->
-                                    MyCinemaCard(item = item, onClick = { onMovieCardClick(item) }, modifier = Modifier.width(115.dp))
+                                    MyCinemaCard(item = item, onClick = { onMovieCardClick(item) }, modifier = Modifier.width(movieCardWidth))
                                 }
                             }
                         }
@@ -355,7 +405,7 @@ fun MyCinemaScreen(
                                 horizontalArrangement = Arrangement.spacedBy(12.dp)
                             ) {
                                 items(trendingMovies, key = { "trend_m_${it.id}" }) { item ->
-                                    MyCinemaCard(item = item, onClick = { onMovieCardClick(item) }, modifier = Modifier.width(115.dp))
+                                    MyCinemaCard(item = item, onClick = { onMovieCardClick(item) }, modifier = Modifier.width(movieCardWidth))
                                 }
                             }
                         }
@@ -371,7 +421,7 @@ fun MyCinemaScreen(
                                 horizontalArrangement = Arrangement.spacedBy(12.dp)
                             ) {
                                 items(trendingIndia, key = { "trend_in_${it.id}" }) { item ->
-                                    MyCinemaCard(item = item, onClick = { onMovieCardClick(item) }, modifier = Modifier.width(115.dp))
+                                    MyCinemaCard(item = item, onClick = { onMovieCardClick(item) }, modifier = Modifier.width(movieCardWidth))
                                 }
                             }
                         }
@@ -387,7 +437,7 @@ fun MyCinemaScreen(
                                 horizontalArrangement = Arrangement.spacedBy(12.dp)
                             ) {
                                 items(trendingSeries, key = { "trend_s_${it.id}" }) { item ->
-                                    MyCinemaCard(item = item, onClick = { onMovieCardClick(item) }, modifier = Modifier.width(115.dp))
+                                    MyCinemaCard(item = item, onClick = { onMovieCardClick(item) }, modifier = Modifier.width(movieCardWidth))
                                 }
                             }
                         }
@@ -454,7 +504,7 @@ fun MyCinemaScreen(
                                         item = item,
                                         onClick = { onMovieCardClick(item) },
                                         showReleaseDate = true,
-                                        modifier = Modifier.width(115.dp)
+                                        modifier = Modifier.width(movieCardWidth)
                                     )
                                 }
                             }
@@ -540,11 +590,14 @@ fun MyCinemaScreen(
 }
 
 @Composable
-private fun SectionHeader(title: String) {
+private fun SectionHeader(
+    title: String,
+    titleColor: Color? = null
+) {
     val c = LocalAppColors.current
     Text(
         text = title,
-        color = c.textSecondary,
+        color = titleColor ?: c.textSecondary,
         fontSize = 12.sp,
         fontWeight = FontWeight.Bold,
         letterSpacing = 1.sp,
@@ -684,9 +737,10 @@ private fun MyCinemaCard(
 private fun OfflineMovieCinemaCard(
     movie: OfflineCinemaMovie,
     onClick: () -> Unit,
-    modifier: Modifier = Modifier.width(135.dp)
+    modifier: Modifier = Modifier.width(128.dp)
 ) {
     val c = LocalAppColors.current
+    val context = androidx.compose.ui.platform.LocalContext.current
 
     Column(
         modifier = modifier
@@ -696,13 +750,21 @@ private fun OfflineMovieCinemaCard(
         Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .aspectRatio(0.72f)
+                .aspectRatio(0.67f)
                 .clip(RoundedCornerShape(12.dp))
                 .background(c.cardBgElevated)
-                .border(1.dp, Color(0xFF00E676).copy(alpha = 0.5f), RoundedCornerShape(12.dp))
+                .border(1.dp, c.glassBorder, RoundedCornerShape(12.dp))
         ) {
+            val thumbModel = remember(movie.file.absolutePath, movie.posterUrl) {
+                if (!movie.posterUrl.isNullOrBlank()) {
+                    movie.posterUrl
+                } else {
+                    buildVideoThumbnailRequest(context, android.net.Uri.fromFile(movie.file), movie.durationMs)
+                }
+            }
+
             AsyncImage(
-                model = movie.file,
+                model = thumbModel,
                 contentDescription = movie.title,
                 contentScale = ContentScale.Crop,
                 modifier = Modifier.fillMaxSize()
@@ -712,7 +774,7 @@ private fun OfflineMovieCinemaCard(
             Box(
                 modifier = Modifier
                     .align(Alignment.Center)
-                    .size(36.dp)
+                    .size(32.dp)
                     .clip(CircleShape)
                     .background(Color.Black.copy(alpha = 0.65f))
                     .border(1.dp, Color.White.copy(alpha = 0.4f), CircleShape),
@@ -722,24 +784,7 @@ private fun OfflineMovieCinemaCard(
                     Icons.Rounded.PlayArrow,
                     contentDescription = "Play",
                     tint = Color.White,
-                    modifier = Modifier.size(22.dp)
-                )
-            }
-
-            // Top OFFLINE badge
-            Box(
-                modifier = Modifier
-                    .align(Alignment.TopStart)
-                    .padding(5.dp)
-                    .clip(RoundedCornerShape(4.dp))
-                    .background(Color(0xFF00E676))
-                    .padding(horizontal = 6.dp, vertical = 2.dp)
-            ) {
-                Text(
-                    text = "💾 OFFLINE",
-                    color = Color.Black,
-                    fontSize = 8.5.sp,
-                    fontWeight = FontWeight.Bold
+                    modifier = Modifier.size(20.dp)
                 )
             }
 
@@ -749,13 +794,13 @@ private fun OfflineMovieCinemaCard(
                     .align(Alignment.BottomCenter)
                     .fillMaxWidth()
                     .background(Color.Black.copy(alpha = 0.82f))
-                    .padding(vertical = 3.5.dp, horizontal = 4.dp),
+                    .padding(vertical = 3.dp, horizontal = 4.dp),
                 contentAlignment = Alignment.Center
             ) {
                 Text(
                     text = if (movie.durationFormatted.isNotEmpty()) "${movie.sizeFormatted} • ${movie.durationFormatted}" else movie.sizeFormatted,
                     color = Color.White,
-                    fontSize = 9.sp,
+                    fontSize = 8.5.sp,
                     fontWeight = FontWeight.SemiBold,
                     maxLines = 1
                 )
@@ -771,6 +816,13 @@ private fun OfflineMovieCinemaCard(
             fontWeight = FontWeight.SemiBold,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis
+        )
+
+        Text(
+            text = "Offline Movie",
+            color = Color(0xFF00E676).copy(alpha = 0.85f),
+            fontSize = 10.5.sp,
+            fontWeight = FontWeight.Medium
         )
     }
 }
