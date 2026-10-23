@@ -22,7 +22,13 @@ import android.content.res.Configuration
 import android.media.AudioManager
 import android.media.audiofx.BassBoost
 import android.media.audiofx.Equalizer
+import android.media.audiofx.LoudnessEnhancer
 import android.media.audiofx.Virtualizer
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.text.BasicTextField
+import com.example.ymediaplayer.player.OnlineSubtitleManager
+import com.example.ymediaplayer.player.OnlineSubtitle
 import android.os.BatteryManager
 import android.os.Build
 import android.provider.MediaStore
@@ -931,13 +937,81 @@ fun VideoPlayerScreen(
         }
     }
 
-    // Volume on Right (0f..1f)
+    // Volume & Audio Boost (0f..2f, where >1f is software loudness gain)
+    val audioSessionId by VideoPlaybackManager.currentAudioSessionId
+    var loudnessEnhancer by remember { mutableStateOf<LoudnessEnhancer?>(null) }
+    DisposableEffect(audioSessionId) {
+        if (audioSessionId > 0) {
+            try {
+                loudnessEnhancer?.release()
+                loudnessEnhancer = LoudnessEnhancer(audioSessionId)
+            } catch (_: Exception) {
+                loudnessEnhancer = null
+            }
+        }
+        onDispose {
+            try {
+                loudnessEnhancer?.release()
+            } catch (_: Exception) {}
+            loudnessEnhancer = null
+        }
+    }
+
     var volumePct by remember {
         val vol = audioManager.getStreamVolume(AudioManager.STREAM_MUSIC)
         mutableFloatStateOf(vol.toFloat() / maxVolume.toFloat())
     }
     var showVolumeBar by remember { mutableStateOf(false) }
     var volumeTouchTrigger by remember { mutableLongStateOf(0L) }
+
+    fun applyVolumeAndBoost(ratio: Float) {
+        val clampedRatio = ratio.coerceIn(0f, 2.0f)
+        volumePct = clampedRatio
+        if (clampedRatio <= 1.0f) {
+            val newVol = (clampedRatio * maxVolume).roundToInt().coerceIn(0, maxVolume)
+            if (newVol != audioManager.getStreamVolume(AudioManager.STREAM_MUSIC)) {
+                audioManager.setStreamVolume(AudioManager.STREAM_MUSIC, newVol, 0)
+            }
+            try {
+                if (loudnessEnhancer?.enabled == true) {
+                    loudnessEnhancer?.setTargetGain(0)
+                    loudnessEnhancer?.enabled = false
+                }
+            } catch (_: Exception) {}
+        } else {
+            if (audioManager.getStreamVolume(AudioManager.STREAM_MUSIC) != maxVolume) {
+                audioManager.setStreamVolume(AudioManager.STREAM_MUSIC, maxVolume, 0)
+            }
+            val boostRatio = clampedRatio - 1.0f
+            val targetGain = (boostRatio * 1200f).roundToInt()
+            try {
+                loudnessEnhancer?.let { enhancer ->
+                    enhancer.setTargetGain(targetGain)
+                    if (!enhancer.enabled) {
+                        enhancer.enabled = true
+                    }
+                }
+            } catch (_: Exception) {}
+        }
+    }
+
+    LaunchedEffect(loudnessEnhancer, volumePct) {
+        loudnessEnhancer?.let { enhancer ->
+            try {
+                if (volumePct > 1.0f) {
+                    val boostRatio = volumePct - 1.0f
+                    val targetGain = (boostRatio * 1200f).roundToInt()
+                    enhancer.setTargetGain(targetGain)
+                    enhancer.enabled = true
+                } else {
+                    if (enhancer.enabled) {
+                        enhancer.setTargetGain(0)
+                        enhancer.enabled = false
+                    }
+                }
+            } catch (_: Exception) {}
+        }
+    }
 
     // Seek Gestures
     var isDraggingSeek by remember { mutableStateOf(false) }
@@ -2438,11 +2512,11 @@ fun VideoPlayerScreen(
                 var gestureMode = PlayerGestureMode.NONE
                 var hasMoved = false
                 val startBrightness = brightnessPct
-                val startVolume = audioManager.getStreamVolume(AudioManager.STREAM_MUSIC)
+                val startVolumeRatio = volumePct
                 val startPosition = exoPlayer.currentPosition
                 currentDragSeekTarget = startPosition
                 var lastHapticBrightnessStep = ((startBrightness * 100f) / 5f).roundToInt().coerceIn(0, 20)
-                var lastHapticVolumeStep = (((startVolume.toFloat() / maxVolume.toFloat()) * 100f) / 5f).roundToInt().coerceIn(0, 20)
+                var lastHapticVolumeStep = ((startVolumeRatio * 100f) / 5f).roundToInt().coerceIn(0, 40)
                 var lastHapticSeekStep = (startPosition / 5000L).toInt()
                 var lastSeekX = startX
                 var accumulatedSeek = startPosition.toDouble()
@@ -2664,19 +2738,15 @@ fun VideoPlayerScreen(
                     }
                     PlayerGestureMode.VOLUME -> {
                         val dragRatio = -diffY / screenHeight
-                        val newVolRatio = ((startVolume.toFloat() / maxVolume.toFloat()) + dragRatio * 2.2f).coerceIn(0f, 1f)
-                        volumePct = newVolRatio
-                        val newVol = (newVolRatio * maxVolume).roundToInt().coerceIn(0, maxVolume)
-                        if (newVol != audioManager.getStreamVolume(AudioManager.STREAM_MUSIC)) {
-                            audioManager.setStreamVolume(AudioManager.STREAM_MUSIC, newVol, 0)
-                        }
-                        val vStep = ((newVolRatio * 100f) / 5f).roundToInt().coerceIn(0, 20)
+                        val newVolRatio = (startVolumeRatio + dragRatio * 2.2f).coerceIn(0f, 2.0f)
+                        applyVolumeAndBoost(newVolRatio)
+                        val vStep = ((newVolRatio * 100f) / 5f).roundToInt().coerceIn(0, 40)
                         if (vStep != lastHapticVolumeStep) {
                             lastHapticVolumeStep = vStep
-                            if (vStep == 0 || vStep == 20) {
+                            if (vStep == 0 || vStep == 20 || vStep == 40) {
                                 view.performHaptic(HapticType.MEDIUM)
                             } else {
-                                view.performLevelHaptic(vStep / 20f)
+                                view.performLevelHaptic((vStep % 20) / 20f)
                             }
                         }
                         showVolumeBar = true
@@ -3015,20 +3085,26 @@ fun VideoPlayerScreen(
                 .align(Alignment.CenterEnd)
                 .padding(end = if (isLandscape) 28.dp else 12.dp)
         ) {
+            val isBoost = volumePct > 1.0f
+            val boostBrush = remember {
+                Brush.verticalGradient(
+                    listOf(
+                        Color(0xFFFF3D00),
+                        Color(0xFFFF9100),
+                        Color(0xFFFFD600)
+                    )
+                )
+            }
             VerticalGestureBar(
                 icon = if (isMuted || volumePct <= 0f) Icons.AutoMirrored.Rounded.VolumeOff else if (volumePct < 0.5f) Icons.AutoMirrored.Rounded.VolumeDown else Icons.AutoMirrored.Rounded.VolumeUp,
                 percentage = if (isMuted) 0f else volumePct,
-                label = if (isMuted) "Muted" else "${(volumePct * 100).roundToInt()}%",
-                gradient = gestureBrush,
-                glowColor = glowColor,
+                maxPercentage = 2.0f,
+                label = if (isMuted) "Muted" else if (isBoost) "${(volumePct * 100).roundToInt()}% ⚡" else "${(volumePct * 100).roundToInt()}%",
+                gradient = if (isBoost) boostBrush else gestureBrush,
+                glowColor = if (isBoost) Color(0xFFFF9100) else glowColor,
                 onValueChange = {
                     if (isMuted) isMuted = false
-                    val newRatio = it.coerceIn(0f, 1f)
-                    volumePct = newRatio
-                    val newVol = (newRatio * maxVolume).roundToInt().coerceIn(0, maxVolume)
-                    if (newVol != audioManager.getStreamVolume(AudioManager.STREAM_MUSIC)) {
-                        audioManager.setStreamVolume(AudioManager.STREAM_MUSIC, newVol, 0)
-                    }
+                    applyVolumeAndBoost(it)
                     showVolumeBar = true
                     volumeTouchTrigger = System.currentTimeMillis()
                 }
@@ -3060,11 +3136,11 @@ fun VideoPlayerScreen(
             }
         }
 
-        // ─── 6. Double Tap Ripple Indicator ───────────────────────────────────
+        // ─── 6. Double Tap Ripple Indicator (MX/YouTube Style Ripple) ─────────
         AnimatedVisibility(
             visible = doubleTapSeekSeconds > 0 && !isInPiP,
-            enter = fadeIn(tween(100)) + scaleIn(initialScale = 0.88f, animationSpec = tween(100)),
-            exit = fadeOut(tween(180)) + scaleOut(targetScale = 0.90f, animationSpec = tween(180)),
+            enter = fadeIn(tween(100)) + scaleIn(initialScale = 0.85f, animationSpec = tween(120)),
+            exit = fadeOut(tween(200)) + scaleOut(targetScale = 0.88f, animationSpec = tween(200)),
             modifier = Modifier.fillMaxSize()
         ) {
             Box(Modifier.fillMaxSize()) {
@@ -3074,29 +3150,14 @@ fun VideoPlayerScreen(
                 } else {
                     PaddingValues(start = if (isLandscape) 96.dp else 28.dp)
                 }
-                Surface(
+                DoubleTapSeekRippleIndicator(
+                    seconds = doubleTapSeekSeconds,
+                    isForward = doubleTapIsForward,
+                    accentColor = primaryAccent,
                     modifier = Modifier
                         .align(align)
-                        .padding(padding),
-                    shape = RoundedCornerShape(26.dp),
-                    color = Color(0xEE14141F),
-                    border = BorderStroke(1.2.dp, primaryAccent.copy(alpha = 0.55f)),
-                    shadowElevation = 10.dp
-                ) {
-                    Row(
-                        modifier = Modifier.padding(horizontal = 18.dp, vertical = 11.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(7.dp)
-                    ) {
-                        if (!doubleTapIsForward) {
-                            Icon(Icons.Rounded.FastRewind, contentDescription = null, tint = primaryAccent, modifier = Modifier.size(24.dp))
-                            Text("-$doubleTapSeekSeconds s", color = Color.White, fontSize = 15.sp, fontWeight = FontWeight.Bold)
-                        } else {
-                            Text("+$doubleTapSeekSeconds s", color = Color.White, fontSize = 15.sp, fontWeight = FontWeight.Bold)
-                            Icon(Icons.Rounded.FastForward, contentDescription = null, tint = primaryAccent, modifier = Modifier.size(24.dp))
-                        }
-                    }
-                }
+                        .padding(padding)
+                )
             }
         }
 
@@ -4486,10 +4547,12 @@ fun VideoPlayerScreen(
             )
         }
 
-        // ─── Subtitles & Captions Dialog (Tracks + 4 Cinema Styles) ───
+        // ─── Subtitles & Captions Dialog (Tracks + Online Subtitles + Styles) ───
         if (showSubtitleSheet) {
             SubtitlesDialog(
                 exoPlayer = exoPlayer,
+                videoTitle = videoTitle,
+                subtitleState = subtitleState,
                 onOpenTools = { showSubtitleSheet = false; showSubtitleTools = true },
                 onSelectEmbedded = { subtitleState.useEmbedded(preserveSelection = true) },
                 subtitleDesign = subtitleDesign,
@@ -4852,7 +4915,116 @@ fun VideoPlayerScreen(
     }
 }
 
-// ─── FAT VERTICAL GESTURE BAR COMPONENT ───────────────────────────────────────
+// ─── DOUBLE TAP SEEK RIPPLE INDICATOR (MX/YouTube Style Pulse & Chevrons) ───
+@Composable
+private fun DoubleTapSeekRippleIndicator(
+    seconds: Int,
+    isForward: Boolean,
+    accentColor: Color,
+    modifier: Modifier = Modifier
+) {
+    val infiniteTransition = rememberInfiniteTransition(label = "seekRipple")
+    val waveScale by infiniteTransition.animateFloat(
+        initialValue = 0.85f,
+        targetValue = 1.25f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(650, easing = LinearEasing),
+            repeatMode = RepeatMode.Restart
+        ),
+        label = "waveScale"
+    )
+    val waveAlpha by infiniteTransition.animateFloat(
+        initialValue = 0.45f,
+        targetValue = 0f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(650, easing = LinearEasing),
+            repeatMode = RepeatMode.Restart
+        ),
+        label = "waveAlpha"
+    )
+    val chevronShift by infiniteTransition.animateFloat(
+        initialValue = -3f,
+        targetValue = 3f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(450, easing = FastOutSlowInEasing),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "chevronShift"
+    )
+
+    Box(
+        modifier = modifier,
+        contentAlignment = Alignment.Center
+    ) {
+        // Outer pulsing ripple ring
+        Box(
+            modifier = Modifier
+                .size(110.dp)
+                .graphicsLayer {
+                    scaleX = waveScale
+                    scaleY = waveScale
+                    alpha = waveAlpha
+                }
+                .clip(CircleShape)
+                .background(accentColor.copy(alpha = 0.35f))
+        )
+
+        // Main glass pill
+        Surface(
+            shape = RoundedCornerShape(28.dp),
+            color = Color(0xF012131A),
+            border = BorderStroke(
+                1.5.dp,
+                Brush.horizontalGradient(
+                    listOf(accentColor.copy(alpha = 0.8f), accentColor.copy(alpha = 0.3f))
+                )
+            ),
+            shadowElevation = 12.dp
+        ) {
+            Row(
+                modifier = Modifier.padding(horizontal = 20.dp, vertical = 12.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                if (!isForward) {
+                    Icon(
+                        Icons.Rounded.FastRewind,
+                        contentDescription = null,
+                        tint = accentColor,
+                        modifier = Modifier
+                            .size(24.dp)
+                            .graphicsLayer { translationX = -chevronShift }
+                    )
+                    Text(
+                        "-$seconds s",
+                        color = Color.White,
+                        fontSize = 16.sp,
+                        fontWeight = FontWeight.ExtraBold,
+                        fontFamily = FontFamily.SansSerif
+                    )
+                } else {
+                    Text(
+                        "+$seconds s",
+                        color = Color.White,
+                        fontSize = 16.sp,
+                        fontWeight = FontWeight.ExtraBold,
+                        fontFamily = FontFamily.SansSerif
+                    )
+                    Icon(
+                        Icons.Rounded.FastForward,
+                        contentDescription = null,
+                        tint = accentColor,
+                        modifier = Modifier
+                            .size(24.dp)
+                            .graphicsLayer { translationX = chevronShift }
+                    )
+                }
+            }
+        }
+    }
+}
+
+// ─── FAT VERTICAL GESTURE BAR COMPONENT (Supports up to 200% Volume Boost) ──
 @Composable
 private fun VerticalGestureBar(
     icon: ImageVector,
@@ -4862,13 +5034,15 @@ private fun VerticalGestureBar(
     glowColor: Color,
     onValueChange: (Float) -> Unit,
     onHeaderClick: (() -> Unit)? = null,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    maxPercentage: Float = 1.0f
 ) {
     val view = androidx.compose.ui.platform.LocalView.current
     val haptic = LocalHapticFeedback.current
-    val clampedPct = percentage.coerceIn(0f, 1f)
+    val clampedPct = percentage.coerceIn(0f, maxPercentage)
+    val fillRatio = (clampedPct / maxPercentage).coerceIn(0f, 1f)
     val animatedPct by animateFloatAsState(
-        targetValue = clampedPct,
+        targetValue = fillRatio,
         animationSpec = spring(
             stiffness = Spring.StiffnessHigh,
             dampingRatio = Spring.DampingRatioNoBouncy
@@ -4876,10 +5050,11 @@ private fun VerticalGestureBar(
         label = "smoothGesturePct"
     )
 
-    var lastHapticMilestone by remember { mutableIntStateOf(((clampedPct * 100f) / 5f).roundToInt().coerceIn(0, 20)) }
+    var lastHapticMilestone by remember { mutableIntStateOf(((fillRatio * 100f) / 5f).roundToInt().coerceIn(0, 20)) }
     val updateValueWithHaptic: (Float) -> Unit = { newVal ->
-        val cl = newVal.coerceIn(0f, 1f)
-        val milestone = ((cl * 100f) / 5f).roundToInt().coerceIn(0, 20)
+        val cl = newVal.coerceIn(0f, maxPercentage)
+        val fRatio = (cl / maxPercentage).coerceIn(0f, 1f)
+        val milestone = ((fRatio * 100f) / 5f).roundToInt().coerceIn(0, 20)
         if (milestone != lastHapticMilestone) {
             lastHapticMilestone = milestone
             if (milestone == 0 || milestone == 20) {
@@ -4912,7 +5087,7 @@ private fun VerticalGestureBar(
                         if (abs(currentY - downY) > 6f) {
                             hasMoved = true
                             // Direct 1:1 scrub tracking with instant responsiveness
-                            val targetPct = (1f - (currentY / barHeight)).coerceIn(0f, 1f)
+                            val targetPct = ((1f - (currentY / barHeight)) * maxPercentage).coerceIn(0f, maxPercentage)
                             updateValueWithHaptic(targetPct)
                             change.consume()
                         }
@@ -4924,9 +5099,9 @@ private fun VerticalGestureBar(
                         if (onHeaderClick != null && downY < 48.dp.toPx()) {
                             onHeaderClick()
                         } else if (downY < barHeight * 0.5f) {
-                            updateValueWithHaptic((clampedPct + 0.05f).coerceAtMost(1f))
+                            updateValueWithHaptic((clampedPct + 0.05f * maxPercentage).coerceAtMost(maxPercentage))
                         } else {
-                            updateValueWithHaptic((clampedPct - 0.05f).coerceAtLeast(0f))
+                            updateValueWithHaptic((clampedPct - 0.05f * maxPercentage).coerceAtLeast(0f))
                         }
                     }
                 }
@@ -4980,6 +5155,17 @@ private fun VerticalGestureBar(
                     .clip(RoundedCornerShape(bottomStart = 22.dp, bottomEnd = 22.dp, topStart = if (animatedPct > 0.95f) 22.dp else 6.dp, topEnd = if (animatedPct > 0.95f) 22.dp else 6.dp))
                     .background(gradient)
             )
+
+            // 100% Volume boundary divider notch (when bar supports boost > 1.0f)
+            if (maxPercentage > 1.0f) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth(0.55f)
+                        .height(1.2.dp)
+                        .align(Alignment.Center)
+                        .background(Color.White.copy(alpha = 0.45f))
+                )
+            }
 
             // 5. Glowing Fluid Meniscus (Top surface line of liquid)
             if (animatedPct in 0.02f..0.98f) {
@@ -6279,6 +6465,8 @@ private fun AudioTracksDialog(
 @Composable
 private fun SubtitlesDialog(
     exoPlayer: ExoPlayer,
+    videoTitle: String = "",
+    subtitleState: VideoSubtitleState? = null,
     onOpenTools: () -> Unit,
     onSelectEmbedded: () -> Unit,
     subtitleDesign: Int,
@@ -6323,7 +6511,7 @@ private fun SubtitlesDialog(
         }
     ) {
 
-                // 2 Tabs: Tracks & Styles
+                // 3 Tabs: Tracks, Online Subtitles, Styles
                 TabRow(
                     selectedTabIndex = selectedTab,
                     containerColor = c.cardBgElevated,
@@ -6340,7 +6528,7 @@ private fun SubtitlesDialog(
                         text = {
                             Text(
                                 "Tracks (${textGroups.sumOf { it.length }})",
-                                fontSize = 12.sp,
+                                fontSize = 11.5.sp,
                                 fontWeight = if (selectedTab == 0) FontWeight.Bold else FontWeight.Normal,
                                 color = if (selectedTab == 0) accentColor else c.textSecondary
                             )
@@ -6354,10 +6542,25 @@ private fun SubtitlesDialog(
                             .background(if (selectedTab == 1) accentColor.copy(alpha = 0.25f) else Color.Transparent),
                         text = {
                             Text(
-                                "Styles (4)",
-                                fontSize = 12.sp,
+                                "Online 🌐",
+                                fontSize = 11.5.sp,
                                 fontWeight = if (selectedTab == 1) FontWeight.Bold else FontWeight.Normal,
                                 color = if (selectedTab == 1) accentColor else c.textSecondary
+                            )
+                        }
+                    )
+                    Tab(
+                        selected = selectedTab == 2,
+                        onClick = { selectedTab = 2 },
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(10.dp))
+                            .background(if (selectedTab == 2) accentColor.copy(alpha = 0.25f) else Color.Transparent),
+                        text = {
+                            Text(
+                                "Styles (4)",
+                                fontSize = 11.5.sp,
+                                fontWeight = if (selectedTab == 2) FontWeight.Bold else FontWeight.Normal,
+                                color = if (selectedTab == 2) accentColor else c.textSecondary
                             )
                         }
                     )
@@ -6541,6 +6744,221 @@ private fun SubtitlesDialog(
                         }
                     }
                     1 -> {
+                        // Online Subtitles Tab
+                        var onlineQuery by remember(videoTitle) {
+                            mutableStateOf(OnlineSubtitleManager.cleanMediaTitle(videoTitle))
+                        }
+                        var isSearching by remember { mutableStateOf(false) }
+                        var searchResults by remember { mutableStateOf<List<OnlineSubtitle>>(emptyList()) }
+                        var hasSearched by remember { mutableStateOf(false) }
+                        var selectedLanguageFilter by remember { mutableStateOf("All") }
+                        var downloadingId by remember { mutableStateOf<String?>(null) }
+                        val scope = rememberCoroutineScope()
+
+                        val performSearch = {
+                            if (onlineQuery.isNotBlank() && !isSearching) {
+                                isSearching = true
+                                hasSearched = true
+                                scope.launch {
+                                    val list = OnlineSubtitleManager.searchOnlineSubtitles(onlineQuery)
+                                    searchResults = list
+                                    isSearching = false
+                                }
+                            }
+                        }
+
+                        LaunchedEffect(Unit) {
+                            if (!hasSearched && onlineQuery.isNotBlank()) {
+                                performSearch()
+                            }
+                        }
+
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .heightIn(max = 290.dp),
+                            verticalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            // Search bar
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clip(RoundedCornerShape(10.dp))
+                                    .background(c.cardBgElevated)
+                                    .border(1.dp, c.glassBorder, RoundedCornerShape(10.dp))
+                                    .padding(horizontal = 10.dp, vertical = 6.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Icon(Icons.Rounded.Search, contentDescription = null, tint = accentColor, modifier = Modifier.size(18.dp))
+                                Spacer(Modifier.width(8.dp))
+                                BasicTextField(
+                                    value = onlineQuery,
+                                    onValueChange = { onlineQuery = it },
+                                    textStyle = LocalTextStyle.current.copy(color = c.textPrimary, fontSize = 12.5.sp),
+                                    singleLine = true,
+                                    modifier = Modifier.weight(1f)
+                                )
+                                IconButton(
+                                    onClick = { performSearch() },
+                                    modifier = Modifier.size(26.dp)
+                                ) {
+                                    Icon(Icons.AutoMirrored.Rounded.ArrowForward, contentDescription = "Search", tint = accentColor, modifier = Modifier.size(16.dp))
+                                }
+                            }
+
+                            // Language Filter Chips
+                            if (searchResults.isNotEmpty()) {
+                                val availableLangs = remember(searchResults) {
+                                    listOf("All") + searchResults.map { it.languageName }.distinct().sorted()
+                                }
+                                LazyRow(
+                                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                    modifier = Modifier.fillMaxWidth()
+                                ) {
+                                    items(availableLangs) { lang ->
+                                        val isChosen = selectedLanguageFilter == lang
+                                        Box(
+                                            modifier = Modifier
+                                                .clip(RoundedCornerShape(8.dp))
+                                                .background(if (isChosen) accentColor else c.cardBgElevated)
+                                                .border(0.8.dp, if (isChosen) accentColor else c.glassBorder, RoundedCornerShape(8.dp))
+                                                .clickable { selectedLanguageFilter = lang }
+                                                .padding(horizontal = 8.dp, vertical = 3.dp)
+                                        ) {
+                                            Text(
+                                                text = lang,
+                                                fontSize = 10.sp,
+                                                fontWeight = if (isChosen) FontWeight.Bold else FontWeight.Normal,
+                                                color = if (isChosen) Color.White else c.textSecondary
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+
+                            if (isSearching) {
+                                LinearProgressIndicator(
+                                    modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp),
+                                    color = accentColor,
+                                    trackColor = c.glassBorder
+                                )
+                            }
+
+                            val filteredResults = remember(searchResults, selectedLanguageFilter) {
+                                if (selectedLanguageFilter == "All") searchResults
+                                else searchResults.filter { it.languageName == selectedLanguageFilter }
+                            }
+
+                            if (!isSearching && hasSearched && filteredResults.isEmpty()) {
+                                Box(
+                                    modifier = Modifier.fillMaxWidth().padding(18.dp),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Text(
+                                        text = "No subtitles found. Try editing the search title above.",
+                                        fontSize = 11.5.sp,
+                                        color = c.textSecondary
+                                    )
+                                }
+                            }
+
+                            LazyColumn(
+                                modifier = Modifier.fillMaxWidth().heightIn(max = 210.dp),
+                                verticalArrangement = Arrangement.spacedBy(6.dp)
+                            ) {
+                                items(filteredResults) { sub ->
+                                    val isDownloading = downloadingId == sub.id
+                                    Row(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .clip(RoundedCornerShape(10.dp))
+                                            .background(c.cardBgElevated)
+                                            .border(1.dp, c.glassBorder, RoundedCornerShape(10.dp))
+                                            .clickable(enabled = !isDownloading) {
+                                                downloadingId = sub.id
+                                                scope.launch {
+                                                    val file = OnlineSubtitleManager.downloadSubtitle(context, sub)
+                                                    downloadingId = null
+                                                    if (file != null) {
+                                                        val uri = android.net.Uri.fromFile(file).toString()
+                                                        subtitleState?.let { s ->
+                                                            s.uri = uri
+                                                            s.prefs.setExternalSubtitleUri(s.videoUrl, uri)
+                                                            s.prefs.setSubtitlesEnabled(true)
+                                                        }
+                                                        exoPlayer.trackSelectionParameters = exoPlayer.trackSelectionParameters
+                                                            .buildUpon()
+                                                            .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, true)
+                                                            .build()
+                                                        Toast.makeText(context, "Applied: ${sub.languageName} Subtitles", Toast.LENGTH_SHORT).show()
+                                                        onDismiss()
+                                                    } else {
+                                                        Toast.makeText(context, "Failed to download subtitle", Toast.LENGTH_SHORT).show()
+                                                    }
+                                                }
+                                            }
+                                            .padding(horizontal = 10.dp, vertical = 7.dp),
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Column(modifier = Modifier.weight(1f)) {
+                                            Row(
+                                                verticalAlignment = Alignment.CenterVertically,
+                                                horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                            ) {
+                                                Box(
+                                                    modifier = Modifier
+                                                        .clip(RoundedCornerShape(4.dp))
+                                                        .background(accentColor.copy(alpha = 0.2f))
+                                                        .border(0.8.dp, accentColor.copy(alpha = 0.6f), RoundedCornerShape(4.dp))
+                                                        .padding(horizontal = 5.dp, vertical = 1.dp)
+                                                ) {
+                                                    Text(
+                                                        sub.languageName,
+                                                        color = accentColor,
+                                                        fontSize = 9.sp,
+                                                        fontWeight = FontWeight.Bold
+                                                    )
+                                                }
+                                                Text(
+                                                    text = sub.fileName,
+                                                    color = c.textPrimary,
+                                                    fontSize = 12.sp,
+                                                    maxLines = 1,
+                                                    overflow = TextOverflow.Ellipsis
+                                                )
+                                            }
+                                            if (!sub.releaseName.isNullOrBlank()) {
+                                                Spacer(Modifier.height(2.dp))
+                                                Text(
+                                                    text = sub.releaseName,
+                                                    color = c.textSecondary,
+                                                    fontSize = 10.sp,
+                                                    maxLines = 1,
+                                                    overflow = TextOverflow.Ellipsis
+                                                )
+                                            }
+                                        }
+                                        if (isDownloading) {
+                                            CircularProgressIndicator(
+                                                modifier = Modifier.size(18.dp),
+                                                color = accentColor,
+                                                strokeWidth = 2.dp
+                                            )
+                                        } else {
+                                            Icon(
+                                                Icons.Rounded.Download,
+                                                contentDescription = "Download and Apply",
+                                                tint = accentColor,
+                                                modifier = Modifier.size(20.dp)
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    2 -> {
                         // Styles Tab (4 Cinema Styles)
                         val subtitleStyles = listOf(
                             Triple(0, "Classic Cinema", "White text with solid black outline"),
