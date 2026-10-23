@@ -142,6 +142,48 @@ class VideoRepository(private val context: Context) {
             return@withContext emptyList()
         }
 
+        // Also scan local MYCinema downloads folder
+        try {
+            val moviesDir = context.getExternalFilesDir(android.os.Environment.DIRECTORY_MOVIES)
+            val cinemaDir = if (moviesDir != null) java.io.File(moviesDir, "MYCinema") else null
+            if (cinemaDir != null && cinemaDir.exists() && cinemaDir.isDirectory) {
+                cinemaDir.walkTopDown().filter { file ->
+                    file.isFile && file.length() > 0 &&
+                        (file.extension.equals("mp4", true) ||
+                         file.extension.equals("mkv", true) ||
+                         file.extension.equals("webm", true) ||
+                         file.extension.equals("avi", true) ||
+                         file.extension.equals("mov", true) ||
+                         file.extension.equals("ts", true))
+                }.forEach { file ->
+                    val fileUri = android.net.Uri.fromFile(file)
+                    if (videos.none { it.uri.path == file.absolutePath || it.uri == fileUri }) {
+                        val duration = try {
+                            val retriever = android.media.MediaMetadataRetriever()
+                            retriever.setDataSource(file.absolutePath)
+                            val dStr = retriever.extractMetadata(android.media.MediaMetadataRetriever.METADATA_KEY_DURATION)
+                            retriever.release()
+                            dStr?.toLongOrNull() ?: 0L
+                        } catch (_: Exception) { 0L }
+
+                        videos.add(
+                            VideoItem(
+                                id = file.absolutePath.hashCode().toLong(),
+                                uri = fileUri,
+                                title = file.nameWithoutExtension,
+                                duration = duration,
+                                size = file.length(),
+                                bucketId = "mycinema",
+                                bucketName = "MYCinema",
+                                relativePath = "Movies/MYCinema/",
+                                dateAdded = file.lastModified() / 1000L
+                            )
+                        )
+                    }
+                }
+            }
+        } catch (_: Exception) {}
+
         // Group by folder bucket ID
         val folders = videos.groupBy { it.bucketId }
             .map { (bucketId, videoList) ->

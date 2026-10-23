@@ -20,6 +20,14 @@ class AppPreferences(private val prefs: SharedPreferences) {
     // Reactive Compose state: bumps on any progress/completion changes so UI recomposes instantly
     val lastProgressUpdate get() = preferencesRevision
 
+    fun saveVideoTitle(uri: String, title: String) {
+        prefs.edit().putString("title_$uri", title).apply()
+    }
+
+    fun getSavedVideoTitle(uri: String): String? {
+        return prefs.getString("title_$uri", null)
+    }
+
     // History: Map of Video URI to Last Played Position (in milliseconds)
     fun saveVideoProgress(uri: String, position: Long, duration: Long = 0L) {
         val isDone = duration > 0L && position >= (duration - 3000L)

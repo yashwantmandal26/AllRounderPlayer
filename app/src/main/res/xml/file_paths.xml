@@ -1,6 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <paths>
     <external-path name="external" path="." />
+    <external-files-path name="movies" path="Movies" />
     <external-files-path name="update_downloads" path="Download" />
     <external-cache-path name="update_cache" path="." />
     <cache-path name="internal_cache" path="." />

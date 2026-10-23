@@ -27,6 +27,7 @@ android {
         ndk {
             abiFilters += listOf("arm64-v8a")
         }
+        buildConfigField("String", "TMDB_API_KEY", "\"78bde186e39ce0078e38194bb8172f7d\"")
     }
 
     signingConfigs {
@@ -53,7 +54,7 @@ android {
     buildFeatures {
       compose = true
       aidl = false
-      buildConfig = false
+      buildConfig = true
       shaders = false
     }
 
@@ -102,6 +103,15 @@ dependencies {
   implementation(libs.androidx.fragment.ktx)
   implementation("androidx.media:media:1.7.0")
   
+  // Network & Serialization
+  implementation(libs.okhttp)
+  implementation(libs.okhttp.dnsoverhttps)
+  implementation(libs.kotlinx.serialization.json)
+
+  // Torrent Engine (libtorrent4j)
+  implementation(libs.libtorrent4j.core)
+  implementation(libs.libtorrent4j.android.arm64)
+
   // Coil for seek preview images
   implementation(libs.coil.compose)
   implementation(libs.coil.network.okhttp)

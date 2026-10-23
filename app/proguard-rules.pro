@@ -4,3 +4,10 @@
 -keep class org.videolan.libvlc.** { *; }
 -keep class org.videolan.libvlc.util.** { *; }
 -keepattributes *Annotation*
+# Libtorrent4j SWIG and JNI bindings
+-keep class org.libtorrent4j.** { *; }
+-keep class org.libtorrent4j.swig.** { *; }
+-keepclasseswithmembernames class * {
+    native <methods>;
+}
+-keepattributes *Annotation*,Signature,InnerClasses,EnclosingMethod

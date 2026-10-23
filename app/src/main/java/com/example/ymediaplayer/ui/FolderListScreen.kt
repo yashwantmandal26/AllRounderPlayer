@@ -76,9 +76,21 @@ import com.example.ymediaplayer.theme.LocalAppColors
 import com.example.ymediaplayer.theme.LocalThemeController
 import com.example.ymediaplayer.service.MusicService
 import com.example.ymediaplayer.update.UpdateManager
+import com.example.ymediaplayer.mycinema.ui.MyCinemaScreen
+import com.example.ymediaplayer.mycinema.ui.StreamBufferingDialog
+import com.example.ymediaplayer.mycinema.ui.MyCinemaDownloadsModal
+import com.example.ymediaplayer.mycinema.service.TorrentEngine
+import com.example.ymediaplayer.mycinema.service.TorrentDownloadService
+import com.example.ymediaplayer.mycinema.service.TorrentDownloadState
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+
+data class CinemaStreamSession(
+    val hash: String,
+    val title: String,
+    val posterUrl: String?
+)
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -109,7 +121,7 @@ fun FolderListScreen(
     var refreshTrigger by remember { mutableIntStateOf(0) }
 
     // Navigation state
-    var currentTab by rememberSaveable { mutableStateOf("Video") }
+    var currentTab by rememberSaveable { mutableStateOf("MYCinema") }
     var musicPlayerExpanded by rememberSaveable { mutableStateOf(false) }
 
     // Search & sort state
@@ -132,6 +144,11 @@ fun FolderListScreen(
     // Multi-select state
     var selectedVideoIds by remember { mutableStateOf<Set<Long>>(emptySet()) }
     val inSelectionMode = selectedVideoIds.isNotEmpty()
+
+    // MYCinema Downloads & Streaming State
+    val cinemaDownloads by TorrentEngine.downloads.collectAsState()
+    var showCinemaDownloads by remember { mutableStateOf(false) }
+    var activeStreamSession by remember { mutableStateOf<CinemaStreamSession?>(null) }
 
     // Context menu / action state
     var videoActionTarget by remember { mutableStateOf<VideoItem?>(null) }
@@ -253,7 +270,10 @@ fun FolderListScreen(
     }
 
     LaunchedEffect(com.example.ymediaplayer.MainActivity.openMusicTrigger.value) {
-        if (com.example.ymediaplayer.MainActivity.openMusicTrigger.value) currentTab = "Music"
+        if (com.example.ymediaplayer.MainActivity.openMusicTrigger.value) {
+            currentTab = "Music"
+            com.example.ymediaplayer.MainActivity.openMusicTrigger.value = false
+        }
     }
 
     val toggleFavorite: (String) -> Unit = { uri ->
@@ -348,7 +368,33 @@ fun FolderListScreen(
         val playedUris = appPreferences.getPlayedUris()
         val playedOrder = playedUris.mapIndexed { index, uri -> uri to index }.toMap()
 
-        allUniqueVideos.filter { video ->
+        val allKnownVideos = allUniqueVideos.toMutableList()
+        val existingUris = allUniqueVideos.map { it.uri.toString() }.toSet()
+        for (uriStr in playedUris) {
+            if (!existingUris.contains(uriStr)) {
+                val savedTitle = appPreferences.getSavedVideoTitle(uriStr)
+                val isMyCinema = savedTitle != null || uriStr.contains("MYCinema", ignoreCase = true) || uriStr.startsWith("http")
+                if (isMyCinema) {
+                    val title = savedTitle ?: uriStr.substringAfterLast("/").substringBefore("?")
+                    val duration = appPreferences.getVideoDuration(uriStr)
+                    allKnownVideos.add(
+                        VideoItem(
+                            id = uriStr.hashCode().toLong(),
+                            uri = android.net.Uri.parse(uriStr),
+                            title = title,
+                            duration = duration,
+                            size = 0L,
+                            bucketId = "mycinema",
+                            bucketName = "MYCinema",
+                            relativePath = "Movies/MYCinema/",
+                            dateAdded = System.currentTimeMillis() / 1000L
+                        )
+                    )
+                }
+            }
+        }
+
+        allKnownVideos.filter { video ->
             val uriStr = video.uri.toString()
             if (appPreferences.isCompleted(uriStr)) return@filter false
             val progress = appPreferences.getVideoProgress(uriStr)
@@ -509,9 +555,17 @@ fun FolderListScreen(
                                                 "$totalVideoCount videos · ${formatSize(totalSize)}"
                                             currentTab == "Music" && MusicService.totalTracksCount.intValue > 0 ->
                                                 "${MusicService.totalTracksCount.intValue} tracks · ${formatSize(MusicService.totalTracksSize.longValue)}"
+                                            currentTab == "MYCinema" -> {
+                                                val activeCount = cinemaDownloads.values.count {
+                                                    it.status == TorrentDownloadState.Status.DOWNLOADING ||
+                                                    it.status == TorrentDownloadState.Status.CONNECTING ||
+                                                    it.status == TorrentDownloadState.Status.STREAMING
+                                                }
+                                                if (activeCount > 0) "$activeCount downloading" else "Explore Movies & Shows"
+                                            }
                                             else -> null
                                         },
-                                        actionCount = if (currentTab == "Video") 4 else 3,
+                                        actionCount = 4,
                                         updateVersion = detectedUpdate?.versionName,
                                         onUpdateClick = {
                                             view.performHaptic(HapticType.LIGHT)
@@ -563,7 +617,7 @@ fun FolderListScreen(
                                             )
                                         }
 
-                                        // 3. Search button
+                                        // 3. Search or Downloads button
                                         if (currentTab == "Video") {
                                             Box(
                                                 modifier = Modifier
@@ -583,9 +637,48 @@ fun FolderListScreen(
                                             ) {
                                                 Icon(Icons.Filled.Search, contentDescription = "Search", tint = c.textPrimary, modifier = Modifier.size(22.dp))
                                             }
+                                        } else if (currentTab == "MYCinema") {
+                                            val activeCount = cinemaDownloads.values.count {
+                                                it.status == TorrentDownloadState.Status.DOWNLOADING ||
+                                                it.status == TorrentDownloadState.Status.CONNECTING ||
+                                                it.status == TorrentDownloadState.Status.STREAMING
+                                            }
+                                            Box(
+                                                modifier = Modifier
+                                                    .size(40.dp)
+                                                    .clip(CircleShape)
+                                                    .combinedClickable(
+                                                        onClick = {
+                                                            view.performHaptic(HapticType.LIGHT)
+                                                            showCinemaDownloads = true
+                                                        },
+                                                        onLongClick = {
+                                                            haptic.performHapticFeedback(androidx.compose.ui.hapticfeedback.HapticFeedbackType.LongPress)
+                                                            Toast.makeText(context, "MYCinema Downloads", Toast.LENGTH_SHORT).show()
+                                                        }
+                                                    ),
+                                                contentAlignment = Alignment.Center
+                                            ) {
+                                                BadgedBox(
+                                                    badge = {
+                                                        if (activeCount > 0) {
+                                                            Badge(containerColor = Color(0xFF00E676)) {
+                                                                Text("$activeCount", color = Color.Black, fontSize = 9.sp, fontWeight = FontWeight.Bold)
+                                                            }
+                                                        }
+                                                    }
+                                                ) {
+                                                    Icon(
+                                                        Icons.Rounded.Download,
+                                                        contentDescription = "Downloads",
+                                                        tint = if (activeCount > 0) Color(0xFF00E676) else c.textPrimary,
+                                                        modifier = Modifier.size(22.dp)
+                                                    )
+                                                }
+                                            }
                                         }
 
-                                        // 4. Settings button
+                                        // 4. Settings button (Three dots on MYCinema)
                                         Box(
                                             modifier = Modifier
                                                 .size(40.dp)
@@ -602,7 +695,12 @@ fun FolderListScreen(
                                                 ),
                                             contentAlignment = Alignment.Center
                                         ) {
-                                            Icon(Icons.Rounded.Settings, contentDescription = "Settings", tint = c.textPrimary, modifier = Modifier.size(22.dp))
+                                            Icon(
+                                                if (currentTab == "MYCinema") Icons.Rounded.MoreVert else Icons.Rounded.Settings,
+                                                contentDescription = "Settings",
+                                                tint = c.textPrimary,
+                                                modifier = Modifier.size(22.dp)
+                                            )
                                         }
                                     }
                                 }
@@ -615,7 +713,19 @@ fun FolderListScreen(
             modifier = modifier
         ) { paddingValues ->
             val isVideo = currentTab == "Video"
+            val isCinema = currentTab == "MYCinema"
+            val isMusic = currentTab == "Music"
             val tabTransition = updateTransition(targetState = currentTab, label = "TabTransition")
+
+            val cinemaAlpha by tabTransition.animateFloat(
+                transitionSpec = { tween(240, easing = FastOutSlowInEasing) },
+                label = "cinemaAlpha"
+            ) { tab -> if (tab == "MYCinema") 1f else 0f }
+            val cinemaOffset by tabTransition.animateFloat(
+                transitionSpec = { tween(240, easing = FastOutSlowInEasing) },
+                label = "cinemaOffset"
+            ) { tab -> if (tab == "MYCinema") 0f else -60f }
+
             val videoAlpha by tabTransition.animateFloat(
                 transitionSpec = { tween(240, easing = FastOutSlowInEasing) },
                 label = "videoAlpha"
@@ -623,7 +733,7 @@ fun FolderListScreen(
             val videoOffset by tabTransition.animateFloat(
                 transitionSpec = { tween(240, easing = FastOutSlowInEasing) },
                 label = "videoOffset"
-            ) { tab -> if (tab == "Video") 0f else -60f }
+            ) { tab -> if (tab == "Video") 0f else if (tab == "MYCinema") 60f else -60f }
 
             val musicAlpha by tabTransition.animateFloat(
                 transitionSpec = { tween(240, easing = FastOutSlowInEasing) },
@@ -635,6 +745,64 @@ fun FolderListScreen(
             ) { tab -> if (tab == "Music") 0f else 60f }
 
             Box(modifier = Modifier.fillMaxSize()) {
+                // ── MYCinema Tab ──
+                if (cinemaAlpha > 0f) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .padding(top = paddingValues.calculateTopPadding())
+                            .zIndex(if (isCinema) 1f else 0f)
+                            .graphicsLayer {
+                                translationX = cinemaOffset
+                                alpha = cinemaAlpha
+                            }
+                    ) {
+                        MyCinemaScreen(
+                            onStreamSource = { item, source ->
+                                val hash = TorrentEngine.startDownload(context, source, item.displayName, isSequential = true)
+                                if (hash != null) {
+                                    TorrentDownloadService.start(context, hash, item.displayName)
+                                    if (TorrentEngine.isStreamBufferReady(context, hash)) {
+                                        val path = TorrentEngine.getFilePath(context, hash)
+                                        if (path != null) {
+                                            appPreferences.saveVideoTitle(path, item.displayName)
+                                            onVideoClick(path)
+                                        }
+                                    } else {
+                                        activeStreamSession = CinemaStreamSession(hash, item.displayName, item.fullPosterUrl)
+                                    }
+                                } else {
+                                    android.widget.Toast.makeText(context, "Failed to start streaming", android.widget.Toast.LENGTH_SHORT).show()
+                                }
+                            },
+                            onDownloadSource = { item, source ->
+                                val hash = TorrentEngine.startDownload(context, source, item.displayName, isSequential = false)
+                                if (hash != null) {
+                                    TorrentDownloadService.start(context, hash, item.displayName)
+                                    android.widget.Toast.makeText(context, "Download started: ${item.displayName}", android.widget.Toast.LENGTH_SHORT).show()
+                                } else {
+                                    android.widget.Toast.makeText(context, "Failed to start download", android.widget.Toast.LENGTH_SHORT).show()
+                                }
+                            }
+                        )
+
+                        if (!isCinema) {
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxSize()
+                                    .pointerInput(Unit) {
+                                        awaitPointerEventScope {
+                                            while (true) {
+                                                val event = awaitPointerEvent()
+                                                event.changes.forEach { it.consume() }
+                                            }
+                                        }
+                                    }
+                            )
+                        }
+                    }
+                }
+
                 // ── Video Tab ──
                 Box(
                     modifier = Modifier
@@ -1258,7 +1426,7 @@ fun FolderListScreen(
             Box(
                 modifier = Modifier
                     .fillMaxSize()
-                    .zIndex(if (!isVideo) 1f else 0f)
+                    .zIndex(if (isMusic) 1f else 0f)
                     .graphicsLayer {
                         translationX = musicOffset
                         alpha = musicAlpha
@@ -1274,7 +1442,7 @@ fun FolderListScreen(
                     showFloatingMiniPlayer = false
                 )
 
-                if (isVideo) {
+                if (!isMusic) {
                     Box(
                         modifier = Modifier
                             .fillMaxSize()
@@ -1366,7 +1534,7 @@ fun FolderListScreen(
                 ) {
                     Row(modifier = Modifier.padding(4.dp), horizontalArrangement = Arrangement.spacedBy(2.dp), verticalAlignment = Alignment.CenterVertically) {
                         val view = androidx.compose.ui.platform.LocalView.current
-                        listOf("Video" to Icons.Rounded.Movie, "Music" to Icons.Rounded.MusicNote).forEach { (label, icon) ->
+                        listOf("MYCinema" to Icons.Rounded.Theaters, "Video" to Icons.Rounded.Movie, "Music" to Icons.Rounded.MusicNote).forEach { (label, icon) ->
                             val selected = currentTab == label
                             val pillBgColor by animateColorAsState(
                                 targetValue = if (selected) {
@@ -1666,6 +1834,33 @@ fun FolderListScreen(
                 }
             )
         }
+
+        activeStreamSession?.let { session ->
+            StreamBufferingDialog(
+                hash = session.hash,
+                title = session.title,
+                posterUrl = session.posterUrl,
+                onStreamReady = { readyPath ->
+                    activeStreamSession = null
+                    appPreferences.saveVideoTitle(readyPath, session.title)
+                    onVideoClick(readyPath)
+                },
+                onCancel = {
+                    TorrentEngine.cancel(session.hash)
+                    activeStreamSession = null
+                }
+            )
+        }
+
+        if (showCinemaDownloads) {
+            MyCinemaDownloadsModal(
+                onDismiss = { showCinemaDownloads = false },
+                onPlayVideo = { videoPath ->
+                    showCinemaDownloads = false
+                    onVideoClick(videoPath)
+                }
+            )
+        }
     }
 }
 
@@ -1910,6 +2105,23 @@ private fun ContinueWatchingCard(
             model = remember(video.uri) { buildVideoThumbnailRequest(context, video.uri, video.duration) },
             contentDescription = null, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize()
         )
+        if (video.bucketName.equals("MYCinema", ignoreCase = true) || video.relativePath.contains("MYCinema", ignoreCase = true) || video.uri.toString().startsWith("http")) {
+            Box(
+                modifier = Modifier
+                    .align(Alignment.TopStart)
+                    .padding(top = 6.dp, start = 6.dp)
+                    .clip(RoundedCornerShape(4.dp))
+                    .background(Color(0xFFE50914).copy(alpha = 0.88f))
+                    .padding(horizontal = 4.dp, vertical = 2.dp)
+            ) {
+                Text(
+                    text = "🍿 MYCinema",
+                    color = Color.White,
+                    fontSize = 8.sp,
+                    fontWeight = FontWeight.Bold
+                )
+            }
+        }
         // Top right duration + percentage (no background card, crisp outlined text)
         Row(
             modifier = Modifier
@@ -2015,6 +2227,23 @@ private fun RecentlyAddedVideoCard(
             model = remember(video.uri) { buildVideoThumbnailRequest(context, video.uri, video.duration) },
             contentDescription = null, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize()
         )
+        if (video.bucketName.equals("MYCinema", ignoreCase = true) || video.relativePath.contains("MYCinema", ignoreCase = true) || video.uri.toString().startsWith("http")) {
+            Box(
+                modifier = Modifier
+                    .align(Alignment.TopStart)
+                    .padding(top = 6.dp, start = 6.dp)
+                    .clip(RoundedCornerShape(4.dp))
+                    .background(Color(0xFFE50914).copy(alpha = 0.88f))
+                    .padding(horizontal = 4.dp, vertical = 2.dp)
+            ) {
+                Text(
+                    text = "🍿 MYCinema",
+                    color = Color.White,
+                    fontSize = 8.sp,
+                    fontWeight = FontWeight.Bold
+                )
+            }
+        }
         // Top right total duration (no background card, crisp outlined text)
         if (video.duration > 0L) {
             OutlinedText(

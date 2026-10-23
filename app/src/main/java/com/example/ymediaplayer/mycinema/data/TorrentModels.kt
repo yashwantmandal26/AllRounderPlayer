@@ -1,0 +1,94 @@
+package com.example.ymediaplayer.mycinema.data
+
+import kotlinx.serialization.Serializable
+
+@Serializable
+data class TorrentSource(
+    val title: String,
+    val quality: String,
+    val size: String,
+    val sizeBytes: Long = 0L,
+    val magnet: String,
+    val seeds: Int,
+    val peers: Int = 0,
+    val type: String = "web",
+    val provider: String = "Torrentio",
+    val isHindi: Boolean = false,
+    val isHevc: Boolean = false,
+    val parsedSeason: Int? = null,
+    val parsedEpisode: Int? = null,
+    val isSeasonPack: Boolean = false
+) {
+    val normalizedQuality: String
+        get() = when {
+            quality.contains("2160", ignoreCase = true) || quality.contains("4k", ignoreCase = true) -> "2160p"
+            quality.contains("1080", ignoreCase = true) -> "1080p"
+            quality.contains("720", ignoreCase = true) -> "720p"
+            quality.contains("480", ignoreCase = true) -> "480p"
+            else -> "1080p"
+        }
+
+    val speedLabel: String
+        get() = when {
+            seeds >= 1500 -> "⚡ ULTRA"
+            seeds >= 400 -> "🚀 FAST"
+            seeds >= 50 -> "🏎️ GOOD"
+            seeds >= 15 -> "📶 MODERATE"
+            else -> "⏳ SLOW"
+        }
+
+    val estimatedSpeedFormatted: String
+        get() = when {
+            seeds >= 1500 -> "⚡ ~15-25 MB/s"
+            seeds >= 500 -> "⚡ ~8-15 MB/s"
+            seeds >= 150 -> "🚀 ~4-8 MB/s"
+            seeds >= 40 -> "🏎️ ~1.5-4 MB/s"
+            seeds >= 15 -> "📶 ~500KB-1.5MB/s"
+            else -> "⏳ ~100-400 KB/s"
+        }
+
+    val estimatedEtaFormatted: String
+        get() {
+            val bytes = if (sizeBytes > 0) sizeBytes else parseSizeToBytes(size)
+            if (bytes <= 0) return ""
+            val estBytesPerSec = when {
+                seeds >= 1500 -> 18L * 1024 * 1024
+                seeds >= 500 -> 10L * 1024 * 1024
+                seeds >= 150 -> 5L * 1024 * 1024
+                seeds >= 40 -> 2L * 1024 * 1024
+                seeds >= 15 -> 800L * 1024
+                else -> 250L * 1024
+            }
+            val seconds = bytes / estBytesPerSec
+            return when {
+                seconds < 60 -> "~${seconds}s"
+                seconds < 3600 -> "~${(seconds / 60).coerceAtLeast(1)}m"
+                else -> {
+                    val hrs = seconds / 3600
+                    val mins = (seconds % 3600) / 60
+                    if (mins > 0) "~${hrs}h ${mins}m" else "~${hrs}h"
+                }
+            }
+        }
+
+    val healthScore: Double
+        get() {
+            var score = seeds * 3.0 + peers * 0.4
+            if (normalizedQuality == "2160p") score += 15.0
+            if (normalizedQuality == "1080p") score += 10.0
+            if (isHindi) score += 20.0
+            return score
+        }
+
+    private fun parseSizeToBytes(sizeStr: String): Long {
+        val clean = sizeStr.trim().uppercase()
+        val numStr = clean.filter { it.isDigit() || it == '.' }
+        val num = numStr.toDoubleOrNull() ?: return 0L
+        return when {
+            clean.contains("GB") || clean.contains("GIB") -> (num * 1024 * 1024 * 1024).toLong()
+            clean.contains("MB") || clean.contains("MIB") -> (num * 1024 * 1024).toLong()
+            clean.contains("KB") || clean.contains("KIB") -> (num * 1024).toLong()
+            else -> num.toLong()
+        }
+    }
+}
