@@ -5,7 +5,7 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.rounded.Close
+import androidx.compose.material.icons.rounded.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -41,10 +41,14 @@ fun StreamBufferingDialog(
 
     var downloadedBytes by remember { mutableLongStateOf(0L) }
     var requiredBytes by remember { mutableLongStateOf(15_000_000L) }
+    var secondsWaiting by remember { mutableIntStateOf(0) }
 
     LaunchedEffect(hash) {
+        var elapsed = 0
         while (true) {
-            delay(400)
+            delay(500)
+            elapsed += 500
+            secondsWaiting = elapsed / 1000
             downloadedBytes = TorrentEngine.getDownloadedBytes(hash)
             requiredBytes = TorrentEngine.getRequiredBufferBytes(hash)
 
@@ -188,19 +192,76 @@ fun StreamBufferingDialog(
                     )
                 }
 
+                // Stalled / Slow Source Detection Banner
+                val isStalled = secondsWaiting >= 12 && downloadedBytes == 0L && (downloadState?.downloadSpeed ?: 0L) == 0L
+                if (isStalled) {
+                    Spacer(Modifier.height(14.dp))
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(10.dp))
+                            .background(Color(0xFFFF9800).copy(alpha = 0.15f))
+                            .border(1.dp, Color(0xFFFF9800).copy(alpha = 0.45f), RoundedCornerShape(10.dp))
+                            .padding(10.dp)
+                    ) {
+                        Row(verticalAlignment = Alignment.Top) {
+                            Icon(
+                                Icons.Rounded.Warning,
+                                contentDescription = null,
+                                tint = Color(0xFFFFB74D),
+                                modifier = Modifier.size(18.dp)
+                            )
+                            Spacer(Modifier.width(8.dp))
+                            Column {
+                                Text(
+                                    text = "Slow or Stalled Source ($secondsWaiting s)",
+                                    color = Color(0xFFFFB74D),
+                                    fontSize = 12.sp,
+                                    fontWeight = FontWeight.Bold
+                                )
+                                Spacer(Modifier.height(2.dp))
+                                Text(
+                                    text = "This source has few active seeders. We recommend trying another source with more seeds.",
+                                    color = c.textSecondary,
+                                    fontSize = 11.sp,
+                                    lineHeight = 15.sp
+                                )
+                            }
+                        }
+                    }
+                }
+
                 Spacer(Modifier.height(18.dp))
 
-                // Cancel Button
-                OutlinedButton(
-                    onClick = onCancel,
-                    shape = RoundedCornerShape(10.dp),
-                    colors = ButtonDefaults.outlinedButtonColors(contentColor = c.textSecondary),
-                    border = androidx.compose.foundation.BorderStroke(1.dp, c.glassBorder),
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(42.dp)
-                ) {
-                    Text("Cancel Streaming", fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+                // Action / Cancel Button
+                if (isStalled) {
+                    Button(
+                        onClick = onCancel,
+                        shape = RoundedCornerShape(10.dp),
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = Color(0xFFFF9800),
+                            contentColor = Color.Black
+                        ),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(42.dp)
+                    ) {
+                        Icon(Icons.Rounded.Refresh, contentDescription = null, modifier = Modifier.size(16.dp))
+                        Spacer(Modifier.width(6.dp))
+                        Text("Try Another Source", fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                    }
+                } else {
+                    OutlinedButton(
+                        onClick = onCancel,
+                        shape = RoundedCornerShape(10.dp),
+                        colors = ButtonDefaults.outlinedButtonColors(contentColor = c.textSecondary),
+                        border = androidx.compose.foundation.BorderStroke(1.dp, c.glassBorder),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(42.dp)
+                    ) {
+                        Text("Cancel Streaming", fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+                    }
                 }
             }
         }

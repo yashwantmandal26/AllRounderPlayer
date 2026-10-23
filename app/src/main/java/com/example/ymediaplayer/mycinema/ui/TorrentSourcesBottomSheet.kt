@@ -53,18 +53,21 @@ fun TorrentSourcesBottomSheet(
     val context = LocalContext.current
     val haptic = LocalHapticFeedback.current
 
-    var selectedLangFilter by remember { mutableStateOf("All") } // "All" or "Hindi"
+    var selectedLangFilter by remember { mutableStateOf("All") } // "All", "Hindi", "Dual"
     var selectedQualityFilter by remember { mutableStateOf("All") } // "All", "2160p", "1080p", "720p"
+    var selectedSortOption by remember { mutableStateOf("SPEED") } // "SPEED", "SIZE", "QUALITY"
 
     val hindiCount = remember(sources) { sources.count { it.isHindi } }
+    val dualAudioCount = remember(sources) { sources.count { it.isDualAudio } }
     val q4kCount = remember(sources) { sources.count { it.normalizedQuality == "2160p" } }
     val q1080Count = remember(sources) { sources.count { it.normalizedQuality == "1080p" } }
     val q720Count = remember(sources) { sources.count { it.normalizedQuality == "720p" } }
 
-    val filteredSources = remember(sources, selectedLangFilter, selectedQualityFilter) {
-        sources.filter { source ->
+    val filteredSources = remember(sources, selectedLangFilter, selectedQualityFilter, selectedSortOption) {
+        val filtered = sources.filter { source ->
             val langMatch = when (selectedLangFilter) {
                 "Hindi" -> source.isHindi
+                "Dual" -> source.isDualAudio
                 else -> true
             }
             val qualityMatch = when (selectedQualityFilter) {
@@ -74,6 +77,11 @@ fun TorrentSourcesBottomSheet(
                 else -> true
             }
             langMatch && qualityMatch
+        }
+        when (selectedSortOption) {
+            "SIZE" -> filtered.sortedBy { it.parsedSizeBytes.let { b -> if (b > 0) b else Long.MAX_VALUE } }
+            "QUALITY" -> filtered.sortedByDescending { it.healthScore }
+            else -> filtered.sortedByDescending { it.seeds }
         }
     }
 
@@ -141,24 +149,51 @@ fun TorrentSourcesBottomSheet(
                 }
             }
 
-            // Filter Chips
-            Row(
+            // Sort & Language Filter Chips
+            LazyRow(
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(vertical = 6.dp),
                 horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                FilterPill(
-                    label = "All (${sources.size})",
-                    isSelected = selectedLangFilter == "All",
-                    onClick = { selectedLangFilter = "All" }
-                )
-                if (hindiCount > 0) {
+                item {
                     FilterPill(
-                        label = "🇮🇳 Hindi ($hindiCount)",
-                        isSelected = selectedLangFilter == "Hindi",
-                        onClick = { selectedLangFilter = "Hindi" }
+                        label = "⚡ Fastest (Seeders)",
+                        isSelected = selectedSortOption == "SPEED",
+                        onClick = { selectedSortOption = "SPEED" }
                     )
+                }
+                item {
+                    FilterPill(
+                        label = "💾 Smallest Size",
+                        isSelected = selectedSortOption == "SIZE",
+                        onClick = { selectedSortOption = "SIZE" }
+                    )
+                }
+                item {
+                    FilterPill(
+                        label = "🌟 Best Quality",
+                        isSelected = selectedSortOption == "QUALITY",
+                        onClick = { selectedSortOption = "QUALITY" }
+                    )
+                }
+                if (hindiCount > 0) {
+                    item {
+                        FilterPill(
+                            label = "🇮🇳 Hindi ($hindiCount)",
+                            isSelected = selectedLangFilter == "Hindi",
+                            onClick = { selectedLangFilter = if (selectedLangFilter == "Hindi") "All" else "Hindi" }
+                        )
+                    }
+                }
+                if (dualAudioCount > 0) {
+                    item {
+                        FilterPill(
+                            label = "🌐 Dual Audio ($dualAudioCount)",
+                            isSelected = selectedLangFilter == "Dual",
+                            onClick = { selectedLangFilter = if (selectedLangFilter == "Dual") "All" else "Dual" }
+                        )
+                    }
                 }
             }
 
@@ -452,7 +487,72 @@ private fun TorrentSourceCard(
                 )
             }
 
-            Spacer(Modifier.height(8.dp))
+            // Tag Badges Row
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(top = 4.dp),
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                source.ripType?.let { rip ->
+                    Box(
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(4.dp))
+                            .background(Color.White.copy(alpha = 0.08f))
+                            .border(0.6.dp, Color.White.copy(alpha = 0.2f), RoundedCornerShape(4.dp))
+                            .padding(horizontal = 5.dp, vertical = 1.5.dp)
+                    ) {
+                        Text(text = rip, color = Color.White, fontSize = 9.sp, fontWeight = FontWeight.Bold)
+                    }
+                }
+                if (source.isHindi) {
+                    Box(
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(4.dp))
+                            .background(Color(0xFFFF5722).copy(alpha = 0.18f))
+                            .border(0.6.dp, Color(0xFFFF5722).copy(alpha = 0.5f), RoundedCornerShape(4.dp))
+                            .padding(horizontal = 5.dp, vertical = 1.5.dp)
+                    ) {
+                        Text(text = "🇮🇳 HINDI", color = Color(0xFFFF7043), fontSize = 9.sp, fontWeight = FontWeight.Bold)
+                    }
+                }
+                if (source.isDualAudio) {
+                    Box(
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(4.dp))
+                            .background(Color(0xFF00E5FF).copy(alpha = 0.18f))
+                            .border(0.6.dp, Color(0xFF00E5FF).copy(alpha = 0.5f), RoundedCornerShape(4.dp))
+                            .padding(horizontal = 5.dp, vertical = 1.5.dp)
+                    ) {
+                        Text(text = "🌐 DUAL AUDIO", color = Color(0xFF00E5FF), fontSize = 9.sp, fontWeight = FontWeight.Bold)
+                    }
+                }
+                if (source.isHdr) {
+                    Box(
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(4.dp))
+                            .background(Color(0xFFFFD700).copy(alpha = 0.18f))
+                            .border(0.6.dp, Color(0xFFFFD700).copy(alpha = 0.5f), RoundedCornerShape(4.dp))
+                            .padding(horizontal = 5.dp, vertical = 1.5.dp)
+                    ) {
+                        Text(text = "✨ HDR", color = Color(0xFFFFD700), fontSize = 9.sp, fontWeight = FontWeight.Bold)
+                    }
+                }
+                if (source.isHevc) {
+                    Box(
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(4.dp))
+                            .background(Color(0xFFAB47BC).copy(alpha = 0.18f))
+                            .border(0.6.dp, Color(0xFFAB47BC).copy(alpha = 0.5f), RoundedCornerShape(4.dp))
+                            .padding(horizontal = 5.dp, vertical = 1.5.dp)
+                    ) {
+                        Text(text = "⚡ HEVC", color = Color(0xFFCE93D8), fontSize = 9.sp, fontWeight = FontWeight.Bold)
+                    }
+                }
+            }
+
+            Spacer(Modifier.height(6.dp))
 
             // Release Title
             Text(

@@ -639,7 +639,7 @@ fun FolderListScreen(
                                             )
                                         }
 
-                                        // 3. Search or Downloads button
+                                        // 3. Sort (for Video) or Downloads (for MYCinema)
                                         if (currentTab == "Video") {
                                             Box(
                                                 modifier = Modifier
@@ -648,16 +648,16 @@ fun FolderListScreen(
                                                     .combinedClickable(
                                                         onClick = {
                                                             view.performHaptic(HapticType.LIGHT)
-                                                            isSearching = true
+                                                            showSortMenu = true
                                                         },
                                                         onLongClick = {
                                                             haptic.performHapticFeedback(androidx.compose.ui.hapticfeedback.HapticFeedbackType.LongPress)
-                                                            Toast.makeText(context, "Search Videos", Toast.LENGTH_SHORT).show()
+                                                            Toast.makeText(context, "Sort Videos", Toast.LENGTH_SHORT).show()
                                                         }
                                                     ),
                                                 contentAlignment = Alignment.Center
                                             ) {
-                                                Icon(Icons.Filled.Search, contentDescription = "Search", tint = c.textPrimary, modifier = Modifier.size(22.dp))
+                                                Icon(Icons.AutoMirrored.Rounded.Sort, contentDescription = "Sort", tint = c.textPrimary, modifier = Modifier.size(22.dp))
                                             }
                                         } else if (currentTab == "MYCinema") {
                                             val activeCount = cinemaDownloads.values.count {

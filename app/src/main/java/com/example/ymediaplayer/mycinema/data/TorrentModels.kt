@@ -28,6 +28,25 @@ data class TorrentSource(
             else -> "1080p"
         }
 
+    val isDualAudio: Boolean
+        get() = title.contains("dual", ignoreCase = true) || title.contains("multi", ignoreCase = true)
+
+    val isHdr: Boolean
+        get() = title.contains("hdr", ignoreCase = true) || title.contains("dovi", ignoreCase = true) || title.contains("dolby", ignoreCase = true)
+
+    val ripType: String?
+        get() = when {
+            title.contains("remux", ignoreCase = true) -> "REMUX"
+            title.contains("bluray", ignoreCase = true) || title.contains("bdrip", ignoreCase = true) -> "BluRay"
+            title.contains("web-dl", ignoreCase = true) || title.contains("webrip", ignoreCase = true) || title.contains("web", ignoreCase = true) -> "WEB-DL"
+            title.contains("hdrip", ignoreCase = true) -> "HDRip"
+            title.contains("cam", ignoreCase = true) || title.contains("hdcam", ignoreCase = true) -> "CAM"
+            else -> null
+        }
+
+    val parsedSizeBytes: Long
+        get() = if (sizeBytes > 0) sizeBytes else parseSizeToBytes(size)
+
     val speedLabel: String
         get() = when {
             seeds >= 1500 -> "⚡ ULTRA"
