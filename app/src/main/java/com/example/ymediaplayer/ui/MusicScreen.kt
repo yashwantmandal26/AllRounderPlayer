@@ -216,7 +216,8 @@ fun MusicScreen(
     modifier: Modifier = Modifier,
     onFullScreenChanged: (Boolean) -> Unit = {},
     hasMediaPermission: Boolean = true,
-    onRequestPermission: () -> Unit = {}
+    onRequestPermission: () -> Unit = {},
+    showFloatingMiniPlayer: Boolean = false
 ) {
     val context = LocalContext.current
     val view = androidx.compose.ui.platform.LocalView.current
@@ -2206,7 +2207,7 @@ fun MusicScreen(
 
         // ─── Floating Mini Player ───────────────────────────────────────────
         AnimatedVisibility(
-            visible = (currentlyPlaying != null || MusicService.nowPlayingTitle.value.isNotBlank()) && !showFullScreenPlayer,
+            visible = showFloatingMiniPlayer && (currentlyPlaying != null || MusicService.nowPlayingTitle.value.isNotBlank()) && !showFullScreenPlayer,
             enter = fadeIn(animationSpec = tween(220)) + scaleIn(initialScale = 0.96f, animationSpec = tween(220)),
             exit = fadeOut(animationSpec = tween(180)) + scaleOut(targetScale = 0.96f, animationSpec = tween(180)),
             modifier = Modifier

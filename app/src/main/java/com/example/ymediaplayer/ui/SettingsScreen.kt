@@ -773,6 +773,7 @@ fun SettingsScreen(
                     )
                 }
             }
+        }
 
         // ─── 2. Gestures & Touch Controls ─────────────────────────────────
         if (showGestures) {
@@ -2084,7 +2085,6 @@ fun SettingsScreen(
         )
     }
 
-    }
     }
 }
 

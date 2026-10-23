@@ -57,6 +57,8 @@ import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.zIndex
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalHapticFeedback
@@ -611,32 +613,38 @@ fun FolderListScreen(
             },
             modifier = modifier
         ) { paddingValues ->
-            AnimatedContent(
-                targetState = currentTab,
-                transitionSpec = {
-                    val enterAnim = if (targetState == "Music") {
-                        slideInHorizontally(animationSpec = tween(220, easing = FastOutSlowInEasing), initialOffsetX = { it / 6 }) + fadeIn(tween(200))
-                    } else {
-                        slideInHorizontally(animationSpec = tween(220, easing = FastOutSlowInEasing), initialOffsetX = { -it / 6 }) + fadeIn(tween(200))
-                    }
-                    val exitAnim = if (targetState == "Music") {
-                        slideOutHorizontally(animationSpec = tween(180, easing = FastOutSlowInEasing), targetOffsetX = { -it / 6 }) + fadeOut(tween(160))
-                    } else {
-                        slideOutHorizontally(animationSpec = tween(180, easing = FastOutSlowInEasing), targetOffsetX = { it / 6 }) + fadeOut(tween(160))
-                    }
-                    (enterAnim.togetherWith(exitAnim)).using(SizeTransform(clip = false))
-                },
-                label = "TabAnimatedContent",
-                modifier = Modifier.fillMaxSize()
-            ) { tab ->
-                if (tab == "Music") {
-                    MusicScreen(
-                        modifier = Modifier.fillMaxSize().padding(top = if (musicPlayerExpanded) 0.dp else paddingValues.calculateTopPadding()),
-                        onFullScreenChanged = { musicPlayerExpanded = it },
-                        hasMediaPermission = hasAudioPermission,
-                        onRequestPermission = onRequestPermissions
-                    )
-                } else if (isLoading && allFolders.isEmpty()) {
+            val isVideo = currentTab == "Video"
+            val tabTransition = updateTransition(targetState = currentTab, label = "TabTransition")
+            val videoAlpha by tabTransition.animateFloat(
+                transitionSpec = { tween(240, easing = FastOutSlowInEasing) },
+                label = "videoAlpha"
+            ) { tab -> if (tab == "Video") 1f else 0f }
+            val videoOffset by tabTransition.animateFloat(
+                transitionSpec = { tween(240, easing = FastOutSlowInEasing) },
+                label = "videoOffset"
+            ) { tab -> if (tab == "Video") 0f else -60f }
+
+            val musicAlpha by tabTransition.animateFloat(
+                transitionSpec = { tween(240, easing = FastOutSlowInEasing) },
+                label = "musicAlpha"
+            ) { tab -> if (tab == "Music") 1f else 0f }
+            val musicOffset by tabTransition.animateFloat(
+                transitionSpec = { tween(240, easing = FastOutSlowInEasing) },
+                label = "musicOffset"
+            ) { tab -> if (tab == "Music") 0f else 60f }
+
+            Box(modifier = Modifier.fillMaxSize()) {
+                // ── Video Tab ──
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .zIndex(if (isVideo) 1f else 0f)
+                        .graphicsLayer {
+                            translationX = videoOffset
+                            alpha = videoAlpha
+                        }
+                ) {
+                    if (isLoading && allFolders.isEmpty()) {
                 Box(modifier = Modifier.fillMaxSize().padding(paddingValues), contentAlignment = Alignment.Center) {
                     CircularProgressIndicator(color = c.accentBlue, strokeWidth = 3.dp)
                 }
@@ -1228,6 +1236,57 @@ fun FolderListScreen(
                         }
                     }
                 }
+                if (!isVideo) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .pointerInput(Unit) {
+                                awaitPointerEventScope {
+                                    while (true) {
+                                        val event = awaitPointerEvent()
+                                        event.changes.forEach { it.consume() }
+                                    }
+                                }
+                            }
+                    )
+                }
+            }
+        }
+
+            // ── Music Tab (Kept in composition to eliminate refreshment & preserve state) ──
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .zIndex(if (!isVideo) 1f else 0f)
+                    .graphicsLayer {
+                        translationX = musicOffset
+                        alpha = musicAlpha
+                    }
+            ) {
+                MusicScreen(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(top = if (musicPlayerExpanded) 0.dp else paddingValues.calculateTopPadding()),
+                    onFullScreenChanged = { musicPlayerExpanded = it },
+                    hasMediaPermission = hasAudioPermission,
+                    onRequestPermission = onRequestPermissions,
+                    showFloatingMiniPlayer = false
+                )
+
+                if (isVideo) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .pointerInput(Unit) {
+                                awaitPointerEventScope {
+                                    while (true) {
+                                        val event = awaitPointerEvent()
+                                        event.changes.forEach { it.consume() }
+                                    }
+                                }
+                            }
+                    )
+                }
             }
         }
         }
@@ -1269,9 +1328,9 @@ fun FolderListScreen(
                         .padding(top = 28.dp, bottom = 16.dp),
                     horizontalAlignment = Alignment.CenterHorizontally
                 ) {
-                // Animated "Now Playing" pill visible on Video tab with controls & 100% opaque background
+                // Animated "Now Playing" pill visible across both tabs with controls & 100% opaque background
                 AnimatedVisibility(
-                    visible = currentTab == "Video" && (isMusicPlaying || nowPlayingTitle.isNotBlank()),
+                    visible = (isMusicPlaying || nowPlayingTitle.isNotBlank()),
                     enter = slideInVertically(initialOffsetY = { it / 2 }) + fadeIn(),
                     exit = slideOutVertically(targetOffsetY = { it / 2 }) + fadeOut()
                 ) {
