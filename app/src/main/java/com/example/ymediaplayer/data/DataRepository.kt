@@ -214,17 +214,17 @@ class AppPreferences(private val prefs: SharedPreferences) {
         prefs.edit().putString("music_artwork_style", validStyle).apply()
     }
 
-    // Feature Introductions & Tour Guides (One-Time Spotlights)
-    fun hasSeenVideoPlayerGuide(): Boolean = prefs.getBoolean("has_seen_video_guide", false)
-    fun setSeenVideoPlayerGuide(seen: Boolean = true) { prefs.edit().putBoolean("has_seen_video_guide", seen).apply() }
+    // Feature Introductions & Tour Guides (One-Time Visual Spotlights)
+    fun hasSeenVideoPlayerGuide(): Boolean = prefs.getBoolean("has_seen_visual_video_guide_v2", false)
+    fun setSeenVideoPlayerGuide(seen: Boolean = true) { prefs.edit().putBoolean("has_seen_visual_video_guide_v2", seen).apply() }
 
-    fun hasSeenMusicGuide(): Boolean = prefs.getBoolean("has_seen_music_guide", false)
-    fun setSeenMusicGuide(seen: Boolean = true) { prefs.edit().putBoolean("has_seen_music_guide", seen).apply() }
+    fun hasSeenMusicGuide(): Boolean = prefs.getBoolean("has_seen_visual_music_guide_v2", false)
+    fun setSeenMusicGuide(seen: Boolean = true) { prefs.edit().putBoolean("has_seen_visual_music_guide_v2", seen).apply() }
 
     fun resetAllGuides() {
         prefs.edit()
-            .putBoolean("has_seen_video_guide", false)
-            .putBoolean("has_seen_music_guide", false)
+            .putBoolean("has_seen_visual_video_guide_v2", false)
+            .putBoolean("has_seen_visual_music_guide_v2", false)
             .apply()
     }
 
