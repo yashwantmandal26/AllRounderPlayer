@@ -88,6 +88,19 @@ fun formatTorrentBytes(bytes: Long): String {
 
 object TorrentEngine {
 
+    fun isConnectedToWifi(context: Context): Boolean {
+        return try {
+            val cm = context.getSystemService(Context.CONNECTIVITY_SERVICE) as? android.net.ConnectivityManager ?: return true
+            val network = cm.activeNetwork ?: return false
+            val caps = cm.getNetworkCapabilities(network) ?: return false
+            caps.hasTransport(android.net.NetworkCapabilities.TRANSPORT_WIFI) ||
+            caps.hasTransport(android.net.NetworkCapabilities.TRANSPORT_ETHERNET) ||
+            caps.hasCapability(android.net.NetworkCapabilities.NET_CAPABILITY_NOT_METERED)
+        } catch (_: Exception) {
+            true
+        }
+    }
+
     private var sessionManager: SessionManager? = null
     private var isInitialized = false
 
@@ -231,6 +244,12 @@ object TorrentEngine {
         initialize(context)
         val sm = sessionManager ?: return null
         val saveDir = getDownloadDir(context)
+        val appPrefs = com.example.ymediaplayer.data.AppPreferences(context)
+        if (!isSequential && appPrefs.isWifiOnlyDownloadEnabled() && !isConnectedToWifi(context)) {
+            android.os.Handler(android.os.Looper.getMainLooper()).post {
+                android.widget.Toast.makeText(context, "Wi-Fi Only is enabled: Download will proceed on Wi-Fi", android.widget.Toast.LENGTH_LONG).show()
+            }
+        }
 
         return try {
             val hashMatch = Regex("xt=urn:btih:([a-zA-Z0-9]+)", RegexOption.IGNORE_CASE).find(source.magnet)

@@ -219,6 +219,15 @@ class MusicService : MediaSessionService() {
         var currentPlaylist: List<MusicItem>
             get() = activeQueue.value
             set(value) { activeQueue.value = value.toList() }
+
+        fun reorderQueue(fromIndex: Int, toIndex: Int) {
+            val list = currentPlaylist.toMutableList()
+            if (fromIndex in list.indices && toIndex in list.indices && fromIndex != toIndex) {
+                val item = list.removeAt(fromIndex)
+                list.add(toIndex, item)
+                currentPlaylist = list
+            }
+        }
         val repeatMode = androidx.compose.runtime.mutableIntStateOf(Player.REPEAT_MODE_OFF)
         val shuffleEnabled = androidx.compose.runtime.mutableStateOf(false)
         val sleepTimerSecondsRemaining = androidx.compose.runtime.mutableIntStateOf(0)

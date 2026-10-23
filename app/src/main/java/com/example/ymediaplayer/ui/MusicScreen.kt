@@ -39,6 +39,7 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.text.TextStyle
@@ -91,6 +92,9 @@ import com.example.ymediaplayer.data.AppPreferences
 import com.example.ymediaplayer.data.MusicItem
 import com.example.ymediaplayer.data.MusicRepository
 import com.example.ymediaplayer.service.MusicService
+import com.example.ymediaplayer.player.LrclibLyricsManager
+import com.example.ymediaplayer.player.SongLyrics
+import com.example.ymediaplayer.player.LyricLine
 import com.example.ymediaplayer.theme.LocalAppColors
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -3650,6 +3654,7 @@ fun FullScreenMusicPlayer(
     val density = androidx.compose.ui.platform.LocalDensity.current
     val appPreferences = remember { com.example.ymediaplayer.data.AppPreferences(context) }
     var showMusicGuide by remember { mutableStateOf(!appPreferences.hasSeenMusicGuide()) }
+    var showLyrics by remember { mutableStateOf(false) }
 
     // Keep status bar transparent with crisp white icons in full screen player
     if (!view.isInEditMode) {
@@ -3942,7 +3947,18 @@ fun FullScreenMusicPlayer(
                         }
                     }
                     // Song Info
-                    IconButton(onClick = onOpenSongInfo) {
+                    IconButton(onClick = {
+                    view.performHaptic(HapticType.LIGHT)
+                    showLyrics = !showLyrics
+                }) {
+                    Icon(
+                        imageVector = Icons.Rounded.Lyrics,
+                        contentDescription = "Toggle Synced Lyrics",
+                        tint = if (showLyrics) c.accentBlue else Color.White.copy(0.85f),
+                        modifier = Modifier.size(24.dp)
+                    )
+                }
+                IconButton(onClick = onOpenSongInfo) {
                         Icon(Icons.Rounded.Info, contentDescription = "Info", tint = Color.White.copy(0.8f))
                     }
                     // More Options (3 Dots)
@@ -3968,9 +3984,20 @@ fun FullScreenMusicPlayer(
                 label = "heartAlpha"
             )
 
-            Box(
-                contentAlignment = Alignment.Center,
-                modifier = Modifier.pointerInput(Unit) {
+            if (showLyrics) {
+                KaraokeSyncedLyricsView(
+                    song = song,
+                    currentPosition = currentPosition,
+                    onSeek = onSeek,
+                    accentColor = c.accentBlue,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(320.dp)
+                )
+            } else {
+                Box(
+                    contentAlignment = Alignment.Center,
+                    modifier = Modifier.pointerInput(Unit) {
                     detectTapGestures(
                         onDoubleTap = {
                             if (!isFavorite) {
@@ -4663,6 +4690,7 @@ fun FullScreenMusicPlayer(
                         }
                 )
             }
+        }
         }
 
         Spacer(Modifier.height(18.dp))
@@ -5725,6 +5753,43 @@ private fun QueueDialog(
                         } else {
                             Text(formatTime(song.duration), color = c.textSecondary.copy(alpha = 0.7f), fontSize = 11.5.sp)
                         }
+                        Spacer(Modifier.width(6.dp))
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            IconButton(
+                                onClick = {
+                                    val idx = queue.indexOf(song)
+                                    if (idx > 0) {
+                                        MusicService.reorderQueue(idx, idx - 1)
+                                    }
+                                },
+                                enabled = queue.indexOf(song) > 0,
+                                modifier = Modifier.size(26.dp)
+                            ) {
+                                Icon(
+                                    Icons.Rounded.KeyboardArrowUp,
+                                    contentDescription = "Move Up",
+                                    tint = if (queue.indexOf(song) > 0) c.textSecondary else c.textSecondary.copy(alpha = 0.25f),
+                                    modifier = Modifier.size(17.dp)
+                                )
+                            }
+                            IconButton(
+                                onClick = {
+                                    val idx = queue.indexOf(song)
+                                    if (idx < queue.size - 1) {
+                                        MusicService.reorderQueue(idx, idx + 1)
+                                    }
+                                },
+                                enabled = queue.indexOf(song) < queue.size - 1,
+                                modifier = Modifier.size(26.dp)
+                            ) {
+                                Icon(
+                                    Icons.Rounded.KeyboardArrowDown,
+                                    contentDescription = "Move Down",
+                                    tint = if (queue.indexOf(song) < queue.size - 1) c.textSecondary else c.textSecondary.copy(alpha = 0.25f),
+                                    modifier = Modifier.size(17.dp)
+                                )
+                            }
+                        }
                     }
                 }
             }
@@ -6524,4 +6589,156 @@ fun MusicAlbumArtImage(
             }
         }
     )
+}
+
+// ─────────────────────────────────────────────────────────────────
+// KARAOKE SYNCED LYRICS VIEW (Live Auto-Scrolling LRC Lyrics)
+// ─────────────────────────────────────────────────────────────────
+@Composable
+private fun KaraokeSyncedLyricsView(
+    song: MusicItem,
+    currentPosition: Long,
+    onSeek: (Long) -> Unit,
+    accentColor: Color,
+    modifier: Modifier = Modifier
+) {
+    val context = LocalContext.current
+    val listState = rememberLazyListState()
+    var lyrics by remember(song.id) { mutableStateOf<SongLyrics?>(null) }
+    var isLoading by remember(song.id) { mutableStateOf(true) }
+
+    LaunchedEffect(song.id) {
+        isLoading = true
+        lyrics = LrclibLyricsManager.getLyrics(
+            context = context,
+            title = song.title,
+            artist = song.artist,
+            durationSeconds = (song.duration / 1000).toInt()
+        )
+        isLoading = false
+    }
+
+    Box(
+        modifier = modifier
+            .clip(RoundedCornerShape(20.dp))
+            .background(Color(0xDD0D0E15))
+            .border(1.dp, Color.White.copy(alpha = 0.12f), RoundedCornerShape(20.dp))
+            .padding(horizontal = 16.dp, vertical = 12.dp),
+        contentAlignment = Alignment.Center
+    ) {
+        if (isLoading) {
+            Column(
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                CircularProgressIndicator(
+                    color = accentColor,
+                    modifier = Modifier.size(30.dp),
+                    strokeWidth = 2.5.dp
+                )
+                Text(
+                    text = "Fetching synced lyrics...",
+                    color = Color.White.copy(alpha = 0.7f),
+                    fontSize = 12.5.sp,
+                    fontWeight = FontWeight.Medium
+                )
+            }
+        } else if (lyrics == null || (lyrics?.lines.isNullOrEmpty() && lyrics?.plainLyrics.isNullOrBlank())) {
+            Column(
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                Icon(
+                    Icons.Rounded.MusicOff,
+                    contentDescription = null,
+                    tint = Color.White.copy(alpha = 0.4f),
+                    modifier = Modifier.size(36.dp)
+                )
+                Text(
+                    text = "No synced lyrics found for this track",
+                    color = Color.White.copy(alpha = 0.6f),
+                    fontSize = 13.sp,
+                    fontWeight = FontWeight.SemiBold
+                )
+                Text(
+                    text = "${song.title} • ${song.artist}",
+                    color = Color.White.copy(alpha = 0.35f),
+                    fontSize = 11.sp,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
+        } else if (lyrics!!.isSynced) {
+            val lines = lyrics!!.lines
+            val activeIndex = remember(currentPosition, lines) {
+                lines.indexOfLast { it.timeMs <= currentPosition }.coerceAtLeast(0)
+            }
+
+            LaunchedEffect(activeIndex) {
+                if (activeIndex in lines.indices) {
+                    listState.animateScrollToItem((activeIndex - 2).coerceAtLeast(0))
+                }
+            }
+
+            LazyColumn(
+                state = listState,
+                modifier = Modifier.fillMaxSize(),
+                verticalArrangement = Arrangement.spacedBy(12.dp),
+                contentPadding = PaddingValues(vertical = 40.dp)
+            ) {
+                itemsIndexed(lines, key = { idx, line -> "line_${idx}_${line.timeMs}" }) { idx, line ->
+                    val isActive = idx == activeIndex
+                    val isPast = idx < activeIndex
+                    val lineAlpha by animateFloatAsState(
+                        targetValue = if (isActive) 1f else if (isPast) 0.35f else 0.45f,
+                        animationSpec = tween(220),
+                        label = "lineAlpha"
+                    )
+                    val lineScale by animateFloatAsState(
+                        targetValue = if (isActive) 1.05f else 1.0f,
+                        animationSpec = spring(stiffness = Spring.StiffnessMediumLow),
+                        label = "lineScale"
+                    )
+
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .graphicsLayer {
+                                scaleX = lineScale
+                                scaleY = lineScale
+                                alpha = lineAlpha
+                            }
+                            .clip(RoundedCornerShape(12.dp))
+                            .background(if (isActive) accentColor.copy(alpha = 0.15f) else Color.Transparent)
+                            .clickable { onSeek(line.timeMs) }
+                            .padding(horizontal = 12.dp, vertical = 6.dp)
+                    ) {
+                        Text(
+                            text = line.text,
+                            color = if (isActive) Color.White else Color.White.copy(alpha = 0.7f),
+                            fontSize = if (isActive) 18.sp else 14.5.sp,
+                            fontWeight = if (isActive) FontWeight.ExtraBold else FontWeight.Normal,
+                            lineHeight = 22.sp
+                        )
+                    }
+                }
+            }
+        } else {
+            val plain = lyrics!!.plainLyrics ?: ""
+            LazyColumn(
+                modifier = Modifier.fillMaxSize(),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+                contentPadding = PaddingValues(vertical = 16.dp)
+            ) {
+                items(plain.lines()) { lineText ->
+                    Text(
+                        text = lineText,
+                        color = Color.White.copy(alpha = 0.75f),
+                        fontSize = 14.sp,
+                        lineHeight = 20.sp
+                    )
+                }
+            }
+        }
+    }
 }

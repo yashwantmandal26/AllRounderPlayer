@@ -763,6 +763,9 @@ class AppPreferences(private val prefs: SharedPreferences) {
     fun getPreferredAudioLanguage(): String = prefs.getString("preferred_audio_language", "DEFAULT") ?: "DEFAULT"
     fun setPreferredAudioLanguage(lang: String) { prefs.edit().putString("preferred_audio_language", lang).apply() }
 
+    fun isWifiOnlyDownloadEnabled(): Boolean = prefs.getBoolean("wifi_only_download", false)
+    fun setWifiOnlyDownloadEnabled(enabled: Boolean) { prefs.edit().putBoolean("wifi_only_download", enabled).apply() }
+
     // ─── Library & Folders Preferences ─────────────────────────────────────────
     fun isShowContinueWatching(): Boolean = prefs.getBoolean("show_continue_watching", true)
     fun setShowContinueWatching(show: Boolean) {

@@ -154,6 +154,7 @@ fun SettingsScreen(
     var excludeShortClipsSeconds by remember { mutableIntStateOf(appPreferences.getExcludeShortClipsSeconds()) }
     var excludeHiddenFolders by remember { mutableStateOf(appPreferences.isExcludeHiddenFolders()) }
     var confirmDelete by remember { mutableStateOf(appPreferences.isConfirmDeleteEnabled()) }
+    var isWifiOnlyDownload by remember { mutableStateOf(appPreferences.isWifiOnlyDownloadEnabled()) }
 
     // ─── Music States ─────────────────────────────────────────────────────────
     var musicArtworkStyle by remember { mutableStateOf(appPreferences.getMusicArtworkStyle()) }
@@ -1361,6 +1362,19 @@ fun SettingsScreen(
                     icon = Icons.Rounded.FolderOpen,
                     accentColor = primaryAccent
                 ) {
+                    SettingsItemToggle(
+                        title = "Download Over Wi-Fi Only",
+                        subtitle = "Save mobile data by downloading torrents only on Wi-Fi",
+                        icon = Icons.Rounded.Wifi,
+                        checked = isWifiOnlyDownload,
+                        onCheckedChange = {
+                            isWifiOnlyDownload = it
+                            appPreferences.setWifiOnlyDownloadEnabled(it)
+                        }
+                    )
+
+                    SettingsDivider()
+
                     SettingsItemPicker(
                         title = "Default Starting Tab",
                         subtitle = when (defaultStartTab) {
