@@ -94,6 +94,38 @@ object TorrentEngine {
     private val _downloads = MutableStateFlow<Map<String, TorrentDownloadState>>(emptyMap())
     val downloads: StateFlow<Map<String, TorrentDownloadState>> = _downloads.asStateFlow()
 
+    private val VIDEO_EXTENSIONS = setOf("mp4", "mkv", "avi", "webm", "mov", "ts", "m4v")
+
+    fun findMainVideoFileIndex(files: FileStorage): Int {
+        val numFiles = files.numFiles()
+        if (numFiles <= 0) return -1
+        if (numFiles == 1) return 0
+
+        var largestVideoIndex = -1
+        var maxVideoSize = -1L
+
+        var largestAnyIndex = 0
+        var maxAnySize = -1L
+
+        for (i in 0 until numFiles) {
+            val size = files.fileSize(i)
+            val path = files.filePath(i)
+            val ext = path.substringAfterLast(".", "").lowercase()
+
+            if (size > maxAnySize) {
+                maxAnySize = size
+                largestAnyIndex = i
+            }
+
+            if (ext in VIDEO_EXTENSIONS && size > maxVideoSize) {
+                maxVideoSize = size
+                largestVideoIndex = i
+            }
+        }
+
+        return if (largestVideoIndex >= 0) largestVideoIndex else largestAnyIndex
+    }
+
     fun getDownloadDir(context: Context): File {
         val baseDir = context.getExternalFilesDir(Environment.DIRECTORY_MOVIES) 
             ?: File(context.filesDir, "MYCinema")
@@ -120,15 +152,32 @@ object TorrentEngine {
                                 val hash = handle.infoHash().toHex().lowercase()
                                 val torrentFile = handle.torrentFile()
                                 if (torrentFile != null) {
+                                    val files = torrentFile.files()
+                                    val numFiles = files.numFiles()
+                                    val mainFileIndex = findMainVideoFileIndex(files)
+
+                                    // Set non-video/small files to IGNORE to save data & bandwidth
+                                    if (numFiles > 1 && mainFileIndex >= 0) {
+                                        for (i in 0 until numFiles) {
+                                            if (i != mainFileIndex) {
+                                                val ext = files.filePath(i).substringAfterLast(".", "").lowercase()
+                                                if (ext !in VIDEO_EXTENSIONS && ext != "srt") {
+                                                    handle.filePriority(i, Priority.IGNORE)
+                                                }
+                                            }
+                                        }
+                                        handle.filePriority(mainFileIndex, Priority.TOP_PRIORITY)
+                                    }
+
                                     val numPieces = torrentFile.numPieces()
                                     val state = _downloads.value[hash]
                                     if (state?.isSequential == true && numPieces > 0) {
                                         handle.setFlags(TorrentFlags.SEQUENTIAL_DOWNLOAD)
-                                        val headLimit = minOf(6, numPieces)
+                                        val headLimit = minOf(8, numPieces)
                                         for (i in 0 until headLimit) {
                                             handle.piecePriority(i, Priority.TOP_PRIORITY)
                                         }
-                                        val tailStart = maxOf(0, numPieces - 6)
+                                        val tailStart = maxOf(0, numPieces - 8)
                                         for (i in tailStart until numPieces) {
                                             handle.piecePriority(i, Priority.TOP_PRIORITY)
                                         }
@@ -142,7 +191,9 @@ object TorrentEngine {
                             val hash = handle.infoHash().toHex().lowercase()
                             val torrentFile = handle.torrentFile()
                             val targetFile = if (torrentFile != null && torrentFile.numFiles() > 0) {
-                                File(getDownloadDir(context), torrentFile.files().filePath(0)).absolutePath
+                                val mainIdx = findMainVideoFileIndex(torrentFile.files())
+                                val relPath = torrentFile.files().filePath(if (mainIdx >= 0) mainIdx else 0)
+                                sanitizePath(context, relPath)
                             } else null
                             updateState(hash) {
                                 it.copy(
@@ -285,14 +336,33 @@ object TorrentEngine {
         } catch (_: Exception) {}
     }
 
+    private fun sanitizePath(context: Context, relPath: String): String? {
+        return try {
+            val baseDir = getDownloadDir(context).canonicalFile
+            val target = File(baseDir, relPath).canonicalFile
+            if (target.path.startsWith(baseDir.path)) {
+                target.absolutePath
+            } else {
+                android.util.Log.e("TorrentEngine", "Path traversal blocked: $relPath")
+                null
+            }
+        } catch (_: Exception) {
+            null
+        }
+    }
+
     fun getFilePath(context: Context, hash: String): String? {
         val sha1 = Sha1Hash.parseHex(hash)
         val handle = sessionManager?.find(sha1) ?: return null
         val torrentFile = handle.torrentFile() ?: return null
-        if (torrentFile.numFiles() > 0) {
-            val relPath = torrentFile.files().filePath(0)
-            val file = File(getDownloadDir(context), relPath)
-            if (file.exists()) return file.absolutePath
+        val files = torrentFile.files()
+        if (files.numFiles() > 0) {
+            val mainIdx = findMainVideoFileIndex(files)
+            val relPath = files.filePath(if (mainIdx >= 0) mainIdx else 0)
+            val sanitized = sanitizePath(context, relPath)
+            if (sanitized != null && File(sanitized).exists()) {
+                return sanitized
+            }
         }
         return null
     }

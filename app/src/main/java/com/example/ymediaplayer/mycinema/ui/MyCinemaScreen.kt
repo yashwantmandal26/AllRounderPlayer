@@ -37,17 +37,30 @@ import com.example.ymediaplayer.mycinema.data.MyCinemaRepository
 import com.example.ymediaplayer.mycinema.data.TmdbItem
 import com.example.ymediaplayer.mycinema.data.TorrentSource
 import com.example.ymediaplayer.theme.LocalAppColors
+import kotlinx.coroutines.async
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+
+data class OfflineCinemaMovie(
+    val file: java.io.File,
+    val title: String,
+    val sizeFormatted: String,
+    val durationFormatted: String
+)
 
 @Composable
 fun MyCinemaScreen(
     repository: MyCinemaRepository = remember { MyCinemaRepository() },
+    refreshTrigger: Int = 0,
+    onDetailStateChanged: (Boolean) -> Unit = {},
+    onPlayOfflineMovie: (String) -> Unit = {},
     onStreamSource: (TmdbItem, TorrentSource) -> Unit,
     onDownloadSource: (TmdbItem, TorrentSource) -> Unit,
     modifier: Modifier = Modifier
 ) {
     val c = LocalAppColors.current
+    val context = androidx.compose.ui.platform.LocalContext.current
     val coroutineScope = rememberCoroutineScope()
     val focusManager = LocalFocusManager.current
 
@@ -55,11 +68,18 @@ fun MyCinemaScreen(
     var isSearching by remember { mutableStateOf(false) }
     var searchResults by remember { mutableStateOf<List<TmdbItem>>(emptyList()) }
 
+    var offlineMovies by remember { mutableStateOf<List<OfflineCinemaMovie>>(emptyList()) }
+    val cinemaDownloadsMap by com.example.ymediaplayer.mycinema.service.TorrentEngine.downloads.collectAsState()
+
     var recentlyReleased by remember { mutableStateOf<List<TmdbItem>>(emptyList()) }
     var trendingMovies by remember { mutableStateOf<List<TmdbItem>>(emptyList()) }
     var trendingSeries by remember { mutableStateOf<List<TmdbItem>>(emptyList()) }
     var trendingIndia by remember { mutableStateOf<List<TmdbItem>>(emptyList()) }
+
+    var upcomingFilter by remember { mutableStateOf("ALL") } // "ALL", "THEATRICAL", "OTT"
     var upcomingMovies by remember { mutableStateOf<List<TmdbItem>>(emptyList()) }
+    var isLoadingUpcoming by remember { mutableStateOf(false) }
+
     var isLoadingFeed by remember { mutableStateOf(true) }
 
     // Selected item for detail modal & source bottom sheet
@@ -68,25 +88,87 @@ fun MyCinemaScreen(
     var itemSources by remember { mutableStateOf<List<TorrentSource>>(emptyList()) }
     var isLoadingSources by remember { mutableStateOf(false) }
 
-    // Load initial feed concurrently
-    LaunchedEffect(Unit) {
+    LaunchedEffect(activeDetailItem) {
+        onDetailStateChanged(activeDetailItem != null)
+    }
+
+    // Scan offline downloaded movies
+    LaunchedEffect(refreshTrigger, cinemaDownloadsMap) {
+        kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+            val list = mutableListOf<OfflineCinemaMovie>()
+            val downloadDir = com.example.ymediaplayer.mycinema.service.TorrentEngine.getDownloadDir(context)
+            if (downloadDir.exists() && downloadDir.isDirectory) {
+                downloadDir.walkTopDown().filter { file ->
+                    file.isFile && file.length() > 0 &&
+                    (file.extension.equals("mp4", true) ||
+                     file.extension.equals("mkv", true) ||
+                     file.extension.equals("webm", true) ||
+                     file.extension.equals("avi", true) ||
+                     file.extension.equals("mov", true) ||
+                     file.extension.equals("ts", true))
+                }.forEach { file ->
+                    val sizeStr = com.example.ymediaplayer.mycinema.service.formatTorrentBytes(file.length())
+                    val durationMs = try {
+                        val retriever = android.media.MediaMetadataRetriever()
+                        try {
+                            retriever.setDataSource(file.absolutePath)
+                            retriever.extractMetadata(android.media.MediaMetadataRetriever.METADATA_KEY_DURATION)?.toLongOrNull() ?: 0L
+                        } finally {
+                            try { retriever.release() } catch (_: Exception) {}
+                        }
+                    } catch (_: Exception) { 0L }
+                    val durStr = if (durationMs > 0) {
+                        val totalSecs = durationMs / 1000
+                        val hrs = totalSecs / 3600
+                        val mins = (totalSecs % 3600) / 60
+                        if (hrs > 0) "${hrs}h ${mins}m" else "${mins}m"
+                    } else ""
+                    list.add(
+                        OfflineCinemaMovie(
+                            file = file,
+                            title = file.nameWithoutExtension,
+                            sizeFormatted = sizeStr,
+                            durationFormatted = durStr
+                        )
+                    )
+                }
+            }
+            kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
+                offlineMovies = list.sortedByDescending { it.file.lastModified() }
+            }
+        }
+    }
+
+    // Load initial feed concurrently with structured concurrency
+    LaunchedEffect(refreshTrigger) {
         isLoadingFeed = true
-        coroutineScope.launch {
-            try { recentlyReleased = repository.getRecentlyReleased() } catch (_: Exception) {}
-        }
-        coroutineScope.launch {
-            try { trendingMovies = repository.getTrendingMovies() } catch (_: Exception) {}
-        }
-        coroutineScope.launch {
-            try { trendingIndia = repository.getTrendingIndia() } catch (_: Exception) {}
-        }
-        coroutineScope.launch {
-            try { trendingSeries = repository.getTrendingSeries() } catch (_: Exception) {}
-        }
-        coroutineScope.launch {
-            try { upcomingMovies = repository.getUpcomingMovies() } catch (_: Exception) {}
+        val force = refreshTrigger > 0
+        try {
+            coroutineScope {
+                val d1 = async { runCatching { repository.getRecentlyReleased(forceRefresh = force) }.getOrDefault(emptyList()) }
+                val d2 = async { runCatching { repository.getTrendingMovies(forceRefresh = force) }.getOrDefault(emptyList()) }
+                val d3 = async { runCatching { repository.getTrendingIndia(forceRefresh = force) }.getOrDefault(emptyList()) }
+                val d4 = async { runCatching { repository.getTrendingSeries(forceRefresh = force) }.getOrDefault(emptyList()) }
+                val d5 = async { runCatching { repository.getUpcomingMovies(filter = upcomingFilter, forceRefresh = force) }.getOrDefault(emptyList()) }
+
+                recentlyReleased = d1.await()
+                trendingMovies = d2.await()
+                trendingIndia = d3.await()
+                trendingSeries = d4.await()
+                upcomingMovies = d5.await()
+            }
+        } finally {
             isLoadingFeed = false
         }
+    }
+
+    // Refetch upcoming when filter changes
+    LaunchedEffect(upcomingFilter) {
+        isLoadingUpcoming = true
+        upcomingMovies = runCatching {
+            repository.getUpcomingMovies(filter = upcomingFilter, forceRefresh = false)
+        }.getOrDefault(emptyList())
+        isLoadingUpcoming = false
     }
 
     // Debounced search
@@ -222,12 +304,31 @@ fun MyCinemaScreen(
                     }
                 }
             } else {
-                // Default Feed (Ordered: Recently Released -> Trending -> Upcoming)
+                // Default Feed (Ordered: Downloaded & Offline -> Recently Released -> Trending -> Upcoming)
                 LazyColumn(
                     modifier = Modifier.fillMaxSize(),
                     contentPadding = PaddingValues(bottom = 100.dp)
                 ) {
-                    // 1. TOP: Recently Released (Movies & Web Series)
+                    // 0. TOP: Downloaded & Offline Movies
+                    if (offlineMovies.isNotEmpty()) {
+                        item {
+                            SectionHeader(title = "💾 DOWNLOADED & OFFLINE (${offlineMovies.size})")
+                            LazyRow(
+                                contentPadding = PaddingValues(horizontal = 16.dp),
+                                horizontalArrangement = Arrangement.spacedBy(12.dp)
+                            ) {
+                                items(offlineMovies, key = { it.file.absolutePath }) { movie ->
+                                    OfflineMovieCinemaCard(
+                                        movie = movie,
+                                        onClick = { onPlayOfflineMovie(movie.file.absolutePath) }
+                                    )
+                                }
+                            }
+                            Spacer(Modifier.height(18.dp))
+                        }
+                    }
+
+                    // 1. Recently Released (Movies & Web Series)
                     if (recentlyReleased.isNotEmpty()) {
                         item {
                             SectionHeader(title = "🆕 RECENTLY RELEASED (MOVIES & SERIES)")
@@ -290,11 +391,58 @@ fun MyCinemaScreen(
                         }
                     }
 
-                    // 5. Upcoming Movies (with Release Date)
-                    if (upcomingMovies.isNotEmpty()) {
-                        item {
-                            Spacer(Modifier.height(18.dp))
+                    // 5. Upcoming Movies (with Release Date & OTT / Theatrical Filters)
+                    item {
+                        Spacer(Modifier.height(18.dp))
+                        Column(modifier = Modifier.padding(bottom = 10.dp)) {
                             SectionHeader(title = "📅 UPCOMING MOVIES")
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(horizontal = 16.dp),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                UpcomingFilterChip(
+                                    label = "All",
+                                    isSelected = upcomingFilter == "ALL",
+                                    onClick = { upcomingFilter = "ALL" }
+                                )
+                                UpcomingFilterChip(
+                                    label = "🎬 Theatrical",
+                                    isSelected = upcomingFilter == "THEATRICAL",
+                                    onClick = { upcomingFilter = "THEATRICAL" }
+                                )
+                                UpcomingFilterChip(
+                                    label = "📺 OTT / Digital",
+                                    isSelected = upcomingFilter == "OTT",
+                                    onClick = { upcomingFilter = "OTT" }
+                                )
+                            }
+                        }
+
+                        if (isLoadingUpcoming) {
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .height(140.dp),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                CircularProgressIndicator(color = c.accentBlue, modifier = Modifier.size(28.dp), strokeWidth = 2.5.dp)
+                            }
+                        } else if (upcomingMovies.isEmpty()) {
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(horizontal = 16.dp, vertical = 12.dp),
+                                contentAlignment = Alignment.CenterStart
+                            ) {
+                                Text(
+                                    text = "No upcoming ${if (upcomingFilter == "OTT") "OTT" else if (upcomingFilter == "THEATRICAL") "theatrical" else ""} movies found after today",
+                                    color = c.textSecondary,
+                                    fontSize = 12.5.sp
+                                )
+                            }
+                        } else {
                             LazyRow(
                                 contentPadding = PaddingValues(horizontal = 16.dp),
                                 horizontalArrangement = Arrangement.spacedBy(12.dp)
@@ -510,5 +658,123 @@ private fun MyCinemaCard(
                 )
             }
         }
+    }
+}
+
+@Composable
+private fun OfflineMovieCinemaCard(
+    movie: OfflineCinemaMovie,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier.width(135.dp)
+) {
+    val c = LocalAppColors.current
+
+    Column(
+        modifier = modifier
+            .clip(RoundedCornerShape(12.dp))
+            .clickable(onClick = onClick)
+    ) {
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .aspectRatio(0.72f)
+                .clip(RoundedCornerShape(12.dp))
+                .background(c.cardBgElevated)
+                .border(1.dp, Color(0xFF00E676).copy(alpha = 0.5f), RoundedCornerShape(12.dp))
+        ) {
+            AsyncImage(
+                model = movie.file,
+                contentDescription = movie.title,
+                contentScale = ContentScale.Crop,
+                modifier = Modifier.fillMaxSize()
+            )
+
+            // Play icon overlay
+            Box(
+                modifier = Modifier
+                    .align(Alignment.Center)
+                    .size(36.dp)
+                    .clip(CircleShape)
+                    .background(Color.Black.copy(alpha = 0.65f))
+                    .border(1.dp, Color.White.copy(alpha = 0.4f), CircleShape),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    Icons.Rounded.PlayArrow,
+                    contentDescription = "Play",
+                    tint = Color.White,
+                    modifier = Modifier.size(22.dp)
+                )
+            }
+
+            // Top OFFLINE badge
+            Box(
+                modifier = Modifier
+                    .align(Alignment.TopStart)
+                    .padding(5.dp)
+                    .clip(RoundedCornerShape(4.dp))
+                    .background(Color(0xFF00E676))
+                    .padding(horizontal = 6.dp, vertical = 2.dp)
+            ) {
+                Text(
+                    text = "💾 OFFLINE",
+                    color = Color.Black,
+                    fontSize = 8.5.sp,
+                    fontWeight = FontWeight.Bold
+                )
+            }
+
+            // Bottom size & duration banner
+            Box(
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .fillMaxWidth()
+                    .background(Color.Black.copy(alpha = 0.82f))
+                    .padding(vertical = 3.5.dp, horizontal = 4.dp),
+                contentAlignment = Alignment.Center
+            ) {
+                Text(
+                    text = if (movie.durationFormatted.isNotEmpty()) "${movie.sizeFormatted} • ${movie.durationFormatted}" else movie.sizeFormatted,
+                    color = Color.White,
+                    fontSize = 9.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    maxLines = 1
+                )
+            }
+        }
+
+        Spacer(Modifier.height(6.dp))
+
+        Text(
+            text = movie.title,
+            color = c.textPrimary,
+            fontSize = 12.sp,
+            fontWeight = FontWeight.SemiBold,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis
+        )
+    }
+}
+
+@Composable
+private fun UpcomingFilterChip(
+    label: String,
+    isSelected: Boolean,
+    onClick: () -> Unit
+) {
+    val c = LocalAppColors.current
+    Surface(
+        onClick = onClick,
+        shape = CircleShape,
+        color = if (isSelected) c.accentBlue.copy(alpha = 0.22f) else c.cardBgElevated,
+        border = if (isSelected) androidx.compose.foundation.BorderStroke(1.dp, c.accentBlue) else androidx.compose.foundation.BorderStroke(1.dp, c.glassBorder)
+    ) {
+        Text(
+            text = label,
+            color = if (isSelected) c.accentBlue else c.textSecondary,
+            fontSize = 11.5.sp,
+            fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
+            modifier = Modifier.padding(horizontal = 12.dp, vertical = 5.dp)
+        )
     }
 }

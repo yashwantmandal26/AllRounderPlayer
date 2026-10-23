@@ -229,11 +229,21 @@ fun MyCinemaDownloadsModal(
                                 onPlay = { onPlayVideo(item.file.absolutePath) },
                                 onDelete = { fileToDelete = item },
                                 onShare = {
-                                    val shareIntent = Intent(Intent.ACTION_SEND).apply {
-                                        type = "video/*"
-                                        putExtra(Intent.EXTRA_STREAM, android.net.Uri.fromFile(item.file))
+                                    try {
+                                        val contentUri = androidx.core.content.FileProvider.getUriForFile(
+                                            context,
+                                            "${context.packageName}.provider",
+                                            item.file
+                                        )
+                                        val shareIntent = Intent(Intent.ACTION_SEND).apply {
+                                            type = "video/*"
+                                            putExtra(Intent.EXTRA_STREAM, contentUri)
+                                            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                                        }
+                                        context.startActivity(Intent.createChooser(shareIntent, "Share Video"))
+                                    } catch (e: Exception) {
+                                        Toast.makeText(context, "Could not share video: ${e.message}", Toast.LENGTH_SHORT).show()
                                     }
-                                    context.startActivity(Intent.createChooser(shareIntent, "Share Video"))
                                 }
                             )
                         }

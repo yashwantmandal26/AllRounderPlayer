@@ -502,8 +502,14 @@ object VideoPlaybackManager {
                     .setArtist("Video")
                     .build()
 
+                val mediaUri = if (url.startsWith("/")) {
+                    android.net.Uri.fromFile(java.io.File(url))
+                } else {
+                    android.net.Uri.parse(url)
+                }
+
                 val mItem = MediaItem.Builder()
-                    .setUri(url)
+                    .setUri(mediaUri)
                     .setMediaMetadata(initialMetadata)
                     .build()
 

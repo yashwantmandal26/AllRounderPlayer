@@ -99,13 +99,15 @@ class TorrentScraperClient {
             }
 
             val request = Request.Builder().url(baseUrl).build()
-            val response = httpClient.newCall(request).execute()
-            val body = response.body?.string() ?: return@withContext emptyList()
-            val root = JSONObject(body)
-            val streams = root.optJSONArray("streams") ?: return@withContext emptyList()
-
-            parseStreams(streams, fallbackTitle, if (isHindiSpecific) "Torrentio Hindi" else "Torrentio", isHindiSpecific)
+            httpClient.newCall(request).execute().use { response ->
+                if (!response.isSuccessful) return@withContext emptyList()
+                val body = response.body?.string() ?: return@withContext emptyList()
+                val root = JSONObject(body)
+                val streams = root.optJSONArray("streams") ?: return@withContext emptyList()
+                parseStreams(streams, fallbackTitle, if (isHindiSpecific) "Torrentio Hindi" else "Torrentio", isHindiSpecific)
+            }
         } catch (e: Exception) {
+            if (e is CancellationException) throw e
             android.util.Log.w("TorrentScraper", "Torrentio (${if (isHindiSpecific) "Hindi" else "Main"}) failed: ${e.message}")
             emptyList()
         }
@@ -120,13 +122,15 @@ class TorrentScraperClient {
             val endpoint = if (isSeries) "series" else "movie"
             val url = "https://mediafusion.elfhosted.com/stream/$endpoint/$imdbId.json"
             val request = Request.Builder().url(url).build()
-            val response = httpClient.newCall(request).execute()
-            val body = response.body?.string() ?: return@withContext emptyList()
-            val root = JSONObject(body)
-            val streams = root.optJSONArray("streams") ?: return@withContext emptyList()
-
-            parseStreams(streams, fallbackTitle, "MediaFusion", false)
+            httpClient.newCall(request).execute().use { response ->
+                if (!response.isSuccessful) return@withContext emptyList()
+                val body = response.body?.string() ?: return@withContext emptyList()
+                val root = JSONObject(body)
+                val streams = root.optJSONArray("streams") ?: return@withContext emptyList()
+                parseStreams(streams, fallbackTitle, "MediaFusion", false)
+            }
         } catch (e: Exception) {
+            if (e is CancellationException) throw e
             android.util.Log.w("TorrentScraper", "MediaFusion failed: ${e.message}")
             emptyList()
         }
@@ -197,48 +201,51 @@ class TorrentScraperClient {
             try {
                 val url = "https://$domain/api/v2/list_movies.json?query_term=$imdbId&sort_by=seeds"
                 val request = Request.Builder().url(url).build()
-                val response = httpClient.newCall(request).execute()
-                val body = response.body?.string() ?: continue
-                val root = JSONObject(body)
-                if (root.optString("status") != "ok") continue
+                val sources = httpClient.newCall(request).execute().use { response ->
+                    if (!response.isSuccessful) return@use null
+                    val body = response.body?.string() ?: return@use null
+                    val root = JSONObject(body)
+                    if (root.optString("status") != "ok") return@use null
 
-                val data = root.optJSONObject("data") ?: continue
-                val movies = data.optJSONArray("movies") ?: continue
-                if (movies.length() == 0) continue
+                    val data = root.optJSONObject("data") ?: return@use null
+                    val movies = data.optJSONArray("movies") ?: return@use null
+                    if (movies.length() == 0) return@use null
 
-                val movie = movies.getJSONObject(0)
-                val movieTitle = movie.optString("title_long", fallbackTitle)
-                val torrents = movie.optJSONArray("torrents") ?: continue
+                    val movie = movies.getJSONObject(0)
+                    val movieTitle = movie.optString("title_long", fallbackTitle)
+                    val torrents = movie.optJSONArray("torrents") ?: return@use null
 
-                val sources = mutableListOf<TorrentSource>()
-                for (j in 0 until torrents.length()) {
-                    val t = torrents.getJSONObject(j)
-                    val hash = t.optString("hash")
-                    val seeds = t.optInt("seeds", 0)
-                    if (hash.isBlank() || seeds == 0) continue
+                    val list = mutableListOf<TorrentSource>()
+                    for (j in 0 until torrents.length()) {
+                        val t = torrents.getJSONObject(j)
+                        val hash = t.optString("hash")
+                        val seeds = t.optInt("seeds", 0)
+                        if (hash.isBlank() || seeds == 0) continue
 
-                    val quality = t.optString("quality", "1080p")
-                    val size = t.optString("size", "—")
-                    val isHevc = HEVC_REGEX.matcher(movieTitle).find()
-                    val isHindi = HINDI_REGEX.matcher(movieTitle).find()
-                    val magnet = buildMagnet(hash, movieTitle)
+                        val quality = t.optString("quality", "1080p")
+                        val size = t.optString("size", "—")
+                        val isHevc = HEVC_REGEX.matcher(movieTitle).find()
+                        val isHindi = HINDI_REGEX.matcher(movieTitle).find()
+                        val magnet = buildMagnet(hash, movieTitle)
 
-                    sources.add(
-                        TorrentSource(
-                            title = "$movieTitle [$quality] (YTS)",
-                            quality = quality.uppercase(),
-                            size = size,
-                            magnet = magnet,
-                            seeds = seeds,
-                            peers = t.optInt("peers", 0),
-                            type = "web",
-                            provider = "YTS",
-                            isHindi = isHindi,
-                            isHevc = isHevc
+                        list.add(
+                            TorrentSource(
+                                title = "$movieTitle [$quality] (YTS)",
+                                quality = quality.uppercase(),
+                                size = size,
+                                magnet = magnet,
+                                seeds = seeds,
+                                peers = t.optInt("peers", 0),
+                                type = "web",
+                                provider = "YTS",
+                                isHindi = isHindi,
+                                isHevc = isHevc
+                            )
                         )
-                    )
+                    }
+                    list
                 }
-                if (sources.isNotEmpty()) return@withContext sources
+                if (!sources.isNullOrEmpty()) return@withContext sources
             } catch (_: Exception) { }
         }
         emptyList()
@@ -251,44 +258,47 @@ class TorrentScraperClient {
             try {
                 val url = "https://$domain/api/get-torrents?imdb_id=$numericId&limit=100&page=1"
                 val request = Request.Builder().url(url).build()
-                val response = httpClient.newCall(request).execute()
-                val body = response.body?.string() ?: continue
-                val root = JSONObject(body)
-                val torrents = root.optJSONArray("torrents") ?: continue
+                val sources = httpClient.newCall(request).execute().use { response ->
+                    if (!response.isSuccessful) return@use null
+                    val body = response.body?.string() ?: return@use null
+                    val root = JSONObject(body)
+                    val torrents = root.optJSONArray("torrents") ?: return@use null
 
-                val sources = mutableListOf<TorrentSource>()
-                for (j in 0 until torrents.length()) {
-                    val t = torrents.getJSONObject(j)
-                    val magnet = t.optString("magnet_url")
-                    val seeds = t.optInt("seeds", 0)
-                    if (magnet.isBlank() || seeds == 0) continue
+                    val list = mutableListOf<TorrentSource>()
+                    for (j in 0 until torrents.length()) {
+                        val t = torrents.getJSONObject(j)
+                        val magnet = t.optString("magnet_url")
+                        val seeds = t.optInt("seeds", 0)
+                        if (magnet.isBlank() || seeds == 0) continue
 
-                    val rawTitle = t.optString("title", "Episode")
-                    val qualityMatch = QUALITY_REGEX.matcher(rawTitle)
-                    val quality = if (qualityMatch.find()) qualityMatch.group(1)!!.uppercase() else "720P"
+                        val rawTitle = t.optString("title", "Episode")
+                        val qualityMatch = QUALITY_REGEX.matcher(rawTitle)
+                        val quality = if (qualityMatch.find()) qualityMatch.group(1)!!.uppercase() else "720P"
 
-                    val sizeBytes = t.optLong("size_bytes", 0L)
-                    val sizeStr = formatBytes(sizeBytes)
-                    val isHindi = HINDI_REGEX.matcher(rawTitle).find()
-                    val isHevc = HEVC_REGEX.matcher(rawTitle).find()
+                        val sizeBytes = t.optLong("size_bytes", 0L)
+                        val sizeStr = formatBytes(sizeBytes)
+                        val isHindi = HINDI_REGEX.matcher(rawTitle).find()
+                        val isHevc = HEVC_REGEX.matcher(rawTitle).find()
 
-                    sources.add(
-                        TorrentSource(
-                            title = rawTitle,
-                            quality = quality,
-                            size = sizeStr,
-                            sizeBytes = sizeBytes,
-                            magnet = magnet,
-                            seeds = seeds,
-                            peers = t.optInt("peers", 0),
-                            type = "web",
-                            provider = "EZTV",
-                            isHindi = isHindi,
-                            isHevc = isHevc
+                        list.add(
+                            TorrentSource(
+                                title = rawTitle,
+                                quality = quality,
+                                size = sizeStr,
+                                sizeBytes = sizeBytes,
+                                magnet = magnet,
+                                seeds = seeds,
+                                peers = t.optInt("peers", 0),
+                                type = "web",
+                                provider = "EZTV",
+                                isHindi = isHindi,
+                                isHevc = isHevc
+                            )
                         )
-                    )
+                    }
+                    list
                 }
-                if (sources.isNotEmpty()) return@withContext sources
+                if (!sources.isNullOrEmpty()) return@withContext sources
             } catch (_: Exception) { }
         }
         emptyList()

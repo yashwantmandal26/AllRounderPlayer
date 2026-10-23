@@ -49,11 +49,12 @@ fun MyCinemaDetailModal(
 ) {
     val context = LocalContext.current
     val c = LocalAppColors.current
-    val coroutineScope = rememberCoroutineScope()
+    val appPreferences = remember(context) { com.example.ymediaplayer.data.AppPreferences(context) }
+    val itemKey = remember(item.id, item.mediaType) { "${item.mediaType}_${item.id}" }
 
     var isOverviewExpanded by remember { mutableStateOf(false) }
-    var isBookmarked by remember { mutableStateOf(false) }
-    var isFavorite by remember { mutableStateOf(false) }
+    var isBookmarked by remember { mutableStateOf(appPreferences.isCinemaWatchlisted(itemKey)) }
+    var isFavorite by remember { mutableStateOf(appPreferences.isCinemaFavorite(itemKey)) }
     var youtubeTrailerKey by remember { mutableStateOf<String?>(null) }
 
     BackHandler {
@@ -61,9 +62,7 @@ fun MyCinemaDetailModal(
     }
 
     LaunchedEffect(item.id) {
-        coroutineScope.launch {
-            youtubeTrailerKey = repository.getTrailerYoutubeKey(item.isSeries, item.id)
-        }
+        youtubeTrailerKey = repository.getTrailerYoutubeKey(item.isSeries, item.id)
     }
 
     Box(
@@ -304,7 +303,7 @@ fun MyCinemaDetailModal(
                         icon = if (isBookmarked) Icons.Rounded.Bookmark else Icons.Rounded.BookmarkBorder,
                         isActive = isBookmarked,
                         onClick = {
-                            isBookmarked = !isBookmarked
+                            isBookmarked = appPreferences.toggleCinemaWatchlist(itemKey)
                             Toast.makeText(
                                 context,
                                 if (isBookmarked) "Added to Watchlist" else "Removed from Watchlist",
@@ -328,7 +327,7 @@ fun MyCinemaDetailModal(
                         isActive = isFavorite,
                         activeColor = Color(0xFFE50914),
                         onClick = {
-                            isFavorite = !isFavorite
+                            isFavorite = appPreferences.toggleCinemaFavorite(itemKey)
                             Toast.makeText(
                                 context,
                                 if (isFavorite) "Added to Favorites" else "Removed from Favorites",
@@ -382,13 +381,12 @@ fun MyCinemaDetailModal(
                             Icon(Icons.Rounded.Movie, contentDescription = "Trailer", tint = Color.White, modifier = Modifier.size(16.dp))
                         },
                         onClick = {
-                            val targetUrl = if (!youtubeTrailerKey.isNullOrBlank()) {
-                                "https://www.youtube.com/watch?v=$youtubeTrailerKey"
+                            if (!youtubeTrailerKey.isNullOrBlank()) {
+                                launchYouTubeOrWeb(context, youtubeTrailerKey!!)
                             } else {
                                 val q = URLEncoder.encode("${item.displayName} official trailer", "UTF-8")
-                                "https://www.youtube.com/results?search_query=$q"
+                                launchAppOrWeb(context, "https://www.youtube.com/results?search_query=$q")
                             }
-                            launchAppOrWeb(context, targetUrl)
                         }
                     )
 
@@ -442,7 +440,7 @@ fun MyCinemaDetailModal(
                     )
                 }
 
-                Spacer(Modifier.height(48.dp))
+                Spacer(Modifier.height(56.dp).navigationBarsPadding())
             }
         }
     }
@@ -503,6 +501,17 @@ private fun ReviewExternalPill(
                 letterSpacing = 0.6.sp
             )
         }
+    }
+}
+
+private fun launchYouTubeOrWeb(context: Context, key: String) {
+    try {
+        val appIntent = Intent(Intent.ACTION_VIEW, Uri.parse("vnd.youtube:$key")).apply {
+            flags = Intent.FLAG_ACTIVITY_NEW_TASK
+        }
+        context.startActivity(appIntent)
+    } catch (_: Exception) {
+        launchAppOrWeb(context, "https://www.youtube.com/watch?v=$key")
     }
 }
 

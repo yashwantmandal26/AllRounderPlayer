@@ -46,6 +46,7 @@ class TorrentDownloadService : Service() {
     private val serviceScope = CoroutineScope(Dispatchers.Main + SupervisorJob())
     private var tickerJob: Job? = null
     private var wakeLock: PowerManager.WakeLock? = null
+    private val notifiedFinishedHashes = mutableSetOf<String>()
 
     override fun onCreate() {
         super.onCreate()
@@ -119,6 +120,19 @@ class TorrentDownloadService : Service() {
                 TorrentEngine.updateProgressTicks()
                 val activeList = TorrentEngine.downloads.value.values.toList()
 
+                // Check for any newly finished downloads and notify immediately
+                for (d in activeList) {
+                    if (d.status == TorrentDownloadState.Status.FINISHED && !notifiedFinishedHashes.contains(d.id)) {
+                        notifiedFinishedHashes.add(d.id)
+                        val path = d.savePath ?: TorrentEngine.getFilePath(this@TorrentDownloadService, d.id)
+                        if (path != null) {
+                            MediaScannerConnection.scanFile(this@TorrentDownloadService, arrayOf(path), null) { _, _ -> }
+                            showCompletedNotification(d.title, path)
+                            com.example.ymediaplayer.data.VideoRepository.invalidateCache()
+                        }
+                    }
+                }
+
                 val downloading = activeList.firstOrNull {
                     it.status == TorrentDownloadState.Status.DOWNLOADING ||
                     it.status == TorrentDownloadState.Status.CONNECTING ||
@@ -136,16 +150,6 @@ class TorrentDownloadService : Service() {
                     }
 
                     if (!anyActive && activeList.isNotEmpty()) {
-                        // Scan finished files into MediaStore
-                        for (d in activeList) {
-                            if (d.status == TorrentDownloadState.Status.FINISHED) {
-                                val path = d.savePath ?: TorrentEngine.getFilePath(this@TorrentDownloadService, d.id)
-                                if (path != null) {
-                                    MediaScannerConnection.scanFile(this@TorrentDownloadService, arrayOf(path), null) { _, _ -> }
-                                    showCompletedNotification(d.title, path)
-                                }
-                            }
-                        }
                         releaseWakeLock()
                         stopForeground(STOP_FOREGROUND_REMOVE)
                         stopSelf()
@@ -198,7 +202,7 @@ class TorrentDownloadService : Service() {
         }
         val togglePending = PendingIntent.getService(
             this,
-            101,
+            download.id.hashCode() and 0xFFFF,
             toggleIntent,
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
@@ -210,7 +214,7 @@ class TorrentDownloadService : Service() {
         }
         val cancelPending = PendingIntent.getService(
             this,
-            102,
+            (download.id.hashCode() and 0xFFFF) + 1,
             cancelIntent,
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
@@ -250,12 +254,13 @@ class TorrentDownloadService : Service() {
 
     private fun showCompletedNotification(title: String, filePath: String) {
         val playIntent = Intent(this, VideoPlayerActivity::class.java).apply {
-            flags = Intent.FLAG_ACTIVITY_NEW_TASK
+            flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP
             putExtra(VideoPlayerActivity.EXTRA_VIDEO_URL, filePath)
         }
+        val requestCode = (filePath.hashCode() and 0xFFFF) + 200
         val playPending = PendingIntent.getActivity(
             this,
-            201,
+            requestCode,
             playIntent,
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
@@ -270,7 +275,8 @@ class TorrentDownloadService : Service() {
             .build()
 
         val manager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-        manager.notify(NOTIFICATION_ID + 1, notification)
+        val notifId = NOTIFICATION_ID + 1 + (filePath.hashCode().coerceAtLeast(0) % 500)
+        manager.notify(notifId, notification)
     }
 
     private fun createNotificationChannel() {

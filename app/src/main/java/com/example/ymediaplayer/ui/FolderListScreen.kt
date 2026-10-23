@@ -149,6 +149,10 @@ fun FolderListScreen(
     val cinemaDownloads by TorrentEngine.downloads.collectAsState()
     var showCinemaDownloads by remember { mutableStateOf(false) }
     var activeStreamSession by remember { mutableStateOf<CinemaStreamSession?>(null) }
+    var cinemaRefreshTrigger by remember { mutableIntStateOf(0) }
+    var showCinemaMenu by remember { mutableStateOf(false) }
+    var isCinemaDetailOpen by remember { mutableStateOf(false) }
+    val cinemaRepository = remember { com.example.ymediaplayer.mycinema.data.MyCinemaRepository() }
 
     // Context menu / action state
     var videoActionTarget by remember { mutableStateOf<VideoItem?>(null) }
@@ -414,6 +418,15 @@ fun FolderListScreen(
 
     val totalVideoCount = remember(allUniqueVideos) { allUniqueVideos.size }
     val totalSize = remember(allUniqueVideos) { allUniqueVideos.sumOf { it.size } }
+
+    val movieVideos = remember(allUniqueVideos) {
+        allUniqueVideos.filter { video ->
+            // Filter by movie duration (>= 60 minutes = 3600_000 ms) as movies are >= 1 hour, or in MYCinema folder
+            video.duration >= 3600_000L || video.bucketName.equals("MYCinema", ignoreCase = true)
+        }
+    }
+    val totalMovieCount = movieVideos.size
+    val totalMovieSize = remember(movieVideos) { movieVideos.sumOf { it.size } }
     val favoritesCount = remember(favorites, allUniqueVideos) {
         val allUris = allUniqueVideos.map { it.uri.toString() }.toSet()
         favorites.count { allUris.contains(it) }
@@ -462,7 +475,7 @@ fun FolderListScreen(
                 }
             },
             topBar = {
-                if (!musicPlayerExpanded) {
+                if (!musicPlayerExpanded && !isCinemaDetailOpen) {
                     if (inSelectionMode) {
                         MultiSelectTopBar(
                             selectedCount = selectedVideoIds.size,
@@ -561,7 +574,15 @@ fun FolderListScreen(
                                                     it.status == TorrentDownloadState.Status.CONNECTING ||
                                                     it.status == TorrentDownloadState.Status.STREAMING
                                                 }
-                                                if (activeCount > 0) "$activeCount downloading" else "Explore Movies & Shows"
+                                                when {
+                                                    activeCount > 0 && totalMovieCount > 0 ->
+                                                        "$totalMovieCount movies · ${formatSize(totalMovieSize)} · $activeCount downloading"
+                                                    activeCount > 0 ->
+                                                        "$activeCount downloading"
+                                                    totalMovieCount > 0 ->
+                                                        "$totalMovieCount movies · ${formatSize(totalMovieSize)}"
+                                                    else -> "0 movies · Explore Movies & Shows"
+                                                }
                                             }
                                             else -> null
                                         },
@@ -678,7 +699,7 @@ fun FolderListScreen(
                                             }
                                         }
 
-                                        // 4. Settings button (Three dots on MYCinema)
+                                        // 4. Settings / More button (Three dots on MYCinema)
                                         Box(
                                             modifier = Modifier
                                                 .size(40.dp)
@@ -686,11 +707,15 @@ fun FolderListScreen(
                                                 .combinedClickable(
                                                     onClick = {
                                                         view.performHaptic(HapticType.LIGHT)
-                                                        onOpenSettings()
+                                                        if (currentTab == "MYCinema") {
+                                                            showCinemaMenu = true
+                                                        } else {
+                                                            onOpenSettings()
+                                                        }
                                                     },
                                                     onLongClick = {
                                                         haptic.performHapticFeedback(androidx.compose.ui.hapticfeedback.HapticFeedbackType.LongPress)
-                                                        Toast.makeText(context, "Settings", Toast.LENGTH_SHORT).show()
+                                                        Toast.makeText(context, if (currentTab == "MYCinema") "MYCinema Menu" else "Settings", Toast.LENGTH_SHORT).show()
                                                     }
                                                 ),
                                             contentAlignment = Alignment.Center
@@ -701,6 +726,51 @@ fun FolderListScreen(
                                                 tint = c.textPrimary,
                                                 modifier = Modifier.size(22.dp)
                                             )
+
+                                            if (currentTab == "MYCinema") {
+                                                DropdownMenu(
+                                                    expanded = showCinemaMenu,
+                                                    onDismissRequest = { showCinemaMenu = false },
+                                                    containerColor = c.dropdownBg
+                                                ) {
+                                                    DropdownMenuItem(
+                                                        text = { Text("Refresh Feeds", color = c.textPrimary, fontSize = 13.5.sp) },
+                                                        leadingIcon = { Icon(Icons.Rounded.Refresh, contentDescription = null, tint = c.accentBlue, modifier = Modifier.size(20.dp)) },
+                                                        onClick = {
+                                                            showCinemaMenu = false
+                                                            cinemaRefreshTrigger++
+                                                            Toast.makeText(context, "Refreshing feeds...", Toast.LENGTH_SHORT).show()
+                                                        }
+                                                    )
+                                                    DropdownMenuItem(
+                                                        text = { Text("Downloads Manager", color = c.textPrimary, fontSize = 13.5.sp) },
+                                                        leadingIcon = { Icon(Icons.Rounded.Download, contentDescription = null, tint = Color(0xFF00E676), modifier = Modifier.size(20.dp)) },
+                                                        onClick = {
+                                                            showCinemaMenu = false
+                                                            showCinemaDownloads = true
+                                                        }
+                                                    )
+                                                    DropdownMenuItem(
+                                                        text = { Text("Clear Cinema Cache", color = c.textPrimary, fontSize = 13.5.sp) },
+                                                        leadingIcon = { Icon(Icons.Rounded.DeleteSweep, contentDescription = null, tint = Color(0xFFFF9800), modifier = Modifier.size(20.dp)) },
+                                                        onClick = {
+                                                            showCinemaMenu = false
+                                                            cinemaRepository.clearCache()
+                                                            cinemaRefreshTrigger++
+                                                            Toast.makeText(context, "Cinema cache cleared", Toast.LENGTH_SHORT).show()
+                                                        }
+                                                    )
+                                                    HorizontalDivider(color = c.glassBorder)
+                                                    DropdownMenuItem(
+                                                        text = { Text("App Settings", color = c.textPrimary, fontSize = 13.5.sp) },
+                                                        leadingIcon = { Icon(Icons.Rounded.Settings, contentDescription = null, tint = c.textSecondary, modifier = Modifier.size(20.dp)) },
+                                                        onClick = {
+                                                            showCinemaMenu = false
+                                                            onOpenSettings()
+                                                        }
+                                                    )
+                                                }
+                                            }
                                         }
                                     }
                                 }
@@ -750,7 +820,7 @@ fun FolderListScreen(
                     Box(
                         modifier = Modifier
                             .fillMaxSize()
-                            .padding(top = paddingValues.calculateTopPadding())
+                            .padding(top = if (isCinema && isCinemaDetailOpen) 0.dp else paddingValues.calculateTopPadding())
                             .zIndex(if (isCinema) 1f else 0f)
                             .graphicsLayer {
                                 translationX = cinemaOffset
@@ -758,6 +828,10 @@ fun FolderListScreen(
                             }
                     ) {
                         MyCinemaScreen(
+                            repository = cinemaRepository,
+                            refreshTrigger = cinemaRefreshTrigger,
+                            onDetailStateChanged = { isCinemaDetailOpen = it },
+                            onPlayOfflineMovie = { path -> onVideoClick(path) },
                             onStreamSource = { item, source ->
                                 val hash = TorrentEngine.startDownload(context, source, item.displayName, isSequential = true)
                                 if (hash != null) {
@@ -1461,7 +1535,7 @@ fun FolderListScreen(
         }
 
         // Floating Nav Pill + Animated Music Playing Indicator in Video Mode
-        if (!musicPlayerExpanded) {
+        if (!musicPlayerExpanded && !isCinemaDetailOpen) {
             val isMusicPlaying by remember { MusicService.isMusicPlaying }
             val nowPlayingTitle by remember { MusicService.nowPlayingTitle }
             val nowPlayingArtist by remember { MusicService.nowPlayingArtist }

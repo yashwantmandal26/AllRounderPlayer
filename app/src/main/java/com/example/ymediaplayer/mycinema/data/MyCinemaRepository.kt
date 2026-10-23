@@ -15,6 +15,7 @@ class MyCinemaRepository(
         private var cachedTrendingIndia: Pair<Long, List<TmdbItem>>? = null
         private var cachedTrendingSeries: Pair<Long, List<TmdbItem>>? = null
         private var cachedUpcomingMovies: Pair<Long, List<TmdbItem>>? = null
+        private val cachedUpcomingByFilter = java.util.concurrent.ConcurrentHashMap<String, Pair<Long, List<TmdbItem>>>()
 
         private val sourcesCache = java.util.concurrent.ConcurrentHashMap<String, List<TorrentSource>>()
     }
@@ -69,14 +70,16 @@ class MyCinemaRepository(
         return items
     }
 
-    suspend fun getUpcomingMovies(forceRefresh: Boolean = false): List<TmdbItem> {
+    suspend fun getUpcomingMovies(filter: String = "ALL", forceRefresh: Boolean = false): List<TmdbItem> {
         val now = System.currentTimeMillis()
-        if (!forceRefresh && cachedUpcomingMovies?.let { now - it.first < CACHE_TTL_MS } == true) {
-            return cachedUpcomingMovies!!.second
+        val key = filter.uppercase()
+        val cached = cachedUpcomingByFilter[key]
+        if (!forceRefresh && cached?.let { now - it.first < CACHE_TTL_MS } == true) {
+            return cached.second
         }
-        val items = tmdbClient.fetchUpcomingMovies()
+        val items = tmdbClient.fetchUpcomingMovies(filter)
         if (items.isNotEmpty()) {
-            cachedUpcomingMovies = Pair(now, items)
+            cachedUpcomingByFilter[key] = Pair(now, items)
         }
         return items
     }
@@ -97,4 +100,20 @@ class MyCinemaRepository(
 
     suspend fun getTrailerYoutubeKey(isSeries: Boolean, tmdbId: Int): String? =
         tmdbClient.fetchTrailerYoutubeKey(isSeries, tmdbId)
+
+    fun clearCache() {
+        cachedRecentlyReleased = null
+        cachedTrendingMovies = null
+        cachedTrendingIndia = null
+        cachedTrendingSeries = null
+        cachedUpcomingMovies = null
+        cachedUpcomingByFilter.clear()
+        sourcesCache.clear()
+        try {
+            val dir = java.io.File(com.example.ymediaplayer.YMediaApplication.instance.cacheDir, "mycinema_http_cache")
+            if (dir.exists()) {
+                dir.deleteRecursively()
+            }
+        } catch (_: Exception) {}
+    }
 }

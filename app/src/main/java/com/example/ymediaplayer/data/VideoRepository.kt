@@ -160,10 +160,13 @@ class VideoRepository(private val context: Context) {
                     if (videos.none { it.uri.path == file.absolutePath || it.uri == fileUri }) {
                         val duration = try {
                             val retriever = android.media.MediaMetadataRetriever()
-                            retriever.setDataSource(file.absolutePath)
-                            val dStr = retriever.extractMetadata(android.media.MediaMetadataRetriever.METADATA_KEY_DURATION)
-                            retriever.release()
-                            dStr?.toLongOrNull() ?: 0L
+                            try {
+                                retriever.setDataSource(file.absolutePath)
+                                val dStr = retriever.extractMetadata(android.media.MediaMetadataRetriever.METADATA_KEY_DURATION)
+                                dStr?.toLongOrNull() ?: 0L
+                            } finally {
+                                try { retriever.release() } catch (_: Exception) {}
+                            }
                         } catch (_: Exception) { 0L }
 
                         videos.add(

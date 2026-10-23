@@ -130,6 +130,43 @@ class AppPreferences(private val prefs: SharedPreferences) {
         return getFavorites().contains(uri)
     }
 
+    // MYCinema Watchlist & Favorites
+    fun isCinemaWatchlisted(id: String): Boolean {
+        val set = prefs.getStringSet("cinema_watchlist", emptySet()) ?: emptySet()
+        return set.contains(id)
+    }
+
+    fun toggleCinemaWatchlist(id: String): Boolean {
+        val set = (prefs.getStringSet("cinema_watchlist", emptySet()) ?: emptySet()).toMutableSet()
+        val newState = if (set.contains(id)) {
+            set.remove(id)
+            false
+        } else {
+            set.add(id)
+            true
+        }
+        prefs.edit().putStringSet("cinema_watchlist", set).apply()
+        return newState
+    }
+
+    fun isCinemaFavorite(id: String): Boolean {
+        val set = prefs.getStringSet("cinema_favorites", emptySet()) ?: emptySet()
+        return set.contains(id)
+    }
+
+    fun toggleCinemaFavorite(id: String): Boolean {
+        val set = (prefs.getStringSet("cinema_favorites", emptySet()) ?: emptySet()).toMutableSet()
+        val newState = if (set.contains(id)) {
+            set.remove(id)
+            false
+        } else {
+            set.add(id)
+            true
+        }
+        prefs.edit().putStringSet("cinema_favorites", set).apply()
+        return newState
+    }
+
     // Sort Order
     fun saveSortOrder(order: String) {
         prefs.edit().putString("sort_order", order).apply()
