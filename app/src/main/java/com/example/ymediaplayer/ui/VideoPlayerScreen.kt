@@ -2955,78 +2955,43 @@ fun VideoPlayerScreen(
             exit = fadeOut(tween(250)) + slideOutHorizontally(targetOffsetX = { -it / 2 }),
             modifier = Modifier
                 .align(Alignment.CenterStart)
-                .padding(start = 28.dp)
+                .padding(start = if (isLandscape) 28.dp else 12.dp)
         ) {
-            Column(
-                horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.spacedBy(10.dp)
-            ) {
-                // Auto Brightness Button directly above brightness bar
-                Surface(
-                    onClick = {
-                        val nextAuto = !isAutoBrightness
-                        isAutoBrightness = nextAuto
-                        appPreferences.setAutoBrightnessEnabled(nextAuto)
-                        val act = activity
-                        val lp = act?.window?.attributes
-                        if (lp != null) {
-                            if (nextAuto) {
-                                lp.screenBrightness = WindowManager.LayoutParams.BRIGHTNESS_OVERRIDE_NONE
-                                brightnessPct = getSystemBrightness(context)
-                            } else {
-                                lp.screenBrightness = sliderToScreenBrightness(brightnessPct)
-                                hasUserAdjustedBrightness = true
-                            }
-                            act.window?.attributes = lp
+            VerticalGestureBar(
+                icon = if (isAutoBrightness) Icons.Rounded.BrightnessAuto else Icons.Rounded.LightMode,
+                percentage = brightnessPct,
+                label = if (isAutoBrightness) "Auto (${(brightnessPct * 100).roundToInt()}%)" else "${(brightnessPct * 100).roundToInt()}%",
+                gradient = gestureBrush,
+                glowColor = glowColor,
+                onHeaderClick = {
+                    val nextAuto = !isAutoBrightness
+                    isAutoBrightness = nextAuto
+                    appPreferences.setAutoBrightnessEnabled(nextAuto)
+                    val act = activity
+                    val lp = act?.window?.attributes
+                    if (lp != null) {
+                        if (nextAuto) {
+                            lp.screenBrightness = WindowManager.LayoutParams.BRIGHTNESS_OVERRIDE_NONE
+                            brightnessPct = getSystemBrightness(context)
+                        } else {
+                            lp.screenBrightness = sliderToScreenBrightness(brightnessPct)
+                            hasUserAdjustedBrightness = true
                         }
-                        brightnessTouchTrigger = System.currentTimeMillis()
-                    },
-                    shape = RoundedCornerShape(20.dp),
-                    color = if (isAutoBrightness) primaryAccent.copy(alpha = 0.28f) else Color(0xDD0B0C13),
-                    border = BorderStroke(
-                        width = 1.2.dp,
-                        color = if (isAutoBrightness) primaryAccent else Color.White.copy(alpha = 0.25f)
-                    ),
-                    modifier = Modifier.clip(RoundedCornerShape(20.dp))
-                ) {
-                    Row(
-                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(4.dp)
-                    ) {
-                        Icon(
-                            imageVector = if (isAutoBrightness) Icons.Rounded.BrightnessAuto else Icons.Rounded.BrightnessMedium,
-                            contentDescription = "Auto Brightness",
-                            tint = if (isAutoBrightness) primaryAccent else Color.White.copy(alpha = 0.75f),
-                            modifier = Modifier.size(15.dp)
-                        )
-                        Text(
-                            text = "AUTO",
-                            fontSize = 11.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = if (isAutoBrightness) primaryAccent else Color.White.copy(alpha = 0.85f)
-                        )
+                        act.window?.attributes = lp
                     }
+                    brightnessTouchTrigger = System.currentTimeMillis()
+                },
+                onValueChange = {
+                    brightnessPct = it.coerceIn(0.01f, 1f)
+                    hasUserAdjustedBrightness = true
+                    if (isAutoBrightness) {
+                        isAutoBrightness = false
+                        appPreferences.setAutoBrightnessEnabled(false)
+                    }
+                    showBrightnessBar = true
+                    brightnessTouchTrigger = System.currentTimeMillis()
                 }
-
-                VerticalGestureBar(
-                    icon = if (isAutoBrightness) Icons.Rounded.BrightnessAuto else Icons.Rounded.LightMode,
-                    percentage = brightnessPct,
-                    label = if (isAutoBrightness) "Auto (${(brightnessPct * 100).roundToInt()}%)" else "${(brightnessPct * 100).roundToInt()}%",
-                    gradient = gestureBrush,
-                    glowColor = glowColor,
-                    onValueChange = {
-                        brightnessPct = it.coerceIn(0.01f, 1f)
-                        hasUserAdjustedBrightness = true
-                        if (isAutoBrightness) {
-                            isAutoBrightness = false
-                            appPreferences.setAutoBrightnessEnabled(false)
-                        }
-                        showBrightnessBar = true
-                        brightnessTouchTrigger = System.currentTimeMillis()
-                    }
-                )
-            }
+            )
         }
 
         // ─── 4. FAT VERTICAL GESTURE BAR: VOLUME (RIGHT SIDE) ─────────────────
@@ -3036,7 +3001,7 @@ fun VideoPlayerScreen(
             exit = fadeOut(tween(250)) + slideOutHorizontally(targetOffsetX = { it / 2 }),
             modifier = Modifier
                 .align(Alignment.CenterEnd)
-                .padding(end = 28.dp)
+                .padding(end = if (isLandscape) 28.dp else 12.dp)
         ) {
             VerticalGestureBar(
                 icon = if (isMuted || volumePct <= 0f) Icons.AutoMirrored.Rounded.VolumeOff else if (volumePct < 0.5f) Icons.AutoMirrored.Rounded.VolumeDown else Icons.AutoMirrored.Rounded.VolumeUp,
@@ -3221,10 +3186,10 @@ fun VideoPlayerScreen(
                             .padding(top = if (!isLandscape) 14.dp else 4.dp)
                             .fillMaxWidth()
                     ) {
-                        val topBarPaddingH = if (isLandscape) 16.dp else 10.dp
-                        val topBtnSize = if (isLandscape) 38.dp else 34.dp
-                        val topBtnSpacing = if (isLandscape) 6.dp else 4.dp
-                        val topIconSize = if (isLandscape) 20.dp else 18.dp
+                        val topBarPaddingH = if (isLandscape) 16.dp else 8.dp
+                        val topBtnSize = if (isLandscape) 38.dp else 32.dp
+                        val topBtnSpacing = if (isLandscape) 6.dp else 3.dp
+                        val topIconSize = if (isLandscape) 20.dp else 17.dp
 
                         Row(
                             modifier = Modifier
@@ -3257,10 +3222,10 @@ fun VideoPlayerScreen(
                                         Icons.AutoMirrored.Rounded.ArrowBack,
                                         contentDescription = "Back",
                                         tint = Color.White,
-                                        modifier = Modifier.size(if (isLandscape) 22.dp else 19.dp)
+                                        modifier = Modifier.size(if (isLandscape) 22.dp else 18.dp)
                                     )
                                 }
-                                Spacer(Modifier.width(if (isLandscape) 10.dp else 6.dp))
+                                Spacer(Modifier.width(if (isLandscape) 10.dp else 5.dp))
                                 Column(
                                     modifier = Modifier.weight(1f),
                                     verticalArrangement = Arrangement.Center
@@ -3272,7 +3237,7 @@ fun VideoPlayerScreen(
                                         Text(
                                             text = videoTitle,
                                             color = Color.White,
-                                            fontSize = if (isLandscape) 15.sp else 13.5.sp,
+                                            fontSize = if (isLandscape) 15.sp else 12.5.sp,
                                             fontWeight = FontWeight.Bold,
                                             maxLines = 1,
                                             softWrap = false,
@@ -3555,14 +3520,12 @@ fun VideoPlayerScreen(
                         }
                     }
 
-                    // ─── CENTER PLAYBACK CONTROLS (Ergonomically Positioned for Thumb Reach) ─
+                    // ─── CENTER PLAYBACK CONTROLS (Centered on Active Video Frame) ─
                     if (centerSeekText == null) {
                         Row(
-                            modifier = Modifier
-                                .align(Alignment.Center)
-                                .offset(y = if (isLandscape) 16.dp else 42.dp),
+                            modifier = Modifier.align(Alignment.Center),
                             verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(32.dp)
+                            horizontalArrangement = Arrangement.spacedBy(if (isLandscape) 36.dp else 22.dp)
                         ) {
                             // Previous Video
                             PlayerIconButton(
@@ -3667,7 +3630,7 @@ fun VideoPlayerScreen(
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .padding(horizontal = 4.dp)
-                                .offset(y = 8.dp),
+                                .offset(y = 6.dp),
                             horizontalArrangement = Arrangement.SpaceBetween,
                             verticalAlignment = Alignment.CenterVertically
                         ) {
@@ -4864,6 +4827,7 @@ private fun VerticalGestureBar(
     gradient: Brush,
     glowColor: Color,
     onValueChange: (Float) -> Unit,
+    onHeaderClick: (() -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
     val view = androidx.compose.ui.platform.LocalView.current
@@ -4893,11 +4857,11 @@ private fun VerticalGestureBar(
         onValueChange(cl)
     }
 
-    // Outer touch area (70.dp wide for effortless finger touch target)
+    // Outer touch area (48.dp wide: streamlined touch target preventing overlap with center controls)
     Box(
         modifier = modifier
-            .width(70.dp)
-            .height(210.dp)
+            .width(48.dp)
+            .height(200.dp)
             .pointerInput(clampedPct) {
                 awaitEachGesture {
                     val down = awaitFirstDown(requireUnconsumed = false)
@@ -4923,7 +4887,9 @@ private fun VerticalGestureBar(
                     if (!hasMoved) {
                         // Quick stationary tap on the bar
                         view.performHaptic(HapticType.TICK)
-                        if (downY < barHeight * 0.5f) {
+                        if (onHeaderClick != null && downY < 48.dp.toPx()) {
+                            onHeaderClick()
+                        } else if (downY < barHeight * 0.5f) {
                             updateValueWithHaptic((clampedPct + 0.05f).coerceAtMost(1f))
                         } else {
                             updateValueWithHaptic((clampedPct - 0.05f).coerceAtLeast(0f))
@@ -4933,18 +4899,18 @@ private fun VerticalGestureBar(
             },
         contentAlignment = Alignment.Center
     ) {
-        // Main Frosted Glass Capsule (44.dp wide, 192.dp tall) with native rounded shadow
+        // Main Frosted Glass Capsule (42.dp wide, 192.dp tall) with native rounded shadow
         Box(
             modifier = Modifier
-                .width(44.dp)
+                .width(42.dp)
                 .height(192.dp)
                 .shadow(
                     elevation = 16.dp,
-                    shape = RoundedCornerShape(22.dp),
+                    shape = RoundedCornerShape(21.dp),
                     ambientColor = Color.Black.copy(alpha = 0.65f),
                     spotColor = glowColor.copy(alpha = 0.50f)
                 )
-                .clip(RoundedCornerShape(22.dp))
+                .clip(RoundedCornerShape(21.dp))
                 // Dark tinted acrylic base
                 .background(Color(0xDD0B0C13))
                 // Frosted glass micro-gradient
@@ -5031,7 +4997,12 @@ private fun VerticalGestureBar(
                     modifier = Modifier
                         .size(30.dp)
                         .clip(CircleShape)
-                        .background(Color.Black.copy(alpha = 0.28f)),
+                        .background(if (onHeaderClick != null) glowColor.copy(alpha = 0.35f) else Color.Black.copy(alpha = 0.28f))
+                        .then(
+                            if (onHeaderClick != null) {
+                                Modifier.border(1.dp, glowColor.copy(alpha = 0.70f), CircleShape)
+                            } else Modifier
+                        ),
                     contentAlignment = Alignment.Center
                 ) {
                     Icon(
