@@ -54,11 +54,12 @@ fun TorrentSourcesBottomSheet(
     val context = LocalContext.current
     val haptic = LocalHapticFeedback.current
 
-    var selectedLangFilter by remember { mutableStateOf("All") } // "All", "Hindi", "Tamil", "Telugu", "Malayalam", "Kannada", "Bangla", "English", "Dual"
+    var selectedLangFilter by remember { mutableStateOf("All") } // "All", "Hindi", "Korean", "Tamil", "Telugu", "Malayalam", "Kannada", "Bangla", "English", "Dual"
     var selectedQualityFilter by remember { mutableStateOf("All") } // "All", "2160p", "1080p", "720p"
     var selectedSortOption by remember { mutableStateOf("SPEED") } // "SPEED", "SIZE", "QUALITY"
 
     val hindiCount = remember(sources) { sources.count { it.hasHindi } }
+    val koreanCount = remember(sources) { sources.count { it.hasKorean } }
     val tamilCount = remember(sources) { sources.count { it.hasTamil } }
     val teluguCount = remember(sources) { sources.count { it.hasTelugu } }
     val malayalamCount = remember(sources) { sources.count { it.hasMalayalam } }
@@ -74,6 +75,7 @@ fun TorrentSourcesBottomSheet(
         val filtered = sources.filter { source ->
             val langMatch = when (selectedLangFilter) {
                 "Hindi" -> source.hasHindi
+                "Korean" -> source.hasKorean
                 "Tamil" -> source.hasTamil
                 "Telugu" -> source.hasTelugu
                 "Malayalam" -> source.hasMalayalam
@@ -196,6 +198,15 @@ fun TorrentSourcesBottomSheet(
                             label = "🇮🇳 Hindi ($hindiCount)",
                             isSelected = selectedLangFilter == "Hindi",
                             onClick = { selectedLangFilter = if (selectedLangFilter == "Hindi") "All" else "Hindi" }
+                        )
+                    }
+                }
+                if (koreanCount > 0) {
+                    item {
+                        FilterPill(
+                            label = "🇰🇷 Korean ($koreanCount)",
+                            isSelected = selectedLangFilter == "Korean",
+                            onClick = { selectedLangFilter = if (selectedLangFilter == "Korean") "All" else "Korean" }
                         )
                     }
                 }
@@ -344,14 +355,60 @@ fun TorrentSourcesBottomSheet(
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .weight(1f),
+                        .weight(1f)
+                        .padding(horizontal = 24.dp),
                     contentAlignment = Alignment.Center
                 ) {
-                    Text(
-                        text = if (sources.isEmpty()) "No torrent sources found for this title" else "No sources matching selected filters",
-                        color = c.textSecondary,
-                        fontSize = 13.5.sp
-                    )
+                    Column(
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.Center
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .size(52.dp)
+                                .clip(CircleShape)
+                                .background(c.glassBg),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(
+                                Icons.Rounded.SearchOff,
+                                contentDescription = null,
+                                tint = c.textSecondary,
+                                modifier = Modifier.size(26.dp)
+                            )
+                        }
+                        Spacer(Modifier.height(10.dp))
+                        Text(
+                            text = if (sources.isEmpty()) "No Sources Found" else "No Matching Sources",
+                            color = c.textPrimary,
+                            fontSize = 15.sp,
+                            fontWeight = FontWeight.SemiBold
+                        )
+                        Spacer(Modifier.height(4.dp))
+                        Text(
+                            text = if (sources.isEmpty())
+                                "No stream sources found for this title. You can check official OTT options in Ways to Watch."
+                            else
+                                "No torrent sources matched your active filters. Try switching to 'All'.",
+                            color = c.textSecondary,
+                            fontSize = 12.5.sp,
+                            textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                            lineHeight = 17.sp
+                        )
+                        if (selectedLangFilter != "All" || selectedQualityFilter != "All") {
+                            Spacer(Modifier.height(12.dp))
+                            OutlinedButton(
+                                onClick = {
+                                    selectedLangFilter = "All"
+                                    selectedQualityFilter = "All"
+                                },
+                                shape = RoundedCornerShape(8.dp),
+                                border = androidx.compose.foundation.BorderStroke(1.dp, c.accentBlue.copy(alpha = 0.5f))
+                            ) {
+                                Text("Reset Filters", color = c.accentBlue, fontSize = 12.sp)
+                            }
+                        }
+                    }
                 }
             } else {
                 LazyColumn(
@@ -471,10 +528,10 @@ private fun TorrentSourceCard(
             .padding(12.dp)
     ) {
         Column {
-            // Quality, Size, Seeds, Speed Row
+            // Header Row: Quality, Size, Seeds on left | Provider Pill on right
             Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically
             ) {
                 // Quality badge
                 Box(
@@ -492,6 +549,8 @@ private fun TorrentSourceCard(
                     )
                 }
 
+                Spacer(Modifier.width(8.dp))
+
                 // Size
                 Text(
                     text = source.size,
@@ -499,6 +558,8 @@ private fun TorrentSourceCard(
                     fontSize = 12.5.sp,
                     fontWeight = FontWeight.SemiBold
                 )
+
+                Spacer(Modifier.width(8.dp))
 
                 // Seeds
                 Row(verticalAlignment = Alignment.CenterVertically) {
@@ -517,194 +578,217 @@ private fun TorrentSourceCard(
                     )
                 }
 
-                // Speed & ETA
+                Spacer(Modifier.weight(1f))
+
+                // Provider Tag Pill (clean dedicated surface so it never truncates to 'E...' or touches the border)
+                Box(
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(6.dp))
+                        .background(c.glassBg)
+                        .border(0.6.dp, c.glassBorder, RoundedCornerShape(6.dp))
+                        .padding(horizontal = 7.dp, vertical = 2.5.dp)
+                ) {
+                    Text(
+                        text = source.provider,
+                        color = c.textSecondary,
+                        fontSize = 10.5.sp,
+                        fontWeight = FontWeight.Medium,
+                        maxLines = 1,
+                        softWrap = false
+                    )
+                }
+            }
+
+            // Speed & Tag Badges using FlowRow (wraps safely without touching or clipping card borders)
+            FlowRow(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(top = 6.dp),
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                verticalArrangement = Arrangement.spacedBy(4.dp)
+            ) {
+                // Speed & ETA Badge
                 val speedColor = when {
                     source.seeds >= 500 -> Color(0xFF00E676)
                     source.seeds >= 40 -> Color(0xFF00C0FF)
                     source.seeds >= 15 -> Color(0xFFFFB300)
                     else -> Color(0xFFE57373)
                 }
-
-                if (isDownloading && activeDownload != null) {
-                    Text(
-                        text = "⬇ ${activeDownload.speedFormatted} • ${activeDownload.progressPercent}%",
-                        color = Color(0xFF00E676),
-                        fontSize = 11.sp,
-                        fontWeight = FontWeight.Bold
-                    )
+                val speedText = if (isDownloading) {
+                    "⬇ ${activeDownload?.speedFormatted ?: ""} • ${activeDownload?.progressPercent ?: 0}%"
+                } else if (source.estimatedEtaFormatted.isNotEmpty()) {
+                    "${source.estimatedSpeedFormatted} • ${source.estimatedEtaFormatted}"
                 } else {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Text(
-                            text = source.estimatedSpeedFormatted,
-                            color = speedColor,
-                            fontSize = 11.sp,
-                            fontWeight = FontWeight.Bold
-                        )
-                        if (source.estimatedEtaFormatted.isNotEmpty()) {
-                            Spacer(Modifier.width(4.dp))
-                            Text(
-                                text = "• ${source.estimatedEtaFormatted}",
-                                color = c.textSecondary,
-                                fontSize = 10.5.sp,
-                                fontWeight = FontWeight.Medium
-                            )
-                        }
-                    }
+                    source.estimatedSpeedFormatted
+                }
+                Box(
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(4.dp))
+                        .background(speedColor.copy(alpha = 0.12f))
+                        .border(0.6.dp, speedColor.copy(alpha = 0.4f), RoundedCornerShape(4.dp))
+                        .padding(horizontal = 6.dp, vertical = 2.dp)
+                ) {
+                    Text(text = speedText, color = speedColor, fontSize = 9.5.sp, fontWeight = FontWeight.Bold)
                 }
 
-                if (source.isHevc) {
-                    Text(
-                        text = "HEVC",
-                        color = Color(0xFFAB47BC),
-                        fontSize = 10.5.sp,
-                        fontWeight = FontWeight.Bold
-                    )
-                }
-
-                Spacer(Modifier.weight(1f))
-
-                // Provider Tag (single-line, never hyphenates)
-                Text(
-                    text = source.provider,
-                    color = c.textSecondary.copy(alpha = 0.7f),
-                    fontSize = 11.sp,
-                    maxLines = 1,
-                    softWrap = false
-                )
-            }
-
-            // Tag Badges Row
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(top = 4.dp),
-                horizontalArrangement = Arrangement.spacedBy(6.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
+                // RIP type
                 source.ripType?.let { rip ->
                     Box(
                         modifier = Modifier
                             .clip(RoundedCornerShape(4.dp))
                             .background(Color.White.copy(alpha = 0.08f))
                             .border(0.6.dp, Color.White.copy(alpha = 0.2f), RoundedCornerShape(4.dp))
-                            .padding(horizontal = 5.dp, vertical = 1.5.dp)
+                            .padding(horizontal = 5.dp, vertical = 2.dp)
                     ) {
                         Text(text = rip, color = Color.White, fontSize = 9.sp, fontWeight = FontWeight.Bold)
                     }
                 }
+
+                // Korean
+                if (source.hasKorean) {
+                    Box(
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(4.dp))
+                            .background(Color(0xFF00B0FF).copy(alpha = 0.18f))
+                            .border(0.6.dp, Color(0xFF00B0FF).copy(alpha = 0.5f), RoundedCornerShape(4.dp))
+                            .padding(horizontal = 5.dp, vertical = 2.dp)
+                    ) {
+                        Text(text = "🇰🇷 KOREAN", color = Color(0xFF40C4FF), fontSize = 9.sp, fontWeight = FontWeight.Bold)
+                    }
+                }
+
+                // Hindi
                 if (source.hasHindi) {
                     Box(
                         modifier = Modifier
                             .clip(RoundedCornerShape(4.dp))
                             .background(Color(0xFFFF5722).copy(alpha = 0.18f))
                             .border(0.6.dp, Color(0xFFFF5722).copy(alpha = 0.5f), RoundedCornerShape(4.dp))
-                            .padding(horizontal = 5.dp, vertical = 1.5.dp)
+                            .padding(horizontal = 5.dp, vertical = 2.dp)
                     ) {
                         Text(text = "🇮🇳 HINDI", color = Color(0xFFFF7043), fontSize = 9.sp, fontWeight = FontWeight.Bold)
                     }
                 }
+
+                // Tamil
                 if (source.hasTamil) {
                     Box(
                         modifier = Modifier
                             .clip(RoundedCornerShape(4.dp))
                             .background(Color(0xFFE91E63).copy(alpha = 0.18f))
                             .border(0.6.dp, Color(0xFFE91E63).copy(alpha = 0.5f), RoundedCornerShape(4.dp))
-                            .padding(horizontal = 5.dp, vertical = 1.5.dp)
+                            .padding(horizontal = 5.dp, vertical = 2.dp)
                     ) {
                         Text(text = "TAMIL", color = Color(0xFFF48FB1), fontSize = 9.sp, fontWeight = FontWeight.Bold)
                     }
                 }
+
+                // Telugu
                 if (source.hasTelugu) {
                     Box(
                         modifier = Modifier
                             .clip(RoundedCornerShape(4.dp))
                             .background(Color(0xFF3F51B5).copy(alpha = 0.18f))
                             .border(0.6.dp, Color(0xFF3F51B5).copy(alpha = 0.5f), RoundedCornerShape(4.dp))
-                            .padding(horizontal = 5.dp, vertical = 1.5.dp)
+                            .padding(horizontal = 5.dp, vertical = 2.dp)
                     ) {
                         Text(text = "TELUGU", color = Color(0xFF9FA8DA), fontSize = 9.sp, fontWeight = FontWeight.Bold)
                     }
                 }
+
+                // Malayalam
                 if (source.hasMalayalam) {
                     Box(
                         modifier = Modifier
                             .clip(RoundedCornerShape(4.dp))
                             .background(Color(0xFF009688).copy(alpha = 0.18f))
                             .border(0.6.dp, Color(0xFF009688).copy(alpha = 0.5f), RoundedCornerShape(4.dp))
-                            .padding(horizontal = 5.dp, vertical = 1.5.dp)
+                            .padding(horizontal = 5.dp, vertical = 2.dp)
                     ) {
                         Text(text = "MALAYALAM", color = Color(0xFF80CBC4), fontSize = 9.sp, fontWeight = FontWeight.Bold)
                     }
                 }
+
+                // Kannada
                 if (source.hasKannada) {
                     Box(
                         modifier = Modifier
                             .clip(RoundedCornerShape(4.dp))
                             .background(Color(0xFF9C27B0).copy(alpha = 0.18f))
                             .border(0.6.dp, Color(0xFF9C27B0).copy(alpha = 0.5f), RoundedCornerShape(4.dp))
-                            .padding(horizontal = 5.dp, vertical = 1.5.dp)
+                            .padding(horizontal = 5.dp, vertical = 2.dp)
                     ) {
                         Text(text = "KANNADA", color = Color(0xFFCE93D8), fontSize = 9.sp, fontWeight = FontWeight.Bold)
                     }
                 }
+
+                // Bangla
                 if (source.hasBengali) {
                     Box(
                         modifier = Modifier
                             .clip(RoundedCornerShape(4.dp))
                             .background(Color(0xFFFF9800).copy(alpha = 0.18f))
                             .border(0.6.dp, Color(0xFFFF9800).copy(alpha = 0.5f), RoundedCornerShape(4.dp))
-                            .padding(horizontal = 5.dp, vertical = 1.5.dp)
+                            .padding(horizontal = 5.dp, vertical = 2.dp)
                     ) {
                         Text(text = "BANGLA", color = Color(0xFFFFB74D), fontSize = 9.sp, fontWeight = FontWeight.Bold)
                     }
                 }
+
+                // English
                 if (source.hasEnglish) {
                     Box(
                         modifier = Modifier
                             .clip(RoundedCornerShape(4.dp))
                             .background(Color(0xFF2196F3).copy(alpha = 0.18f))
                             .border(0.6.dp, Color(0xFF2196F3).copy(alpha = 0.5f), RoundedCornerShape(4.dp))
-                            .padding(horizontal = 5.dp, vertical = 1.5.dp)
+                            .padding(horizontal = 5.dp, vertical = 2.dp)
                     ) {
                         Text(text = "ENGLISH", color = Color(0xFF90CAF9), fontSize = 9.sp, fontWeight = FontWeight.Bold)
                     }
                 }
+
+                // Dual Audio
                 if (source.isDualAudio) {
                     Box(
                         modifier = Modifier
                             .clip(RoundedCornerShape(4.dp))
                             .background(Color(0xFF00E5FF).copy(alpha = 0.18f))
                             .border(0.6.dp, Color(0xFF00E5FF).copy(alpha = 0.5f), RoundedCornerShape(4.dp))
-                            .padding(horizontal = 5.dp, vertical = 1.5.dp)
+                            .padding(horizontal = 5.dp, vertical = 2.dp)
                     ) {
                         Text(text = "🌐 DUAL AUDIO", color = Color(0xFF00E5FF), fontSize = 9.sp, fontWeight = FontWeight.Bold)
                     }
                 }
+
+                // HDR
                 if (source.isHdr) {
                     Box(
                         modifier = Modifier
                             .clip(RoundedCornerShape(4.dp))
                             .background(Color(0xFFFFD700).copy(alpha = 0.18f))
                             .border(0.6.dp, Color(0xFFFFD700).copy(alpha = 0.5f), RoundedCornerShape(4.dp))
-                            .padding(horizontal = 5.dp, vertical = 1.5.dp)
+                            .padding(horizontal = 5.dp, vertical = 2.dp)
                     ) {
                         Text(text = "✨ HDR", color = Color(0xFFFFD700), fontSize = 9.sp, fontWeight = FontWeight.Bold)
                     }
                 }
+
+                // HEVC
                 if (source.isHevc) {
                     Box(
                         modifier = Modifier
                             .clip(RoundedCornerShape(4.dp))
                             .background(Color(0xFFAB47BC).copy(alpha = 0.18f))
                             .border(0.6.dp, Color(0xFFAB47BC).copy(alpha = 0.5f), RoundedCornerShape(4.dp))
-                            .padding(horizontal = 5.dp, vertical = 1.5.dp)
+                            .padding(horizontal = 5.dp, vertical = 2.dp)
                     ) {
                         Text(text = "⚡ HEVC", color = Color(0xFFCE93D8), fontSize = 9.sp, fontWeight = FontWeight.Bold)
                     }
                 }
             }
 
-            Spacer(Modifier.height(6.dp))
+            Spacer(Modifier.height(8.dp))
 
             // Release Title
             Text(
@@ -736,12 +820,19 @@ private fun TorrentSourceCard(
                     border = androidx.compose.foundation.BorderStroke(1.dp, c.accentBlue.copy(0.4f)),
                     modifier = Modifier
                         .weight(1f)
-                        .height(36.dp),
-                    contentPadding = PaddingValues(horizontal = 8.dp)
+                        .height(38.dp),
+                    contentPadding = PaddingValues(horizontal = 4.dp, vertical = 0.dp)
                 ) {
-                    Icon(Icons.Rounded.PlayArrow, contentDescription = "Stream", modifier = Modifier.size(17.dp))
-                    Spacer(Modifier.width(4.dp))
-                    Text("Stream Now", fontSize = 12.5.sp, fontWeight = FontWeight.SemiBold)
+                    Icon(Icons.Rounded.PlayArrow, contentDescription = "Stream", modifier = Modifier.size(16.dp))
+                    Spacer(Modifier.width(3.dp))
+                    Text(
+                        text = "Stream Now",
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        maxLines = 1,
+                        softWrap = false,
+                        overflow = TextOverflow.Ellipsis
+                    )
                 }
 
                 // Download Button
@@ -754,23 +845,26 @@ private fun TorrentSourceCard(
                     ),
                     modifier = Modifier
                         .weight(1f)
-                        .height(36.dp),
-                    contentPadding = PaddingValues(horizontal = 8.dp)
+                        .height(38.dp),
+                    contentPadding = PaddingValues(horizontal = 4.dp, vertical = 0.dp)
                 ) {
                     Icon(
                         if (isFinished) Icons.Rounded.CheckCircle else Icons.Rounded.Download,
                         contentDescription = "Download",
-                        modifier = Modifier.size(17.dp)
+                        modifier = Modifier.size(16.dp)
                     )
-                    Spacer(Modifier.width(4.dp))
+                    Spacer(Modifier.width(3.dp))
                     Text(
                         text = when {
                             isFinished -> "Downloaded"
-                            isDownloading && activeDownload != null -> "${activeDownload.progressPercent}%"
+                            isDownloading -> "${activeDownload?.progressPercent ?: 0}%"
                             else -> "Download"
                         },
-                        fontSize = 12.5.sp,
-                        fontWeight = FontWeight.Bold
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.Bold,
+                        maxLines = 1,
+                        softWrap = false,
+                        overflow = TextOverflow.Ellipsis
                     )
                 }
 
@@ -778,7 +872,7 @@ private fun TorrentSourceCard(
                 IconButton(
                     onClick = onCopyMagnet,
                     modifier = Modifier
-                        .size(36.dp)
+                        .size(38.dp)
                         .clip(RoundedCornerShape(8.dp))
                         .background(c.glassBg)
                 ) {
@@ -789,11 +883,11 @@ private fun TorrentSourceCard(
                 IconButton(
                     onClick = onOpenExternal,
                     modifier = Modifier
-                        .size(36.dp)
+                        .size(38.dp)
                         .clip(RoundedCornerShape(8.dp))
                         .background(c.glassBg)
                 ) {
-                    Icon(Icons.AutoMirrored.Rounded.OpenInNew, contentDescription = "External App", tint = c.textSecondary, modifier = Modifier.size(16.dp))
+                    Icon(Icons.AutoMirrored.Rounded.OpenInNew, contentDescription = "External Client", tint = c.textSecondary, modifier = Modifier.size(16.dp))
                 }
             }
         }

@@ -1294,31 +1294,19 @@ private fun getOttProviderBrowseUrl(providerName: String, title: String, tmdbWat
     val lower = providerName.lowercase()
 
     return when {
-        lower.contains("netflix") -> "https://www.netflix.com/search?q=$encodedTitle"
-        lower.contains("prime") || lower.contains("amazon") -> "https://www.primevideo.com/search/ref=atv_nb_sr?phrase=$encodedTitle"
-        lower.contains("hotstar") -> "https://www.hotstar.com/in/explore?search_query=$encodedTitle"
-        lower.contains("disney") -> "https://www.disneyplus.com/search?q=$encodedTitle"
-        lower.contains("paramount") -> "https://www.paramountplus.com/search/?q=$encodedTitle"
-        lower.contains("jiocinema") || lower.contains("jio cinema") -> "https://www.jiocinema.com/search/$encodedTitle"
-        lower.contains("zee5") || lower.contains("zee") -> "https://www.zee5.com/search?q=$encodedTitle"
-        lower.contains("sonyliv") || lower.contains("sony liv") -> "https://www.sonyliv.com/search/$encodedTitle"
-        lower.contains("apple") -> "https://tv.apple.com/search?term=$encodedTitle"
-        lower.contains("hulu") -> "https://www.hulu.com/search?q=$encodedTitle"
-        lower.contains("peacock") -> "https://www.peacocktv.com/watch/search?q=$encodedTitle"
-        lower.contains("max") || lower.contains("hbo") -> "https://play.max.com/search?q=$encodedTitle"
-        lower.contains("fubo") -> "https://www.fubo.tv/search?q=$encodedTitle"
-        lower.contains("philo") -> "https://www.philo.com/search?q=$encodedTitle"
+        lower.contains("netflix") -> "https://www.google.com/search?q=watch+$encodedTitle+on+Netflix"
+        lower.contains("prime") || lower.contains("amazon") -> "https://www.google.com/search?q=watch+$encodedTitle+on+Prime+Video"
+        lower.contains("hotstar") || lower.contains("disney") -> "https://www.google.com/search?q=watch+$encodedTitle+on+Disney+Hotstar"
+        lower.contains("jiocinema") || lower.contains("jio cinema") -> "https://www.google.com/search?q=watch+$encodedTitle+on+JioCinema"
+        lower.contains("zee5") || lower.contains("zee") -> "https://www.google.com/search?q=watch+$encodedTitle+on+ZEE5"
+        lower.contains("sonyliv") || lower.contains("sony liv") -> "https://www.google.com/search?q=watch+$encodedTitle+on+SonyLIV"
+        lower.contains("apple") -> "https://www.google.com/search?q=watch+$encodedTitle+on+Apple+TV"
+        lower.contains("paramount") -> "https://www.google.com/search?q=watch+$encodedTitle+on+Paramount+Plus"
+        lower.contains("hulu") -> "https://www.google.com/search?q=watch+$encodedTitle+on+Hulu"
+        lower.contains("peacock") -> "https://www.google.com/search?q=watch+$encodedTitle+on+Peacock"
+        lower.contains("max") || lower.contains("hbo") -> "https://www.google.com/search?q=watch+$encodedTitle+on+Max"
         lower.contains("youtube") || lower.contains("google play") -> "https://www.youtube.com/results?search_query=$encodedTitle+movie"
-        lower.contains("tubi") -> "https://tubitv.com/search/$encodedTitle"
-        lower.contains("pluto") -> "https://pluto.tv/search/details?q=$encodedTitle"
-        lower.contains("vudu") || lower.contains("fandango") -> "https://www.vudu.com/content/movies/search?searchString=$encodedTitle"
-        lower.contains("crunchyroll") -> "https://www.crunchyroll.com/search?q=$encodedTitle"
-        lower.contains("aha") -> "https://www.aha.video/search?q=$encodedTitle"
-        lower.contains("mx player") || lower.contains("mxplayer") -> "https://www.mxplayer.in/search?q=$encodedTitle"
-        lower.contains("hoichoi") -> "https://www.hoichoi.tv/search?q=$encodedTitle"
-        lower.contains("sun nxt") || lower.contains("sunnxt") -> "https://www.sunnxt.com/search/$encodedTitle"
-        lower.contains("lionsgate") -> "https://www.lionsgateplay.com/search?q=$encodedTitle"
-        lower.contains("discovery") -> "https://www.discoveryplus.in/search?q=$encodedTitle"
+        lower.contains("crunchyroll") -> "https://www.google.com/search?q=watch+$encodedTitle+on+Crunchyroll"
         !tmdbWatchLink.isNullOrBlank() -> tmdbWatchLink
         else -> {
             val encodedProvider = try {
@@ -1326,7 +1314,7 @@ private fun getOttProviderBrowseUrl(providerName: String, title: String, tmdbWat
             } catch (_: Exception) {
                 providerName.replace(" ", "+")
             }
-            "https://www.google.com/search?q=$encodedTitle+watch+on+$encodedProvider"
+            "https://www.google.com/search?q=watch+$encodedTitle+on+$encodedProvider"
         }
     }
 }

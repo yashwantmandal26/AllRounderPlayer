@@ -53,6 +53,9 @@ class TorrentScraperClient {
         private val ENGLISH_REGEX = Pattern.compile(
             "(?i)(\\b|[\\[(])(english|eng[._ -]?(sub|dub|audio|5\\.1|ddp|ac3)|eng)(\\b|[])])"
         )
+        private val KOREAN_REGEX = Pattern.compile(
+            "(?i)(\\b|[\\[(])(korean|kor[._ -]?(dub|sub|audio|5\\.1)?|한국어|한국|조선말|kdrama)(\\b|[])])|🇰🇷"
+        )
         private val HEVC_REGEX = Pattern.compile("(?i)\\b(hevc|x265|h\\.?265|10bit)\\b")
         private val QUALITY_REGEX = Pattern.compile("(?i)\\b(2160p|4k|1080p|720p|480p)\\b")
         private val SEEDS_REGEX = Pattern.compile("(?:👤|Seeders:|Seeds:)\\s*([0-9]+)", Pattern.CASE_INSENSITIVE)
@@ -208,10 +211,11 @@ class TorrentScraperClient {
     ): List<TorrentSource> = withContext(Dispatchers.IO) {
         try {
             val endpoint = if (isSeries) "series" else "movie"
+            val idParam = if (isSeries && !imdbId.contains(":")) "$imdbId:1:1" else imdbId
             val baseUrl = if (isHindiSpecific) {
-                "https://torrentio.strem.fun/sort=seeders|language=hindi/stream/$endpoint/$imdbId.json"
+                "https://torrentio.strem.fun/sort=seeders|language=hindi/stream/$endpoint/$idParam.json"
             } else {
-                "https://torrentio.strem.fun/sort=seeders|qualityfilter=cam,screener/stream/$endpoint/$imdbId.json"
+                "https://torrentio.strem.fun/sort=seeders|qualityfilter=cam,screener/stream/$endpoint/$idParam.json"
             }
 
             val request = Request.Builder().url(baseUrl).build()
@@ -236,7 +240,8 @@ class TorrentScraperClient {
     ): List<TorrentSource> = withContext(Dispatchers.IO) {
         try {
             val endpoint = if (isSeries) "series" else "movie"
-            val url = "https://mediafusion.elfhosted.com/stream/$endpoint/$imdbId.json"
+            val idParam = if (isSeries && !imdbId.contains(":")) "$imdbId:1:1" else imdbId
+            val url = "https://mediafusion.elfhosted.com/stream/$endpoint/$idParam.json"
             val request = Request.Builder().url(url).build()
             httpClient.newCall(request).execute().use { response ->
                 if (!response.isSuccessful) return@withContext emptyList()
@@ -296,6 +301,7 @@ class TorrentScraperClient {
             val isBengali = BENGALI_REGEX.matcher(fullText).find()
             val isMalayalam = MALAYALAM_REGEX.matcher(fullText).find()
             val isEnglish = ENGLISH_REGEX.matcher(fullText).find() || provider == "YTS" || provider == "EZTV"
+            val isKorean = KOREAN_REGEX.matcher(fullText).find()
             val isHevc = HEVC_REGEX.matcher(fullText).find()
             val magnet = buildMagnet(infoHash, cleanTitle)
 
@@ -316,6 +322,7 @@ class TorrentScraperClient {
                     isBengali = isBengali,
                     isMalayalam = isMalayalam,
                     isEnglish = isEnglish,
+                    isKorean = isKorean,
                     isHevc = isHevc
                 )
             )
@@ -359,6 +366,7 @@ class TorrentScraperClient {
                         val isKannada = KANNADA_REGEX.matcher(movieTitle).find()
                         val isBengali = BENGALI_REGEX.matcher(movieTitle).find()
                         val isMalayalam = MALAYALAM_REGEX.matcher(movieTitle).find()
+                        val isKorean = KOREAN_REGEX.matcher(movieTitle).find()
                         val magnet = buildMagnet(hash, movieTitle)
 
                         list.add(
@@ -378,6 +386,7 @@ class TorrentScraperClient {
                                 isBengali = isBengali,
                                 isMalayalam = isMalayalam,
                                 isEnglish = true,
+                                isKorean = isKorean,
                                 isHevc = isHevc
                             )
                         )
@@ -391,7 +400,7 @@ class TorrentScraperClient {
     }
 
     private suspend fun fetchEztvSources(imdbId: String): List<TorrentSource> = withContext(Dispatchers.IO) {
-        val numericId = imdbId.removePrefix("tt")
+        val numericId = imdbId.removePrefix("tt").substringBefore(":")
         val mirrors = listOf("eztvx.to", "eztv.re", "eztv.tf")
         for (domain in mirrors) {
             try {
@@ -422,6 +431,7 @@ class TorrentScraperClient {
                         val isKannada = KANNADA_REGEX.matcher(rawTitle).find()
                         val isBengali = BENGALI_REGEX.matcher(rawTitle).find()
                         val isMalayalam = MALAYALAM_REGEX.matcher(rawTitle).find()
+                        val isKorean = KOREAN_REGEX.matcher(rawTitle).find()
                         val isHevc = HEVC_REGEX.matcher(rawTitle).find()
 
                         list.add(
@@ -442,6 +452,7 @@ class TorrentScraperClient {
                                 isBengali = isBengali,
                                 isMalayalam = isMalayalam,
                                 isEnglish = true,
+                                isKorean = isKorean,
                                 isHevc = isHevc
                             )
                         )

@@ -20,6 +20,7 @@ data class TorrentSource(
     val isBengali: Boolean = false,
     val isMalayalam: Boolean = false,
     val isEnglish: Boolean = false,
+    val isKorean: Boolean = false,
     val isHevc: Boolean = false,
     val parsedSeason: Int? = null,
     val parsedEpisode: Int? = null,
@@ -45,6 +46,9 @@ data class TorrentSource(
 
     val hasEnglish: Boolean
         get() = isEnglish || title.contains("english", ignoreCase = true) || title.contains("eng.", ignoreCase = true) || title.contains("[eng", ignoreCase = true)
+
+    val hasKorean: Boolean
+        get() = isKorean || title.contains("korean", ignoreCase = true) || title.contains("kor.", ignoreCase = true) || title.contains("[kor", ignoreCase = true) || title.contains("한국", ignoreCase = true) || title.contains("🇰🇷")
 
     val normalizedQuality: String
         get() = when {
