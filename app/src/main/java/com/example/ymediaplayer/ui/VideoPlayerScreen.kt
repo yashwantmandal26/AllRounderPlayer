@@ -834,7 +834,10 @@ fun VideoPlayerScreen(
     var isPlaying by remember(exoPlayer) { mutableStateOf(exoPlayer.isPlaying) }
     var currentPosition by remember { mutableLongStateOf(0L) }
     var bufferedPosition by remember { mutableLongStateOf(0L) }
-    var duration by remember { mutableLongStateOf(0L) }
+    var duration by remember(exoPlayer) {
+        val d = exoPlayer.duration
+        mutableLongStateOf(if (d > 0L) d else 0L)
+    }
     var showControls by remember { mutableStateOf(true) }
     var showFeatureGuide by remember { mutableStateOf(!appPreferences.hasSeenVideoPlayerGuide()) }
     var isTouchingControls by remember { mutableStateOf(false) }
@@ -1106,6 +1109,32 @@ fun VideoPlayerScreen(
         val formatListener = object : Player.Listener {
             override fun onTracksChanged(tracks: Tracks) {
                 currentVideoFormat = exoPlayer.videoFormat
+                val d = exoPlayer.duration
+                if (d > 0L) duration = d
+
+                // Ensure an audio track is always selected and active
+                val audioGroups = tracks.groups.filter { it.type == C.TRACK_TYPE_AUDIO }
+                if (audioGroups.isNotEmpty()) {
+                    val hasSelectedAudio = audioGroups.any { group ->
+                        (0 until group.length).any { group.isTrackSelected(it) }
+                    }
+                    if (!hasSelectedAudio) {
+                        val targetGroup = audioGroups.firstOrNull { it.isSupported } ?: audioGroups.first()
+                        val trackIdx = (0 until targetGroup.length).firstOrNull { targetGroup.isTrackSupported(it) } ?: 0
+                        exoPlayer.trackSelectionParameters = exoPlayer.trackSelectionParameters.buildUpon()
+                            .setTrackTypeDisabled(C.TRACK_TYPE_AUDIO, false)
+                            .setOverrideForType(androidx.media3.common.TrackSelectionOverride(targetGroup.mediaTrackGroup, trackIdx))
+                            .build()
+                    }
+                }
+            }
+            override fun onPlaybackStateChanged(playbackState: Int) {
+                val d = exoPlayer.duration
+                if (d > 0L) duration = d
+            }
+            override fun onTimelineChanged(timeline: androidx.media3.common.Timeline, reason: Int) {
+                val d = exoPlayer.duration
+                if (d > 0L) duration = d
             }
             override fun onVideoSizeChanged(videoSize: androidx.media3.common.VideoSize) {
                 currentVideoFormat = exoPlayer.videoFormat
@@ -1430,18 +1459,31 @@ fun VideoPlayerScreen(
     val configuredSeekStepSec = remember { appPreferences.getDoubleTapSeekSeconds().coerceAtLeast(1) }
     val configuredSeekStepMs = remember(configuredSeekStepSec) { configuredSeekStepSec * 1000L }
 
-    val activeTorrentHash = remember(videoUrl) {
-        com.example.ymediaplayer.mycinema.service.TorrentEngine.getActiveTorrent(videoUrl)
+    val activeTorrentHash = remember(videoUrl, streamTorrentHash, currentUrl) {
+        streamTorrentHash
+            ?: com.example.ymediaplayer.mycinema.service.TorrentEngine.getActiveTorrent(videoUrl)
+            ?: com.example.ymediaplayer.mycinema.service.TorrentEngine.getActiveTorrent(currentUrl)
     }
     var torrentSeekBufferingTarget by remember { mutableStateOf<Long?>(null) }
     var torrentSeekJob by remember { mutableStateOf<kotlinx.coroutines.Job?>(null) }
 
     // ─── Helper Functions ─────────────────────────────────────────────────────
     fun safeSeek(targetMs: Long) {
-        val target = if (duration > 0L) targetMs.coerceIn(0L, duration) else targetMs.coerceAtLeast(0L)
+        val maxDur = maxOf(duration, exoPlayer.duration.coerceAtLeast(0L))
+        val target = if (maxDur > 0L) targetMs.coerceIn(0L, maxDur) else targetMs.coerceAtLeast(0L)
         val hash = activeTorrentHash
-        if (hash != null && duration > 0L) {
-            val frac = (target.toDouble() / duration.toDouble()).coerceIn(0.0, 1.0)
+
+        // Only guard and wait for pieces if this is an actively downloading/streaming torrent
+        val isActivelyDownloading = hash != null && run {
+            val download = cinemaDownloads[hash]
+            download != null &&
+                (download.status == com.example.ymediaplayer.mycinema.service.TorrentDownloadState.Status.DOWNLOADING ||
+                 download.status == com.example.ymediaplayer.mycinema.service.TorrentDownloadState.Status.STREAMING) &&
+                download.progress < 0.99f
+        }
+
+        if (isActivelyDownloading && hash != null && maxDur > 0L) {
+            val frac = (target.toDouble() / maxDur.toDouble()).coerceIn(0.0, 1.0)
             if (!com.example.ymediaplayer.mycinema.service.TorrentEngine.isPieceAvailable(hash, frac)) {
                 exoPlayer.pause()
                 torrentSeekBufferingTarget = target
@@ -1450,11 +1492,11 @@ fun VideoPlayerScreen(
                 torrentSeekJob?.cancel()
                 torrentSeekJob = coroutineScope.launch {
                     val startWait = System.currentTimeMillis()
-                    while (System.currentTimeMillis() - startWait < 25_000L) {
+                    while (System.currentTimeMillis() - startWait < 15_000L) {
                         if (com.example.ymediaplayer.mycinema.service.TorrentEngine.isSeekBufferReady(hash, frac)) {
                             break
                         }
-                        kotlinx.coroutines.delay(200L)
+                        kotlinx.coroutines.delay(150L)
                     }
                     exoPlayer.seekTo(target)
                     currentPosition = target
@@ -1468,6 +1510,9 @@ fun VideoPlayerScreen(
         torrentSeekBufferingTarget = null
         exoPlayer.seekTo(target)
         currentPosition = target
+        if (!exoPlayer.isPlaying) {
+            VideoPlaybackManager.manualPlay()
+        }
     }
 
     fun seekBy(deltaMs: Long) {
@@ -3951,12 +3996,13 @@ fun VideoPlayerScreen(
                         }
 
                         // Full-Width Seekbar Slider
+                        val effectiveDuration = maxOf(duration, exoPlayer.duration.coerceAtLeast(0L)).toFloat().coerceAtLeast(1f)
                         Slider(
-                            value = if (isDraggingSeek) scrubPosition else currentPosition.toFloat(),
+                            value = (if (isDraggingSeek) scrubPosition else currentPosition.toFloat()).coerceIn(0f, effectiveDuration),
                             onValueChange = {
                                 isDraggingSeek = true
                                 scrubPosition = it
-                                val dur = duration.toFloat().coerceAtLeast(1f)
+                                val dur = effectiveDuration
                                 val milestone = ((it / dur) * 4).toInt()
                                 if (milestone != lastSeekMilestone) {
                                     lastSeekMilestone = milestone
@@ -3967,10 +4013,10 @@ fun VideoPlayerScreen(
                                 isDraggingSeek = false
                                 safeSeek(scrubPosition.toLong())
                             },
-                            valueRange = 0f..duration.toFloat().coerceAtLeast(1f),
+                            valueRange = 0f..effectiveDuration,
                             track = { sliderState ->
-                                val dur = duration.toFloat().coerceAtLeast(1f)
-                                val curVal = if (isDraggingSeek) scrubPosition else currentPosition.toFloat()
+                                val dur = effectiveDuration
+                                val curVal = (if (isDraggingSeek) scrubPosition else currentPosition.toFloat()).coerceIn(0f, dur)
                                 val playFraction = (curVal / dur).coerceIn(0f, 1f)
 
                                 // Active torrent or buffered download fraction

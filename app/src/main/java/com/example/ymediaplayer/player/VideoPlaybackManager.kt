@@ -371,10 +371,13 @@ object VideoPlaybackManager {
         }
 
         // Torrent streaming guard:
-        // If the video being played is an actively downloading torrent file (in /torrents/ or MYCinema),
-        // do NOT dump into CompatibilityPlayerActivity! Doing so causes a black screen because VLC
-        // cannot play partial/sparse torrent files. Instead, wait for stream pieces and retry in ExoPlayer!
-        if (uri.contains("/torrents/", ignoreCase = true) || uri.contains("MYCinema", ignoreCase = true)) {
+        // Only guard actively streaming torrents, NOT completed/downloaded offline files
+        val isActivelyStreaming = (uri.contains("/torrents/", ignoreCase = true) || uri.contains("MYCinema", ignoreCase = true)) &&
+            com.example.ymediaplayer.mycinema.service.TorrentEngine.getActiveTorrent(uri)?.let { hash ->
+                val state = com.example.ymediaplayer.mycinema.service.TorrentEngine.downloads.value[hash]
+                state != null && state.status != com.example.ymediaplayer.mycinema.service.TorrentDownloadState.Status.FINISHED && state.status != com.example.ymediaplayer.mycinema.service.TorrentDownloadState.Status.ERROR
+            } == true
+        if (isActivelyStreaming) {
             recoveryMessage.value = "Buffering stream... Please wait"
             scheduleRetry(context, targetPlayer, safe = true, disableAudio = false)
             return
@@ -437,7 +440,7 @@ object VideoPlaybackManager {
             override fun buildAudioSink(context: Context, enableFloatOutput: Boolean,
                 enableAudioTrackPlaybackParams: Boolean): androidx.media3.exoplayer.audio.AudioSink {
                 return androidx.media3.exoplayer.audio.DefaultAudioSink.Builder(context)
-                    .setEnableFloatOutput(enableFloatOutput)
+                    .setEnableFloatOutput(false)
                     .setEnableAudioTrackPlaybackParams(enableAudioTrackPlaybackParams)
                     .setAudioProcessors(arrayOf(dynamics))
                     .build()
@@ -468,9 +471,8 @@ object VideoPlaybackManager {
             buildMediaSourceFactory(applicationContext)
         )
             .setLoadControl(loadControl)
-            // Seeking only to sync frames can send a short video back to 0 when it
-            // has no later keyframe. Exact seeking honours the point the user taps.
-            .setSeekParameters(androidx.media3.exoplayer.SeekParameters.EXACT)
+            // Seeking with closest sync enables instant playback without keyframe decoding stalls
+            .setSeekParameters(androidx.media3.exoplayer.SeekParameters.CLOSEST_SYNC)
             .setWakeMode(C.WAKE_MODE_LOCAL)
             .setAudioAttributes(
                 AudioAttributes.Builder()
@@ -488,7 +490,7 @@ object VideoPlaybackManager {
             .setUsePlatformDiagnostics(true)
             .build().apply {
                 var tspBuilder = trackSelectionParameters.buildUpon()
-                if (preferredAudioLang != "default" && preferredAudioLang.isNotEmpty()) {
+                if (!preferredAudioLang.equals("default", ignoreCase = true) && preferredAudioLang.isNotBlank()) {
                     tspBuilder = tspBuilder.setPreferredAudioLanguage(preferredAudioLang)
                 }
                 if (!subtitlesEnabled) {
@@ -504,9 +506,7 @@ object VideoPlaybackManager {
                 if (repeatMode != Player.REPEAT_MODE_OFF) {
                     this.repeatMode = repeatMode
                 }
-                if (isMuted) {
-                    volume = 0f
-                }
+                volume = if (isMuted) 0f else 1f
 
                 if (url.isNotBlank()) {
                     val initialMetadata = androidx.media3.common.MediaMetadata.Builder()
