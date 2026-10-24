@@ -8585,19 +8585,22 @@ private fun ExplorerVideoRow(
                 modifier = Modifier.fillMaxSize()
             )
 
-            // Duration text at bottom right of thumbnail (clean outlined text, no card)
-            OutlinedText(
-                text = formatTime(video.duration),
-                fillColor = Color.White,
-                outlineColor = Color.Black,
-                strokeWidth = 2.8f,
-                fontSize = 10.sp,
-                fontFamily = FontFamily.Monospace,
-                fontWeight = FontWeight.SemiBold,
+            // Duration text at bottom right of thumbnail (clean translucent pill badge, no text border)
+            Box(
                 modifier = Modifier
                     .align(Alignment.BottomEnd)
                     .padding(bottom = 3.dp, end = 4.dp)
-            )
+                    .background(Color.Black.copy(alpha = 0.68f), RoundedCornerShape(4.dp))
+                    .padding(horizontal = 4.dp, vertical = 1.5.dp)
+            ) {
+                Text(
+                    text = formatTime(video.duration),
+                    color = Color.White,
+                    fontSize = 10.sp,
+                    fontFamily = FontFamily.Monospace,
+                    fontWeight = FontWeight.SemiBold
+                )
+            }
 
             if (isCurrent) {
                 Box(

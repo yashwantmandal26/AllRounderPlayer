@@ -11,7 +11,7 @@ import androidx.compose.ui.platform.LocalContext
 
 enum class ThemeMode(val displayName: String) {
     OLED_BLACK("OLED Black"),
-    SLATE_GREY("Slate Grey"),
+    SLATE_GREY("Dark Grey"),
     CLEAN_LIGHT("Clean Light");
 
     companion object {
@@ -25,7 +25,7 @@ enum class ThemeMode(val displayName: String) {
         fun fromString(name: String?): ThemeMode {
             return when (name?.uppercase()) {
                 "OLED_BLACK", "SOLID_BLACK", "SOLID_DARK" -> OLED_BLACK
-                "SLATE_GREY", "DARK_GREY" -> SLATE_GREY
+                "SLATE_GREY", "DARK_GREY", "COMFORT_GREY", "COMFORT_DARK", "DARK_GREY_COMFORT" -> SLATE_GREY
                 "CLEAN_LIGHT", "SOLID_WHITE", "MILK_WHITE", "LESS_WHITE", "LIGHT" -> CLEAN_LIGHT
                 "DARK" -> OLED_BLACK
                 "SYSTEM" -> SLATE_GREY

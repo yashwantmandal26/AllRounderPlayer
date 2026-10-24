@@ -14,11 +14,38 @@ data class TorrentSource(
     val type: String = "web",
     val provider: String = "Torrentio",
     val isHindi: Boolean = false,
+    val isTamil: Boolean = false,
+    val isTelugu: Boolean = false,
+    val isKannada: Boolean = false,
+    val isBengali: Boolean = false,
+    val isMalayalam: Boolean = false,
+    val isEnglish: Boolean = false,
     val isHevc: Boolean = false,
     val parsedSeason: Int? = null,
     val parsedEpisode: Int? = null,
     val isSeasonPack: Boolean = false
 ) {
+    val hasHindi: Boolean
+        get() = isHindi || title.contains("hindi", ignoreCase = true) || title.contains("hin.", ignoreCase = true) || title.contains("[hin", ignoreCase = true)
+
+    val hasTamil: Boolean
+        get() = isTamil || title.contains("tamil", ignoreCase = true) || title.contains("tam.", ignoreCase = true) || title.contains("[tam", ignoreCase = true)
+
+    val hasTelugu: Boolean
+        get() = isTelugu || title.contains("telugu", ignoreCase = true) || title.contains("tel.", ignoreCase = true) || title.contains("[tel", ignoreCase = true)
+
+    val hasKannada: Boolean
+        get() = isKannada || title.contains("kannada", ignoreCase = true) || title.contains("kan.", ignoreCase = true) || title.contains("[kan", ignoreCase = true)
+
+    val hasBengali: Boolean
+        get() = isBengali || title.contains("bangla", ignoreCase = true) || title.contains("bengali", ignoreCase = true) || title.contains("ben.", ignoreCase = true) || title.contains("[ben", ignoreCase = true)
+
+    val hasMalayalam: Boolean
+        get() = isMalayalam || title.contains("malayalam", ignoreCase = true) || title.contains("mal.", ignoreCase = true) || title.contains("[mal", ignoreCase = true)
+
+    val hasEnglish: Boolean
+        get() = isEnglish || title.contains("english", ignoreCase = true) || title.contains("eng.", ignoreCase = true) || title.contains("[eng", ignoreCase = true)
+
     val normalizedQuality: String
         get() = when {
             quality.contains("2160", ignoreCase = true) || quality.contains("4k", ignoreCase = true) -> "2160p"

@@ -58,56 +58,56 @@ val OledBlackAppColors = AppColors(
     cardShadowColor = Color.Black.copy(alpha = 0.5f),
 )
 
-/** 2. Slate Grey: Soft, low-contrast dark slate grey background with rich elevated cards */
+/** 2. Dark Grey (Comfort): Eye-comfort soothing dark grey (#16171E) where OLED pixels stay gently lit to avoid glare and smearing */
 val SlateGreyAppColors = AppColors(
     isDark = true,
-    isMatte = true,
-    baseBackground = Color(0xFF202020),      // Soft dark slate grey (#202020)
-    gradientBlob1 = Color(0xFF202020),       // Ambient glow
-    gradientBlob2 = Color(0xFF202020),       // Ambient glow
-    glassBg = Color(0xFF292929),             // Elevated slate card surface
-    glassBgNested = Color(0xFF323232),       // Elevated surface
-    glassBorder = Color(0xFF404040),         // Clean subtle slate border
-    topBarScrim = Color(0xF2202020),
-    navBarScrim = Color(0xF6202020),
-    textPrimary = Color(0xFFFFFFFF),
-    textSecondary = Color.White.copy(alpha = 0.72f),
-    textHint = Color.White.copy(alpha = 0.45f),
-    accentBlue = Color(0xFF2F80ED),
-    accentGreen = Color(0xFF27AE60),
+    isMatte = false,
+    baseBackground = Color(0xFF16171E),      // Eye-comfort soothing dark grey (#16171E)
+    gradientBlob1 = Color(0xFF232738),       // Soothing ambient glow
+    gradientBlob2 = Color(0xFF1C1F2D),       // Soothing ambient glow
+    glassBg = Color(0xFF20222D),             // Comfortable dark grey card surface
+    glassBgNested = Color(0xFF292C3A),       // Elevated comfortable surface
+    glassBorder = Color(0xFF323648),         // Clean subtle slate border
+    topBarScrim = Color(0xF216171E),
+    navBarScrim = Color(0xF616171E),
+    textPrimary = Color(0xFFE8EAF2),         // Softened off-white to prevent night eye-strain
+    textSecondary = Color(0xFFA2A7BC),       // Gentle readable secondary text
+    textHint = Color(0xFF6B7288),            // Muted hint text
+    accentBlue = Color(0xFF3B82F6),
+    accentGreen = Color(0xFF10B981),
     onAccent = Color.White,
-    dropdownBg = Color(0xFF292929),
-    cardBg = Color(0xFF292929),              // Slate grey card
-    cardBgElevated = Color(0xFF323232),      // Elevated slate card
-    cardBorderHighlight = Color(0xFF404040),
-    cardBorderShadow = Color(0xFF404040),
-    cardShadowColor = Color.Transparent,
+    dropdownBg = Color(0xFF20222D),
+    cardBg = Color(0xFF20222D),              // Dark comfort card
+    cardBgElevated = Color(0xFF292C3A),      // Elevated dark comfort card
+    cardBorderHighlight = Color(0xFF383C50),
+    cardBorderShadow = Color(0xFF101117),
+    cardShadowColor = Color(0x66000000),
 )
 
-/** 3. Clean Light: Crisp modern light theme with pure white cards and high-contrast typography */
+/** 3. Clean Light: Multi-shade white theme with pure white cards, soft milk-white canvas, and rich ambient pastels */
 val CleanLightAppColors = AppColors(
     isDark = false,
-    isMatte = true,
-    baseBackground = Color(0xFFF6F8FC),      // Crisp clean light background
-    gradientBlob1 = Color(0xFFE5ECF8),       // Subtle clean ambient tint
-    gradientBlob2 = Color(0xFFDFE7F5),       // Subtle clean ambient tint
-    glassBg = Color(0xFFFFFFFF),             // Pure white card surface
-    glassBgNested = Color(0xFFF0F3F9),       // Elevated crisp card surface
-    glassBorder = Color(0xFFE2E6EE),         // Crisp light border
-    topBarScrim = Color(0xF8F6F8FC),
-    navBarScrim = Color(0xF8F6F8FC),
-    textPrimary = Color(0xFF0F172A),         // High-contrast slate text
-    textSecondary = Color(0xFF475569),       // Readable secondary text
+    isMatte = false,
+    baseBackground = Color(0xFFF7F8FC),      // Shade 1: Soft milk/alabaster canvas
+    gradientBlob1 = Color(0xFFE5ECF8),       // Ambient pastel tint
+    gradientBlob2 = Color(0xFFDFE7F5),       // Ambient pastel tint
+    glassBg = Color(0xFFFFFFFF),             // Shade 2: Pure brilliant white cards
+    glassBgNested = Color(0xFFEDF1F7),       // Shade 3: Cool frost white elevated surfaces/pills
+    glassBorder = Color(0xFFE2E7F0),         // Clean hairline light border
+    topBarScrim = Color(0xF8F7F8FC),
+    navBarScrim = Color(0xF8F7F8FC),
+    textPrimary = Color(0xFF0F172A),         // High-contrast slate charcoal text
+    textSecondary = Color(0xFF475569),       // Readable slate secondary text
     textHint = Color(0xFF94A3B8),            // Clear hint text
     accentBlue = Color(0xFF0A84FF),
     accentGreen = Color(0xFF16A34A),
     onAccent = Color.White,
     dropdownBg = Color(0xFFFFFFFF),
-    cardBg = Color(0xFFFFFFFF),              // Pure white card
-    cardBgElevated = Color(0xFFF0F3F9),      // Elevated clean light card
-    cardBorderHighlight = Color(0xFFE2E6EE),
+    cardBg = Color(0xFFFFFFFF),              // Pure brilliant white card
+    cardBgElevated = Color(0xFFEDF1F7),      // Elevated cool frost white card
+    cardBorderHighlight = Color(0xFFEDF2F7),
     cardBorderShadow = Color(0xFFCBD5E1),
-    cardShadowColor = Color(0x14000000),     // Subtle soft drop shadow
+    cardShadowColor = Color(0x180F172A),     // Soft ambient slate drop shadow
 )
 
 /** Backward compatible aliases */

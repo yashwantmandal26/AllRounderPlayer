@@ -54,11 +54,17 @@ fun TorrentSourcesBottomSheet(
     val context = LocalContext.current
     val haptic = LocalHapticFeedback.current
 
-    var selectedLangFilter by remember { mutableStateOf("All") } // "All", "Hindi", "Dual"
+    var selectedLangFilter by remember { mutableStateOf("All") } // "All", "Hindi", "Tamil", "Telugu", "Malayalam", "Kannada", "Bangla", "English", "Dual"
     var selectedQualityFilter by remember { mutableStateOf("All") } // "All", "2160p", "1080p", "720p"
     var selectedSortOption by remember { mutableStateOf("SPEED") } // "SPEED", "SIZE", "QUALITY"
 
-    val hindiCount = remember(sources) { sources.count { it.isHindi } }
+    val hindiCount = remember(sources) { sources.count { it.hasHindi } }
+    val tamilCount = remember(sources) { sources.count { it.hasTamil } }
+    val teluguCount = remember(sources) { sources.count { it.hasTelugu } }
+    val malayalamCount = remember(sources) { sources.count { it.hasMalayalam } }
+    val kannadaCount = remember(sources) { sources.count { it.hasKannada } }
+    val bengaliCount = remember(sources) { sources.count { it.hasBengali } }
+    val englishCount = remember(sources) { sources.count { it.hasEnglish } }
     val dualAudioCount = remember(sources) { sources.count { it.isDualAudio } }
     val q4kCount = remember(sources) { sources.count { it.normalizedQuality == "2160p" } }
     val q1080Count = remember(sources) { sources.count { it.normalizedQuality == "1080p" } }
@@ -67,7 +73,13 @@ fun TorrentSourcesBottomSheet(
     val filteredSources = remember(sources, selectedLangFilter, selectedQualityFilter, selectedSortOption) {
         val filtered = sources.filter { source ->
             val langMatch = when (selectedLangFilter) {
-                "Hindi" -> source.isHindi
+                "Hindi" -> source.hasHindi
+                "Tamil" -> source.hasTamil
+                "Telugu" -> source.hasTelugu
+                "Malayalam" -> source.hasMalayalam
+                "Kannada" -> source.hasKannada
+                "Bangla" -> source.hasBengali
+                "English" -> source.hasEnglish
                 "Dual" -> source.isDualAudio
                 else -> true
             }
@@ -184,6 +196,60 @@ fun TorrentSourcesBottomSheet(
                             label = "🇮🇳 Hindi ($hindiCount)",
                             isSelected = selectedLangFilter == "Hindi",
                             onClick = { selectedLangFilter = if (selectedLangFilter == "Hindi") "All" else "Hindi" }
+                        )
+                    }
+                }
+                if (tamilCount > 0) {
+                    item {
+                        FilterPill(
+                            label = "🎬 Tamil ($tamilCount)",
+                            isSelected = selectedLangFilter == "Tamil",
+                            onClick = { selectedLangFilter = if (selectedLangFilter == "Tamil") "All" else "Tamil" }
+                        )
+                    }
+                }
+                if (teluguCount > 0) {
+                    item {
+                        FilterPill(
+                            label = "🎬 Telugu ($teluguCount)",
+                            isSelected = selectedLangFilter == "Telugu",
+                            onClick = { selectedLangFilter = if (selectedLangFilter == "Telugu") "All" else "Telugu" }
+                        )
+                    }
+                }
+                if (malayalamCount > 0) {
+                    item {
+                        FilterPill(
+                            label = "🌴 Malayalam ($malayalamCount)",
+                            isSelected = selectedLangFilter == "Malayalam",
+                            onClick = { selectedLangFilter = if (selectedLangFilter == "Malayalam") "All" else "Malayalam" }
+                        )
+                    }
+                }
+                if (kannadaCount > 0) {
+                    item {
+                        FilterPill(
+                            label = "🎬 Kannada ($kannadaCount)",
+                            isSelected = selectedLangFilter == "Kannada",
+                            onClick = { selectedLangFilter = if (selectedLangFilter == "Kannada") "All" else "Kannada" }
+                        )
+                    }
+                }
+                if (bengaliCount > 0) {
+                    item {
+                        FilterPill(
+                            label = "🎭 Bangla ($bengaliCount)",
+                            isSelected = selectedLangFilter == "Bangla",
+                            onClick = { selectedLangFilter = if (selectedLangFilter == "Bangla") "All" else "Bangla" }
+                        )
+                    }
+                }
+                if (englishCount > 0) {
+                    item {
+                        FilterPill(
+                            label = "🇺🇸 English ($englishCount)",
+                            isSelected = selectedLangFilter == "English",
+                            onClick = { selectedLangFilter = if (selectedLangFilter == "English") "All" else "English" }
                         )
                     }
                 }
@@ -526,7 +592,7 @@ private fun TorrentSourceCard(
                         Text(text = rip, color = Color.White, fontSize = 9.sp, fontWeight = FontWeight.Bold)
                     }
                 }
-                if (source.isHindi) {
+                if (source.hasHindi) {
                     Box(
                         modifier = Modifier
                             .clip(RoundedCornerShape(4.dp))
@@ -535,6 +601,72 @@ private fun TorrentSourceCard(
                             .padding(horizontal = 5.dp, vertical = 1.5.dp)
                     ) {
                         Text(text = "🇮🇳 HINDI", color = Color(0xFFFF7043), fontSize = 9.sp, fontWeight = FontWeight.Bold)
+                    }
+                }
+                if (source.hasTamil) {
+                    Box(
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(4.dp))
+                            .background(Color(0xFFE91E63).copy(alpha = 0.18f))
+                            .border(0.6.dp, Color(0xFFE91E63).copy(alpha = 0.5f), RoundedCornerShape(4.dp))
+                            .padding(horizontal = 5.dp, vertical = 1.5.dp)
+                    ) {
+                        Text(text = "TAMIL", color = Color(0xFFF48FB1), fontSize = 9.sp, fontWeight = FontWeight.Bold)
+                    }
+                }
+                if (source.hasTelugu) {
+                    Box(
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(4.dp))
+                            .background(Color(0xFF3F51B5).copy(alpha = 0.18f))
+                            .border(0.6.dp, Color(0xFF3F51B5).copy(alpha = 0.5f), RoundedCornerShape(4.dp))
+                            .padding(horizontal = 5.dp, vertical = 1.5.dp)
+                    ) {
+                        Text(text = "TELUGU", color = Color(0xFF9FA8DA), fontSize = 9.sp, fontWeight = FontWeight.Bold)
+                    }
+                }
+                if (source.hasMalayalam) {
+                    Box(
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(4.dp))
+                            .background(Color(0xFF009688).copy(alpha = 0.18f))
+                            .border(0.6.dp, Color(0xFF009688).copy(alpha = 0.5f), RoundedCornerShape(4.dp))
+                            .padding(horizontal = 5.dp, vertical = 1.5.dp)
+                    ) {
+                        Text(text = "MALAYALAM", color = Color(0xFF80CBC4), fontSize = 9.sp, fontWeight = FontWeight.Bold)
+                    }
+                }
+                if (source.hasKannada) {
+                    Box(
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(4.dp))
+                            .background(Color(0xFF9C27B0).copy(alpha = 0.18f))
+                            .border(0.6.dp, Color(0xFF9C27B0).copy(alpha = 0.5f), RoundedCornerShape(4.dp))
+                            .padding(horizontal = 5.dp, vertical = 1.5.dp)
+                    ) {
+                        Text(text = "KANNADA", color = Color(0xFFCE93D8), fontSize = 9.sp, fontWeight = FontWeight.Bold)
+                    }
+                }
+                if (source.hasBengali) {
+                    Box(
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(4.dp))
+                            .background(Color(0xFFFF9800).copy(alpha = 0.18f))
+                            .border(0.6.dp, Color(0xFFFF9800).copy(alpha = 0.5f), RoundedCornerShape(4.dp))
+                            .padding(horizontal = 5.dp, vertical = 1.5.dp)
+                    ) {
+                        Text(text = "BANGLA", color = Color(0xFFFFB74D), fontSize = 9.sp, fontWeight = FontWeight.Bold)
+                    }
+                }
+                if (source.hasEnglish) {
+                    Box(
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(4.dp))
+                            .background(Color(0xFF2196F3).copy(alpha = 0.18f))
+                            .border(0.6.dp, Color(0xFF2196F3).copy(alpha = 0.5f), RoundedCornerShape(4.dp))
+                            .padding(horizontal = 5.dp, vertical = 1.5.dp)
+                    ) {
+                        Text(text = "ENGLISH", color = Color(0xFF90CAF9), fontSize = 9.sp, fontWeight = FontWeight.Bold)
                     }
                 }
                 if (source.isDualAudio) {

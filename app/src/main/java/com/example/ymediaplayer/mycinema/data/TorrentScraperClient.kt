@@ -33,7 +33,25 @@ class TorrentScraperClient {
         )
 
         private val HINDI_REGEX = Pattern.compile(
-            "(?i)\\b(hindi|hin[._ -]?eng|eng[._ -]?hin|dual[._ -]?audio|multi[._ -]?audio|हिंदी|dubbed)\\b"
+            "(?i)\\b(hindi|hin[._ -]?eng|eng[._ -]?hin|hin[._ -]?dub|dual[._ -]?audio|multi[._ -]?audio|हिंदी|dubbed)\\b"
+        )
+        private val TAMIL_REGEX = Pattern.compile(
+            "(?i)(\\b|[\\[(])(tamil|tam[._ -]?(dub|audio|5\\.1|ddp|ac3)?|tamilblasters|tamilmv|தமிழ்)(\\b|[])])"
+        )
+        private val TELUGU_REGEX = Pattern.compile(
+            "(?i)(\\b|[\\[(])(telugu|tel[._ -]?(dub|audio|5\\.1|ddp|ac3)?|telugupalaka|తెలుగు)(\\b|[])])"
+        )
+        private val KANNADA_REGEX = Pattern.compile(
+            "(?i)(\\b|[\\[(])(kannada|kan[._ -]?(dub|audio|5\\.1|ddp|ac3)?|ಕನ್ನಡ)(\\b|[])])"
+        )
+        private val BENGALI_REGEX = Pattern.compile(
+            "(?i)(\\b|[\\[(])(bangla|bengali|ben[._ -]?(dub|audio|5\\.1|ddp|ac3)?|বাংলা)(\\b|[])])"
+        )
+        private val MALAYALAM_REGEX = Pattern.compile(
+            "(?i)(\\b|[\\[(])(malayalam|mal[._ -]?(dub|audio|5\\.1|ddp|ac3)?|மலையாளம்|മലയാളം)(\\b|[])])"
+        )
+        private val ENGLISH_REGEX = Pattern.compile(
+            "(?i)(\\b|[\\[(])(english|eng[._ -]?(sub|dub|audio|5\\.1|ddp|ac3)|eng)(\\b|[])])"
         )
         private val HEVC_REGEX = Pattern.compile("(?i)\\b(hevc|x265|h\\.?265|10bit)\\b")
         private val QUALITY_REGEX = Pattern.compile("(?i)\\b(2160p|4k|1080p|720p|480p)\\b")
@@ -272,6 +290,12 @@ class TorrentScraperClient {
             if (cleanTitle.isBlank()) cleanTitle = fallbackTitle
 
             val isHindi = forceHindi || HINDI_REGEX.matcher(fullText).find()
+            val isTamil = TAMIL_REGEX.matcher(fullText).find()
+            val isTelugu = TELUGU_REGEX.matcher(fullText).find()
+            val isKannada = KANNADA_REGEX.matcher(fullText).find()
+            val isBengali = BENGALI_REGEX.matcher(fullText).find()
+            val isMalayalam = MALAYALAM_REGEX.matcher(fullText).find()
+            val isEnglish = ENGLISH_REGEX.matcher(fullText).find() || provider == "YTS" || provider == "EZTV"
             val isHevc = HEVC_REGEX.matcher(fullText).find()
             val magnet = buildMagnet(infoHash, cleanTitle)
 
@@ -286,6 +310,12 @@ class TorrentScraperClient {
                     type = "web",
                     provider = provider,
                     isHindi = isHindi,
+                    isTamil = isTamil,
+                    isTelugu = isTelugu,
+                    isKannada = isKannada,
+                    isBengali = isBengali,
+                    isMalayalam = isMalayalam,
+                    isEnglish = isEnglish,
                     isHevc = isHevc
                 )
             )
@@ -324,6 +354,11 @@ class TorrentScraperClient {
                         val size = t.optString("size", "—")
                         val isHevc = HEVC_REGEX.matcher(movieTitle).find()
                         val isHindi = HINDI_REGEX.matcher(movieTitle).find()
+                        val isTamil = TAMIL_REGEX.matcher(movieTitle).find()
+                        val isTelugu = TELUGU_REGEX.matcher(movieTitle).find()
+                        val isKannada = KANNADA_REGEX.matcher(movieTitle).find()
+                        val isBengali = BENGALI_REGEX.matcher(movieTitle).find()
+                        val isMalayalam = MALAYALAM_REGEX.matcher(movieTitle).find()
                         val magnet = buildMagnet(hash, movieTitle)
 
                         list.add(
@@ -337,6 +372,12 @@ class TorrentScraperClient {
                                 type = "web",
                                 provider = "YTS",
                                 isHindi = isHindi,
+                                isTamil = isTamil,
+                                isTelugu = isTelugu,
+                                isKannada = isKannada,
+                                isBengali = isBengali,
+                                isMalayalam = isMalayalam,
+                                isEnglish = true,
                                 isHevc = isHevc
                             )
                         )
@@ -376,6 +417,11 @@ class TorrentScraperClient {
                         val sizeBytes = t.optLong("size_bytes", 0L)
                         val sizeStr = formatBytes(sizeBytes)
                         val isHindi = HINDI_REGEX.matcher(rawTitle).find()
+                        val isTamil = TAMIL_REGEX.matcher(rawTitle).find()
+                        val isTelugu = TELUGU_REGEX.matcher(rawTitle).find()
+                        val isKannada = KANNADA_REGEX.matcher(rawTitle).find()
+                        val isBengali = BENGALI_REGEX.matcher(rawTitle).find()
+                        val isMalayalam = MALAYALAM_REGEX.matcher(rawTitle).find()
                         val isHevc = HEVC_REGEX.matcher(rawTitle).find()
 
                         list.add(
@@ -390,6 +436,12 @@ class TorrentScraperClient {
                                 type = "web",
                                 provider = "EZTV",
                                 isHindi = isHindi,
+                                isTamil = isTamil,
+                                isTelugu = isTelugu,
+                                isKannada = isKannada,
+                                isBengali = isBengali,
+                                isMalayalam = isMalayalam,
+                                isEnglish = true,
                                 isHevc = isHevc
                             )
                         )

@@ -2079,8 +2079,8 @@ internal fun CanvasBg(offsetProvider: () -> Float = { 0f }) {
     val coreAlpha = when {
         c.isMatte && c.isDark -> 0f
         c.isDark && c.baseBackground == Color(0xFF000000) -> 0.45f * glowStrength // OLED Black (rich vibrant halo)
-        c.isDark -> 0.38f * glowStrength                                          // Slate Grey
-        else -> 0.28f * glowStrength                                              // Clean Light
+        c.isDark -> 0.38f * glowStrength                                          // Dark Grey Comfort
+        else -> 0.32f * glowStrength                                              // Clean Light
     }.coerceIn(0f, 0.95f)
     val midAlpha = (coreAlpha * 0.42f).coerceIn(0f, 0.55f)
     val edgeAlpha = (coreAlpha * 0.12f).coerceIn(0f, 0.20f)
@@ -2091,7 +2091,68 @@ internal fun CanvasBg(offsetProvider: () -> Float = { 0f }) {
             .fillMaxSize()
             .background(c.baseBackground)
             .drawBehind {
-                if (coreAlpha > 0.01f) {
+                if (!c.isDark) {
+                    // Rich multi-palette ambient pastel canvas for Clean Light mode
+                    // 1. Top-Left / Center: Primary accent sky/cyan pastel
+                    drawRect(
+                        brush = Brush.radialGradient(
+                            colors = listOf(
+                                satBlue.copy(alpha = 0.28f * glowStrength),
+                                satBlue.copy(alpha = 0.12f * glowStrength),
+                                Color.Transparent
+                            ),
+                            center = Offset(size.width * 0.28f, size.height * 0.14f),
+                            radius = size.width * (1.15f * glowSpread).coerceIn(0.5f, 3.0f)
+                        )
+                    )
+                    // 2. Top-Right: Soft Violet / Lavender pastel glow
+                    drawRect(
+                        brush = Brush.radialGradient(
+                            colors = listOf(
+                                Color(0xFFA78BFA).copy(alpha = 0.24f * glowStrength),
+                                Color(0xFFA78BFA).copy(alpha = 0.08f * glowStrength),
+                                Color.Transparent
+                            ),
+                            center = Offset(size.width * 0.88f, size.height * 0.18f),
+                            radius = size.width * (0.95f * glowSpread).coerceIn(0.4f, 2.6f)
+                        )
+                    )
+                    // 3. Center-Left: Soft Rose / Coral pastel glow
+                    drawRect(
+                        brush = Brush.radialGradient(
+                            colors = listOf(
+                                Color(0xFFF472B6).copy(alpha = 0.18f * glowStrength),
+                                Color(0xFFF472B6).copy(alpha = 0.06f * glowStrength),
+                                Color.Transparent
+                            ),
+                            center = Offset(size.width * 0.10f, size.height * 0.48f),
+                            radius = size.width * (0.85f * glowSpread).coerceIn(0.4f, 2.4f)
+                        )
+                    )
+                    // 4. Center-Right / Bottom: Secondary accent soft emerald/mint pastel
+                    drawRect(
+                        brush = Brush.radialGradient(
+                            colors = listOf(
+                                satGreen.copy(alpha = 0.22f * glowStrength),
+                                satGreen.copy(alpha = 0.07f * glowStrength),
+                                Color.Transparent
+                            ),
+                            center = Offset(size.width * 0.85f, size.height * 0.68f),
+                            radius = size.width * (0.90f * glowSpread).coerceIn(0.4f, 2.5f)
+                        )
+                    )
+                    // 5. Bottom-Center: Soft warm amber/peach pastel
+                    drawRect(
+                        brush = Brush.radialGradient(
+                            colors = listOf(
+                                Color(0xFFFBBF24).copy(alpha = 0.16f * glowStrength),
+                                Color.Transparent
+                            ),
+                            center = Offset(size.width * 0.42f, size.height * 0.88f),
+                            radius = size.width * (0.80f * glowSpread).coerceIn(0.3f, 2.2f)
+                        )
+                    )
+                } else if (coreAlpha > 0.01f) {
                     // Centered circular radial ambient glow based on the theme color, softly fading outwards
                     drawRect(
                         brush = Brush.radialGradient(
@@ -2212,52 +2273,31 @@ private fun ChipItem(
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
-// OUTLINED TEXT (Crisp black text border, no background card)
+// CLEAN TEXT (No text border/stroke, crisp typography)
 // ═══════════════════════════════════════════════════════════════════════════════
 @Composable
 internal fun OutlinedText(
     text: String,
     modifier: Modifier = Modifier,
     fillColor: Color = Color.White,
-    outlineColor: Color = Color.Black,
-    strokeWidth: Float = 2.8f,
+    outlineColor: Color = Color.Transparent,
+    strokeWidth: Float = 0f,
     fontSize: TextUnit = 10.sp,
     fontWeight: FontWeight = FontWeight.Bold,
     fontFamily: FontFamily? = null,
     maxLines: Int = 1,
     overflow: TextOverflow = TextOverflow.Clip
 ) {
-    Box(modifier = modifier, contentAlignment = Alignment.Center) {
-        // Outline layer
-        Text(
-            text = text,
-            color = outlineColor,
-            fontSize = fontSize,
-            fontWeight = fontWeight,
-            fontFamily = fontFamily,
-            maxLines = maxLines,
-            overflow = overflow,
-            style = TextStyle(
-                drawStyle = Stroke(
-                    width = strokeWidth,
-                    join = StrokeJoin.Round
-                )
-            )
-        )
-        // Fill layer
-        Text(
-            text = text,
-            color = fillColor,
-            fontSize = fontSize,
-            fontWeight = fontWeight,
-            fontFamily = fontFamily,
-            maxLines = maxLines,
-            overflow = overflow,
-            style = TextStyle(
-                drawStyle = Fill
-            )
-        )
-    }
+    Text(
+        text = text,
+        color = fillColor,
+        fontSize = fontSize,
+        fontWeight = fontWeight,
+        fontFamily = fontFamily,
+        maxLines = maxLines,
+        overflow = overflow,
+        modifier = modifier
+    )
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -2635,12 +2675,10 @@ fun FolderItem(
                 }
             }
             Spacer(Modifier.width(8.dp))
-            // Video count value with subtle black outline (no card box)
-            OutlinedText(
+            // Video count value (clean typography, no border)
+            Text(
                 text = folder.videos.size.toString(),
-                fillColor = c.accentBlue,
-                outlineColor = Color.Black,
-                strokeWidth = 2.6f,
+                color = c.accentBlue,
                 fontSize = 13.sp,
                 fontWeight = FontWeight.Bold,
                 modifier = Modifier.padding(horizontal = 4.dp)
@@ -2930,19 +2968,22 @@ fun VideoListItem(
                     model = remember(video.uri) { buildVideoThumbnailRequest(context, video.uri, video.duration) },
                     contentDescription = null, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize()
                 )
-                // Duration text at bottom right of thumbnail (clean outlined text, no card)
-                OutlinedText(
-                    text = formatTime(video.duration),
-                    fillColor = Color.White,
-                    outlineColor = Color.Black,
-                    strokeWidth = 2.8f,
-                    fontSize = 10.sp,
-                    fontWeight = FontWeight.SemiBold,
-                    fontFamily = FontFamily.Monospace,
+                // Duration text at bottom right of thumbnail (clean translucent pill badge, no text border)
+                Box(
                     modifier = Modifier
                         .align(Alignment.BottomEnd)
                         .padding(bottom = 4.dp, end = 5.dp)
-                )
+                        .background(Color.Black.copy(alpha = 0.68f), RoundedCornerShape(4.dp))
+                        .padding(horizontal = 4.dp, vertical = 1.5.dp)
+                ) {
+                    Text(
+                        text = formatTime(video.duration),
+                        color = Color.White,
+                        fontSize = 10.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        fontFamily = FontFamily.Monospace
+                    )
+                }
                 if (progress > 0 && video.duration > 0) {
                     val r = (progress.toFloat() / video.duration).coerceIn(0f, 1f)
                     Box(modifier = Modifier.align(Alignment.BottomStart).fillMaxWidth().height(3.dp).background(Color.Black.copy(0.5f))) {
