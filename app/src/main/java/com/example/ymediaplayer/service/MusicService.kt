@@ -359,6 +359,24 @@ class MusicService : MediaSessionService() {
             isMusicPlaying.value = false
         }
 
+        fun stopAndDismiss() {
+            fadeJob?.cancel()
+            playerInstance?.let {
+                it.stop()
+                it.clearMediaItems()
+                it.volume = 1f
+            }
+            onStopAction?.invoke()
+            isMusicPlaying.value = false
+            nowPlayingTitle.value = ""
+            nowPlayingArtist.value = ""
+            nowPlayingArtUri.value = null
+            currentMusicItem.value = null
+            try {
+                serviceInstance?.stopForeground(STOP_FOREGROUND_REMOVE)
+            } catch (_: Exception) {}
+        }
+
         fun playSong(item: MusicItem) {
             com.example.ymediaplayer.player.VideoPlaybackManager.player?.let { vPlayer ->
                 if (vPlayer.isPlaying) {

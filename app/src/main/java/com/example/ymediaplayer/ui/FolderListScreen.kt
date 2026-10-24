@@ -30,6 +30,8 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.pager.HorizontalPager
+import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -819,122 +821,94 @@ fun FolderListScreen(
             },
             modifier = modifier
         ) { paddingValues ->
-            val isVideo = currentTab == "Video"
-            val isCinema = currentTab == "MYCinema"
-            val isMusic = currentTab == "Music"
-            val tabTransition = updateTransition(targetState = currentTab, label = "TabTransition")
+            val mainTabs = remember { listOf("MYCinema", "Video", "Music") }
+            val initialTabIndex = remember {
+                val defaultTab = appPreferences.getDefaultStartTab()
+                mainTabs.indexOf(defaultTab).coerceAtLeast(0)
+            }
+            val pagerState = rememberPagerState(initialPage = initialTabIndex) { mainTabs.size }
 
-            val cinemaAlpha by tabTransition.animateFloat(
-                transitionSpec = { tween(240, easing = FastOutSlowInEasing) },
-                label = "cinemaAlpha"
-            ) { tab -> if (tab == "MYCinema") 1f else 0f }
-            val cinemaOffset by tabTransition.animateFloat(
-                transitionSpec = { tween(240, easing = FastOutSlowInEasing) },
-                label = "cinemaOffset"
-            ) { tab -> if (tab == "MYCinema") 0f else -60f }
+            // Sync swipe gestures with currentTab
+            LaunchedEffect(pagerState.currentPage) {
+                val targetTab = mainTabs[pagerState.currentPage]
+                if (currentTab != targetTab) {
+                    currentTab = targetTab
+                    if (targetTab != "Video") selectedVideoIds = emptySet()
+                }
+            }
 
-            val videoAlpha by tabTransition.animateFloat(
-                transitionSpec = { tween(240, easing = FastOutSlowInEasing) },
-                label = "videoAlpha"
-            ) { tab -> if (tab == "Video") 1f else 0f }
-            val videoOffset by tabTransition.animateFloat(
-                transitionSpec = { tween(240, easing = FastOutSlowInEasing) },
-                label = "videoOffset"
-            ) { tab -> if (tab == "Video") 0f else if (tab == "MYCinema") 60f else -60f }
+            // Sync programmatic tab changes (e.g. from bottom pill taps, back press) with pagerState
+            LaunchedEffect(currentTab) {
+                val targetPage = mainTabs.indexOf(currentTab)
+                if (targetPage in mainTabs.indices && pagerState.currentPage != targetPage) {
+                    pagerState.animateScrollToPage(targetPage)
+                }
+            }
 
-            val musicAlpha by tabTransition.animateFloat(
-                transitionSpec = { tween(240, easing = FastOutSlowInEasing) },
-                label = "musicAlpha"
-            ) { tab -> if (tab == "Music") 1f else 0f }
-            val musicOffset by tabTransition.animateFloat(
-                transitionSpec = { tween(240, easing = FastOutSlowInEasing) },
-                label = "musicOffset"
-            ) { tab -> if (tab == "Music") 0f else 60f }
+            val canSwipePages = !isCinemaDetailOpen && !musicPlayerExpanded && selectedVideoIds.isEmpty() && searchQuery.isEmpty()
 
-            Box(modifier = Modifier.fillMaxSize()) {
-                // ── MYCinema Tab ──
-                if (cinemaAlpha > 0f) {
-                    Box(
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .padding(top = if (isCinema && isCinemaDetailOpen) 0.dp else paddingValues.calculateTopPadding())
-                            .zIndex(if (isCinema) 1f else 0f)
-                            .graphicsLayer {
-                                translationX = cinemaOffset
-                                alpha = cinemaAlpha
-                            }
-                    ) {
-                        MyCinemaScreen(
-                            repository = cinemaRepository,
-                            refreshTrigger = cinemaRefreshTrigger,
-                            onDetailStateChanged = { isCinemaDetailOpen = it },
-                            onPlayOfflineMovie = { path -> onVideoClick(path) },
-                            onStreamSource = { item, source ->
-                                val hash = TorrentEngine.startStream(context, source, item.displayName)
-                                if (hash != null) {
-                                    if (!item.fullPosterUrl.isNullOrBlank()) {
-                                        appPreferences.saveCinemaPoster(item.displayName, item.fullPosterUrl)
-                                        appPreferences.saveCinemaPoster(hash, item.fullPosterUrl)
-                                    }
-                                    appPreferences.saveCinemaWatchHistory(item)
-                                    TorrentDownloadService.start(context, hash, item.displayName)
-                                    val streamIntent = Intent(context, com.example.ymediaplayer.ui.VideoPlayerActivity::class.java).apply {
-                                        flags = Intent.FLAG_ACTIVITY_REORDER_TO_FRONT or Intent.FLAG_ACTIVITY_SINGLE_TOP
-                                        putExtra(com.example.ymediaplayer.ui.VideoPlayerActivity.EXTRA_VIDEO_URL, TorrentEngine.getFilePath(context, hash) ?: "")
-                                        putExtra(com.example.ymediaplayer.ui.VideoPlayerActivity.EXTRA_VIDEO_TITLE, item.displayName)
-                                        putExtra(com.example.ymediaplayer.ui.VideoPlayerActivity.EXTRA_POSTER_URL, item.fullPosterUrl ?: "")
-                                        putExtra(com.example.ymediaplayer.ui.VideoPlayerActivity.EXTRA_TORRENT_HASH, hash)
-                                        putExtra(com.example.ymediaplayer.ui.VideoPlayerActivity.EXTRA_IS_STREAMING, true)
-                                    }
-                                    context.startActivity(streamIntent)
-                                } else {
-                                    android.widget.Toast.makeText(context, "Failed to start streaming", android.widget.Toast.LENGTH_SHORT).show()
-                                }
-                            },
-                            onDownloadSource = { item, source ->
-                                val hash = TorrentEngine.startDownload(context, source, item.displayName, isSequential = false)
-                                if (hash != null) {
-                                    if (!item.fullPosterUrl.isNullOrBlank()) {
-                                        appPreferences.saveCinemaPoster(item.displayName, item.fullPosterUrl)
-                                        appPreferences.saveCinemaPoster(hash, item.fullPosterUrl)
-                                    }
-                                    TorrentDownloadService.start(context, hash, item.displayName)
-                                    android.widget.Toast.makeText(context, "Download started: ${item.displayName}", android.widget.Toast.LENGTH_SHORT).show()
-                                } else {
-                                    android.widget.Toast.makeText(context, "Failed to start download", android.widget.Toast.LENGTH_SHORT).show()
-                                }
-                            },
-                            libraryOpenType = cinemaLibraryOpenType,
-                            onCloseLibrary = { cinemaLibraryOpenType = null }
-                        )
-
-                        if (!isCinema) {
-                            Box(
-                                modifier = Modifier
-                                    .fillMaxSize()
-                                    .pointerInput(Unit) {
-                                        awaitPointerEventScope {
-                                            while (true) {
-                                                val event = awaitPointerEvent()
-                                                event.changes.forEach { it.consume() }
-                                            }
+            HorizontalPager(
+                state = pagerState,
+                modifier = Modifier.fillMaxSize(),
+                userScrollEnabled = canSwipePages,
+                beyondViewportPageCount = 2
+            ) { page ->
+                when (mainTabs[page]) {
+                    "MYCinema" -> {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .padding(top = if (isCinemaDetailOpen) 0.dp else paddingValues.calculateTopPadding())
+                        ) {
+                            MyCinemaScreen(
+                                repository = cinemaRepository,
+                                refreshTrigger = cinemaRefreshTrigger,
+                                onDetailStateChanged = { isCinemaDetailOpen = it },
+                                onPlayOfflineMovie = { path -> onVideoClick(path) },
+                                onStreamSource = { item, source ->
+                                    val hash = TorrentEngine.startStream(context, source, item.displayName)
+                                    if (hash != null) {
+                                        if (!item.fullPosterUrl.isNullOrBlank()) {
+                                            appPreferences.saveCinemaPoster(item.displayName, item.fullPosterUrl)
+                                            appPreferences.saveCinemaPoster(hash, item.fullPosterUrl)
                                         }
+                                        appPreferences.saveCinemaWatchHistory(item)
+                                        TorrentDownloadService.start(context, hash, item.displayName)
+                                        val streamIntent = Intent(context, com.example.ymediaplayer.ui.VideoPlayerActivity::class.java).apply {
+                                            flags = Intent.FLAG_ACTIVITY_REORDER_TO_FRONT or Intent.FLAG_ACTIVITY_SINGLE_TOP
+                                            putExtra(com.example.ymediaplayer.ui.VideoPlayerActivity.EXTRA_VIDEO_URL, TorrentEngine.getFilePath(context, hash) ?: "")
+                                            putExtra(com.example.ymediaplayer.ui.VideoPlayerActivity.EXTRA_VIDEO_TITLE, item.displayName)
+                                            putExtra(com.example.ymediaplayer.ui.VideoPlayerActivity.EXTRA_POSTER_URL, item.fullPosterUrl ?: "")
+                                            putExtra(com.example.ymediaplayer.ui.VideoPlayerActivity.EXTRA_TORRENT_HASH, hash)
+                                            putExtra(com.example.ymediaplayer.ui.VideoPlayerActivity.EXTRA_IS_STREAMING, true)
+                                        }
+                                        context.startActivity(streamIntent)
+                                    } else {
+                                        android.widget.Toast.makeText(context, "Failed to start streaming", android.widget.Toast.LENGTH_SHORT).show()
                                     }
+                                },
+                                onDownloadSource = { item, source ->
+                                    val hash = TorrentEngine.startDownload(context, source, item.displayName, isSequential = false)
+                                    if (hash != null) {
+                                        if (!item.fullPosterUrl.isNullOrBlank()) {
+                                            appPreferences.saveCinemaPoster(item.displayName, item.fullPosterUrl)
+                                            appPreferences.saveCinemaPoster(hash, item.fullPosterUrl)
+                                        }
+                                        TorrentDownloadService.start(context, hash, item.displayName)
+                                        android.widget.Toast.makeText(context, "Download started: ${item.displayName}", android.widget.Toast.LENGTH_SHORT).show()
+                                    } else {
+                                        android.widget.Toast.makeText(context, "Failed to start download", android.widget.Toast.LENGTH_SHORT).show()
+                                    }
+                                },
+                                libraryOpenType = cinemaLibraryOpenType,
+                                onCloseLibrary = { cinemaLibraryOpenType = null }
                             )
                         }
                     }
-                }
-
-                // ── Video Tab ──
-                Box(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .zIndex(if (isVideo) 1f else 0f)
-                        .graphicsLayer {
-                            translationX = videoOffset
-                            alpha = videoAlpha
-                        }
-                ) {
+                    "Video" -> {
+                        Box(
+                            modifier = Modifier.fillMaxSize()
+                        ) {
                     if (isLoading && allFolders.isEmpty()) {
                 Box(modifier = Modifier.fillMaxSize().padding(paddingValues), contentAlignment = Alignment.Center) {
                     CircularProgressIndicator(color = c.accentBlue, strokeWidth = 3.dp)
@@ -1593,59 +1567,26 @@ fun FolderListScreen(
                     }
                 } // end LazyColumn
                 } // end Column
-                if (!isVideo) {
-                    Box(
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .pointerInput(Unit) {
-                                awaitPointerEventScope {
-                                    while (true) {
-                                        val event = awaitPointerEvent()
-                                        event.changes.forEach { it.consume() }
-                                    }
-                                }
-                            }
-                    )
-                }
-            }
-        }
-
-            // ── Music Tab (Kept in composition to eliminate refreshment & preserve state) ──
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .zIndex(if (isMusic) 1f else 0f)
-                    .graphicsLayer {
-                        translationX = musicOffset
-                        alpha = musicAlpha
+                        }
                     }
-            ) {
-                MusicScreen(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .padding(top = if (musicPlayerExpanded) 0.dp else paddingValues.calculateTopPadding()),
-                    onFullScreenChanged = { musicPlayerExpanded = it },
-                    hasMediaPermission = hasAudioPermission,
-                    onRequestPermission = onRequestPermissions,
-                    showFloatingMiniPlayer = false
-                )
-
-                if (!isMusic) {
-                    Box(
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .pointerInput(Unit) {
-                                awaitPointerEventScope {
-                                    while (true) {
-                                        val event = awaitPointerEvent()
-                                        event.changes.forEach { it.consume() }
-                                    }
-                                }
-                            }
-                    )
+                }
+                    "Music" -> {
+                        Box(
+                            modifier = Modifier.fillMaxSize()
+                        ) {
+                            MusicScreen(
+                                modifier = Modifier
+                                    .fillMaxSize()
+                                    .padding(top = if (musicPlayerExpanded) 0.dp else paddingValues.calculateTopPadding()),
+                                onFullScreenChanged = { musicPlayerExpanded = it },
+                                hasMediaPermission = hasAudioPermission,
+                                onRequestPermission = onRequestPermissions,
+                                showFloatingMiniPlayer = false
+                            )
+                        }
+                    }
                 }
             }
-        }
         }
 
         // Floating Nav Pill + Animated Music Playing Indicator in Video Mode
@@ -1714,6 +1655,10 @@ fun FolderListScreen(
                             onPlayPause = { MusicService.togglePlayPause() },
                             onNext = { MusicService.playNext() },
                             onPrev = { MusicService.playPrevious() },
+                            onClose = {
+                                view.performHaptic(HapticType.LIGHT)
+                                MusicService.stopAndDismiss()
+                            },
                             onClick = {
                                 view.performHaptic(HapticType.LIGHT)
                                 MainActivity.openMusicTrigger.value = true
@@ -1723,21 +1668,44 @@ fun FolderListScreen(
                     }
                 }
 
-                // Adaptive Theme Nav Pill
+                // Adaptive Theme Nav Pill Container
                 Box(
                     modifier = Modifier
-                        .then(if (c.isMatte) Modifier.shadow(10.dp, CircleShape, ambientColor = c.cardShadowColor, spotColor = c.cardShadowColor) else Modifier.shadow(16.dp, CircleShape, ambientColor = c.cardShadowColor, spotColor = c.cardShadowColor))
+                        .then(
+                            if (c.isMatte) Modifier.shadow(10.dp, CircleShape, ambientColor = c.cardShadowColor, spotColor = c.cardShadowColor)
+                            else Modifier.shadow(
+                                elevation = 18.dp,
+                                shape = CircleShape,
+                                ambientColor = if (c.isDark) Color.Black.copy(alpha = 0.55f) else c.cardShadowColor,
+                                spotColor = if (c.isDark) Color.Black.copy(alpha = 0.45f) else c.cardShadowColor
+                            )
+                        )
                         .clip(CircleShape)
-                        .background(c.cardBgElevated)
-                        .border(1.dp, c.glassBorder, CircleShape)
+                        .background(
+                            if (c.isDark) Color(0xFF161922).copy(alpha = 0.96f)
+                            else c.cardBgElevated
+                        )
+                        .border(
+                            1.2.dp,
+                            if (c.isDark) Color.White.copy(alpha = 0.12f) else c.glassBorder,
+                            CircleShape
+                        )
                 ) {
-                    Row(modifier = Modifier.padding(4.dp), horizontalArrangement = Arrangement.spacedBy(2.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Row(
+                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 5.dp),
+                        horizontalArrangement = Arrangement.spacedBy(4.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
                         val view = androidx.compose.ui.platform.LocalView.current
-                        listOf("MYCinema" to Icons.Rounded.Theaters, "Video" to Icons.Rounded.Movie, "Music" to Icons.Rounded.MusicNote).forEach { (label, icon) ->
+                        listOf(
+                            "MYCinema" to Icons.Rounded.Theaters,
+                            "Video" to Icons.Rounded.Movie,
+                            "Music" to Icons.Rounded.MusicNote
+                        ).forEach { (label, icon) ->
                             val selected = currentTab == label
                             val pillBgColor by animateColorAsState(
                                 targetValue = if (selected) {
-                                    if (c.isDark) c.accentBlue.copy(alpha = 0.22f) else c.accentBlue.copy(alpha = 0.14f)
+                                    c.accentBlue
                                 } else Color.Transparent,
                                 animationSpec = spring(
                                     dampingRatio = Spring.DampingRatioNoBouncy,
@@ -1746,24 +1714,40 @@ fun FolderListScreen(
                                 label = "pillBgColor"
                             )
                             val pillTextColor by animateColorAsState(
-                                targetValue = if (selected) c.accentBlue else c.textSecondary,
-                                animationSpec = tween(220),
+                                targetValue = if (selected) {
+                                    if (c.isDark) Color.White else c.onAccent
+                                } else c.textSecondary.copy(alpha = 0.85f),
+                                animationSpec = tween(200),
                                 label = "pillTextColor"
                             )
                             val pillElevation by animateDpAsState(
-                                targetValue = if (selected && !c.isMatte) 4.dp else 0.dp,
-                                animationSpec = tween(250),
+                                targetValue = if (selected && !c.isMatte) 8.dp else 0.dp,
+                                animationSpec = tween(220),
                                 label = "pillElevation"
                             )
                             Row(
                                 verticalAlignment = Alignment.CenterVertically,
                                 modifier = Modifier
-                                    .shadow(pillElevation, CircleShape, ambientColor = if (selected) c.accentBlue.copy(0.45f) else Color.Transparent)
+                                    .shadow(
+                                        elevation = pillElevation,
+                                        shape = CircleShape,
+                                        ambientColor = c.accentBlue,
+                                        spotColor = c.accentBlue
+                                    )
                                     .clip(CircleShape)
                                     .background(pillBgColor)
                                     .then(
                                         if (selected) {
-                                            Modifier.border(1.dp, c.accentBlue.copy(alpha = 0.45f), CircleShape)
+                                            Modifier.border(
+                                                1.dp,
+                                                Brush.verticalGradient(
+                                                    listOf(
+                                                        Color.White.copy(alpha = 0.35f),
+                                                        Color.White.copy(alpha = 0.10f)
+                                                    )
+                                                ),
+                                                CircleShape
+                                            )
                                         } else {
                                             Modifier
                                         }
@@ -1773,11 +1757,21 @@ fun FolderListScreen(
                                         currentTab = label
                                         if (label != "Video") selectedVideoIds = emptySet() 
                                     }
-                                    .padding(horizontal = 15.dp, vertical = 9.dp)
+                                    .padding(horizontal = 16.dp, vertical = 9.dp)
                             ) {
-                                Icon(icon, contentDescription = label, tint = pillTextColor, modifier = Modifier.size(18.dp))
-                                Spacer(Modifier.width(5.dp))
-                                Text(label, color = pillTextColor, fontSize = 13.5.sp, fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium)
+                                Icon(
+                                    icon,
+                                    contentDescription = label,
+                                    tint = pillTextColor,
+                                    modifier = Modifier.size(18.dp)
+                                )
+                                Spacer(Modifier.width(6.dp))
+                                Text(
+                                    text = label,
+                                    color = pillTextColor,
+                                    fontSize = 13.5.sp,
+                                    fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium
+                                )
                             }
                         }
                     }

@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.MusicNote
 import androidx.compose.material.icons.rounded.Pause
 import androidx.compose.material.icons.rounded.PlayArrow
@@ -52,6 +53,7 @@ fun MusicMiniPlayerPill(
     onPlayPause: () -> Unit,
     onNext: () -> Unit,
     onPrev: () -> Unit,
+    onClose: () -> Unit = {},
     onClick: () -> Unit,
     modifier: Modifier = Modifier.fillMaxWidth().padding(horizontal = 14.dp)
 ) {
@@ -261,48 +263,64 @@ fun MusicMiniPlayerPill(
             }
 
             // ─── Animated Equalizer Bars ────────────────────────────────
-            Row(
-                horizontalArrangement = Arrangement.spacedBy(2.5.dp),
-                verticalAlignment = Alignment.Bottom,
-                modifier = Modifier
-                    .height(16.dp)
-                    .padding(end = 4.dp)
-            ) {
-                val infiniteTransition = rememberInfiniteTransition(label = "nowPlayingBars")
-                val bar1 by infiniteTransition.animateFloat(
-                    initialValue = 0.25f,
-                    targetValue = if (isPlaying) 1f else 0.25f,
-                    animationSpec = infiniteRepeatable(tween(350, easing = LinearEasing), RepeatMode.Reverse),
-                    label = "b1"
-                )
-                val bar2 by infiniteTransition.animateFloat(
-                    initialValue = 0.5f,
-                    targetValue = if (isPlaying) 0.15f else 0.5f,
-                    animationSpec = infiniteRepeatable(tween(450, easing = LinearEasing), RepeatMode.Reverse),
-                    label = "b2"
-                )
-                val bar3 by infiniteTransition.animateFloat(
-                    initialValue = 0.2f,
-                    targetValue = if (isPlaying) 0.9f else 0.2f,
-                    animationSpec = infiniteRepeatable(tween(300, easing = LinearEasing), RepeatMode.Reverse),
-                    label = "b3"
-                )
-                val bar4 by infiniteTransition.animateFloat(
-                    initialValue = 0.4f,
-                    targetValue = if (isPlaying) 0.8f else 0.4f,
-                    animationSpec = infiniteRepeatable(tween(400, easing = LinearEasing), RepeatMode.Reverse),
-                    label = "b4"
-                )
-
-                listOf(bar1, bar2, bar3, bar4).forEach { factor ->
-                    Box(
-                        modifier = Modifier
-                            .width(2.5.dp)
-                            .fillMaxHeight(factor)
-                            .clip(RoundedCornerShape(1.dp))
-                            .background(c.accentBlue)
+            if (isPlaying) {
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(2.dp),
+                    verticalAlignment = Alignment.Bottom,
+                    modifier = Modifier
+                        .height(14.dp)
+                        .padding(horizontal = 2.dp)
+                ) {
+                    val infiniteTransition = rememberInfiniteTransition(label = "nowPlayingBars")
+                    val bar1 by infiniteTransition.animateFloat(
+                        initialValue = 0.25f,
+                        targetValue = 1f,
+                        animationSpec = infiniteRepeatable(tween(350, easing = LinearEasing), RepeatMode.Reverse),
+                        label = "b1"
                     )
+                    val bar2 by infiniteTransition.animateFloat(
+                        initialValue = 0.5f,
+                        targetValue = 0.15f,
+                        animationSpec = infiniteRepeatable(tween(450, easing = LinearEasing), RepeatMode.Reverse),
+                        label = "b2"
+                    )
+                    val bar3 by infiniteTransition.animateFloat(
+                        initialValue = 0.2f,
+                        targetValue = 0.9f,
+                        animationSpec = infiniteRepeatable(tween(300, easing = LinearEasing), RepeatMode.Reverse),
+                        label = "b3"
+                    )
+
+                    listOf(bar1, bar2, bar3).forEach { factor ->
+                        Box(
+                            modifier = Modifier
+                                .width(2.2.dp)
+                                .fillMaxHeight(factor)
+                                .clip(RoundedCornerShape(1.dp))
+                                .background(c.accentBlue)
+                        )
+                    }
                 }
+            }
+
+            // ─── Close / Exit (X) Button ────────────────────────────────
+            Box(
+                modifier = Modifier
+                    .size(28.dp)
+                    .clip(CircleShape)
+                    .background(Color.White.copy(alpha = 0.12f))
+                    .clickable {
+                        view.performHaptic(HapticType.LIGHT)
+                        onClose()
+                    },
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    imageVector = Icons.Rounded.Close,
+                    contentDescription = "Close Player",
+                    tint = Color.White.copy(alpha = 0.85f),
+                    modifier = Modifier.size(16.dp)
+                )
             }
         }
     }

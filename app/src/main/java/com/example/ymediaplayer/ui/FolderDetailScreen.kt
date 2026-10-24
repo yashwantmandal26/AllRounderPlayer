@@ -616,6 +616,7 @@ fun FolderDetailScreen(
                 onPlayPause = { MusicService.togglePlayPause() },
                 onNext = { MusicService.playNext() },
                 onPrev = { MusicService.playPrevious() },
+                onClose = { MusicService.stopAndDismiss() },
                 onClick = {
                     view.performHaptic(HapticType.LIGHT)
                     MainActivity.openMusicTrigger.value = true

@@ -2225,6 +2225,10 @@ fun MusicScreen(
                 onPlayPause = { if (isPlaying) mediaController?.pause() else mediaController?.play() },
                 onNext = playNext,
                 onPrev = playPrev,
+                onClose = {
+                    currentlyPlaying = null
+                    MusicService.stopAndDismiss()
+                },
                 onClick = {
                     view.performHaptic(HapticType.LIGHT)
                     if (currentlyPlaying == null && liveSong != null) {
