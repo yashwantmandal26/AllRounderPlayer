@@ -110,6 +110,46 @@ object TorrentEngine {
 
     private val VIDEO_EXTENSIONS = setOf("mp4", "mkv", "avi", "webm", "mov", "ts", "m4v")
 
+    /**
+     * Checks if a file on disk is an uncompleted sparse torrent pre-allocation (all zeroes / parts file present).
+     */
+    fun isSparseUncompletedFile(file: java.io.File): Boolean {
+        if (!file.exists() || !file.isFile) return true
+        if (file.length() < 1024L) return true
+
+        // Check if any matching .parts file exists in the directory
+        val dir = file.parentFile
+        if (dir != null && dir.exists()) {
+            val partsFiles = dir.listFiles { _, name -> name.endsWith(".parts", ignoreCase = true) }
+            if (!partsFiles.isNullOrEmpty()) {
+                return true
+            }
+        }
+
+        // Sample file at 25% and 50% to check for unallocated sparse zero blocks
+        if (file.length() > 5 * 1024 * 1024L) {
+            try {
+                java.io.RandomAccessFile(file, "r").use { raf ->
+                    val len = file.length()
+                    val buf = ByteArray(2048)
+
+                    val pos1 = len / 4
+                    raf.seek(pos1)
+                    val r1 = raf.read(buf)
+                    if (r1 > 0 && buf.all { it == 0.toByte() }) return true
+
+                    val pos2 = len / 2
+                    raf.seek(pos2)
+                    val r2 = raf.read(buf)
+                    if (r2 > 0 && buf.all { it == 0.toByte() }) return true
+                }
+            } catch (_: Exception) {
+                return false
+            }
+        }
+        return false
+    }
+
     fun findMainVideoFileIndex(files: FileStorage): Int {
         val numFiles = files.numFiles()
         if (numFiles <= 0) return -1

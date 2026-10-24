@@ -873,6 +873,14 @@ fun FolderListScreen(
                                 refreshTrigger = cinemaRefreshTrigger,
                                 onDetailStateChanged = { isCinemaDetailOpen = it },
                                 onPlayOfflineMovie = { movie, allOffline ->
+                                    if (com.example.ymediaplayer.mycinema.service.TorrentEngine.isSparseUncompletedFile(movie.file)) {
+                                        android.widget.Toast.makeText(
+                                            context,
+                                            "\"${movie.title}\" download is incomplete and cannot be played offline yet.",
+                                            android.widget.Toast.LENGTH_LONG
+                                        ).show()
+                                        return@MyCinemaScreen
+                                    }
                                     val playlist = allOffline.map { m ->
                                         VideoItem(
                                             id = m.file.absolutePath.hashCode().toLong(),

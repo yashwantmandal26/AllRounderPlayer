@@ -174,8 +174,8 @@ fun MyCinemaScreen(
                         }
                     } catch (_: Exception) { 0L }
 
-                    // Only display in offline shelf if fully finished (prevent incomplete fragments from showing as downloaded)
-                    if (!isExplicitlyCompleted && (durationMs < 30_000L || file.length() < 30_000_000L)) {
+                    // Strict check: An offline movie must be fully completed and NOT an uncompleted sparse torrent file
+                    if (!isExplicitlyCompleted || com.example.ymediaplayer.mycinema.service.TorrentEngine.isSparseUncompletedFile(file)) {
                         return@forEach
                     }
 

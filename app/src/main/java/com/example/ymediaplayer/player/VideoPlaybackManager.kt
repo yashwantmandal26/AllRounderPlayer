@@ -330,7 +330,12 @@ object VideoPlaybackManager {
         disableAudio: Boolean
     ) {
         val attempt = recoveryAttempt++
-        val resumePosition = targetPlayer.currentPosition.coerceAtLeast(0L)
+        if (attempt >= 4) {
+            recoveryMessage.value = "Cannot play video: this file appears to be incomplete or corrupted."
+            isPlaying.value = false
+            return
+        }
+        val resumePosition = if (attempt >= 2) 0L else targetPlayer.currentPosition.coerceAtLeast(0L)
         if (safe) {
             safeModeActive.value = true
             targetPlayer.setSeekParameters(SeekParameters.CLOSEST_SYNC)
@@ -342,6 +347,7 @@ object VideoPlaybackManager {
         }
         recoveryMessage.value = when {
             disableAudio -> "Damaged audio track skipped; continuing video"
+            attempt >= 2 -> "Compatibility mode: playing from beginning"
             safe -> "Compatibility mode enabled; recovering playback"
             else -> "Playback interrupted; retrying"
         }
