@@ -304,23 +304,27 @@ fun MusicMiniPlayerPill(
             }
 
             // ─── Close / Exit (X) Button ────────────────────────────────
-            Box(
-                modifier = Modifier
-                    .size(28.dp)
-                    .clip(CircleShape)
-                    .background(Color.White.copy(alpha = 0.12f))
-                    .clickable {
-                        view.performHaptic(HapticType.LIGHT)
-                        onClose()
-                    },
-                contentAlignment = Alignment.Center
+            IconButton(
+                onClick = {
+                    view.performHaptic(HapticType.LIGHT)
+                    onClose()
+                },
+                modifier = Modifier.size(34.dp)
             ) {
-                Icon(
-                    imageVector = Icons.Rounded.Close,
-                    contentDescription = "Close Player",
-                    tint = Color.White.copy(alpha = 0.85f),
-                    modifier = Modifier.size(16.dp)
-                )
+                Box(
+                    modifier = Modifier
+                        .size(26.dp)
+                        .clip(CircleShape)
+                        .background(Color.White.copy(alpha = 0.16f)),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        imageVector = Icons.Rounded.Close,
+                        contentDescription = "Close Player",
+                        tint = Color.White,
+                        modifier = Modifier.size(16.dp)
+                    )
+                }
             }
         }
     }

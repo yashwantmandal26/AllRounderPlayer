@@ -413,6 +413,7 @@ fun MusicScreen(
     }
 
     fun playSongForce(song: MusicItem, queue: List<MusicItem> = allSongs) {
+        MusicService.isMiniPlayerDismissed.value = false
         MusicService.currentPlaylist = queue.ifEmpty { listOf(song) }
         MusicService.currentSongIndex = MusicService.currentPlaylist.indexOfFirst { it.uri == song.uri }
         currentlyPlaying = song
@@ -536,6 +537,10 @@ fun MusicScreen(
 
     // ─── Sync now-playing state to MusicService companion so Video tab can show indicator & controls ───
     LaunchedEffect(currentlyPlaying, isPlaying, allSongs) {
+        if (MusicService.isMiniPlayerDismissed.value) {
+            MusicService.isMusicPlaying.value = false
+            return@LaunchedEffect
+        }
         MusicService.isMusicPlaying.value = isPlaying && currentlyPlaying != null
         val song = currentlyPlaying
         if (song != null) {
@@ -551,6 +556,7 @@ fun MusicScreen(
             mediaController?.pause()
         }
         MusicService.onStopAction = {
+            currentlyPlaying = null
             mediaController?.stop()
         }
         MusicService.onTogglePlayPauseAction = {
@@ -568,7 +574,9 @@ fun MusicScreen(
     // Keep currentlyPlaying in sync if MusicService advances track in background
     val serviceCurrentSong by remember { MusicService.currentMusicItem }
     LaunchedEffect(serviceCurrentSong) {
-        if (serviceCurrentSong != null && currentlyPlaying?.id != serviceCurrentSong?.id) {
+        if (serviceCurrentSong == null) {
+            currentlyPlaying = null
+        } else if (currentlyPlaying?.id != serviceCurrentSong?.id) {
             currentlyPlaying = serviceCurrentSong
         }
     }
@@ -2203,8 +2211,9 @@ fun MusicScreen(
         }
 
         // ─── Floating Mini Player ───────────────────────────────────────────
+        val isMiniPlayerDismissed by remember { MusicService.isMiniPlayerDismissed }
         AnimatedVisibility(
-            visible = showFloatingMiniPlayer && (currentlyPlaying != null || MusicService.nowPlayingTitle.value.isNotBlank()) && !showFullScreenPlayer,
+            visible = showFloatingMiniPlayer && !isMiniPlayerDismissed && (currentlyPlaying != null || MusicService.nowPlayingTitle.value.isNotBlank()) && !showFullScreenPlayer,
             enter = fadeIn(animationSpec = tween(220)) + scaleIn(initialScale = 0.96f, animationSpec = tween(220)),
             exit = fadeOut(animationSpec = tween(180)) + scaleOut(targetScale = 0.96f, animationSpec = tween(180)),
             modifier = Modifier

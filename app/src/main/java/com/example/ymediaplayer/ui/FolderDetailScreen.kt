@@ -594,13 +594,14 @@ fun FolderDetailScreen(
         }
 
         // Floating Music Mini Bar at bottom of FolderDetailScreen (Video Section)
+        val isMiniPlayerDismissed by remember { MusicService.isMiniPlayerDismissed }
         val isMusicPlaying by remember { MusicService.isMusicPlaying }
         val nowPlayingTitle by remember { MusicService.nowPlayingTitle }
         val nowPlayingArtist by remember { MusicService.nowPlayingArtist }
         val nowPlayingArtUri by remember { MusicService.nowPlayingArtUri }
 
         AnimatedVisibility(
-            visible = isMusicPlaying || nowPlayingTitle.isNotBlank(),
+            visible = !isMiniPlayerDismissed && (isMusicPlaying || nowPlayingTitle.isNotBlank()),
             enter = slideInVertically(initialOffsetY = { it }) + fadeIn(),
             exit = slideOutVertically(targetOffsetY = { it }) + fadeOut(),
             modifier = Modifier
@@ -616,7 +617,10 @@ fun FolderDetailScreen(
                 onPlayPause = { MusicService.togglePlayPause() },
                 onNext = { MusicService.playNext() },
                 onPrev = { MusicService.playPrevious() },
-                onClose = { MusicService.stopAndDismiss() },
+                onClose = {
+                    view.performHaptic(HapticType.LIGHT)
+                    MusicService.stopAndDismiss()
+                },
                 onClick = {
                     view.performHaptic(HapticType.LIGHT)
                     MainActivity.openMusicTrigger.value = true

@@ -246,6 +246,29 @@ class AppPreferences(private val prefs: SharedPreferences) {
         }
     }
 
+    // ─── Completed Cinema Downloads Tracking ───────────────────────────────────
+    fun markCinemaDownloadCompleted(filePath: String) {
+        val norm = filePath.replace("\\", "/").lowercase().trim()
+        val set = (prefs.getStringSet("completed_cinema_downloads", emptySet()) ?: emptySet()).toMutableSet()
+        set.add(norm)
+        set.add(java.io.File(norm).name)
+        prefs.edit().putStringSet("completed_cinema_downloads", set).apply()
+    }
+
+    fun isCinemaDownloadCompleted(filePath: String): Boolean {
+        val norm = filePath.replace("\\", "/").lowercase().trim()
+        val set = prefs.getStringSet("completed_cinema_downloads", emptySet()) ?: emptySet()
+        return set.contains(norm) || set.contains(java.io.File(norm).name)
+    }
+
+    fun removeCinemaDownloadCompleted(filePath: String) {
+        val norm = filePath.replace("\\", "/").lowercase().trim()
+        val set = (prefs.getStringSet("completed_cinema_downloads", emptySet()) ?: emptySet()).toMutableSet()
+        set.remove(norm)
+        set.remove(java.io.File(norm).name)
+        prefs.edit().putStringSet("completed_cinema_downloads", set).apply()
+    }
+
     // ─── Cinema Watch History ──────────────────────────────────────────────────
     fun saveCinemaWatchHistory(item: TmdbItem, progressMs: Long = 0L, durationMs: Long = 0L) {
         saveCinemaWatchHistory(

@@ -196,6 +196,8 @@ class MusicService : MediaSessionService() {
             private set
 
         // Observable "Now Playing" state — readable from any Composable
+        var isMiniPlayerDismissed: androidx.compose.runtime.MutableState<Boolean> =
+            androidx.compose.runtime.mutableStateOf(true)
         var isMusicPlaying: androidx.compose.runtime.MutableState<Boolean> =
             androidx.compose.runtime.mutableStateOf(false)
         var nowPlayingTitle: androidx.compose.runtime.MutableState<String> =
@@ -360,6 +362,7 @@ class MusicService : MediaSessionService() {
         }
 
         fun stopAndDismiss() {
+            isMiniPlayerDismissed.value = true
             fadeJob?.cancel()
             playerInstance?.let {
                 it.stop()
@@ -374,10 +377,13 @@ class MusicService : MediaSessionService() {
             currentMusicItem.value = null
             try {
                 serviceInstance?.stopForeground(STOP_FOREGROUND_REMOVE)
+                val nm = serviceInstance?.getSystemService(Context.NOTIFICATION_SERVICE) as? NotificationManager
+                nm?.cancel(MUSIC_NOTIFICATION_ID)
             } catch (_: Exception) {}
         }
 
         fun playSong(item: MusicItem) {
+            isMiniPlayerDismissed.value = false
             com.example.ymediaplayer.player.VideoPlaybackManager.player?.let { vPlayer ->
                 if (vPlayer.isPlaying) {
                     vPlayer.pause()
@@ -476,6 +482,7 @@ class MusicService : MediaSessionService() {
         }
 
         fun playNext() {
+            isMiniPlayerDismissed.value = false
             val player = playerInstance ?: return
             if (player.hasNextMediaItem()) player.seekToNextMediaItem()
             else if (player.mediaItemCount > 0) player.seekTo(0, 0L)
@@ -483,6 +490,7 @@ class MusicService : MediaSessionService() {
         }
 
         fun playPrevious() {
+            isMiniPlayerDismissed.value = false
             val player = playerInstance ?: return
             if (player.currentPosition > 3000L) player.seekTo(0L)
             else if (player.hasPreviousMediaItem()) player.seekToPreviousMediaItem()
@@ -886,6 +894,14 @@ class MusicService : MediaSessionService() {
     }
 
     fun updateForegroundNotification() {
+        if (isMiniPlayerDismissed.value || currentMusicItem.value == null) {
+            try {
+                stopForeground(STOP_FOREGROUND_REMOVE)
+                val nm = getSystemService(Context.NOTIFICATION_SERVICE) as? NotificationManager
+                nm?.cancel(MUSIC_NOTIFICATION_ID)
+            } catch (_: Exception) {}
+            return
+        }
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             try {
                 val notification = buildMediaNotification()

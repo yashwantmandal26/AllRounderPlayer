@@ -147,6 +147,7 @@ fun MyCinemaScreen(
             if (downloadDir.exists() && downloadDir.isDirectory) {
                 downloadDir.walkTopDown().filter { file ->
                     file.isFile && file.length() > 0 &&
+                    !file.name.endsWith(".part", ignoreCase = true) &&
                     (file.extension.equals("mp4", true) ||
                      file.extension.equals("mkv", true) ||
                      file.extension.equals("webm", true) ||
@@ -157,7 +158,12 @@ fun MyCinemaScreen(
                     !inProgressPaths.contains(file.absolutePath) &&
                     !inProgressIds.any { file.name.lowercase().contains(it) }
                 }.forEach { file ->
-                    val sizeStr = com.example.ymediaplayer.mycinema.service.formatTorrentBytes(file.length())
+                    val isExplicitlyCompleted = appPreferences.isCinemaDownloadCompleted(file.absolutePath) ||
+                        cinemaDownloadsMap.values.any {
+                            it.status == com.example.ymediaplayer.mycinema.service.TorrentDownloadState.Status.FINISHED &&
+                            (it.savePath == file.absolutePath || it.title.equals(file.nameWithoutExtension, true))
+                        }
+
                     val durationMs = try {
                         val retriever = android.media.MediaMetadataRetriever()
                         try {
@@ -167,6 +173,13 @@ fun MyCinemaScreen(
                             try { retriever.release() } catch (_: Exception) {}
                         }
                     } catch (_: Exception) { 0L }
+
+                    // Only display in offline shelf if fully finished (prevent incomplete fragments from showing as downloaded)
+                    if (!isExplicitlyCompleted && (durationMs < 30_000L || file.length() < 30_000_000L)) {
+                        return@forEach
+                    }
+
+                    val sizeStr = com.example.ymediaplayer.mycinema.service.formatTorrentBytes(file.length())
                     val durStr = if (durationMs > 0) {
                         val totalSecs = durationMs / 1000
                         val hrs = totalSecs / 3600
@@ -686,6 +699,9 @@ fun MyCinemaScreen(
                                     if (target.file.exists()) {
                                         target.file.delete()
                                     }
+                                    try {
+                                        appPreferences.removeCinemaDownloadCompleted(target.file.absolutePath)
+                                    } catch (_: Exception) {}
                                     val parent = target.file.parentFile
                                     val baseDownloadDir = com.example.ymediaplayer.mycinema.service.TorrentEngine.getDownloadDir(context)
                                     if (parent != null && parent != baseDownloadDir && parent.isDirectory && parent.listFiles()?.isEmpty() == true) {

@@ -255,6 +255,11 @@ object TorrentEngine {
                                 val relPath = torrentFile.files().filePath(if (mainIdx >= 0) mainIdx else 0)
                                 sanitizePath(context, relPath)
                             } else null
+                            if (targetFile != null) {
+                                try {
+                                    com.example.ymediaplayer.data.AppPreferences(context).markCinemaDownloadCompleted(targetFile)
+                                } catch (_: Exception) {}
+                            }
                             updateState(hash) {
                                 it.copy(
                                     progress = 1f,
@@ -510,7 +515,10 @@ object TorrentEngine {
 
     fun getActiveTorrent(filePath: String): String? {
         if (filePath.isBlank()) return null
-        val targetFile = File(filePath)
+        val cleanPath = if (filePath.startsWith("file://")) {
+            try { android.net.Uri.parse(filePath).path ?: filePath.removePrefix("file://") } catch (_: Exception) { filePath.removePrefix("file://") }
+        } else filePath
+        val targetFile = File(cleanPath)
         val targetName = targetFile.name.lowercase()
         val targetNorm = targetFile.absolutePath.replace("\\", "/").lowercase()
 

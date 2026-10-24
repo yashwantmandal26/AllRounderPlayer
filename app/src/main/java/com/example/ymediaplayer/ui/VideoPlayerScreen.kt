@@ -4020,7 +4020,7 @@ fun VideoPlayerScreen(
                                 val playFraction = (curVal / dur).coerceIn(0f, 1f)
 
                                 // Active torrent or buffered download fraction
-                                val activeHash = streamTorrentHash ?: TorrentEngine.getActiveTorrent(currentUrl)
+                                val activeHash = streamTorrentHash ?: TorrentEngine.getActiveTorrent(currentUrl) ?: TorrentEngine.getActiveTorrent(videoUrl)
                                 val torrentProgress = activeHash?.let { cinemaDownloads[it]?.progress }
                                 val bufferFraction = when {
                                     torrentProgress != null && torrentProgress > 0f -> torrentProgress.coerceIn(0f, 1f)

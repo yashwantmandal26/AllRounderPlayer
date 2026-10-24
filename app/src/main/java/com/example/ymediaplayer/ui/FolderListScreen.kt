@@ -1636,8 +1636,9 @@ fun FolderListScreen(
                     horizontalAlignment = Alignment.CenterHorizontally
                 ) {
                 // Animated "Now Playing" pill visible across both tabs with controls & 100% opaque background
+                val isMiniPlayerDismissed by remember { MusicService.isMiniPlayerDismissed }
                 AnimatedVisibility(
-                    visible = (isMusicPlaying || nowPlayingTitle.isNotBlank()),
+                    visible = !isMiniPlayerDismissed && (isMusicPlaying || nowPlayingTitle.isNotBlank()),
                     enter = slideInVertically(initialOffsetY = { it / 2 }) + fadeIn(),
                     exit = slideOutVertically(targetOffsetY = { it / 2 }) + fadeOut(),
                     modifier = Modifier.fillMaxWidth().padding(horizontal = 14.dp)

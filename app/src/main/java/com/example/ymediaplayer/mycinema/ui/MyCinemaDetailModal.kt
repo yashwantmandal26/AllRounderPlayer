@@ -640,10 +640,22 @@ fun MyCinemaDetailModal(
                             val appIntent = pm.getLaunchIntentForPackage("moctale.android.app")
                             if (appIntent != null) {
                                 appIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                                context.startActivity(appIntent)
+                                try {
+                                    context.startActivity(appIntent)
+                                } catch (_: Exception) {
+                                    val q = URLEncoder.encode("${item.displayName} moctale reviews", "UTF-8")
+                                    launchAppOrWeb(context, "https://www.google.com/search?q=$q")
+                                }
                             } else {
-                                val q = URLEncoder.encode("${item.displayName} moctale reviews", "UTF-8")
-                                launchAppOrWeb(context, "https://www.google.com/search?q=$q")
+                                try {
+                                    val marketIntent = Intent(Intent.ACTION_VIEW, Uri.parse("market://details?id=moctale.android.app")).apply {
+                                        flags = Intent.FLAG_ACTIVITY_NEW_TASK
+                                    }
+                                    context.startActivity(marketIntent)
+                                } catch (_: Exception) {
+                                    val q = URLEncoder.encode("${item.displayName} moctale reviews", "UTF-8")
+                                    launchAppOrWeb(context, "https://www.google.com/search?q=$q")
+                                }
                             }
                         }
                     )
