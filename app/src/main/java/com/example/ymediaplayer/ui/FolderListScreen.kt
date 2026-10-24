@@ -31,6 +31,7 @@ import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.pager.HorizontalPager
+import androidx.compose.foundation.pager.PagerDefaults
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -125,6 +126,12 @@ fun FolderListScreen(
     var refreshTrigger by remember { mutableIntStateOf(0) }
 
     // Navigation state
+    val mainTabs = remember { listOf("MYCinema", "Video", "Music") }
+    val initialTabIndex = remember {
+        val defaultTab = appPreferences.getDefaultStartTab()
+        mainTabs.indexOf(defaultTab).coerceAtLeast(0)
+    }
+    val pagerState = rememberPagerState(initialPage = initialTabIndex) { mainTabs.size }
     var currentTab by rememberSaveable { mutableStateOf(appPreferences.getDefaultStartTab()) }
     var cinemaLibraryOpenType by rememberSaveable { mutableStateOf<String?>(null) }
     var musicPlayerExpanded by rememberSaveable { mutableStateOf(false) }
@@ -177,7 +184,7 @@ fun FolderListScreen(
                 musicPlayerExpanded = false
             }
             inSelectionMode -> {
-                selectedVideoIds = emptySet<Long>()
+                selectedVideoIds = emptySet()
             }
             isSearching -> {
                 isSearching = false
@@ -186,12 +193,18 @@ fun FolderListScreen(
             activeChip != null -> {
                 activeChip = null
             }
+            videoActionTarget != null -> {
+                videoActionTarget = null
+            }
+            folderActionTarget != null -> {
+                folderActionTarget = null
+            }
             currentTab != "Video" -> {
                 currentTab = "Video"
             }
             else -> {
                 val now = System.currentTimeMillis()
-                if (now - lastBackPressTime < 2000) {
+                if (now - lastBackPressTime < 2000L) {
                     (context as? Activity)?.finish()
                 } else {
                     lastBackPressTime = now
@@ -448,28 +461,6 @@ fun FolderListScreen(
     }
     val downloaderCount = remember(allFolders) {
         allFolders.filter { it.name.contains("Download", ignoreCase = true) }.sumOf { it.videos.size }
-    }
-
-    // Prevent exiting app directly; collapse active modes first
-    var backPressedTime by remember { mutableLongStateOf(0L) }
-    androidx.activity.compose.BackHandler(enabled = true) {
-        when {
-            inSelectionMode -> selectedVideoIds = emptySet()
-            isSearching -> { isSearching = false; searchQuery = "" }
-            activeChip != null -> activeChip = null
-            videoActionTarget != null -> videoActionTarget = null
-            folderActionTarget != null -> folderActionTarget = null
-            currentTab != "Video" -> currentTab = "Video"
-            else -> {
-                val now = System.currentTimeMillis()
-                if (now - backPressedTime < 2000L) {
-                    (context as? android.app.Activity)?.finish()
-                } else {
-                    backPressedTime = now
-                    android.widget.Toast.makeText(context, "Press back again to exit", android.widget.Toast.LENGTH_SHORT).show()
-                }
-            }
-        }
     }
 
     // ─── Main Layout ────────────────────────────────────────────────────────
@@ -821,27 +812,39 @@ fun FolderListScreen(
             },
             modifier = modifier
         ) { paddingValues ->
-            val mainTabs = remember { listOf("MYCinema", "Video", "Music") }
-            val initialTabIndex = remember {
-                val defaultTab = appPreferences.getDefaultStartTab()
-                mainTabs.indexOf(defaultTab).coerceAtLeast(0)
-            }
-            val pagerState = rememberPagerState(initialPage = initialTabIndex) { mainTabs.size }
-
-            // Sync swipe gestures with currentTab
-            LaunchedEffect(pagerState.currentPage) {
-                val targetTab = mainTabs[pagerState.currentPage]
-                if (currentTab != targetTab) {
-                    currentTab = targetTab
-                    if (targetTab != "Video") selectedVideoIds = emptySet()
+            // 1. Sync settled swipe gestures with currentTab (ONLY when page has fully settled)
+            LaunchedEffect(pagerState.settledPage) {
+                val settledTab = mainTabs.getOrNull(pagerState.settledPage) ?: return@LaunchedEffect
+                if (currentTab != settledTab) {
+                    currentTab = settledTab
+                    if (settledTab != "Video") selectedVideoIds = emptySet()
                 }
             }
 
-            // Sync programmatic tab changes (e.g. from bottom pill taps, back press) with pagerState
+            // 2. Sync programmatic tab changes (e.g. from bottom pill taps, back press) with pagerState
             LaunchedEffect(currentTab) {
                 val targetPage = mainTabs.indexOf(currentTab)
-                if (targetPage in mainTabs.indices && pagerState.currentPage != targetPage) {
-                    pagerState.animateScrollToPage(targetPage)
+                if (targetPage in mainTabs.indices) {
+                    if (pagerState.currentPage != targetPage || pagerState.targetPage != targetPage) {
+                        pagerState.animateScrollToPage(targetPage)
+                    }
+                }
+            }
+
+            // 3. Rock-solid auto-snap safeguard: if user stops sliding or gesture is interrupted, snap immediately!
+            LaunchedEffect(pagerState.isScrollInProgress) {
+                if (!pagerState.isScrollInProgress) {
+                    val offset = pagerState.currentPageOffsetFraction
+                    if (kotlin.math.abs(offset) > 0.005f) {
+                        val target = if (offset > 0.5f) {
+                            (pagerState.currentPage + 1).coerceAtMost(mainTabs.size - 1)
+                        } else if (offset < -0.5f) {
+                            (pagerState.currentPage - 1).coerceAtLeast(0)
+                        } else {
+                            pagerState.currentPage
+                        }
+                        pagerState.animateScrollToPage(target)
+                    }
                 }
             }
 
@@ -851,7 +854,12 @@ fun FolderListScreen(
                 state = pagerState,
                 modifier = Modifier.fillMaxSize(),
                 userScrollEnabled = canSwipePages,
-                beyondViewportPageCount = 2
+                beyondViewportPageCount = 2,
+                key = { page -> mainTabs[page] },
+                flingBehavior = PagerDefaults.flingBehavior(
+                    state = pagerState,
+                    snapPositionalThreshold = 0.25f
+                )
             ) { page ->
                 when (mainTabs[page]) {
                     "MYCinema" -> {
@@ -1783,6 +1791,12 @@ fun FolderListScreen(
                                     )
                                     .bounceClick { 
                                         if (currentTab != label) view.performHaptic(HapticType.LIGHT)
+                                        val target = mainTabs.indexOf(label)
+                                        if (target in mainTabs.indices && pagerState.currentPage != target) {
+                                            coroutineScope.launch {
+                                                pagerState.animateScrollToPage(target)
+                                            }
+                                        }
                                         currentTab = label
                                         if (label != "Video") selectedVideoIds = emptySet() 
                                     }
