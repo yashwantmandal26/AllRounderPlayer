@@ -12,6 +12,7 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -31,11 +32,13 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil3.compose.AsyncImage
+import com.example.ymediaplayer.R
 import com.example.ymediaplayer.mycinema.data.BoxOfficeVerdict
 import com.example.ymediaplayer.mycinema.data.CinemaExtendedInfo
 import com.example.ymediaplayer.mycinema.data.MyCinemaRepository
@@ -445,7 +448,8 @@ fun MyCinemaDetailModal(
                     OfficialAvailabilityCard(
                         extendedInfo = extendedInfo!!,
                         isUnreleased = isUnreleased,
-                        releaseDateFormatted = releaseDateFormatted
+                        releaseDateFormatted = releaseDateFormatted,
+                        movieTitle = item.displayName
                     )
                 }
 
@@ -640,22 +644,18 @@ fun MyCinemaDetailModal(
                             val appIntent = pm.getLaunchIntentForPackage("moctale.android.app")
                             if (appIntent != null) {
                                 appIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                                appIntent.putExtra("query", item.displayName)
+                                appIntent.putExtra(Intent.EXTRA_TEXT, item.displayName)
                                 try {
                                     context.startActivity(appIntent)
                                 } catch (_: Exception) {
                                     val q = URLEncoder.encode("${item.displayName} moctale reviews", "UTF-8")
-                                    launchAppOrWeb(context, "https://www.google.com/search?q=$q")
+                                    launchBrowserUrl(context, "https://www.google.com/search?q=$q")
                                 }
                             } else {
-                                try {
-                                    val marketIntent = Intent(Intent.ACTION_VIEW, Uri.parse("market://details?id=moctale.android.app")).apply {
-                                        flags = Intent.FLAG_ACTIVITY_NEW_TASK
-                                    }
-                                    context.startActivity(marketIntent)
-                                } catch (_: Exception) {
-                                    val q = URLEncoder.encode("${item.displayName} moctale reviews", "UTF-8")
-                                    launchAppOrWeb(context, "https://www.google.com/search?q=$q")
-                                }
+                                // Moctale app is not installed -> Open reviews directly in browser
+                                val q = URLEncoder.encode("${item.displayName} moctale reviews", "UTF-8")
+                                launchBrowserUrl(context, "https://www.google.com/search?q=$q")
                             }
                         }
                     )
@@ -664,20 +664,15 @@ fun MyCinemaDetailModal(
                     ReviewExternalPill(
                         label = "GOOGLE",
                         icon = {
-                            Box(
-                                modifier = Modifier.size(18.dp),
-                                contentAlignment = Alignment.Center
-                            ) {
-                                AsyncImage(
-                                    model = "https://upload.wikimedia.org/wikipedia/commons/thumb/c/c1/Google_%22G%22_logo.svg/120px-Google_%22G%22_logo.svg.png",
-                                    contentDescription = "Google",
-                                    modifier = Modifier.fillMaxSize()
-                                )
-                            }
+                            Image(
+                                painter = painterResource(id = R.drawable.ic_google_logo),
+                                contentDescription = "Google",
+                                modifier = Modifier.size(17.dp)
+                            )
                         },
                         onClick = {
                             val q = URLEncoder.encode("${item.displayName} movie reviews", "UTF-8")
-                            launchAppOrWeb(context, "https://www.google.com/search?q=$q")
+                            launchBrowserUrl(context, "https://www.google.com/search?q=$q")
                         }
                     )
 
@@ -795,8 +790,10 @@ private fun ReviewExternalPill(
 private fun OfficialAvailabilityCard(
     extendedInfo: CinemaExtendedInfo,
     isUnreleased: Boolean,
-    releaseDateFormatted: String
+    releaseDateFormatted: String,
+    movieTitle: String
 ) {
+    val context = LocalContext.current
     Surface(
         shape = RoundedCornerShape(14.dp),
         color = Color(0xFF141722),
@@ -828,11 +825,19 @@ private fun OfficialAvailabilityCard(
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                     verticalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
-                    extendedInfo.watchProviders.take(5).forEach { provider ->
+                    extendedInfo.watchProviders.take(8).forEach { provider ->
                         Surface(
+                            onClick = {
+                                val browseUrl = getOttProviderBrowseUrl(
+                                    providerName = provider.providerName,
+                                    title = movieTitle,
+                                    tmdbWatchLink = extendedInfo.tmdbWatchLink
+                                )
+                                launchBrowserUrl(context, browseUrl)
+                            },
                             shape = RoundedCornerShape(8.dp),
                             color = Color.White.copy(alpha = 0.08f),
-                            border = BorderStroke(0.8.dp, Color.White.copy(alpha = 0.15f)),
+                            border = BorderStroke(0.8.dp, Color.White.copy(alpha = 0.20f)),
                             modifier = Modifier.height(34.dp)
                         ) {
                             Row(
@@ -853,12 +858,30 @@ private fun OfficialAvailabilityCard(
                                     fontSize = 11.5.sp,
                                     fontWeight = FontWeight.SemiBold
                                 )
+                                Spacer(Modifier.width(5.dp))
+                                Icon(
+                                    Icons.AutoMirrored.Rounded.OpenInNew,
+                                    contentDescription = "Watch on ${provider.providerName}",
+                                    tint = Color.White.copy(alpha = 0.55f),
+                                    modifier = Modifier.size(11.dp)
+                                )
                             }
                         }
                     }
                 }
             } else if (extendedInfo.isDirectOtt) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier.clickable {
+                        val platform = extendedInfo.officialPlatformName ?: "OTT"
+                        val browseUrl = getOttProviderBrowseUrl(
+                            providerName = platform,
+                            title = movieTitle,
+                            tmdbWatchLink = extendedInfo.tmdbWatchLink
+                        )
+                        launchBrowserUrl(context, browseUrl)
+                    }
+                ) {
                     Box(
                         modifier = Modifier
                             .clip(RoundedCornerShape(6.dp))
@@ -866,12 +889,21 @@ private fun OfficialAvailabilityCard(
                             .border(0.8.dp, Color(0xFF0288D1).copy(alpha = 0.6f), RoundedCornerShape(6.dp))
                             .padding(horizontal = 8.dp, vertical = 4.dp)
                     ) {
-                        Text(
-                            text = "📺 DIRECT OTT PREMIERE",
-                            color = Color(0xFF81D4FA),
-                            fontSize = 11.sp,
-                            fontWeight = FontWeight.Bold
-                        )
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text(
+                                text = "📺 DIRECT OTT PREMIERE",
+                                color = Color(0xFF81D4FA),
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+                            Spacer(Modifier.width(4.dp))
+                            Icon(
+                                Icons.AutoMirrored.Rounded.OpenInNew,
+                                contentDescription = null,
+                                tint = Color(0xFF81D4FA),
+                                modifier = Modifier.size(11.dp)
+                            )
+                        }
                     }
                     if (releaseDateFormatted.isNotBlank()) {
                         Spacer(Modifier.width(8.dp))
@@ -1223,5 +1255,78 @@ private fun launchAppOrWeb(context: Context, url: String) {
         context.startActivity(intent)
     } catch (_: Exception) {
         Toast.makeText(context, "Could not open link", Toast.LENGTH_SHORT).show()
+    }
+}
+
+/**
+ * Opens url directly in the web browser.
+ */
+private fun launchBrowserUrl(context: Context, url: String) {
+    try {
+        val uri = Uri.parse(url)
+        val browserIntent = Intent(Intent.ACTION_VIEW, uri).apply {
+            addCategory(Intent.CATEGORY_BROWSABLE)
+            flags = Intent.FLAG_ACTIVITY_NEW_TASK
+        }
+        context.startActivity(browserIntent)
+    } catch (_: Exception) {
+        try {
+            val fallbackIntent = Intent(Intent.ACTION_VIEW, Uri.parse(url)).apply {
+                flags = Intent.FLAG_ACTIVITY_NEW_TASK
+            }
+            context.startActivity(fallbackIntent)
+        } catch (_: Exception) {
+            Toast.makeText(context, "Could not open browser", Toast.LENGTH_SHORT).show()
+        }
+    }
+}
+
+/**
+ * Resolves the official watch / search URL for an OTT streaming platform.
+ */
+private fun getOttProviderBrowseUrl(providerName: String, title: String, tmdbWatchLink: String? = null): String {
+    val cleanTitle = title.trim()
+    val encodedTitle = try {
+        URLEncoder.encode(cleanTitle, "UTF-8")
+    } catch (_: Exception) {
+        cleanTitle.replace(" ", "+")
+    }
+    val lower = providerName.lowercase()
+
+    return when {
+        lower.contains("netflix") -> "https://www.netflix.com/search?q=$encodedTitle"
+        lower.contains("prime") || lower.contains("amazon") -> "https://www.primevideo.com/search/ref=atv_nb_sr?phrase=$encodedTitle"
+        lower.contains("hotstar") -> "https://www.hotstar.com/in/explore?search_query=$encodedTitle"
+        lower.contains("disney") -> "https://www.disneyplus.com/search?q=$encodedTitle"
+        lower.contains("paramount") -> "https://www.paramountplus.com/search/?q=$encodedTitle"
+        lower.contains("jiocinema") || lower.contains("jio cinema") -> "https://www.jiocinema.com/search/$encodedTitle"
+        lower.contains("zee5") || lower.contains("zee") -> "https://www.zee5.com/search?q=$encodedTitle"
+        lower.contains("sonyliv") || lower.contains("sony liv") -> "https://www.sonyliv.com/search/$encodedTitle"
+        lower.contains("apple") -> "https://tv.apple.com/search?term=$encodedTitle"
+        lower.contains("hulu") -> "https://www.hulu.com/search?q=$encodedTitle"
+        lower.contains("peacock") -> "https://www.peacocktv.com/watch/search?q=$encodedTitle"
+        lower.contains("max") || lower.contains("hbo") -> "https://play.max.com/search?q=$encodedTitle"
+        lower.contains("fubo") -> "https://www.fubo.tv/search?q=$encodedTitle"
+        lower.contains("philo") -> "https://www.philo.com/search?q=$encodedTitle"
+        lower.contains("youtube") || lower.contains("google play") -> "https://www.youtube.com/results?search_query=$encodedTitle+movie"
+        lower.contains("tubi") -> "https://tubitv.com/search/$encodedTitle"
+        lower.contains("pluto") -> "https://pluto.tv/search/details?q=$encodedTitle"
+        lower.contains("vudu") || lower.contains("fandango") -> "https://www.vudu.com/content/movies/search?searchString=$encodedTitle"
+        lower.contains("crunchyroll") -> "https://www.crunchyroll.com/search?q=$encodedTitle"
+        lower.contains("aha") -> "https://www.aha.video/search?q=$encodedTitle"
+        lower.contains("mx player") || lower.contains("mxplayer") -> "https://www.mxplayer.in/search?q=$encodedTitle"
+        lower.contains("hoichoi") -> "https://www.hoichoi.tv/search?q=$encodedTitle"
+        lower.contains("sun nxt") || lower.contains("sunnxt") -> "https://www.sunnxt.com/search/$encodedTitle"
+        lower.contains("lionsgate") -> "https://www.lionsgateplay.com/search?q=$encodedTitle"
+        lower.contains("discovery") -> "https://www.discoveryplus.in/search?q=$encodedTitle"
+        !tmdbWatchLink.isNullOrBlank() -> tmdbWatchLink
+        else -> {
+            val encodedProvider = try {
+                URLEncoder.encode(providerName, "UTF-8")
+            } catch (_: Exception) {
+                providerName.replace(" ", "+")
+            }
+            "https://www.google.com/search?q=$encodedTitle+watch+on+$encodedProvider"
+        }
     }
 }

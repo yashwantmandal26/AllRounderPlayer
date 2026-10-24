@@ -246,6 +246,7 @@ class TmdbApiClient(
                 val inWp = wpObj?.optJSONObject("IN") ?: wpObj?.optJSONObject("US") ?: wpObj?.let {
                     if (it.keys().hasNext()) it.optJSONObject(it.keys().next()) else null
                 }
+                val tmdbWatchLink = inWp?.optString("link")?.takeIf { it.isNotBlank() }
 
                 val providersList = mutableListOf<TmdbWatchProviderItem>()
                 val flatrateArray = inWp?.optJSONArray("flatrate") ?: inWp?.optJSONArray("rent")
@@ -347,7 +348,8 @@ class TmdbApiClient(
                     watchProviders = providersList,
                     isDirectOtt = isDirectOtt,
                     officialPlatformName = officialPlatform,
-                    releaseDate = releaseDate ?: root.optString("release_date")
+                    releaseDate = releaseDate ?: root.optString("release_date"),
+                    tmdbWatchLink = tmdbWatchLink
                 )
             }
         } catch (e: Exception) {

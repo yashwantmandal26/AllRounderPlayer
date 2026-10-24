@@ -180,7 +180,8 @@ data class CinemaExtendedInfo(
     val watchProviders: List<TmdbWatchProviderItem> = emptyList(),
     val isDirectOtt: Boolean = false,
     val officialPlatformName: String? = null,
-    val releaseDate: String? = null
+    val releaseDate: String? = null,
+    val tmdbWatchLink: String? = null
 ) {
     val budgetFormatted: String
         get() = formatCurrencyWithInr(budget)
