@@ -40,7 +40,7 @@ fun StreamBufferingDialog(
     val downloadState = downloads[hash]
 
     var downloadedBytes by remember { mutableLongStateOf(0L) }
-    var requiredBytes by remember { mutableLongStateOf(15_000_000L) }
+    var requiredBytes by remember { mutableLongStateOf(TorrentEngine.DEFAULT_STREAM_BUFFER_BYTES) }
     var secondsWaiting by remember { mutableIntStateOf(0) }
 
     LaunchedEffect(hash) {

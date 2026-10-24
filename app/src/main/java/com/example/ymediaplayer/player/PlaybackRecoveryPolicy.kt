@@ -37,9 +37,9 @@ internal object PlaybackRecoveryPolicy {
             PlaybackException.ERROR_CODE_AUDIO_TRACK_OFFLOAD_INIT_FAILED,
             PlaybackException.ERROR_CODE_AUDIO_TRACK_OFFLOAD_WRITE_FAILED -> when {
                 attempt == 0 -> RecoveryAction.SAFE_MODE_RETRY
-                audioRendererFailed -> RecoveryAction.COMPATIBILITY_FALLBACK
+                audioRendererFailed -> RecoveryAction.DISABLE_AUDIO_RETRY
                 attempt < MAX_DECODER_RETRIES -> RecoveryAction.RETRY
-                else -> RecoveryAction.COMPATIBILITY_FALLBACK
+                else -> RecoveryAction.DISABLE_AUDIO_RETRY
             }
 
             PlaybackException.ERROR_CODE_DECODING_FORMAT_UNSUPPORTED,

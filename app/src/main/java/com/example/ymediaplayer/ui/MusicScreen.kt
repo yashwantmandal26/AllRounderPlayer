@@ -742,9 +742,30 @@ fun MusicScreen(
                         modifier = Modifier
                             .weight(1f)
                             .height(48.dp)
+                            .shadow(
+                                elevation = 8.dp,
+                                shape = RoundedCornerShape(24.dp),
+                                ambientColor = if (c.isDark) Color.Black.copy(alpha = 0.55f) else c.cardShadowColor,
+                                spotColor = if (c.isDark) Color.Black.copy(alpha = 0.45f) else c.cardShadowColor
+                            )
                             .clip(RoundedCornerShape(24.dp))
-                            .background(c.cardBgElevated)
-                            .border(1.dp, c.glassBorder, RoundedCornerShape(24.dp))
+                            .background(
+                                Brush.verticalGradient(
+                                    listOf(
+                                        if (c.isDark) c.cardBgElevated else Color.White,
+                                        c.cardBg
+                                    )
+                                )
+                            )
+                            .border(
+                                1.3.dp,
+                                if (searchQuery.isNotBlank()) {
+                                    Brush.verticalGradient(listOf(c.accentBlue, c.cardBorderHighlight, c.accentBlue.copy(alpha = 0.4f)))
+                                } else {
+                                    Brush.verticalGradient(listOf(c.cardBorderHighlight, c.glassBorder, c.cardBorderShadow))
+                                },
+                                RoundedCornerShape(24.dp)
+                            )
                             .padding(horizontal = 14.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
@@ -5276,12 +5297,9 @@ private fun MusicVerticalGestureBar(
                     )
                 }
 
-                // Bottom Percentage Label with frosted badge
+                // Bottom Percentage Label (only keep text, no dark bg card)
                 Box(
-                    modifier = Modifier
-                        .clip(RoundedCornerShape(8.dp))
-                        .background(Color.Black.copy(alpha = 0.35f))
-                        .padding(horizontal = 4.dp, vertical = 1.dp),
+                    modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.dp),
                     contentAlignment = Alignment.Center
                 ) {
                     Text(
@@ -5290,7 +5308,14 @@ private fun MusicVerticalGestureBar(
                         fontSize = 10.sp,
                         fontWeight = FontWeight.ExtraBold,
                         fontFamily = FontFamily.Monospace,
-                        maxLines = 1
+                        letterSpacing = (-0.5).sp,
+                        maxLines = 1,
+                        style = androidx.compose.ui.text.TextStyle(
+                            shadow = androidx.compose.ui.graphics.Shadow(
+                                color = Color.Black.copy(alpha = 0.85f),
+                                blurRadius = 3f
+                            )
+                        )
                     )
                 }
             }

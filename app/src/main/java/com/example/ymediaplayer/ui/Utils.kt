@@ -240,138 +240,157 @@ enum class PlayerTheme(
     val glowColor: Color,
     val previewGradient: List<Color>
 ) {
-    CYBER(
-        id = "CYBER",
-        displayName = "Electric Cyber",
-        description = "Deep Sapphire Blue & Royal Indigo",
-        primaryAccent = Color(0xFF1565C0),
-        secondaryAccent = Color(0xFF5E35B1),
-        highlightColor = Color(0xFF1E88E5),
+    WHITE(
+        id = "WHITE",
+        displayName = "Pure White",
+        description = "Luminous Diamond & Platinum White",
+        primaryAccent = Color(0xFFF8FAFC),
+        secondaryAccent = Color(0xFFCBD5E1),
+        highlightColor = Color(0xFFFFFFFF),
         orbBrush = Brush.radialGradient(
-            listOf(Color(0xFF1E88E5), Color(0xFF1565C0), Color(0xFF0D47A1))
+            listOf(Color(0xFFFFFFFF), Color(0xFFE2E8F0), Color(0xFF94A3B8))
         ),
         gestureBrush = Brush.verticalGradient(
-            listOf(Color(0xFF1E88E5), Color(0xFF1565C0), Color(0xFF0D47A1))
+            listOf(Color(0xFFFFFFFF), Color(0xFFCBD5E1), Color(0xFF64748B))
         ),
-        glowColor = Color(0xFF1565C0),
-        previewGradient = listOf(Color(0xFF1565C0), Color(0xFF0D47A1))
+        glowColor = Color(0xFFF8FAFC),
+        previewGradient = listOf(Color(0xFFFFFFFF), Color(0xFFCBD5E1))
     ),
-    SUNSET(
-        id = "SUNSET",
-        displayName = "Sunset Mirage",
-        description = "Deep Burnt Amber & Dark Crimson",
-        primaryAccent = Color(0xFFD35400),
-        secondaryAccent = Color(0xFFC0392B),
-        highlightColor = Color(0xFFE67E22),
+    VIOLET(
+        id = "VIOLET",
+        displayName = "Royal Violet",
+        description = "Deep Royal Violet & Electric Purple",
+        primaryAccent = Color(0xFF8B5CF6),
+        secondaryAccent = Color(0xFF7C3AED),
+        highlightColor = Color(0xFFA78BFA),
         orbBrush = Brush.radialGradient(
-            listOf(Color(0xFFE67E22), Color(0xFFD35400), Color(0xFF78281F))
+            listOf(Color(0xFFA78BFA), Color(0xFF8B5CF6), Color(0xFF5B21B6))
         ),
         gestureBrush = Brush.verticalGradient(
-            listOf(Color(0xFFE67E22), Color(0xFFD35400), Color(0xFFC0392B))
+            listOf(Color(0xFFA78BFA), Color(0xFF8B5CF6), Color(0xFF6D28D9))
         ),
-        glowColor = Color(0xFFD35400),
-        previewGradient = listOf(Color(0xFFD35400), Color(0xFF900C3F))
+        glowColor = Color(0xFF8B5CF6),
+        previewGradient = listOf(Color(0xFFA78BFA), Color(0xFF6D28D9))
     ),
-    AURORA(
-        id = "AURORA",
-        displayName = "Dark Jade Forest",
-        description = "Deep Jade, Dark Teal & Pine Forest",
-        primaryAccent = Color(0xFF16796F),
-        secondaryAccent = Color(0xFF0F5750),
-        highlightColor = Color(0xFF2E948A),
+    INDIGO(
+        id = "INDIGO",
+        displayName = "Deep Indigo",
+        description = "Cosmic Indigo & Midnight Velvet",
+        primaryAccent = Color(0xFF6366F1),
+        secondaryAccent = Color(0xFF4F46E5),
+        highlightColor = Color(0xFF818CF8),
         orbBrush = Brush.radialGradient(
-            listOf(Color(0xFF2E948A), Color(0xFF16796F), Color(0xFF0B3B36))
+            listOf(Color(0xFF818CF8), Color(0xFF6366F1), Color(0xFF3730A3))
         ),
         gestureBrush = Brush.verticalGradient(
-            listOf(Color(0xFF2E948A), Color(0xFF16796F), Color(0xFF0F5750))
+            listOf(Color(0xFF818CF8), Color(0xFF6366F1), Color(0xFF4338CA))
         ),
-        glowColor = Color(0xFF16796F),
-        previewGradient = listOf(Color(0xFF16796F), Color(0xFF0F5750))
+        glowColor = Color(0xFF6366F1),
+        previewGradient = listOf(Color(0xFF818CF8), Color(0xFF4338CA))
     ),
-    NEBULA(
-        id = "NEBULA",
-        displayName = "Amethyst Nebula",
-        description = "Deep Royal Amethyst & Plum",
-        primaryAccent = Color(0xFF6C3483),
-        secondaryAccent = Color(0xFF884EA0),
-        highlightColor = Color(0xFF7D3C98),
+    BLUE(
+        id = "BLUE",
+        displayName = "Vibrant Blue",
+        description = "Iconic Electric Cobalt & Sapphire (Default)",
+        primaryAccent = Color(0xFF007AFF),
+        secondaryAccent = Color(0xFF0051C6),
+        highlightColor = Color(0xFF38BDF8),
         orbBrush = Brush.radialGradient(
-            listOf(Color(0xFF7D3C98), Color(0xFF6C3483), Color(0xFF4A235A))
+            listOf(Color(0xFF38BDF8), Color(0xFF007AFF), Color(0xFF0369A1))
         ),
         gestureBrush = Brush.verticalGradient(
-            listOf(Color(0xFF884EA0), Color(0xFF6C3483), Color(0xFF4A235A))
+            listOf(Color(0xFF38BDF8), Color(0xFF007AFF), Color(0xFF0051C6))
         ),
-        glowColor = Color(0xFF6C3483),
-        previewGradient = listOf(Color(0xFF6C3483), Color(0xFF4A235A))
+        glowColor = Color(0xFF007AFF),
+        previewGradient = listOf(Color(0xFF38BDF8), Color(0xFF0051C6))
     ),
-    ONYX(
-        id = "ONYX",
-        displayName = "Titanium Onyx",
-        description = "Frosted Platinum, Stealth Chrome & Silver",
-        primaryAccent = Color(0xFFD1D5DB),
-        secondaryAccent = Color(0xFF6B7280),
-        highlightColor = Color(0xFF9CA3AF),
+    GREEN(
+        id = "GREEN",
+        displayName = "Emerald Green",
+        description = "Vibrant Emerald & Mint Forest",
+        primaryAccent = Color(0xFF10B981),
+        secondaryAccent = Color(0xFF059669),
+        highlightColor = Color(0xFF34D399),
         orbBrush = Brush.radialGradient(
-            listOf(Color(0xFFD1D5DB), Color(0xFF9CA3AF), Color(0xFF374151))
+            listOf(Color(0xFF34D399), Color(0xFF10B981), Color(0xFF065F46))
         ),
         gestureBrush = Brush.verticalGradient(
-            listOf(Color(0xFFD1D5DB), Color(0xFF6B7280), Color(0xFF374151))
+            listOf(Color(0xFF34D399), Color(0xFF10B981), Color(0xFF047857))
         ),
-        glowColor = Color(0xFF9CA3AF),
-        previewGradient = listOf(Color(0xFF9CA3AF), Color(0xFF374151))
+        glowColor = Color(0xFF10B981),
+        previewGradient = listOf(Color(0xFF34D399), Color(0xFF047857))
     ),
-    SAKURA(
-        id = "SAKURA",
-        displayName = "Sakura Blossom",
-        description = "Deep Ruby Rose & Wine Velvet",
-        primaryAccent = Color(0xFFB03A2E),
-        secondaryAccent = Color(0xFF922B21),
-        highlightColor = Color(0xFFC0392B),
+    YELLOW(
+        id = "YELLOW",
+        displayName = "Sunlight Yellow",
+        description = "Radiant Golden Amber & Canary",
+        primaryAccent = Color(0xFFFBBF24),
+        secondaryAccent = Color(0xFFD97706),
+        highlightColor = Color(0xFFFDE047),
         orbBrush = Brush.radialGradient(
-            listOf(Color(0xFFC0392B), Color(0xFFB03A2E), Color(0xFF641E16))
+            listOf(Color(0xFFFDE047), Color(0xFFFBBF24), Color(0xFFB45309))
         ),
         gestureBrush = Brush.verticalGradient(
-            listOf(Color(0xFFC0392B), Color(0xFFB03A2E), Color(0xFF922B21))
+            listOf(Color(0xFFFDE047), Color(0xFFFBBF24), Color(0xFFD97706))
         ),
-        glowColor = Color(0xFFB03A2E),
-        previewGradient = listOf(Color(0xFFB03A2E), Color(0xFF641E16))
+        glowColor = Color(0xFFFBBF24),
+        previewGradient = listOf(Color(0xFFFDE047), Color(0xFFD97706))
     ),
-    SUNSET_GOLD(
-        id = "SUNSET_GOLD",
-        displayName = "Sunset Gold",
-        description = "Antique Gold & Deep Bronze",
-        primaryAccent = Color(0xFFB7791F),
-        secondaryAccent = Color(0xFF975A16),
-        highlightColor = Color(0xFFD69E2E),
+    ORANGE(
+        id = "ORANGE",
+        displayName = "Blaze Orange",
+        description = "Fiery Sunset Tangerine & Crimson Amber",
+        primaryAccent = Color(0xFFF97316),
+        secondaryAccent = Color(0xFFEA580C),
+        highlightColor = Color(0xFFFB923C),
         orbBrush = Brush.radialGradient(
-            listOf(Color(0xFFD69E2E), Color(0xFFB7791F), Color(0xFF5F370E))
+            listOf(Color(0xFFFB923C), Color(0xFFF97316), Color(0xFF9A3412))
         ),
         gestureBrush = Brush.verticalGradient(
-            listOf(Color(0xFFD69E2E), Color(0xFFB7791F), Color(0xFF975A16))
+            listOf(Color(0xFFFB923C), Color(0xFFF97316), Color(0xFFC2410C))
         ),
-        glowColor = Color(0xFFB7791F),
-        previewGradient = listOf(Color(0xFFB7791F), Color(0xFF744210))
+        glowColor = Color(0xFFF97316),
+        previewGradient = listOf(Color(0xFFFB923C), Color(0xFFC2410C))
     ),
-    MATRIX(
-        id = "MATRIX",
-        displayName = "Dark Emerald Matrix",
-        description = "Deep Forest Emerald, Dark Pine & Shadow Jade",
-        primaryAccent = Color(0xFF1E824C),
-        secondaryAccent = Color(0xFF145A32),
-        highlightColor = Color(0xFF27AE60),
+    RED(
+        id = "RED",
+        displayName = "Crimson Red",
+        description = "Deep Ruby Rose & Scarlet Velvet",
+        primaryAccent = Color(0xFFEF4444),
+        secondaryAccent = Color(0xFFDC2626),
+        highlightColor = Color(0xFFF87171),
         orbBrush = Brush.radialGradient(
-            listOf(Color(0xFF27AE60), Color(0xFF1E824C), Color(0xFF0A361E))
+            listOf(Color(0xFFF87171), Color(0xFFEF4444), Color(0xFF991B1B))
         ),
         gestureBrush = Brush.verticalGradient(
-            listOf(Color(0xFF27AE60), Color(0xFF1E824C), Color(0xFF145A32))
+            listOf(Color(0xFFF87171), Color(0xFFEF4444), Color(0xFFB91C1C))
         ),
-        glowColor = Color(0xFF1E824C),
-        previewGradient = listOf(Color(0xFF1E824C), Color(0xFF145A32))
+        glowColor = Color(0xFFEF4444),
+        previewGradient = listOf(Color(0xFFF87171), Color(0xFFB91C1C))
     );
 
     companion object {
+        val SAKURA get() = RED
+        val CYBER get() = BLUE
+        val SUNSET get() = ORANGE
+        val AURORA get() = GREEN
+        val NEBULA get() = VIOLET
+        val ONYX get() = WHITE
+        val SUNSET_GOLD get() = YELLOW
+        val MATRIX get() = GREEN
+
         fun fromId(id: String): PlayerTheme {
-            return entries.find { it.id.equals(id, ignoreCase = true) } ?: CYBER
+            return when (id.uppercase()) {
+                "WHITE", "ONYX" -> WHITE
+                "VIOLET", "NEBULA" -> VIOLET
+                "INDIGO" -> INDIGO
+                "BLUE", "CYBER" -> BLUE
+                "GREEN", "AURORA", "MATRIX" -> GREEN
+                "YELLOW", "SUNSET_GOLD" -> YELLOW
+                "ORANGE", "SUNSET" -> ORANGE
+                "RED", "SAKURA" -> RED
+                else -> entries.find { it.id.equals(id, ignoreCase = true) } ?: BLUE
+            }
         }
     }
 }

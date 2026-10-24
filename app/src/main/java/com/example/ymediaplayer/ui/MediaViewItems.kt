@@ -60,6 +60,11 @@ fun VideoDetailedListItem(
     val context = LocalContext.current
     val appPreferences = remember { AppPreferences(context) }
     val progress = appPreferences.getVideoProgress(video.uri.toString())
+    val cornerRadius = when (appPreferences.getUiCornerStyle()) {
+        "SLEEK" -> 12.dp
+        "EXTRA" -> 22.dp
+        else -> 16.dp
+    }
 
     Column(
         modifier = modifier
@@ -67,11 +72,11 @@ fun VideoDetailedListItem(
             .padding(horizontal = 14.dp, vertical = 2.dp)
             .then(if (c.isMatte) Modifier else Modifier.shadow(
                 elevation = if (isSelected) 8.dp else 4.dp,
-                shape = RoundedCornerShape(16.dp),
+                shape = RoundedCornerShape(cornerRadius),
                 ambientColor = if (isSelected) c.accentBlue.copy(0.35f) else c.cardShadowColor,
                 spotColor = if (isSelected) c.accentBlue.copy(0.45f) else c.cardShadowColor
             ))
-            .clip(RoundedCornerShape(16.dp))
+            .clip(RoundedCornerShape(cornerRadius))
             .background(
                 if (c.isMatte) {
                     SolidColor(if (isSelected) c.accentBlue.copy(alpha = 0.15f) else c.cardBg)
@@ -88,7 +93,7 @@ fun VideoDetailedListItem(
                     if (isSelected) Brush.verticalGradient(listOf(Color.White.copy(0.65f), c.accentBlue))
                     else Brush.verticalGradient(listOf(c.cardBorderHighlight, c.glassBorder, c.cardBorderShadow))
                 },
-                shape = RoundedCornerShape(16.dp)
+                shape = RoundedCornerShape(cornerRadius)
             )
             .pointerInput(Unit) {
                 detectTapGestures(onTap = { onClick() }, onLongPress = { onLongPress() })
@@ -638,6 +643,11 @@ fun VideoLargeCard(
     val context = LocalContext.current
     val appPreferences = remember { AppPreferences(context) }
     val progress = appPreferences.getVideoProgress(video.uri.toString())
+    val cornerRadius = when (appPreferences.getUiCornerStyle()) {
+        "SLEEK" -> 16.dp
+        "EXTRA" -> 28.dp
+        else -> 22.dp
+    }
 
     Column(
         modifier = modifier
@@ -645,11 +655,11 @@ fun VideoLargeCard(
             .padding(horizontal = 16.dp, vertical = 8.dp)
             .then(if (c.isMatte) Modifier else Modifier.shadow(
                 elevation = if (isSelected) 14.dp else 10.dp,
-                shape = RoundedCornerShape(22.dp),
+                shape = RoundedCornerShape(cornerRadius),
                 ambientColor = if (isSelected) c.accentBlue.copy(0.4f) else c.cardShadowColor,
                 spotColor = if (isSelected) c.accentBlue.copy(0.5f) else c.cardShadowColor
             ))
-            .clip(RoundedCornerShape(22.dp))
+            .clip(RoundedCornerShape(cornerRadius))
             .background(
                 if (c.isMatte) {
                     SolidColor(if (isSelected) c.accentBlue.copy(alpha = 0.15f) else c.cardBg)
@@ -666,7 +676,7 @@ fun VideoLargeCard(
                     if (isSelected) Brush.verticalGradient(listOf(Color.White.copy(0.7f), c.accentBlue))
                     else Brush.verticalGradient(listOf(c.cardBorderHighlight, c.glassBorder, c.cardBorderShadow))
                 },
-                shape = RoundedCornerShape(22.dp)
+                shape = RoundedCornerShape(cornerRadius)
             )
             .pointerInput(Unit) {
                 detectTapGestures(onTap = { onClick() }, onLongPress = { onLongPress() })

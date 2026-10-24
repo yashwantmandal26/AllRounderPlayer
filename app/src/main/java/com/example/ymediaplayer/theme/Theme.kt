@@ -29,7 +29,7 @@ private val LightColorScheme = lightColorScheme(primary = Purple40, secondary = 
 @Composable
 fun YMediaPlayerTheme(
   themeMode: ThemeMode = ThemeMode.OLED_BLACK,
-  colorTheme: com.example.ymediaplayer.ui.PlayerTheme = com.example.ymediaplayer.ui.PlayerTheme.CYBER,
+  colorTheme: com.example.ymediaplayer.ui.PlayerTheme = com.example.ymediaplayer.ui.PlayerTheme.BLUE,
   content: @Composable () -> Unit,
 ) {
   val baseAppColors = when (themeMode) {
@@ -53,7 +53,7 @@ fun YMediaPlayerTheme(
   val appColors = baseAppColors.copy(
       accentBlue = animAccentBlue,
       accentGreen = animAccentGreen,
-      onAccent = androidx.compose.ui.graphics.Color.White,
+      onAccent = if (colorTheme == com.example.ymediaplayer.ui.PlayerTheme.WHITE || colorTheme == com.example.ymediaplayer.ui.PlayerTheme.YELLOW) androidx.compose.ui.graphics.Color(0xFF0F172A) else androidx.compose.ui.graphics.Color.White,
       gradientBlob1 = if (baseAppColors.isMatte && isDark) androidx.compose.ui.graphics.Color.Transparent else animBlob1,
       gradientBlob2 = if (baseAppColors.isMatte && isDark) androidx.compose.ui.graphics.Color.Transparent else animBlob2
   )

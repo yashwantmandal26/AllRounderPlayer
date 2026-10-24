@@ -7,6 +7,7 @@ import android.app.ActivityManager
 import android.media.AudioFocusRequest
 import android.media.AudioManager
 import android.os.Build
+import android.os.Handler
 import android.os.SystemClock
 import android.util.Log
 import androidx.compose.runtime.MutableState
@@ -390,6 +391,22 @@ object VideoPlaybackManager {
             return
         }
 
+        val exoError = error as? ExoPlaybackException
+        val audioFailed = exoError?.rendererFormat?.sampleMimeType?.startsWith("audio/") == true ||
+            exoError?.rendererName?.contains("audio", ignoreCase = true) == true
+        if (audioFailed) {
+            scheduleRetry(context, targetPlayer, safe = true, disableAudio = true)
+            return
+        }
+
+        // For local / downloaded files, do NOT pause or switch to compatibility player.
+        // Instead, retry in safe mode to keep the user in the original player with all controls.
+        val isOffline = !uri.startsWith("http://") && !uri.startsWith("https://")
+        if (isOffline) {
+            scheduleRetry(context, targetPlayer, safe = true, disableAudio = false)
+            return
+        }
+
         targetPlayer.pause()
         val reason = "${error.errorCodeName}: ${error.message.orEmpty()}".trim()
         recoveryMessage.value = "Opening extended compatibility player"
@@ -426,6 +443,15 @@ object VideoPlaybackManager {
         // Stop/pause background music playback immediately when video starts
         com.example.ymediaplayer.service.MusicService.pauseMusic()
 
+        try {
+            val avail = androidx.media3.decoder.ffmpeg.FfmpegLibrary.isAvailable()
+            val ver = androidx.media3.decoder.ffmpeg.FfmpegLibrary.getVersion()
+            val supportsEac3 = androidx.media3.decoder.ffmpeg.FfmpegLibrary.supportsFormat("audio/eac3")
+            android.util.Log.i("VideoPlayback", "FFmpeg diagnostic: available=$avail, ver=$ver, supportsEac3=$supportsEac3")
+        } catch (t: Throwable) {
+            android.util.Log.e("VideoPlayback", "FFmpeg diagnostic failed", t)
+        }
+
         val current = player
         if (current != null && currentVideoUrl.value == url) {
             currentVideoTitle.value = title
@@ -452,8 +478,42 @@ object VideoPlaybackManager {
                     .setAudioProcessors(arrayOf(dynamics))
                     .build()
             }
+
+            override fun buildAudioRenderers(
+                context: Context,
+                extensionRendererMode: Int,
+                mediaCodecSelector: androidx.media3.exoplayer.mediacodec.MediaCodecSelector,
+                enableDecoderFallback: Boolean,
+                audioSink: androidx.media3.exoplayer.audio.AudioSink,
+                eventHandler: Handler,
+                eventListener: androidx.media3.exoplayer.audio.AudioRendererEventListener,
+                out: java.util.ArrayList<androidx.media3.exoplayer.Renderer>
+            ) {
+                // Priority 1: Inject FfmpegAudioRenderer for universal software codec decoding (EAC-3/DDP 5.1, AC-3, DTS, TrueHD)
+                try {
+                    val ffmpegRenderer = androidx.media3.decoder.ffmpeg.FfmpegAudioRenderer(
+                        eventHandler, eventListener, audioSink
+                    )
+                    out.add(ffmpegRenderer)
+                    android.util.Log.i("VideoPlayback", "Manually injected FfmpegAudioRenderer as primary audio renderer")
+                } catch (t: Throwable) {
+                    android.util.Log.w("VideoPlayback", "Could not inject FfmpegAudioRenderer: ${t.message}")
+                }
+
+                // Standard hardware platform renderers (pass EXTENSION_RENDERER_MODE_OFF to avoid duplicate reflection addition)
+                super.buildAudioRenderers(
+                    context,
+                    DefaultRenderersFactory.EXTENSION_RENDERER_MODE_OFF,
+                    mediaCodecSelector,
+                    enableDecoderFallback,
+                    audioSink,
+                    eventHandler,
+                    eventListener,
+                    out
+                )
+            }
         }.apply {
-            setExtensionRendererMode(DefaultRenderersFactory.EXTENSION_RENDERER_MODE_OFF)
+            setExtensionRendererMode(DefaultRenderersFactory.EXTENSION_RENDERER_MODE_PREFER)
             setEnableDecoderFallback(true)
             setEnableAudioTrackPlaybackParams(true)
         }

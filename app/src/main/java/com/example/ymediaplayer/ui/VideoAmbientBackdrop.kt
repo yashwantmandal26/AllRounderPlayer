@@ -104,7 +104,6 @@ internal fun VideoAmbientBackdrop(
                     }
 
                     if (reusableBitmap == null || reusableBitmap.width != sampleW || reusableBitmap.height != sampleH) {
-                        reusableBitmap?.recycle()
                         reusableBitmap = Bitmap.createBitmap(sampleW, sampleH, Bitmap.Config.ARGB_8888)
                     }
 
@@ -125,7 +124,7 @@ internal fun VideoAmbientBackdrop(
                     if (saveBattery.value) delay(90L) else delay(ACTIVE_CAPTURE_INTERVAL_MS)
                 }
             } finally {
-                reusableBitmap?.recycle()
+                // Do not explicitly recycle reusableBitmap here as frame.value (ImageBitmap) may still be drawn by Compose Canvas
             }
         }
     }
@@ -133,13 +132,13 @@ internal fun VideoAmbientBackdrop(
     // High-vibrancy Ambilight color matrix: boosts saturation so ambient light radiates rich, vivid color
     val colorMatrix = remember(saturation) {
         ColorMatrix().apply {
-            setToSaturation((1.65f * saturation.coerceIn(0.5f, 2.0f)).coerceIn(0.2f, 3.5f))
+            setToSaturation((1.95f * saturation.coerceIn(0.4f, 2.5f)).coerceIn(0.2f, 4.5f))
         }
     }
 
-    val ambientScale = 1.25f + (spread.coerceIn(0.1f, 1.2f) * 0.45f) // 1.29x - 1.79x projection
-    val blurRadius = (42 + spread.coerceIn(0.1f, 1.2f) * 40).dp     // 46dp - 90dp silky diffusion
-    val effectiveGlow = glowStrength.coerceIn(0.2f, 1.8f)
+    val ambientScale = 1.30f + (spread.coerceIn(0.1f, 1.5f) * 0.70f) // 1.37x - 2.35x projection
+    val blurRadius = (38 + spread.coerceIn(0.1f, 1.5f) * 44).dp     // 42dp - 104dp silky diffusion
+    val effectiveGlow = glowStrength.coerceIn(0.2f, 2.0f)
 
     Box(Modifier.fillMaxSize()) {
         // 1. Ambient Glow Layer: accurately projected from video boundaries with saturation boost
@@ -178,13 +177,16 @@ internal fun VideoAmbientBackdrop(
                             dstSize = IntSize(targetW.roundToInt(), targetH.roundToInt()),
                             colorFilter = ColorFilter.colorMatrix(colorMatrix),
                             filterQuality = FilterQuality.Medium,
-                            alpha = (effectiveGlow * 0.92f).coerceIn(0.15f, 1.0f)
+                            alpha = (effectiveGlow * 1.15f).coerceIn(0.20f, 1.0f)
                         )
                     }
                 }
         )
 
         // 2. Cinematic Edge Falloff: keeps full luminosity around video edges while softly feathering to deep black at screen borders
+        val edgeDim = (0.75f - (spread.coerceIn(0.2f, 1.5f) - 0.5f) * 0.45f).coerceIn(0.15f, 0.85f)
+        val midDim = (edgeDim * 0.45f).coerceIn(0.08f, 0.40f)
+
         Box(
             Modifier
                 .fillMaxSize()
@@ -197,24 +199,24 @@ internal fun VideoAmbientBackdrop(
                         // Portrait: Smooth exponential feathering at top and bottom edges
                         drawRect(
                             brush = Brush.verticalGradient(
-                                0.00f to Color.Black.copy(alpha = 0.90f),
-                                0.12f to Color.Black.copy(alpha = 0.40f),
+                                0.00f to Color.Black.copy(alpha = edgeDim),
+                                0.12f to Color.Black.copy(alpha = midDim),
                                 0.25f to Color.Transparent,
                                 0.75f to Color.Transparent,
-                                0.88f to Color.Black.copy(alpha = 0.40f),
-                                1.00f to Color.Black.copy(alpha = 0.90f)
+                                0.88f to Color.Black.copy(alpha = midDim),
+                                1.00f to Color.Black.copy(alpha = edgeDim)
                             )
                         )
                     } else {
                         // Landscape: Smooth exponential feathering at left and right edges
                         drawRect(
                             brush = Brush.horizontalGradient(
-                                0.00f to Color.Black.copy(alpha = 0.90f),
-                                0.10f to Color.Black.copy(alpha = 0.40f),
+                                0.00f to Color.Black.copy(alpha = edgeDim),
+                                0.10f to Color.Black.copy(alpha = midDim),
                                 0.22f to Color.Transparent,
                                 0.78f to Color.Transparent,
-                                0.90f to Color.Black.copy(alpha = 0.40f),
-                                1.00f to Color.Black.copy(alpha = 0.90f)
+                                0.90f to Color.Black.copy(alpha = midDim),
+                                1.00f to Color.Black.copy(alpha = edgeDim)
                             )
                         )
                     }

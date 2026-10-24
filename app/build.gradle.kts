@@ -21,8 +21,8 @@ android {
         applicationId = "com.example.ymediaplayer"
         minSdk = 24
         targetSdk = 37
-        versionCode = 31
-        versionName = "1.7.16"
+        versionCode = 32
+        versionName = "2.0"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         ndk {
             abiFilters += listOf("arm64-v8a")
@@ -97,6 +97,7 @@ dependencies {
   implementation(libs.androidx.media3.effect)
   implementation(libs.androidx.media3.ui)
   implementation(libs.androidx.media3.session)
+  implementation("org.jellyfin.media3:media3-ffmpeg-decoder:1.9.0+1")
   // Native compatibility backend for uncommon codecs and recoverable damaged media.
   implementation(libs.libvlc.all)
   // LibVLC still declares legacy-support-v4; pin Fragment to a safe Activity Result version.

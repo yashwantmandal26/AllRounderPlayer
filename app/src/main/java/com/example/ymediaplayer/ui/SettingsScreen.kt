@@ -168,19 +168,16 @@ fun SettingsScreen(
     var musicSoundMode by remember { mutableStateOf(appPreferences.getMusicSoundMode()) }
 
     val glowVersion = appPreferences.lastProgressUpdate.longValue
-    val glowStrength = remember(glowVersion) { appPreferences.getAmbientGlowStrength() }
-    val glowSpread = remember(glowVersion) { appPreferences.getAmbientGlowSpread() }
-    val glowSaturation = remember(glowVersion) { appPreferences.getAmbientGlowSaturation() }
-    val satBlue = remember(c.accentBlue, glowSaturation) { c.accentBlue.adjustSaturation(glowSaturation) }
-    val satGreen = remember(c.accentGreen, glowSaturation) { c.accentGreen.adjustSaturation(glowSaturation) }
+    val satBlue = remember(c.accentBlue, ambientGlowSaturation) { c.accentBlue.adjustSaturation(ambientGlowSaturation) }
+    val satGreen = remember(c.accentGreen, ambientGlowSaturation) { c.accentGreen.adjustSaturation(ambientGlowSaturation) }
     val coreAlpha = when {
-        c.isDark && c.baseBackground == Color(0xFF000000) -> 0.45f * glowStrength
-        c.isDark -> 0.38f * glowStrength
-        else -> 0.28f * glowStrength
-    }.coerceIn(0f, 0.95f)
-    val midAlpha = (coreAlpha * 0.42f).coerceIn(0f, 0.55f)
-    val edgeAlpha = (coreAlpha * 0.12f).coerceIn(0f, 0.20f)
-    val secAlpha = (coreAlpha * 0.25f).coerceIn(0f, 0.30f)
+        c.isDark && c.baseBackground == Color(0xFF000000) -> 0.70f * ambientGlowStrength
+        c.isDark -> 0.55f * ambientGlowStrength
+        else -> 0.45f * ambientGlowStrength
+    }.coerceIn(0f, 0.98f)
+    val midAlpha = (coreAlpha * 0.60f).coerceIn(0f, 0.85f)
+    val edgeAlpha = (coreAlpha * 0.28f).coerceIn(0f, 0.45f)
+    val secAlpha = (coreAlpha * 0.48f).coerceIn(0f, 0.65f)
 
     Box(
         modifier = Modifier
@@ -197,7 +194,7 @@ fun SettingsScreen(
                                 Color.Transparent
                             ),
                             center = Offset(size.width * 0.5f, size.height * 0.25f),
-                            radius = size.width * (0.92f * glowSpread).coerceIn(0.4f, 2.8f)
+                            radius = size.width * (1.10f * ambientGlowSpread).coerceIn(0.5f, 3.8f)
                         )
                     )
                     drawRect(
@@ -207,7 +204,7 @@ fun SettingsScreen(
                                 Color.Transparent
                             ),
                             center = Offset(size.width * 0.88f, size.height * 0.75f),
-                            radius = size.width * (0.75f * glowSpread).coerceIn(0.3f, 2.5f)
+                            radius = size.width * (0.95f * ambientGlowSpread).coerceIn(0.4f, 3.2f)
                         )
                     )
                 }
@@ -276,15 +273,32 @@ fun SettingsScreen(
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(horizontal = 16.dp, vertical = 2.dp)
+                        .padding(horizontal = 16.dp, vertical = 4.dp)
+                        .shadow(
+                            elevation = 8.dp,
+                            shape = RoundedCornerShape(16.dp),
+                            ambientColor = if (c.isDark) Color.Black.copy(alpha = 0.55f) else c.cardShadowColor,
+                            spotColor = if (c.isDark) Color.Black.copy(alpha = 0.45f) else c.cardShadowColor
+                        )
                         .clip(RoundedCornerShape(16.dp))
-                        .background(if (c.isMatte) c.cardBgElevated else c.glassBg)
+                        .background(
+                            Brush.verticalGradient(
+                                listOf(
+                                    if (c.isDark) c.cardBgElevated else Color.White,
+                                    c.cardBg
+                                )
+                            )
+                        )
                         .border(
-                            1.dp,
-                            if (searchQuery.isNotBlank()) primaryAccent.copy(alpha = 0.7f) else c.glassBorder,
+                            1.3.dp,
+                            if (searchQuery.isNotBlank()) {
+                                Brush.verticalGradient(listOf(primaryAccent, c.cardBorderHighlight, primaryAccent.copy(alpha = 0.4f)))
+                            } else {
+                                Brush.verticalGradient(listOf(c.cardBorderHighlight, c.glassBorder, c.cardBorderShadow))
+                            },
                             RoundedCornerShape(16.dp)
                         )
-                        .padding(horizontal = 12.dp, vertical = 8.dp)
+                        .padding(horizontal = 12.dp, vertical = 9.dp)
                 ) {
                     Row(
                         verticalAlignment = Alignment.CenterVertically,
@@ -1090,7 +1104,13 @@ fun SettingsScreen(
                                         .height(38.dp)
                                         .clip(RoundedCornerShape(10.dp))
                                         .background(theme.primaryAccent)
-                                        .border(2.dp, if (isSelected) Color.White else Color.Transparent, RoundedCornerShape(10.dp))
+                                        .border(
+                                            2.dp,
+                                            if (isSelected) {
+                                                if (theme == PlayerTheme.WHITE) Color.Black else Color.White
+                                            } else if (theme == PlayerTheme.WHITE) c.glassBorder else Color.Transparent,
+                                            RoundedCornerShape(10.dp)
+                                        )
                                         .clickable {
                                             currentColorTheme = theme
                                             themeController.updateColorTheme(theme)
@@ -1098,7 +1118,12 @@ fun SettingsScreen(
                                     contentAlignment = Alignment.Center
                                 ) {
                                     if (isSelected) {
-                                        Icon(Icons.Rounded.Check, contentDescription = null, tint = Color.White, modifier = Modifier.size(18.dp))
+                                        Icon(
+                                            Icons.Rounded.Check,
+                                            contentDescription = null,
+                                            tint = if (theme == PlayerTheme.WHITE || theme == PlayerTheme.YELLOW) Color.Black else Color.White,
+                                            modifier = Modifier.size(18.dp)
+                                        )
                                     }
                                 }
                             }
@@ -1116,9 +1141,9 @@ fun SettingsScreen(
                         Spacer(Modifier.height(8.dp))
                         val glowLevels = listOf(
                             "Off" to 0.0f,
-                            "Subtle" to 0.5f,
+                            "Subtle" to 0.6f,
                             "Vibrant" to 1.0f,
-                            "Neon Boost" to 1.4f
+                            "Neon Boost" to 1.6f
                         )
                         Row(
                             modifier = Modifier.fillMaxWidth(),
@@ -1180,7 +1205,7 @@ fun SettingsScreen(
                                     appPreferences.setAmbientGlowStrength(1.0f)
                                 }
                             },
-                            valueRange = 0.5f..1.8f,
+                            valueRange = 0.5f..2.5f,
                             accentColor = primaryAccent
                         )
                         Row(
@@ -1189,7 +1214,7 @@ fun SettingsScreen(
                         ) {
                             Text("Compact (50%)", fontSize = 10.sp, color = c.textSecondary)
                             Text("Balanced (100%)", fontSize = 10.sp, color = c.textSecondary)
-                            Text("Full Bleed (180%)", fontSize = 10.sp, color = c.textSecondary)
+                            Text("Extreme Bleed (250%)", fontSize = 10.sp, color = c.textSecondary)
                         }
 
                         Spacer(Modifier.height(12.dp))
@@ -1222,7 +1247,7 @@ fun SettingsScreen(
                                     appPreferences.setAmbientGlowStrength(1.0f)
                                 }
                             },
-                            valueRange = 0.5f..2.0f,
+                            valueRange = 0.5f..2.5f,
                             accentColor = primaryAccent
                         )
                         Row(
@@ -1231,7 +1256,7 @@ fun SettingsScreen(
                         ) {
                             Text("Soft Pastel (50%)", fontSize = 10.sp, color = c.textSecondary)
                             Text("Natural (100%)", fontSize = 10.sp, color = c.textSecondary)
-                            Text("Neon Punch (200%)", fontSize = 10.sp, color = c.textSecondary)
+                            Text("Ultra Punch (250%)", fontSize = 10.sp, color = c.textSecondary)
                         }
 
                         Spacer(Modifier.height(16.dp))
@@ -1312,7 +1337,7 @@ fun SettingsScreen(
                                     videoAmbientSpread = it
                                     appPreferences.setVideoAmbientSpread(it)
                                 },
-                                valueRange = 0.2f..1.0f,
+                                valueRange = 0.2f..1.5f,
                                 accentColor = primaryAccent
                             )
 
@@ -1332,7 +1357,7 @@ fun SettingsScreen(
                                     videoAmbientSaturation = it
                                     appPreferences.setVideoAmbientSaturation(it)
                                 },
-                                valueRange = 0.5f..2.0f,
+                                valueRange = 0.4f..2.5f,
                                 accentColor = primaryAccent
                             )
 
@@ -2229,9 +2254,15 @@ fun SettingsScreen(
                         videoSharpness = appPreferences.getVideoCustomSharpness()
                         videoSoundMode = appPreferences.getVideoSoundMode()
                         ambientGlowStrength = appPreferences.getAmbientGlowStrength()
+                        ambientGlowSpread = appPreferences.getAmbientGlowSpread()
+                        ambientGlowSaturation = appPreferences.getAmbientGlowSaturation()
                         uiCornerStyle = appPreferences.getUiCornerStyle()
+                        ambientGlowEnabled = appPreferences.isAmbientGlowEnabled()
+                        videoAmbientSpread = appPreferences.getVideoAmbientSpread()
+                        videoAmbientSaturation = appPreferences.getVideoAmbientSaturation()
+                        videoAmbientBatterySaver = appPreferences.isVideoAmbientBatterySaver()
                         themeController.updateMode(ThemeMode.OLED_BLACK)
-                        themeController.updateColorTheme(PlayerTheme.CYBER)
+                        themeController.updateColorTheme(PlayerTheme.BLUE)
                         resumeMode = appPreferences.getResumeMode()
                         rememberPlaybackSpeed = appPreferences.isRememberPlaybackSpeed()
                         seekSeconds = appPreferences.getDoubleTapSeekSeconds()
@@ -2260,7 +2291,7 @@ fun SettingsScreen(
                         subOutlineStyle = appPreferences.getSubtitleOutlineStyle()
                         pauseHeadsetDisconnect = appPreferences.isPauseOnHeadsetDisconnect()
                         currentThemeMode = ThemeMode.OLED_BLACK
-                        currentColorTheme = PlayerTheme.CYBER
+                        currentColorTheme = PlayerTheme.BLUE
                         signatureViewEnabled = false
                         signatureSaturation = 1.25f
                         ambientGlowEnabled = true
@@ -2306,14 +2337,30 @@ private fun SettingsCategorySection(
     content: @Composable ColumnScope.() -> Unit
 ) {
     val c = LocalAppColors.current
+    val context = LocalContext.current
+    val appPreferences = remember(context) { AppPreferences(context) }
+    val glowVersion = appPreferences.lastProgressUpdate.longValue
+    val cornerRadius = remember(glowVersion) {
+        when (appPreferences.getUiCornerStyle()) {
+            "SLEEK" -> 16.dp
+            "EXTRA" -> 28.dp
+            else -> 22.dp
+        }
+    }
+    val ambientGlowStrength = remember(glowVersion) { appPreferences.getAmbientGlowStrength() }
 
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .shadow(8.dp, RoundedCornerShape(22.dp), ambientColor = c.cardShadowColor, spotColor = c.cardShadowColor)
-            .clip(RoundedCornerShape(22.dp))
+            .shadow(
+                elevation = 8.dp,
+                shape = RoundedCornerShape(cornerRadius),
+                ambientColor = if (ambientGlowStrength > 0.05f) accentColor.copy(alpha = (0.22f * ambientGlowStrength).coerceIn(0f, 0.45f)) else c.cardShadowColor,
+                spotColor = if (ambientGlowStrength > 0.05f) accentColor.copy(alpha = (0.32f * ambientGlowStrength).coerceIn(0f, 0.55f)) else c.cardShadowColor
+            )
+            .clip(RoundedCornerShape(cornerRadius))
             .background(c.cardBg)
-            .border(1.2.dp, c.glassBorder, RoundedCornerShape(22.dp))
+            .border(1.2.dp, c.glassBorder, RoundedCornerShape(cornerRadius))
             .padding(vertical = 12.dp)
     ) {
         Row(
@@ -2443,6 +2490,18 @@ private fun SettingsHeaderCard(
     secondaryAccent: Color
 ) {
     val c = LocalAppColors.current
+    val context = LocalContext.current
+    val appPreferences = remember(context) { AppPreferences(context) }
+    val glowVersion = appPreferences.lastProgressUpdate.longValue
+    val cornerRadius = remember(glowVersion) {
+        when (appPreferences.getUiCornerStyle()) {
+            "SLEEK" -> 16.dp
+            "EXTRA" -> 28.dp
+            else -> 22.dp
+        }
+    }
+    val ambientGlowStrength = remember(glowVersion) { appPreferences.getAmbientGlowStrength() }
+
     val headerBgModifier = if (c.isMatte) {
         Modifier.background(c.cardBg)
     } else {
@@ -2454,16 +2513,21 @@ private fun SettingsHeaderCard(
         Modifier.background(Brush.linearGradient(listOf(primaryAccent, secondaryAccent)))
     }
     val borderModifier = if (c.isMatte) {
-        Modifier.border(1.2.dp, c.glassBorder, RoundedCornerShape(22.dp))
+        Modifier.border(1.2.dp, c.glassBorder, RoundedCornerShape(cornerRadius))
     } else {
-        Modifier.border(1.2.dp, primaryAccent.copy(alpha = 0.35f), RoundedCornerShape(22.dp))
+        Modifier.border(1.2.dp, primaryAccent.copy(alpha = 0.35f), RoundedCornerShape(cornerRadius))
     }
 
     Box(
         modifier = Modifier
             .fillMaxWidth()
-            .then(if (c.isMatte) Modifier else Modifier.shadow(12.dp, RoundedCornerShape(22.dp), ambientColor = c.cardShadowColor, spotColor = c.cardShadowColor))
-            .clip(RoundedCornerShape(22.dp))
+            .then(if (c.isMatte) Modifier else Modifier.shadow(
+                elevation = 12.dp,
+                shape = RoundedCornerShape(cornerRadius),
+                ambientColor = if (ambientGlowStrength > 0.05f) primaryAccent.copy(alpha = (0.22f * ambientGlowStrength).coerceIn(0f, 0.45f)) else c.cardShadowColor,
+                spotColor = if (ambientGlowStrength > 0.05f) primaryAccent.copy(alpha = (0.32f * ambientGlowStrength).coerceIn(0f, 0.55f)) else c.cardShadowColor
+            ))
+            .clip(RoundedCornerShape(cornerRadius))
             .then(headerBgModifier)
             .then(borderModifier)
             .padding(18.dp)

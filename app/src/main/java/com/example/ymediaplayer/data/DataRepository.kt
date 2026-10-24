@@ -367,7 +367,7 @@ class AppPreferences(private val prefs: SharedPreferences) {
 
     // Player Theme & Visual Customizations
     fun getPlayerTheme(): String {
-        return prefs.getString("player_theme", "CYBER") ?: "CYBER"
+        return prefs.getString("player_theme", "SAKURA") ?: "SAKURA"
     }
 
     fun savePlayerTheme(themeName: String) {
@@ -591,10 +591,10 @@ class AppPreferences(private val prefs: SharedPreferences) {
     fun setVideoRouteSoundStrength(route: String, strength: Float) { prefs.edit().putFloat("video_sound_strength_$route", strength.coerceIn(0f, 1f)).apply() }
     fun isVideoVolumeLevelingEnabled(route: String): Boolean = prefs.getBoolean("video_leveling_$route", false)
     fun setVideoVolumeLevelingEnabled(route: String, enabled: Boolean) { prefs.edit().putBoolean("video_leveling_$route", enabled).apply() }
-    fun getVideoAmbientSpread(): Float = prefs.getFloat("video_ambient_spread", 0.5f).coerceIn(0f, 1f)
-    fun setVideoAmbientSpread(value: Float) { prefs.edit().putFloat("video_ambient_spread", value.coerceIn(0f, 1f)).apply() }
-    fun getVideoAmbientSaturation(): Float = prefs.getFloat("video_ambient_saturation", 1.0f).coerceIn(0.5f, 2.0f)
-    fun setVideoAmbientSaturation(value: Float) { prefs.edit().putFloat("video_ambient_saturation", value.coerceIn(0.5f, 2.0f)).apply() }
+    fun getVideoAmbientSpread(): Float = prefs.getFloat("video_ambient_spread", 0.92f).coerceIn(0f, 1.5f)
+    fun setVideoAmbientSpread(value: Float) { prefs.edit().putFloat("video_ambient_spread", value.coerceIn(0f, 1.5f)).apply() }
+    fun getVideoAmbientSaturation(): Float = prefs.getFloat("video_ambient_saturation", 1.70f).coerceIn(0.4f, 2.5f)
+    fun setVideoAmbientSaturation(value: Float) { prefs.edit().putFloat("video_ambient_saturation", value.coerceIn(0.4f, 2.5f)).apply() }
     fun isVideoAmbientBatterySaver(): Boolean = prefs.getBoolean("video_ambient_battery_saver", false)
     fun setVideoAmbientBatterySaver(enabled: Boolean) { prefs.edit().putBoolean("video_ambient_battery_saver", enabled).apply() }
     fun getExternalSubtitleUri(video: String): String? = prefs.getString("subtitle_uri_$video", null)
@@ -942,19 +942,19 @@ class AppPreferences(private val prefs: SharedPreferences) {
         lastProgressUpdate.longValue++
     }
 
-    fun getAmbientGlowSpread(): Float = prefs.getFloat("ambient_glow_spread", 1.0f).coerceIn(0.5f, 1.8f)
+    fun getAmbientGlowSpread(): Float = prefs.getFloat("ambient_glow_spread", 1.8f).coerceIn(0.4f, 2.5f)
     fun setAmbientGlowSpread(spread: Float) {
-        prefs.edit().putFloat("ambient_glow_spread", spread.coerceIn(0.5f, 1.8f)).apply()
+        prefs.edit().putFloat("ambient_glow_spread", spread.coerceIn(0.4f, 2.5f)).apply()
         lastProgressUpdate.longValue++
     }
 
-    fun getAmbientGlowSaturation(): Float = prefs.getFloat("ambient_glow_saturation", 1.0f).coerceIn(0.5f, 2.0f)
+    fun getAmbientGlowSaturation(): Float = prefs.getFloat("ambient_glow_saturation", 2.0f).coerceIn(0.4f, 2.5f)
     fun setAmbientGlowSaturation(sat: Float) {
-        prefs.edit().putFloat("ambient_glow_saturation", sat.coerceIn(0.5f, 2.0f)).apply()
+        prefs.edit().putFloat("ambient_glow_saturation", sat.coerceIn(0.4f, 2.5f)).apply()
         lastProgressUpdate.longValue++
     }
 
-    fun getUiCornerStyle(): String = prefs.getString("ui_corner_style", "MODERN") ?: "MODERN"
+    fun getUiCornerStyle(): String = prefs.getString("ui_corner_style", "EXTRA") ?: "EXTRA"
     fun setUiCornerStyle(style: String) {
         prefs.edit().putString("ui_corner_style", style).apply()
         lastProgressUpdate.longValue++
@@ -992,7 +992,9 @@ class AppPreferences(private val prefs: SharedPreferences) {
         val enhancementEditor = prefs.edit()
         enhancementKeys.forEach { enhancementEditor.remove(it) }
         enhancementEditor.remove("video_color_profile").remove("video_sharpness_level")
-            .remove("super_ai_enhance_enabled").remove("subtitle_bottom_padding").remove("ambient_glow_strength").apply()
+            .remove("super_ai_enhance_enabled").remove("subtitle_bottom_padding")
+            .remove("ambient_glow_strength").remove("ambient_glow_spread").remove("ambient_glow_saturation")
+            .remove("video_ambient_spread").remove("video_ambient_saturation").apply()
         prefs.edit()
             .remove("player_theme").remove("subtitle_design")
             .remove("hdr_playback_enabled")

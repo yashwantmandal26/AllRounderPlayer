@@ -33,7 +33,7 @@ internal fun PlayerAmbientSettings(
             AppSlider(
                 value = intensity,
                 onValueChange = onIntensity,
-                valueRange = 0.2f..1.8f,
+                valueRange = 0.2f..2.0f,
                 enabled = enabled,
                 modifier = Modifier.semantics { contentDescription = "Ambient intensity" }
             )
@@ -41,7 +41,7 @@ internal fun PlayerAmbientSettings(
             AppSlider(
                 value = spread,
                 onValueChange = onSpread,
-                valueRange = 0.2f..1.0f,
+                valueRange = 0.2f..1.5f,
                 enabled = enabled,
                 modifier = Modifier.semantics { contentDescription = "Ambient spread" }
             )
@@ -49,7 +49,7 @@ internal fun PlayerAmbientSettings(
             AppSlider(
                 value = saturation,
                 onValueChange = onSaturation,
-                valueRange = 0.5f..2.0f,
+                valueRange = 0.4f..2.5f,
                 enabled = enabled,
                 modifier = Modifier.semantics { contentDescription = "Ambient saturation" }
             )

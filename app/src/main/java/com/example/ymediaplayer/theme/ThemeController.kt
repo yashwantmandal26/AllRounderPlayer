@@ -50,7 +50,7 @@ class ThemeController(context: Context) {
 
     var colorTheme by mutableStateOf(
         com.example.ymediaplayer.ui.PlayerTheme.fromId(
-            prefs.getString("player_theme", "CYBER") ?: "CYBER"
+            prefs.getString("player_theme", "BLUE") ?: "BLUE"
         )
     )
         private set

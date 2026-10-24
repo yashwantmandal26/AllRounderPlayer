@@ -46,6 +46,14 @@ internal fun Color.adjustSaturation(factor: Float): Color {
     val hsv = FloatArray(3)
     android.graphics.Color.colorToHSV(argb, hsv)
     hsv[1] = (hsv[1] * factor).coerceIn(0f, 1f)
+    if (factor > 1.0f) {
+        // Amplify richness, luminescence and vibrancy for high saturation boost
+        val boost = ((factor - 1.0f) * 0.40f).coerceIn(0f, 0.60f)
+        hsv[2] = (hsv[2] * (1f + boost)).coerceIn(0f, 1f)
+    } else if (factor < 1.0f) {
+        // Soft pastel look for low saturation
+        hsv[2] = (hsv[2] * (0.85f + 0.15f * factor)).coerceIn(0f, 1f)
+    }
     val adjusted = android.graphics.Color.HSVToColor(hsv)
     return Color(adjusted).copy(alpha = this.alpha)
 }

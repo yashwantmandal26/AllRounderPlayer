@@ -327,14 +327,41 @@ fun FolderDetailScreen(
 
                             if (isSearching) {
                                 // Live In-Folder Search Input
+                                val searchCorner = when (appPreferences.getUiCornerStyle()) {
+                                    "SLEEK" -> 16.dp
+                                    "EXTRA" -> 28.dp
+                                    else -> 22.dp
+                                }
                                 Row(
                                     modifier = Modifier
                                         .weight(1f)
                                         .height(44.dp)
-                                        .then(if (c.isMatte) Modifier else Modifier.shadow(4.dp, RoundedCornerShape(22.dp)))
-                                        .clip(RoundedCornerShape(22.dp))
-                                        .background(if (c.isMatte) SolidColor(c.cardBgElevated) else Brush.verticalGradient(listOf(c.cardBgElevated, c.cardBg)))
-                                        .border(1.2.dp, if (c.isMatte) androidx.compose.ui.graphics.SolidColor(c.glassBorder) else Brush.verticalGradient(listOf(c.cardBorderHighlight, c.glassBorder, c.cardBorderShadow)), RoundedCornerShape(22.dp))
+                                        .then(
+                                            if (c.isMatte) Modifier
+                                            else Modifier.shadow(
+                                                elevation = 8.dp,
+                                                shape = RoundedCornerShape(searchCorner),
+                                                ambientColor = if (c.isDark) Color.Black.copy(alpha = 0.55f) else c.cardShadowColor,
+                                                spotColor = if (c.isDark) Color.Black.copy(alpha = 0.45f) else c.cardShadowColor
+                                            )
+                                        )
+                                        .clip(RoundedCornerShape(searchCorner))
+                                        .background(
+                                            if (c.isMatte) SolidColor(c.cardBgElevated)
+                                            else Brush.verticalGradient(
+                                                listOf(
+                                                    if (c.isDark) c.cardBgElevated else Color.White,
+                                                    c.cardBg
+                                                )
+                                            )
+                                        )
+                                        .border(
+                                            1.3.dp,
+                                            if (c.isMatte) androidx.compose.ui.graphics.SolidColor(c.glassBorder)
+                                            else if (searchQuery.isNotBlank()) Brush.verticalGradient(listOf(c.accentBlue, c.cardBorderHighlight, c.accentBlue.copy(alpha = 0.4f)))
+                                            else Brush.verticalGradient(listOf(c.cardBorderHighlight, c.glassBorder, c.cardBorderShadow)),
+                                            RoundedCornerShape(searchCorner)
+                                        )
                                         .padding(horizontal = 12.dp),
                                     verticalAlignment = Alignment.CenterVertically
                                 ) {

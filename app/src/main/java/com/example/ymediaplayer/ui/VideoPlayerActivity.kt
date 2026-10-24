@@ -120,8 +120,12 @@ class VideoPlayerActivity : ComponentActivity() {
             currentUrl = newUrl ?: ""
             requestSequence++
         } else {
+            isStreaming = false
+            streamTorrentHash = null
+            streamTitle = intent.getStringExtra(EXTRA_VIDEO_TITLE) ?: ""
+            streamPosterUrl = intent.getStringExtra(EXTRA_POSTER_URL) ?: ""
             val manager = com.example.ymediaplayer.player.VideoPlaybackManager
-            if (!newUrl.isNullOrEmpty() && newUrl != manager.currentVideoUrl.value) {
+            if (!newUrl.isNullOrEmpty()) {
                 manager.player?.let { player ->
                     manager.currentVideoUrl.value?.let { url ->
                         com.example.ymediaplayer.data.AppPreferences(this).saveVideoProgress(

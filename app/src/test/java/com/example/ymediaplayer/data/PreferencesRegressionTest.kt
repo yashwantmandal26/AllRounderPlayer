@@ -47,7 +47,7 @@ class PreferencesRegressionTest {
         assertEquals(listOf(0f, 0f, 0f, 0f, 0f), prefs.getEqBands())
         assertTrue(prefs.isEqEnabled())
         assertEquals("BALANCED", prefs.getMusicSoundMode())
-        assertEquals("MODERN", prefs.getUiCornerStyle())
+        assertEquals("EXTRA", prefs.getUiCornerStyle())
         assertTrue(prefs.isAutoCheckUpdatesEnabled())
         assertNull(prefs.getSkippedUpdateTag())
         assertTrue(prefs.isFavorite("video"))

@@ -26,6 +26,8 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -288,9 +290,30 @@ fun MyCinemaScreen(
                     modifier = Modifier
                         .fillMaxWidth()
                         .height(48.dp)
+                        .shadow(
+                            elevation = 8.dp,
+                            shape = RoundedCornerShape(24.dp),
+                            ambientColor = if (c.isDark) Color.Black.copy(alpha = 0.55f) else c.cardShadowColor,
+                            spotColor = if (c.isDark) Color.Black.copy(alpha = 0.45f) else c.cardShadowColor
+                        )
                         .clip(RoundedCornerShape(24.dp))
-                        .background(c.cardBgElevated)
-                        .border(1.dp, c.glassBorder, RoundedCornerShape(24.dp))
+                        .background(
+                            Brush.verticalGradient(
+                                listOf(
+                                    if (c.isDark) c.cardBgElevated else Color.White,
+                                    c.cardBg
+                                )
+                            )
+                        )
+                        .border(
+                            1.3.dp,
+                            if (searchQuery.isNotBlank()) {
+                                Brush.verticalGradient(listOf(c.accentBlue, c.cardBorderHighlight, c.accentBlue.copy(alpha = 0.4f)))
+                            } else {
+                                Brush.verticalGradient(listOf(c.cardBorderHighlight, c.glassBorder, c.cardBorderShadow))
+                            },
+                            RoundedCornerShape(24.dp)
+                        )
                         .padding(horizontal = 14.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {

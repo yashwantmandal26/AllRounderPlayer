@@ -525,10 +525,32 @@ fun FolderListScreen(
                                         modifier = Modifier
                                             .weight(1f)
                                             .height(46.dp)
-                                            .then(if (c.isMatte) Modifier else Modifier.shadow(elevation = 6.dp, shape = RoundedCornerShape(23.dp), ambientColor = c.cardShadowColor, spotColor = c.cardShadowColor))
+                                            .then(
+                                                if (c.isMatte) Modifier
+                                                else Modifier.shadow(
+                                                    elevation = 8.dp,
+                                                    shape = RoundedCornerShape(23.dp),
+                                                    ambientColor = if (c.isDark) Color.Black.copy(alpha = 0.55f) else c.cardShadowColor,
+                                                    spotColor = if (c.isDark) Color.Black.copy(alpha = 0.45f) else c.cardShadowColor
+                                                )
+                                            )
                                             .clip(RoundedCornerShape(23.dp))
-                                            .background(if (c.isMatte) SolidColor(c.cardBgElevated) else Brush.verticalGradient(listOf(c.cardBgElevated, c.cardBg)))
-                                            .border(1.2.dp, if (c.isMatte) SolidColor(c.glassBorder) else Brush.verticalGradient(listOf(c.cardBorderHighlight, c.glassBorder, c.cardBorderShadow)), RoundedCornerShape(23.dp))
+                                            .background(
+                                                if (c.isMatte) SolidColor(c.cardBgElevated)
+                                                else Brush.verticalGradient(
+                                                    listOf(
+                                                        if (c.isDark) c.cardBgElevated else Color.White,
+                                                        c.cardBg
+                                                    )
+                                                )
+                                            )
+                                            .border(
+                                                1.3.dp,
+                                                if (c.isMatte) SolidColor(c.glassBorder)
+                                                else if (searchQuery.isNotBlank()) Brush.verticalGradient(listOf(c.accentBlue, c.cardBorderHighlight, c.accentBlue.copy(alpha = 0.4f)))
+                                                else Brush.verticalGradient(listOf(c.cardBorderHighlight, c.glassBorder, c.cardBorderShadow)),
+                                                RoundedCornerShape(23.dp)
+                                            )
                                             .padding(horizontal = 14.dp),
                                         verticalAlignment = Alignment.CenterVertically
                                     ) {
@@ -998,9 +1020,30 @@ fun FolderListScreen(
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .height(48.dp)
+                                .shadow(
+                                    elevation = 8.dp,
+                                    shape = RoundedCornerShape(24.dp),
+                                    ambientColor = if (c.isDark) Color.Black.copy(alpha = 0.55f) else c.cardShadowColor,
+                                    spotColor = if (c.isDark) Color.Black.copy(alpha = 0.45f) else c.cardShadowColor
+                                )
                                 .clip(RoundedCornerShape(24.dp))
-                                .background(c.cardBgElevated)
-                                .border(1.dp, c.glassBorder, RoundedCornerShape(24.dp))
+                                .background(
+                                    Brush.verticalGradient(
+                                        listOf(
+                                            if (c.isDark) c.cardBgElevated else Color.White,
+                                            c.cardBg
+                                        )
+                                    )
+                                )
+                                .border(
+                                    1.3.dp,
+                                    if (searchQuery.isNotBlank()) {
+                                        Brush.verticalGradient(listOf(c.accentBlue, c.cardBorderHighlight, c.accentBlue.copy(alpha = 0.4f)))
+                                    } else {
+                                        Brush.verticalGradient(listOf(c.cardBorderHighlight, c.glassBorder, c.cardBorderShadow))
+                                    },
+                                    RoundedCornerShape(24.dp)
+                                )
                                 .padding(horizontal = 14.dp),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
@@ -1737,8 +1780,8 @@ fun FolderListScreen(
                         )
                 ) {
                     Row(
-                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 5.dp),
-                        horizontalArrangement = Arrangement.spacedBy(4.dp),
+                        modifier = Modifier.padding(horizontal = 5.dp, vertical = 4.dp),
+                        horizontalArrangement = Arrangement.spacedBy(3.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         val view = androidx.compose.ui.platform.LocalView.current
@@ -1808,21 +1851,34 @@ fun FolderListScreen(
                                         currentTab = label
                                         if (label != "Video") selectedVideoIds = emptySet() 
                                     }
-                                    .padding(horizontal = 16.dp, vertical = 9.dp)
+                                    .padding(
+                                        horizontal = if (selected) 13.dp else 9.dp,
+                                        vertical = 7.dp
+                                    )
                             ) {
                                 Icon(
                                     icon,
                                     contentDescription = label,
                                     tint = pillTextColor,
-                                    modifier = Modifier.size(18.dp)
+                                    modifier = Modifier.size(17.dp)
                                 )
-                                Spacer(Modifier.width(6.dp))
-                                Text(
-                                    text = label,
-                                    color = pillTextColor,
-                                    fontSize = 13.5.sp,
-                                    fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium
-                                )
+                                AnimatedVisibility(
+                                    visible = selected,
+                                    enter = fadeIn(tween(180)) + expandHorizontally(spring(stiffness = Spring.StiffnessMediumLow)),
+                                    exit = fadeOut(tween(140)) + shrinkHorizontally(spring(stiffness = Spring.StiffnessMediumLow))
+                                ) {
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        Spacer(Modifier.width(5.dp))
+                                        Text(
+                                            text = label,
+                                            color = pillTextColor,
+                                            fontSize = 12.5.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            maxLines = 1,
+                                            softWrap = false
+                                        )
+                                    }
+                                }
                             }
                         }
                     }
@@ -2097,7 +2153,14 @@ fun FolderListScreen(
                         }
                         context.startActivity(streamIntent)
                     } else {
-                        onVideoClick(videoPath)
+                        val fileTitle = java.io.File(videoPath).nameWithoutExtension
+                        val playIntent = Intent(context, com.example.ymediaplayer.ui.VideoPlayerActivity::class.java).apply {
+                            flags = Intent.FLAG_ACTIVITY_REORDER_TO_FRONT or Intent.FLAG_ACTIVITY_SINGLE_TOP
+                            putExtra(com.example.ymediaplayer.ui.VideoPlayerActivity.EXTRA_VIDEO_URL, videoPath)
+                            putExtra(com.example.ymediaplayer.ui.VideoPlayerActivity.EXTRA_VIDEO_TITLE, fileTitle)
+                            putExtra(com.example.ymediaplayer.ui.VideoPlayerActivity.EXTRA_IS_STREAMING, false)
+                        }
+                        context.startActivity(playIntent)
                     }
                 }
             )
@@ -2123,13 +2186,13 @@ internal fun CanvasBg(offsetProvider: () -> Float = { 0f }) {
     // Enhanced vivid core & falloff for all 3 modes
     val coreAlpha = when {
         c.isMatte && c.isDark -> 0f
-        c.isDark && c.baseBackground == Color(0xFF000000) -> 0.45f * glowStrength // OLED Black (rich vibrant halo)
-        c.isDark -> 0.38f * glowStrength                                          // Dark Grey Comfort
-        else -> 0.32f * glowStrength                                              // Clean Light
-    }.coerceIn(0f, 0.95f)
-    val midAlpha = (coreAlpha * 0.42f).coerceIn(0f, 0.55f)
-    val edgeAlpha = (coreAlpha * 0.12f).coerceIn(0f, 0.20f)
-    val secAlpha = (coreAlpha * 0.25f).coerceIn(0f, 0.30f)
+        c.isDark && c.baseBackground == Color(0xFF000000) -> 0.70f * glowStrength // Amplified OLED Black rich vibrant halo
+        c.isDark -> 0.55f * glowStrength                                          // Dark Grey Comfort
+        else -> 0.45f * glowStrength                                              // Clean Light
+    }.coerceIn(0f, 0.98f)
+    val midAlpha = (coreAlpha * 0.60f).coerceIn(0f, 0.85f)
+    val edgeAlpha = (coreAlpha * 0.28f).coerceIn(0f, 0.45f)
+    val secAlpha = (coreAlpha * 0.48f).coerceIn(0f, 0.65f)
 
     Box(
         modifier = Modifier
@@ -2142,59 +2205,59 @@ internal fun CanvasBg(offsetProvider: () -> Float = { 0f }) {
                     drawRect(
                         brush = Brush.radialGradient(
                             colors = listOf(
-                                satBlue.copy(alpha = 0.28f * glowStrength),
-                                satBlue.copy(alpha = 0.12f * glowStrength),
+                                satBlue.copy(alpha = 0.42f * glowStrength),
+                                satBlue.copy(alpha = 0.20f * glowStrength),
                                 Color.Transparent
                             ),
                             center = Offset(size.width * 0.28f, size.height * 0.14f),
-                            radius = size.width * (1.15f * glowSpread).coerceIn(0.5f, 3.0f)
+                            radius = size.width * (1.20f * glowSpread).coerceIn(0.5f, 3.8f)
                         )
                     )
                     // 2. Top-Right: Soft Violet / Lavender pastel glow
                     drawRect(
                         brush = Brush.radialGradient(
                             colors = listOf(
-                                Color(0xFFA78BFA).copy(alpha = 0.24f * glowStrength),
-                                Color(0xFFA78BFA).copy(alpha = 0.08f * glowStrength),
+                                Color(0xFFA78BFA).copy(alpha = 0.36f * glowStrength),
+                                Color(0xFFA78BFA).copy(alpha = 0.14f * glowStrength),
                                 Color.Transparent
                             ),
                             center = Offset(size.width * 0.88f, size.height * 0.18f),
-                            radius = size.width * (0.95f * glowSpread).coerceIn(0.4f, 2.6f)
+                            radius = size.width * (1.05f * glowSpread).coerceIn(0.4f, 3.4f)
                         )
                     )
                     // 3. Center-Left: Soft Rose / Coral pastel glow
                     drawRect(
                         brush = Brush.radialGradient(
                             colors = listOf(
-                                Color(0xFFF472B6).copy(alpha = 0.18f * glowStrength),
-                                Color(0xFFF472B6).copy(alpha = 0.06f * glowStrength),
+                                Color(0xFFF472B6).copy(alpha = 0.28f * glowStrength),
+                                Color(0xFFF472B6).copy(alpha = 0.10f * glowStrength),
                                 Color.Transparent
                             ),
                             center = Offset(size.width * 0.10f, size.height * 0.48f),
-                            radius = size.width * (0.85f * glowSpread).coerceIn(0.4f, 2.4f)
+                            radius = size.width * (0.95f * glowSpread).coerceIn(0.4f, 3.0f)
                         )
                     )
                     // 4. Center-Right / Bottom: Secondary accent soft emerald/mint pastel
                     drawRect(
                         brush = Brush.radialGradient(
                             colors = listOf(
-                                satGreen.copy(alpha = 0.22f * glowStrength),
-                                satGreen.copy(alpha = 0.07f * glowStrength),
+                                satGreen.copy(alpha = 0.32f * glowStrength),
+                                satGreen.copy(alpha = 0.12f * glowStrength),
                                 Color.Transparent
                             ),
                             center = Offset(size.width * 0.85f, size.height * 0.68f),
-                            radius = size.width * (0.90f * glowSpread).coerceIn(0.4f, 2.5f)
+                            radius = size.width * (1.00f * glowSpread).coerceIn(0.4f, 3.2f)
                         )
                     )
                     // 5. Bottom-Center: Soft warm amber/peach pastel
                     drawRect(
                         brush = Brush.radialGradient(
                             colors = listOf(
-                                Color(0xFFFBBF24).copy(alpha = 0.16f * glowStrength),
+                                Color(0xFFFBBF24).copy(alpha = 0.25f * glowStrength),
                                 Color.Transparent
                             ),
                             center = Offset(size.width * 0.42f, size.height * 0.88f),
-                            radius = size.width * (0.80f * glowSpread).coerceIn(0.3f, 2.2f)
+                            radius = size.width * (0.90f * glowSpread).coerceIn(0.3f, 2.8f)
                         )
                     )
                 } else if (coreAlpha > 0.01f) {
@@ -2208,7 +2271,7 @@ internal fun CanvasBg(offsetProvider: () -> Float = { 0f }) {
                                 Color.Transparent
                             ),
                             center = Offset(size.width * 0.5f, size.height * 0.25f),
-                            radius = size.width * (0.92f * glowSpread).coerceIn(0.4f, 2.8f)
+                            radius = size.width * (1.10f * glowSpread).coerceIn(0.5f, 3.8f)
                         )
                     )
                     // Secondary corner ambient accent for rich dual-tone depth
@@ -2219,7 +2282,7 @@ internal fun CanvasBg(offsetProvider: () -> Float = { 0f }) {
                                 Color.Transparent
                             ),
                             center = Offset(size.width * 0.88f, size.height * 0.75f),
-                            radius = size.width * (0.75f * glowSpread).coerceIn(0.3f, 2.5f)
+                            radius = size.width * (0.95f * glowSpread).coerceIn(0.4f, 3.2f)
                         )
                     )
                 }
@@ -2362,6 +2425,11 @@ private fun ContinueWatchingCard(
     val dur = if (video.duration > 0L) video.duration else appPreferences.getVideoDuration(video.uri.toString())
     val ratio = if (dur > 0L) (progress.toFloat() / dur).coerceIn(0f, 1f) else 0f
     val pct = (ratio * 100).toInt()
+    val cornerRadius = when (appPreferences.getUiCornerStyle()) {
+        "SLEEK" -> 14.dp
+        "EXTRA" -> 26.dp
+        else -> 18.dp
+    }
 
     Box(
         modifier = Modifier
@@ -2369,16 +2437,16 @@ private fun ContinueWatchingCard(
             .height(96.dp)
             .then(if (c.isMatte) Modifier else Modifier.shadow(
                 elevation = 8.dp,
-                shape = RoundedCornerShape(18.dp),
+                shape = RoundedCornerShape(cornerRadius),
                 ambientColor = c.cardShadowColor,
                 spotColor = c.cardShadowColor
             ))
-            .clip(RoundedCornerShape(18.dp))
+            .clip(RoundedCornerShape(cornerRadius))
             .background(if (c.isMatte) SolidColor(c.cardBg) else Brush.verticalGradient(listOf(c.cardBgElevated, c.cardBg)))
             .border(
                 width = 1.4.dp,
                 brush = if (c.isMatte) SolidColor(c.glassBorder) else Brush.verticalGradient(listOf(c.cardBorderHighlight, c.glassBorder, c.cardBorderShadow)),
-                shape = RoundedCornerShape(18.dp)
+                shape = RoundedCornerShape(cornerRadius)
             )
             .bounceClick(onClick = onClick, onLongClick = onLongPress)
     ) {
@@ -2493,6 +2561,11 @@ private fun RecentlyAddedVideoCard(
     val c = LocalAppColors.current
     val context = LocalContext.current
     val progress = appPreferences.getVideoProgress(video.uri.toString())
+    val cornerRadius = when (appPreferences.getUiCornerStyle()) {
+        "SLEEK" -> 14.dp
+        "EXTRA" -> 26.dp
+        else -> 18.dp
+    }
 
     Box(
         modifier = Modifier
@@ -2500,11 +2573,11 @@ private fun RecentlyAddedVideoCard(
             .height(96.dp)
             .then(if (c.isMatte) Modifier else Modifier.shadow(
                 elevation = 8.dp,
-                shape = RoundedCornerShape(18.dp),
+                shape = RoundedCornerShape(cornerRadius),
                 ambientColor = c.cardShadowColor,
                 spotColor = c.cardShadowColor
             ))
-            .clip(RoundedCornerShape(18.dp))
+            .clip(RoundedCornerShape(cornerRadius))
             .background(if (c.isMatte) SolidColor(c.cardBg) else Brush.verticalGradient(listOf(c.cardBgElevated, c.cardBg)))
             .border(
                 width = 1.4.dp,
@@ -2512,7 +2585,7 @@ private fun RecentlyAddedVideoCard(
                     SolidColor(c.glassBorder)
                 } else if (progress > 0) Brush.verticalGradient(listOf(Color.White.copy(0.5f), c.accentBlue.copy(0.7f)))
                 else Brush.verticalGradient(listOf(c.cardBorderHighlight, c.glassBorder, c.cardBorderShadow)),
-                shape = RoundedCornerShape(18.dp)
+                shape = RoundedCornerShape(cornerRadius)
             )
             .bounceClick(onClick = onClick, onLongClick = onLongPress)
     ) {
@@ -2950,6 +3023,11 @@ fun VideoListItem(
     val context = LocalContext.current
     val appPreferences = remember { AppPreferences(context) }
     val progress = appPreferences.getVideoProgress(video.uri.toString())
+    val cornerRadius = when (appPreferences.getUiCornerStyle()) {
+        "SLEEK" -> 14.dp
+        "EXTRA" -> 26.dp
+        else -> 18.dp
+    }
 
     Column(
         modifier = Modifier
@@ -2957,11 +3035,11 @@ fun VideoListItem(
             .padding(horizontal = 16.dp, vertical = 5.dp)
             .then(if (c.isMatte) Modifier else Modifier.shadow(
                 elevation = if (isSelected) 10.dp else 6.dp,
-                shape = RoundedCornerShape(18.dp),
+                shape = RoundedCornerShape(cornerRadius),
                 ambientColor = if (isSelected) c.accentBlue.copy(0.35f) else c.cardShadowColor,
                 spotColor = if (isSelected) c.accentBlue.copy(0.45f) else c.cardShadowColor
             ))
-            .clip(RoundedCornerShape(18.dp))
+            .clip(RoundedCornerShape(cornerRadius))
             .background(
                 if (c.isMatte) {
                     SolidColor(if (isSelected) c.accentBlue.copy(alpha = 0.15f) else c.cardBg)
@@ -2978,7 +3056,7 @@ fun VideoListItem(
                     if (isSelected) Brush.verticalGradient(listOf(Color.White.copy(0.65f), c.accentBlue))
                     else Brush.verticalGradient(listOf(c.cardBorderHighlight, c.glassBorder, c.cardBorderShadow))
                 },
-                shape = RoundedCornerShape(18.dp)
+                shape = RoundedCornerShape(cornerRadius)
             )
             .pointerInput(Unit) {
                 detectTapGestures(onTap = { onClick() }, onLongPress = { onLongPress() })

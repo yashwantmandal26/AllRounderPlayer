@@ -29,6 +29,7 @@ import android.media.audiofx.Virtualizer
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.ui.text.TextStyle
 import com.example.ymediaplayer.player.OnlineSubtitleManager
 import com.example.ymediaplayer.player.OnlineSubtitle
 import android.os.BatteryManager
@@ -43,6 +44,8 @@ import androidx.compose.animation.*
 import androidx.compose.animation.core.*
 import androidx.compose.foundation.*
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.draw.drawBehind
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.detectDragGestures
@@ -117,7 +120,11 @@ import androidx.compose.foundation.lazy.items
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
+import android.content.ContentUris
+import android.net.Uri
 import com.example.ymediaplayer.data.AppPreferences
+import com.example.ymediaplayer.data.FileManager
+import com.example.ymediaplayer.data.FileOperationResult
 import com.example.ymediaplayer.data.SortOrder
 import com.example.ymediaplayer.data.VideoFolder
 import com.example.ymediaplayer.data.VideoItem
@@ -672,8 +679,16 @@ fun VideoPlayerScreen(
     val cinemaDownloads by TorrentEngine.downloads.collectAsState()
 
     // Load playlist (supports custom active queue or folder playlist)
-    LaunchedEffect(videoUrl) {
+    LaunchedEffect(videoUrl, streamTorrentHash) {
         currentUrl = videoUrl
+        if (streamTorrentHash != null) {
+            playlistVideos = emptyList()
+            currentVideoIndex = 0
+            if (streamTitle.isNotBlank()) {
+                videoTitle = streamTitle
+            }
+            return@LaunchedEffect
+        }
         withContext(Dispatchers.IO) {
             val normTarget = videoUrl.removePrefix("file://")
             val targetUri = try { android.net.Uri.parse(videoUrl) } catch (_: Exception) { null }
@@ -730,9 +745,10 @@ fun VideoPlayerScreen(
 
     val exoPlayer = remember(videoUrl) {
         val initialProgress = appPreferences.getVideoStartPosition(videoUrl)
+        val shouldPreload = streamTorrentHash == null || isStreamReady
         VideoPlaybackManager.getOrCreatePlayer(
             context = context,
-            url = videoUrl,
+            url = if (shouldPreload) videoUrl else "",
             title = videoTitle,
             initialProgress = initialProgress,
             playbackSpeed = initialPlaybackSpeed,
@@ -752,39 +768,37 @@ fun VideoPlayerScreen(
         while (true) {
             if (com.example.ymediaplayer.mycinema.service.TorrentEngine.isStreamBufferReady(context, hash)) {
                 val path = com.example.ymediaplayer.mycinema.service.TorrentEngine.getFilePath(context, hash)
-                if (path != null) {
+                if (path != null && java.io.File(path).exists()) {
+                    android.util.Log.i("StreamDebug", "Stream buffer ready. Starting ExoPlayer with path: $path")
                     currentUrl = path
-                    if (exoPlayer.currentMediaItem == null) {
-                        val mItem = androidx.media3.common.MediaItem.Builder()
-                            .setUri(android.net.Uri.fromFile(java.io.File(path)))
-                            .setMediaMetadata(
-                                androidx.media3.common.MediaMetadata.Builder()
-                                    .setTitle(videoTitle)
-                                    .setArtist("Cinema")
-                                    .build()
-                            )
-                            .build()
-                        exoPlayer.setMediaItem(mItem)
-                        exoPlayer.prepare()
-                        exoPlayer.play()
+                    com.example.ymediaplayer.player.VideoPlaybackManager.currentVideoUrl.value = path
+                    if (streamTitle.isNotBlank()) {
+                        videoTitle = streamTitle
+                        com.example.ymediaplayer.player.VideoPlaybackManager.currentVideoTitle.value = streamTitle
                     }
+                    val mItem = androidx.media3.common.MediaItem.Builder()
+                        .setUri(android.net.Uri.fromFile(java.io.File(path)))
+                        .setMediaMetadata(
+                            androidx.media3.common.MediaMetadata.Builder()
+                                .setTitle(if (streamTitle.isNotBlank()) streamTitle else videoTitle)
+                                .setArtist("Cinema")
+                                .build()
+                        )
+                        .build()
+                    exoPlayer.setMediaItem(mItem)
+                    exoPlayer.prepare()
+                    exoPlayer.play()
                     isStreamReady = true
                     break
                 }
             }
-            kotlinx.coroutines.delay(350)
+            kotlinx.coroutines.delay(250)
         }
     }
 
     LaunchedEffect(compatibilityFallback?.requestId) {
         val request = compatibilityFallback ?: return@LaunchedEffect
-        context.startActivity(
-            Intent(context, CompatibilityPlayerActivity::class.java).apply {
-                putExtra(CompatibilityPlayerActivity.EXTRA_URI, request.uri)
-                putExtra(CompatibilityPlayerActivity.EXTRA_TITLE, request.title)
-                putExtra(CompatibilityPlayerActivity.EXTRA_POSITION_MS, request.positionMs)
-            }
-        )
+        // Always stay in the original VideoPlayerScreen with all controls and gestures.
         VideoPlaybackManager.consumeCompatibilityFallback(request.requestId)
     }
 
@@ -846,6 +860,7 @@ fun VideoPlayerScreen(
     var isPlaying by remember(exoPlayer) { mutableStateOf(exoPlayer.isPlaying) }
     var currentPosition by remember { mutableLongStateOf(0L) }
     var bufferedPosition by remember { mutableLongStateOf(0L) }
+    var downloadedRanges by remember(currentUrl) { mutableStateOf<List<ClosedFloatingPointRange<Float>>>(emptyList()) }
     var duration by remember(exoPlayer) {
         val d = exoPlayer.duration
         mutableLongStateOf(if (d > 0L) d else 0L)
@@ -1103,6 +1118,8 @@ fun VideoPlayerScreen(
     var showSubtitleTools by remember { mutableStateOf(false) }
     var showThemePickerSheet by remember { mutableStateOf(false) }
     var showVideoInfoSheet by remember { mutableStateOf(false) }
+    var showDeleteConfirmDialog by remember { mutableStateOf(false) }
+    val fileManager = remember { FileManager(context) }
     var modePicker by remember { mutableStateOf<String?>(null) }
     var showQuickControlsBar by remember { mutableStateOf(false) }
     var subtitleDesign by remember { mutableIntStateOf(appPreferences.getSubtitleDesign()) }
@@ -1476,6 +1493,24 @@ fun VideoPlayerScreen(
             ?: com.example.ymediaplayer.mycinema.service.TorrentEngine.getActiveTorrent(videoUrl)
             ?: com.example.ymediaplayer.mycinema.service.TorrentEngine.getActiveTorrent(currentUrl)
     }
+    LaunchedEffect(activeTorrentHash) {
+        val hash = activeTorrentHash ?: return@LaunchedEffect
+        com.example.ymediaplayer.mycinema.service.TorrentEngine.setSequential(hash, true)
+    }
+
+    // ─── 2-Minute Sliding Buffer Window for Torrent Streaming ─────────────────
+    LaunchedEffect(activeTorrentHash, isStreamReady) {
+        val hash = activeTorrentHash ?: return@LaunchedEffect
+        if (streamTorrentHash == null && cinemaDownloads[hash]?.isStream != true) return@LaunchedEffect
+        while (true) {
+            if (isStreamReady) {
+                val durSec = if (duration > 0) duration / 1000L else 6600L
+                val frac = if (duration > 0) (currentPosition.toDouble() / duration.toDouble()).coerceIn(0.0, 1.0) else 0.0
+                com.example.ymediaplayer.mycinema.service.TorrentEngine.updateStreamSlidingWindow(hash, frac, durSec)
+            }
+            kotlinx.coroutines.delay(2000L)
+        }
+    }
     var torrentSeekBufferingTarget by remember { mutableStateOf<Long?>(null) }
     var torrentSeekJob by remember { mutableStateOf<kotlinx.coroutines.Job?>(null) }
 
@@ -1500,7 +1535,8 @@ fun VideoPlayerScreen(
                 exoPlayer.pause()
                 torrentSeekBufferingTarget = target
                 currentPosition = target
-                com.example.ymediaplayer.mycinema.service.TorrentEngine.prioritizeStreamSeek(hash, frac)
+                val durSec = if (maxDur > 0) maxDur / 1000L else 6600L
+                com.example.ymediaplayer.mycinema.service.TorrentEngine.prioritizeStreamSeek(hash, frac, durSec)
                 torrentSeekJob?.cancel()
                 torrentSeekJob = coroutineScope.launch {
                     val startWait = System.currentTimeMillis()
@@ -2246,7 +2282,7 @@ fun VideoPlayerScreen(
             val isPlayingNow = exoPlayer.isPlaying
             isPlaying = isPlayingNow
             if (!isDraggingSeek) {
-                currentPosition = exoPlayer.currentPosition
+                currentPosition = torrentSeekBufferingTarget ?: exoPlayer.currentPosition
                 duration = exoPlayer.duration.coerceAtLeast(0L)
             }
             bufferedPosition = exoPlayer.bufferedPosition.coerceAtLeast(0L)
@@ -2254,6 +2290,22 @@ fun VideoPlayerScreen(
             val lEnd = loopEndMs
             if (lStart != null && lEnd != null && lEnd > lStart && currentPosition >= lEnd) {
                 safeSeek(lStart)
+            }
+            val hash = activeTorrentHash
+            if (hash != null) {
+                val state = cinemaDownloads[hash]
+                val isActivelyStreaming = state != null &&
+                    (state.status == com.example.ymediaplayer.mycinema.service.TorrentDownloadState.Status.DOWNLOADING ||
+                     state.status == com.example.ymediaplayer.mycinema.service.TorrentDownloadState.Status.STREAMING) &&
+                    state.progress < 0.999f
+                downloadedRanges = if (isActivelyStreaming) {
+                    val ranges = com.example.ymediaplayer.mycinema.service.TorrentEngine.getDownloadedRanges(hash)
+                    if (ranges.isNotEmpty()) ranges else emptyList()
+                } else {
+                    emptyList()
+                }
+            } else {
+                downloadedRanges = emptyList()
             }
             // When controls are hidden and A-B loop is not active, relaxing delay frees CPU/GPU for 60/120fps video rendering
             val pollDelay = if (!showControls && lStart == null) 1000.milliseconds else if (isPlayingNow) 200.milliseconds else 500.milliseconds
@@ -2297,6 +2349,8 @@ fun VideoPlayerScreen(
     val isAnySheetOrMenuOpen = showSubtitleTools || showAmbientSettings || modePicker != null || showPlaylistSheet ||
             showSettingsOverlay ||
             showMoreMenuSheet ||
+            isMoreExpanded ||
+            showDeleteConfirmDialog ||
             showSpeedSheet ||
             showSleepTimerSheet ||
             showAudioTrackSheet ||
@@ -2324,7 +2378,14 @@ fun VideoPlayerScreen(
         val timeout = if (autoHideTimeoutMs > 0L) autoHideTimeoutMs else 3000L
         delay(timeout.milliseconds)
         isQuickActionsExpanded = false
+        isMoreExpanded = false
         showControls = false
+    }
+
+    LaunchedEffect(showControls) {
+        if (!showControls) {
+            isMoreExpanded = false
+        }
     }
 
     // ─── Auto-hide Vertical Gesture Bars (1.6s auto-dismiss after touch ends) ──
@@ -2558,10 +2619,21 @@ fun VideoPlayerScreen(
 
     // ─── Back Press & Exit Handling ──────────────────────────────────────────
     var isExitingToMiniPlayer by remember { mutableStateOf(false) }
+    var isCurrentVideoDeleted by remember { mutableStateOf(false) }
+    val wasPlayingBeforeDeleteDialog = remember { mutableStateOf(false) }
 
     val handleExit: () -> Unit = {
         if (!isExitingToMiniPlayer) {
             isExitingToMiniPlayer = true
+            val hash = activeTorrentHash
+            if (hash != null) {
+                if (streamTorrentHash != null && !isStreamReady) {
+                    com.example.ymediaplayer.mycinema.service.TorrentEngine.cancel(hash)
+                    com.example.ymediaplayer.mycinema.service.TorrentEngine.cleanupStream(context, hash)
+                } else if (streamTorrentHash != null || cinemaDownloads[hash]?.isStream == true) {
+                    com.example.ymediaplayer.mycinema.service.TorrentEngine.pause(hash)
+                }
+            }
             // Immediately stop audio & playback with zero delay
             try {
                 exoPlayer.volume = 0f
@@ -2573,7 +2645,7 @@ fun VideoPlayerScreen(
                 playerView.player = null
             } catch (_: Exception) {}
             val pos = exoPlayer.currentPosition
-            if (pos > 1000L) {
+            if (!isCurrentVideoDeleted && pos > 1000L) {
                 appPreferences.saveVideoProgress(currentUrl, pos, exoPlayer.duration.coerceAtLeast(0L))
             }
             if (!VideoPlaybackManager.isMiniPlayerActive.value) {
@@ -2583,10 +2655,171 @@ fun VideoPlayerScreen(
         }
     }
 
+    val onVideoDeletedSuccessfully: () -> Unit = {
+        Toast.makeText(context, "Video deleted", Toast.LENGTH_SHORT).show()
+        val deletedUrl = currentUrl
+        isCurrentVideoDeleted = true
+        appPreferences.clearVideoProgress(deletedUrl)
+        VideoRepository.invalidateCache()
+
+        val normCurrent = deletedUrl.removePrefix("file://")
+        val actualIndex = playlistVideos.indexOfFirst {
+            it.uri.toString().removePrefix("file://") == normCurrent ||
+            it.uri.toString() == deletedUrl
+        }.let { if (it >= 0) it else currentVideoIndex }
+
+        val remaining = if (actualIndex in playlistVideos.indices) {
+            playlistVideos.filterIndexed { index, _ -> index != actualIndex }
+        } else {
+            playlistVideos.filter {
+                it.uri.toString().removePrefix("file://") != normCurrent &&
+                it.uri.toString() != deletedUrl
+            }
+        }
+
+        VideoPlaybackManager.activePlaylistQueue = remaining.ifEmpty { null }
+        if (remaining.isNotEmpty()) {
+            isCurrentVideoDeleted = false
+            playlistVideos = remaining
+            val nextIdx = actualIndex.coerceIn(0, remaining.size - 1)
+            val nextVideo = remaining[nextIdx]
+            currentVideoIndex = nextIdx
+            currentUrl = nextVideo.uri.toString()
+            videoTitle = nextVideo.title.substringBeforeLast(".")
+            VideoPlaybackManager.currentVideoUrl.value = currentUrl
+            VideoPlaybackManager.currentVideoTitle.value = videoTitle
+            val nextProgress = appPreferences.getVideoStartPosition(nextVideo.uri.toString())
+            val isNextCompleted = appPreferences.isCompleted(nextVideo.uri.toString())
+
+            val initialMeta = androidx.media3.common.MediaMetadata.Builder()
+                .setTitle(videoTitle)
+                .setArtist("Video")
+                .build()
+            val mItem = androidx.media3.common.MediaItem.Builder()
+                .setUri(nextVideo.uri)
+                .setMediaMetadata(initialMeta)
+                .build()
+
+            if (nextProgress > 3000L && !isNextCompleted) {
+                exoPlayer.setMediaItem(mItem, nextProgress)
+            } else {
+                exoPlayer.setMediaItem(mItem, 0L)
+            }
+            exoPlayer.prepare()
+            exoPlayer.play()
+
+            val targetNextUri = nextVideo.uri
+            coroutineScope.launch(Dispatchers.IO) {
+                val thumbBytes = try {
+                    com.example.ymediaplayer.util.MediaArtworkHelper.getVideoThumbnailBytes(context, targetNextUri)
+                } catch (_: Throwable) { null }
+                if (thumbBytes != null) {
+                    withContext(Dispatchers.Main) {
+                        if (currentUrl == targetNextUri.toString()) {
+                            val enrichedMeta = initialMeta.buildUpon()
+                                .setArtworkData(thumbBytes, androidx.media3.common.MediaMetadata.PICTURE_TYPE_FRONT_COVER)
+                                .build()
+                            val updatedItem = mItem.buildUpon().setMediaMetadata(enrichedMeta).build()
+                            val curIdx = exoPlayer.currentMediaItemIndex
+                            if (curIdx >= 0 && curIdx < exoPlayer.mediaItemCount) {
+                                exoPlayer.replaceMediaItem(curIdx, updatedItem)
+                            }
+                        }
+                    }
+                }
+            }
+        } else {
+            handleExit()
+        }
+    }
+
+    val handleFileOperation = rememberFileOperationHandler(
+        onSuccess = {
+            onVideoDeletedSuccessfully()
+        },
+        onFailure = { errorMsg ->
+            Toast.makeText(context, errorMsg, Toast.LENGTH_SHORT).show()
+        }
+    )
+
+    val executeDeleteCurrentVideo: () -> Unit = {
+        coroutineScope.launch {
+            val hash = activeTorrentHash
+            if (hash != null) {
+                TorrentEngine.cancel(hash)
+                TorrentEngine.cleanupStream(context, hash)
+                onVideoDeletedSuccessfully()
+                return@launch
+            }
+
+            val normCurrent = currentUrl.removePrefix("file://")
+            val videoItem = playlistVideos.firstOrNull {
+                it.uri.toString().removePrefix("file://") == normCurrent ||
+                it.uri.toString() == currentUrl
+            } ?: if (currentVideoIndex in playlistVideos.indices) playlistVideos[currentVideoIndex] else null
+
+            var targetUri: Uri? = videoItem?.uri
+
+            if (targetUri == null || (targetUri.scheme != "content" && targetUri.authority != "media")) {
+                targetUri = try {
+                    if (currentUrl.startsWith("content://")) {
+                        val parsed = Uri.parse(currentUrl)
+                        if (parsed.authority == "com.android.providers.media.documents") {
+                            val docId = android.provider.DocumentsContract.getDocumentId(parsed)
+                            val id = docId.split(":").getOrNull(1)?.toLongOrNull()
+                            if (id != null) {
+                                ContentUris.withAppendedId(MediaStore.Video.Media.EXTERNAL_CONTENT_URI, id)
+                            } else parsed
+                        } else parsed
+                    } else {
+                        val cleanPath = Uri.decode(currentUrl.removePrefix("file://"))
+                        val file = java.io.File(cleanPath)
+                        val proj = arrayOf(MediaStore.Video.Media._ID)
+                        val sel = "${MediaStore.Video.Media.DATA} = ?"
+                        val args = arrayOf(file.absolutePath)
+                        var foundUri: Uri? = null
+                        context.contentResolver.query(
+                            MediaStore.Video.Media.EXTERNAL_CONTENT_URI,
+                            proj, sel, args, null
+                        )?.use { cur ->
+                            if (cur.moveToFirst()) {
+                                val id = cur.getLong(cur.getColumnIndexOrThrow(MediaStore.Video.Media._ID))
+                                foundUri = ContentUris.withAppendedId(
+                                    MediaStore.Video.Media.EXTERNAL_CONTENT_URI, id
+                                )
+                            }
+                        }
+                        foundUri ?: Uri.fromFile(file)
+                    }
+                } catch (_: Exception) {
+                    null
+                }
+            }
+
+            if (targetUri != null) {
+                if (targetUri.scheme == "content") {
+                    val result = fileManager.deleteVideos(listOf(targetUri))
+                    handleFileOperation(result)
+                } else {
+                    val cleanPath = Uri.decode(targetUri.path ?: currentUrl.removePrefix("file://"))
+                    val f = java.io.File(cleanPath)
+                    if (f.exists() && f.delete()) {
+                        onVideoDeletedSuccessfully()
+                    } else {
+                        Toast.makeText(context, "Could not delete video file", Toast.LENGTH_SHORT).show()
+                    }
+                }
+            } else {
+                Toast.makeText(context, "Video file not found", Toast.LENGTH_SHORT).show()
+            }
+        }
+    }
+
     BackHandler(enabled = true) {
         when {
             streamTorrentHash != null && !isStreamReady -> handleExit()
             isLocked -> isLocked = false
+            showDeleteConfirmDialog -> showDeleteConfirmDialog = false
             showQuickControlsBar -> showQuickControlsBar = false
             showSettingsOverlay -> showSettingsOverlay = false
             showSubtitleTools -> showSubtitleTools = false
@@ -2652,10 +2885,11 @@ fun VideoPlayerScreen(
         var preTapShowControls = showControls
 
         awaitEachGesture {
+            preTapShowControls = showControls
             var didActivateSpeedHold = false
             var speedHoldPreSpeed = currentPlaybackSpeed
             try {
-                val down = awaitFirstDown(requireUnconsumed = true)
+                val down = awaitFirstDown(requireUnconsumed = false)
                 var wasConsumed = down.isConsumed
                 val downTime = System.currentTimeMillis()
                 val startX = down.position.x
@@ -2860,6 +3094,7 @@ fun VideoPlayerScreen(
                                 gestureMode = PlayerGestureMode.SEEK
                                 activeGestureMode = gestureMode
                                 isDraggingSeek = true
+                                showControls = true
                                 scrubPosition = startPosition.toFloat()
                                 change.consume()
                             }
@@ -2922,6 +3157,7 @@ fun VideoPlayerScreen(
                         val delta = currentDragSeekTarget - startPosition
                         scrubPosition = currentDragSeekTarget.toFloat()
                         isDraggingSeek = true
+                        showControls = true
                         centerSeekIcon = if (delta >= 0) Icons.Rounded.FastForward else Icons.Rounded.FastRewind
                         val sign = if (delta >= 0) "+" else "-"
                         val absDeltaSec = abs(delta) / 1000L
@@ -3015,7 +3251,7 @@ fun VideoPlayerScreen(
                     // Ignored drag - do not trigger tap
                 }
                 PlayerGestureMode.NONE -> {
-                    if (!hasMoved && !didActivateSpeedHold && !wasConsumed) {
+                    if (!hasMoved && !didActivateSpeedHold) {
                         // Quick stationary tap!
                         if (isDoubleTap) {
                             lastTapTime = 0L // consume double tap
@@ -3056,11 +3292,14 @@ fun VideoPlayerScreen(
                                 }
                             }
                         } else {
-                            preTapShowControls = showControls
-                            lastTapTime = downTime
-                            lastTapX = startX
-                            lastTapY = startY
-                            showControls = !showControls
+                            if (!showControls || !wasConsumed) {
+                                preTapShowControls = showControls
+                                lastTapTime = downTime
+                                lastTapX = startX
+                                lastTapY = startY
+                                showControls = !showControls
+                                controlsInteractionTimestamp = System.currentTimeMillis()
+                            }
                         }
                     }
                 }
@@ -3268,9 +3507,7 @@ fun VideoPlayerScreen(
             )
         }
 
-        if (isDraggingSeek && !isInPiP) {
-            Box(Modifier.align(Alignment.Center)) { VideoSeekPreview(currentUrl, scrubPosition.toLong()) }
-        }
+
 
         // ─── 5. Horizontal Seek Center HUD ────────────────────────────────────
         AnimatedVisibility(
@@ -3350,7 +3587,9 @@ fun VideoPlayerScreen(
             visible = torrentSeekBufferingTarget != null && !isInPiP,
             enter = fadeIn(tween(160)) + scaleIn(initialScale = 0.90f),
             exit = fadeOut(tween(180)) + scaleOut(targetScale = 0.90f),
-            modifier = Modifier.align(Alignment.Center)
+            modifier = Modifier
+                .align(Alignment.BottomCenter)
+                .padding(bottom = 100.dp)
         ) {
             Box(
                 modifier = Modifier
@@ -3424,7 +3663,7 @@ fun VideoPlayerScreen(
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .height(130.dp)
+                        .height(if (isMoreExpanded) (if (isLandscape) 170.dp else 230.dp) else (if (isLandscape) 100.dp else 130.dp))
                         .align(Alignment.TopCenter)
                         .background(
                             Brush.verticalGradient(
@@ -3710,19 +3949,18 @@ fun VideoPlayerScreen(
                             }
                         }
 
-                        // ─── INLINE EXPANDED CONTROLS BAR (No extra menu) ─────────────────
+                        // ─── INLINE EXPANDED CONTROLS BAR (Row-wise, no sliding) ─────────
                         AnimatedVisibility(
                             visible = isMoreExpanded,
                             enter = fadeIn(tween(180)) + expandVertically(tween(220)),
                             exit = fadeOut(tween(140)) + shrinkVertically(tween(180))
                         ) {
-                            Row(
+                            FlowRow(
                                 modifier = Modifier
                                     .fillMaxWidth()
-                                    .horizontalScroll(rememberScrollState())
-                                    .padding(horizontal = 16.dp, vertical = 4.dp),
+                                    .padding(horizontal = 16.dp, vertical = 6.dp),
                                 horizontalArrangement = Arrangement.spacedBy(8.dp),
-                                verticalAlignment = Alignment.CenterVertically
+                                verticalArrangement = Arrangement.spacedBy(8.dp)
                             ) {
                                 // 1. Autoplay Toggle Chip
                                 ExpandedOptionChip(
@@ -3793,6 +4031,23 @@ fun VideoPlayerScreen(
                                     isActive = false,
                                     accentColor = primaryAccent,
                                     onClick = { showVideoInfoSheet = true }
+                                )
+
+                                // 7. Delete Video Chip
+                                ExpandedOptionChip(
+                                    icon = Icons.Rounded.Delete,
+                                    label = "Delete",
+                                    isActive = false,
+                                    accentColor = Color(0xFFEF5350),
+                                    isDestructive = true,
+                                    onClick = {
+                                        view.performHaptic(HapticType.LIGHT)
+                                        wasPlayingBeforeDeleteDialog.value = exoPlayer.isPlaying
+                                        if (exoPlayer.isPlaying) {
+                                            exoPlayer.pause()
+                                        }
+                                        showDeleteConfirmDialog = true
+                                    }
                                 )
                             }
                         }
@@ -4007,83 +4262,108 @@ fun VideoPlayerScreen(
                             }
                         }
 
-                        // Full-Width Seekbar Slider
+                        // Full-Width Seekbar Slider with Moving Finger Seek Preview
                         val effectiveDuration = maxOf(duration, exoPlayer.duration.coerceAtLeast(0L)).toFloat().coerceAtLeast(1f)
-                        Slider(
-                            value = (if (isDraggingSeek) scrubPosition else currentPosition.toFloat()).coerceIn(0f, effectiveDuration),
-                            onValueChange = {
-                                isDraggingSeek = true
-                                scrubPosition = it
-                                val dur = effectiveDuration
-                                val milestone = ((it / dur) * 4).toInt()
-                                if (milestone != lastSeekMilestone) {
-                                    lastSeekMilestone = milestone
-                                    view.performHaptic(HapticType.LIGHT)
-                                }
-                            },
-                            onValueChangeFinished = {
-                                isDraggingSeek = false
-                                safeSeek(scrubPosition.toLong())
-                            },
-                            valueRange = 0f..effectiveDuration,
-                            track = { sliderState ->
-                                val dur = effectiveDuration
-                                val curVal = (if (isDraggingSeek) scrubPosition else currentPosition.toFloat()).coerceIn(0f, dur)
-                                val playFraction = (curVal / dur).coerceIn(0f, 1f)
-
-                                // Active torrent or buffered download fraction
-                                val activeHash = streamTorrentHash ?: TorrentEngine.getActiveTorrent(currentUrl) ?: TorrentEngine.getActiveTorrent(videoUrl)
-                                val torrentProgress = activeHash?.let { cinemaDownloads[it]?.progress }
-                                val bufferFraction = when {
-                                    torrentProgress != null && torrentProgress > 0f -> torrentProgress.coerceIn(0f, 1f)
-                                    bufferedPosition > 0L -> (bufferedPosition.toFloat() / dur).coerceIn(0f, 1f)
-                                    else -> 0f
-                                }
-
-                                Box(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .height(4.dp)
-                                        .clip(RoundedCornerShape(2.dp))
-                                        .background(Color.White.copy(alpha = 0.22f))
-                                ) {
-                                    // Downloaded portion highlighted in YELLOW
-                                    if (bufferFraction > 0f) {
-                                        Box(
-                                            modifier = Modifier
-                                                .fillMaxWidth(bufferFraction)
-                                                .fillMaxHeight()
-                                                .background(Color(0xFFFFD600).copy(alpha = 0.90f))
-                                        )
-                                    }
-
-                                    // Active played layer
-                                    Box(
-                                        modifier = Modifier
-                                            .fillMaxWidth(playFraction)
-                                            .fillMaxHeight()
-                                            .background(primaryAccent)
-                                    )
-                                }
-                            },
-                            thumb = {
-                                Box(
-                                    modifier = Modifier
-                                        .size(if (isDraggingSeek) 18.dp else 14.dp)
-                                        .clip(CircleShape)
-                                        .background(primaryAccent)
-                                        .border(2.dp, Color.White, CircleShape)
-                                )
-                            },
-                            colors = SliderDefaults.colors(
-                                thumbColor = primaryAccent,
-                                activeTrackColor = primaryAccent,
-                                inactiveTrackColor = Color.White.copy(alpha = 0.28f)
-                            ),
+                        BoxWithConstraints(
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .padding(horizontal = 2.dp)
-                        )
+                        ) {
+                            val totalWidth = maxWidth
+                            val curVal = (if (isDraggingSeek) scrubPosition else currentPosition.toFloat()).coerceIn(0f, effectiveDuration)
+                            val playFraction = (curVal / effectiveDuration).coerceIn(0f, 1f)
+
+                            // Finger seeking preview directly above the slider circle (moves with the slider thumb)
+                            if (isDraggingSeek && !isInPiP) {
+                                val cardLeft = (totalWidth * playFraction - 75.dp).coerceIn(0.dp, (totalWidth - 150.dp).coerceAtLeast(0.dp))
+                                val pointerOffset = (totalWidth * playFraction - cardLeft).coerceIn(10.dp, 140.dp)
+                                Box(
+                                    modifier = Modifier
+                                        .offset(
+                                            x = cardLeft,
+                                            y = (-145).dp
+                                        )
+                                        .width(150.dp)
+                                        .zIndex(20f)
+                                ) {
+                                    VideoSeekPreview(
+                                        url = currentUrl,
+                                        positionMs = scrubPosition.toLong(),
+                                        primaryAccent = primaryAccent,
+                                        pointerOffset = pointerOffset
+                                    )
+                                }
+                            }
+
+                            Slider(
+                                value = curVal,
+                                onValueChange = {
+                                    isDraggingSeek = true
+                                    scrubPosition = it
+                                    val dur = effectiveDuration
+                                    val milestone = ((it / dur) * 4).toInt()
+                                    if (milestone != lastSeekMilestone) {
+                                        lastSeekMilestone = milestone
+                                        view.performHaptic(HapticType.LIGHT)
+                                    }
+                                },
+                                onValueChangeFinished = {
+                                    isDraggingSeek = false
+                                    safeSeek(scrubPosition.toLong())
+                                },
+                                valueRange = 0f..effectiveDuration,
+                                track = { sliderState ->
+                                    val dur = effectiveDuration
+                                    val trackVal = (if (isDraggingSeek) scrubPosition else currentPosition.toFloat()).coerceIn(0f, dur)
+                                    val trackFraction = (trackVal / dur).coerceIn(0f, 1f)
+
+                                    Box(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .height(4.dp)
+                                            .clip(RoundedCornerShape(2.dp))
+                                            .background(Color.White.copy(alpha = 0.22f))
+                                            .drawBehind {
+                                                // Draw true downloaded piece portions in YELLOW
+                                                for (range in downloadedRanges) {
+                                                    val left = size.width * range.start
+                                                    val right = size.width * range.endInclusive
+                                                    if (right > left) {
+                                                        drawRect(
+                                                            color = Color(0xFFFFD600).copy(alpha = 0.90f),
+                                                            topLeft = Offset(left, 0f),
+                                                            size = Size(right - left, size.height)
+                                                        )
+                                                    }
+                                                }
+                                                // Draw active played track in primaryAccent
+                                                if (trackFraction > 0f) {
+                                                    drawRect(
+                                                        color = primaryAccent,
+                                                        topLeft = Offset.Zero,
+                                                        size = Size(size.width * trackFraction, size.height)
+                                                    )
+                                                }
+                                            }
+                                    )
+                                },
+                                thumb = {
+                                    Box(
+                                        modifier = Modifier
+                                            .size(if (isDraggingSeek) 18.dp else 14.dp)
+                                            .clip(CircleShape)
+                                            .background(primaryAccent)
+                                            .border(2.dp, Color.White, CircleShape)
+                                    )
+                                },
+                                colors = SliderDefaults.colors(
+                                    thumbColor = primaryAccent,
+                                    activeTrackColor = primaryAccent,
+                                    inactiveTrackColor = Color.White.copy(alpha = 0.28f)
+                                ),
+                                modifier = Modifier.fillMaxWidth()
+                            )
+                        }
 
                         Spacer(Modifier.height(6.dp))
 
@@ -4876,6 +5156,62 @@ fun VideoPlayerScreen(
                 onDismiss = { showVideoInfoSheet = false }
             )
         }
+
+        if (showDeleteConfirmDialog) {
+            val hasRecycleBin = FileManager.supportsRecycleBin()
+            AlertDialog(
+                onDismissRequest = {
+                    showDeleteConfirmDialog = false
+                    if (wasPlayingBeforeDeleteDialog.value) {
+                        exoPlayer.play()
+                    }
+                },
+                title = {
+                    Text(
+                        if (hasRecycleBin) "Move to Recycle Bin?" else "Delete Video?",
+                        color = Color.White,
+                        fontWeight = FontWeight.Bold
+                    )
+                },
+                text = {
+                    Text(
+                        if (hasRecycleBin)
+                            "\"$videoTitle\" will be moved to your device's Recycle Bin where it can be restored for a limited time."
+                        else
+                            "Are you sure you want to permanently delete \"$videoTitle\"? This action cannot be undone.",
+                        color = Color.White.copy(alpha = 0.82f),
+                        fontSize = 14.sp
+                    )
+                },
+                confirmButton = {
+                    TextButton(
+                        onClick = {
+                            showDeleteConfirmDialog = false
+                            isMoreExpanded = false
+                            executeDeleteCurrentVideo()
+                        }
+                    ) {
+                        Text(
+                            if (hasRecycleBin) "Move to Bin" else "Delete permanently",
+                            color = Color(0xFFEF5350),
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
+                },
+                dismissButton = {
+                    TextButton(onClick = {
+                        showDeleteConfirmDialog = false
+                        if (wasPlayingBeforeDeleteDialog.value) {
+                            exoPlayer.play()
+                        }
+                    }) {
+                        Text("Cancel", color = Color.White.copy(alpha = 0.70f))
+                    }
+                },
+                containerColor = Color(0xFF1E202C),
+                shape = RoundedCornerShape(20.dp)
+            )
+        }
         // ─── Player More Options Menu Bottom Sheet ───────────────────────────
         if (showMoreMenuSheet) {
             ModalBottomSheet(
@@ -5156,7 +5492,7 @@ private fun StreamPreRollBufferingOverlay(
     val allDownloads by TorrentEngine.downloads.collectAsState()
     val state = allDownloads[streamHash]
     val dlBytes = state?.downloadedBytes ?: 0L
-    val targetBufferBytes = 8 * 1024 * 1024L // ~8MB initial playback buffer
+    val targetBufferBytes = com.example.ymediaplayer.mycinema.service.TorrentEngine.DEFAULT_STREAM_BUFFER_BYTES // ~8MB initial playback buffer
     val progressFraction = (dlBytes.toFloat() / targetBufferBytes.toFloat()).coerceIn(0f, 1f)
 
     Box(
@@ -5682,12 +6018,9 @@ private fun VerticalGestureBar(
                     )
                 }
 
-                // Bottom Percentage Label with frosted badge
+                // Bottom Percentage Label (only keep text, no dark bg card)
                 Box(
-                    modifier = Modifier
-                        .clip(RoundedCornerShape(8.dp))
-                        .background(Color.Black.copy(alpha = 0.35f))
-                        .padding(horizontal = 4.dp, vertical = 1.dp),
+                    modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.dp),
                     contentAlignment = Alignment.Center
                 ) {
                     Text(
@@ -5696,7 +6029,14 @@ private fun VerticalGestureBar(
                         fontSize = 10.sp,
                         fontWeight = FontWeight.ExtraBold,
                         fontFamily = FontFamily.Monospace,
-                        maxLines = 1
+                        letterSpacing = (-0.5).sp,
+                        maxLines = 1,
+                        style = TextStyle(
+                            shadow = androidx.compose.ui.graphics.Shadow(
+                                color = Color.Black.copy(alpha = 0.85f),
+                                blurRadius = 3f
+                            )
+                        )
                     )
                 }
             }
@@ -6555,20 +6895,24 @@ private fun ExpandedOptionChip(
     label: String,
     isActive: Boolean = false,
     accentColor: Color,
+    isDestructive: Boolean = false,
     onLongClick: (() -> Unit)? = null,
     onClick: () -> Unit
 ) {
+    val effectiveColor = if (isDestructive) Color(0xFFEF5350) else accentColor
     Row(
         modifier = Modifier
             .height(34.dp)
             .clip(RoundedCornerShape(10.dp))
             .background(
-                if (isActive) Brush.linearGradient(listOf(accentColor.copy(alpha = 0.38f), Color(0xFF161824)))
+                if (isDestructive) Brush.linearGradient(listOf(Color(0xFFEF5350).copy(alpha = 0.22f), Color(0xFF161824)))
+                else if (isActive) Brush.linearGradient(listOf(effectiveColor.copy(alpha = 0.38f), Color(0xFF161824)))
                 else Brush.verticalGradient(listOf(Color(0xFF252636), Color(0xFF11121C)))
             )
             .border(
                 1.dp,
-                if (isActive) BorderStroke(1.dp, accentColor).brush
+                if (isDestructive) BorderStroke(1.dp, Color(0xFFEF5350).copy(alpha = 0.55f)).brush
+                else if (isActive) BorderStroke(1.dp, effectiveColor).brush
                 else Brush.verticalGradient(listOf(Color.White.copy(alpha = 0.28f), Color.White.copy(alpha = 0.10f))),
                 RoundedCornerShape(10.dp)
             )
@@ -6583,14 +6927,14 @@ private fun ExpandedOptionChip(
         Icon(
             icon,
             contentDescription = label,
-            tint = if (isActive) accentColor else Color.White,
+            tint = if (isDestructive) Color(0xFFEF5350) else if (isActive) effectiveColor else Color.White,
             modifier = Modifier.size(16.dp)
         )
         Text(
             text = label,
-            color = if (isActive) accentColor else Color.White,
+            color = if (isDestructive) Color(0xFFEF5350) else if (isActive) effectiveColor else Color.White,
             fontSize = 12.sp,
-            fontWeight = if (isActive) FontWeight.Bold else FontWeight.Medium
+            fontWeight = if (isDestructive || isActive) FontWeight.Bold else FontWeight.Medium
         )
     }
 }
@@ -8400,35 +8744,84 @@ private fun PortraitAppExplorer(
                         base.sortVideosWithOrder(explorerSortOrder)
                     }
                     Column(modifier = Modifier.fillMaxSize()) {
-                        OutlinedTextField(
-                            value = searchQuery,
-                            onValueChange = { searchQuery = it },
-                            placeholder = { Text("Search videos...", color = c.textHint, fontSize = 13.sp) },
-                            leadingIcon = {
-                                Icon(Icons.Rounded.Search, contentDescription = "Search", tint = primaryAccent, modifier = Modifier.size(18.dp))
-                            },
-                            trailingIcon = {
-                                if (searchQuery.isNotEmpty()) {
-                                    IconButton(onClick = { searchQuery = "" }, modifier = Modifier.size(28.dp)) {
-                                        Icon(Icons.Rounded.Close, contentDescription = "Clear", tint = c.textSecondary, modifier = Modifier.size(16.dp))
-                                    }
-                                }
-                            },
-                            singleLine = true,
-                            colors = OutlinedTextFieldDefaults.colors(
-                                focusedContainerColor = c.cardBgElevated,
-                                unfocusedContainerColor = c.cardBgElevated,
-                                focusedTextColor = c.textPrimary,
-                                unfocusedTextColor = c.textPrimary,
-                                focusedBorderColor = primaryAccent,
-                                unfocusedBorderColor = c.glassBorder
-                            ),
-                            shape = RoundedCornerShape(12.dp),
+                        Box(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .padding(horizontal = 14.dp, vertical = 8.dp)
-                                .height(50.dp)
-                        )
+                                .padding(horizontal = 14.dp, vertical = 6.dp)
+                                .shadow(
+                                    elevation = 8.dp,
+                                    shape = RoundedCornerShape(14.dp),
+                                    ambientColor = if (c.isDark) Color.Black.copy(alpha = 0.55f) else c.cardShadowColor,
+                                    spotColor = if (c.isDark) Color.Black.copy(alpha = 0.45f) else c.cardShadowColor
+                                )
+                                .clip(RoundedCornerShape(14.dp))
+                                .background(
+                                    Brush.verticalGradient(
+                                        listOf(
+                                            if (c.isDark) c.cardBgElevated else Color.White,
+                                            c.cardBg
+                                        )
+                                    )
+                                )
+                                .border(
+                                    1.3.dp,
+                                    if (searchQuery.isNotBlank()) {
+                                        Brush.verticalGradient(listOf(primaryAccent, c.cardBorderHighlight, primaryAccent.copy(alpha = 0.4f)))
+                                    } else {
+                                        Brush.verticalGradient(listOf(c.cardBorderHighlight, c.glassBorder, c.cardBorderShadow))
+                                    },
+                                    RoundedCornerShape(14.dp)
+                                )
+                                .padding(horizontal = 12.dp, vertical = 10.dp)
+                        ) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Icon(
+                                    Icons.Rounded.Search,
+                                    contentDescription = "Search",
+                                    tint = if (searchQuery.isNotBlank()) primaryAccent else c.textSecondary,
+                                    modifier = Modifier.size(18.dp)
+                                )
+                                Spacer(Modifier.width(10.dp))
+                                BasicTextField(
+                                    value = searchQuery,
+                                    onValueChange = { searchQuery = it },
+                                    singleLine = true,
+                                    cursorBrush = SolidColor(primaryAccent),
+                                    textStyle = TextStyle(
+                                        color = c.textPrimary,
+                                        fontSize = 13.5.sp,
+                                        fontWeight = FontWeight.Medium
+                                    ),
+                                    modifier = Modifier.weight(1f),
+                                    decorationBox = { innerTextField ->
+                                        if (searchQuery.isEmpty()) {
+                                            Text(
+                                                "Search videos...",
+                                                color = c.textHint,
+                                                fontSize = 13.5.sp
+                                            )
+                                        }
+                                        innerTextField()
+                                    }
+                                )
+                                if (searchQuery.isNotEmpty()) {
+                                    IconButton(
+                                        onClick = { searchQuery = "" },
+                                        modifier = Modifier.size(24.dp)
+                                    ) {
+                                        Icon(
+                                            Icons.Rounded.Close,
+                                            contentDescription = "Clear",
+                                            tint = c.textSecondary,
+                                            modifier = Modifier.size(16.dp)
+                                        )
+                                    }
+                                }
+                            }
+                        }
 
                         LazyColumn(
                             modifier = Modifier.fillMaxSize(),
