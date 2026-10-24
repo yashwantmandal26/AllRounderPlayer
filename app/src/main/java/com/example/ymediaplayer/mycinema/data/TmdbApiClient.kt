@@ -128,47 +128,231 @@ class TmdbApiClient(
         if (apiKey.isBlank()) return@withContext emptyList()
         val todayStr = java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.US).format(java.util.Date())
         try {
-            val releaseTypeParam = when (filter.uppercase()) {
-                "THEATRICAL" -> "&with_release_type=2|3"
-                "OTT" -> "&with_release_type=4"
-                else -> ""
-            }
-            val url = "https://api.themoviedb.org/3/discover/movie?api_key=$apiKey&primary_release_date.gte=$todayStr$releaseTypeParam&sort_by=popularity.desc&include_adult=false&page=1"
-            val request = Request.Builder().url(url).build()
-            httpClient.newCall(request).execute().use { response ->
-                if (!response.isSuccessful) return@withContext emptyList()
-                val body = response.body?.string() ?: return@withContext emptyList()
-                val parsed = json.decodeFromString<TmdbSearchResponse>(body)
-                val list = parsed.results
-                    .filter { item ->
-                        val rDate = item.releaseDate ?: ""
-                        rDate.isNotBlank() && rDate >= todayStr
+            when (filter.uppercase()) {
+                "THEATRICAL" -> {
+                    val url = "https://api.themoviedb.org/3/discover/movie?api_key=$apiKey&primary_release_date.gte=$todayStr&with_release_type=2|3&sort_by=popularity.desc&include_adult=false&page=1"
+                    val request = Request.Builder().url(url).build()
+                    httpClient.newCall(request).execute().use { response ->
+                        if (!response.isSuccessful) return@use emptyList<TmdbItem>()
+                        val body = response.body?.string() ?: return@use emptyList<TmdbItem>()
+                        val parsed = json.decodeFromString<TmdbSearchResponse>(body)
+                        parsed.results
+                            .filter { (it.releaseDate ?: "") >= todayStr }
+                            .map { it.copy(mediaType = "movie", ottPlatformHint = "Theatres") }
                     }
-                    .map { it.copy(mediaType = "movie") }
-                if (list.isNotEmpty()) return@withContext list
-            }
-
-            // Fallback to /movie/upcoming with strict future date filtering
-            if (filter.uppercase() == "ALL") {
-                val fallbackUrl = "https://api.themoviedb.org/3/movie/upcoming?api_key=$apiKey&page=1"
-                val fallbackReq = Request.Builder().url(fallbackUrl).build()
-                httpClient.newCall(fallbackReq).execute().use { response ->
-                    if (!response.isSuccessful) return@withContext emptyList()
-                    val body = response.body?.string() ?: return@withContext emptyList()
-                    val parsed = json.decodeFromString<TmdbSearchResponse>(body)
-                    parsed.results
-                        .filter { item ->
-                            val rDate = item.releaseDate ?: ""
-                            rDate.isNotBlank() && rDate >= todayStr
-                        }
-                        .map { it.copy(mediaType = "movie") }
                 }
-            } else {
-                emptyList()
+                "OTT" -> {
+                    // Direct-to-Digital / OTT premiere only:
+                    // Exclude any movie with a theatrical release (types 2,3) using without_release_type=2|3
+                    val digitalOnlyUrl = "https://api.themoviedb.org/3/discover/movie?api_key=$apiKey&primary_release_date.gte=$todayStr&with_release_type=4|6&without_release_type=2|3&sort_by=popularity.desc&include_adult=false&page=1"
+                    val ottItems = mutableListOf<TmdbItem>()
+                    try {
+                        val req1 = Request.Builder().url(digitalOnlyUrl).build()
+                        httpClient.newCall(req1).execute().use { response ->
+                            if (response.isSuccessful) {
+                                response.body?.string()?.let {
+                                    val parsed = json.decodeFromString<TmdbSearchResponse>(it)
+                                    ottItems.addAll(parsed.results.filter { item -> (item.releaseDate ?: "") >= todayStr })
+                                }
+                            }
+                        }
+                    } catch (_: Exception) {}
+
+                    // Also fetch upcoming titles with major streaming watch providers in India & global (strictly without theatrical release)
+                    val providersUrl = "https://api.themoviedb.org/3/discover/movie?api_key=$apiKey&primary_release_date.gte=$todayStr&with_watch_providers=8|119|337|350|122|220|237|232&watch_region=IN&without_release_type=2|3&sort_by=popularity.desc&include_adult=false&page=1"
+                    try {
+                        val req2 = Request.Builder().url(providersUrl).build()
+                        httpClient.newCall(req2).execute().use { response ->
+                            if (response.isSuccessful) {
+                                response.body?.string()?.let {
+                                    val parsed = json.decodeFromString<TmdbSearchResponse>(it)
+                                    val existingIds = ottItems.map { item -> item.id }.toSet()
+                                    ottItems.addAll(parsed.results.filter { item -> (item.releaseDate ?: "") >= todayStr && !existingIds.contains(item.id) })
+                                }
+                            }
+                        }
+                    } catch (_: Exception) {}
+
+                    // Deduplicate and tag with official OTT platform hint
+                    ottItems.distinctBy { it.id }.map { item ->
+                        val ov = (item.overview ?: "").lowercase()
+                        val t = item.displayName.lowercase()
+                        val platform = when {
+                            ov.contains("netflix") || t.contains("netflix") -> "Netflix"
+                            ov.contains("prime video") || ov.contains("amazon") -> "Prime Video"
+                            ov.contains("hotstar") || ov.contains("disney+") -> "Disney+ Hotstar"
+                            ov.contains("apple tv") -> "Apple TV+"
+                            ov.contains("jiocinema") -> "JioCinema"
+                            ov.contains("zee5") -> "Zee5"
+                            ov.contains("sonyliv") -> "SonyLIV"
+                            else -> "Direct OTT"
+                        }
+                        item.copy(mediaType = "movie", ottPlatformHint = platform)
+                    }
+                }
+                else -> {
+                    // ALL upcoming
+                    val url = "https://api.themoviedb.org/3/discover/movie?api_key=$apiKey&primary_release_date.gte=$todayStr&sort_by=popularity.desc&include_adult=false&page=1"
+                    val request = Request.Builder().url(url).build()
+                    val allList = httpClient.newCall(request).execute().use { response ->
+                        if (!response.isSuccessful) emptyList<TmdbItem>()
+                        else {
+                            val body = response.body?.string() ?: ""
+                            val parsed = json.decodeFromString<TmdbSearchResponse>(body)
+                            parsed.results.filter { (it.releaseDate ?: "") >= todayStr }.map { it.copy(mediaType = "movie") }
+                        }
+                    }
+                    if (allList.isNotEmpty()) allList else {
+                        val fallbackUrl = "https://api.themoviedb.org/3/movie/upcoming?api_key=$apiKey&page=1"
+                        val fallbackReq = Request.Builder().url(fallbackUrl).build()
+                        httpClient.newCall(fallbackReq).execute().use { response ->
+                            if (!response.isSuccessful) return@withContext emptyList()
+                            val body = response.body?.string() ?: return@withContext emptyList()
+                            val parsed = json.decodeFromString<TmdbSearchResponse>(body)
+                            parsed.results
+                                .filter { (it.releaseDate ?: "") >= todayStr }
+                                .map { it.copy(mediaType = "movie") }
+                        }
+                    }
+                }
             }
         } catch (e: Exception) {
             android.util.Log.e("TmdbApiClient", "Error fetching upcoming: ${e.message}")
             emptyList()
+        }
+    }
+
+    suspend fun fetchCinemaExtendedInfo(
+        isSeries: Boolean,
+        id: Int,
+        releaseDate: String?
+    ): CinemaExtendedInfo = withContext(Dispatchers.IO) {
+        if (id <= 0 || apiKey.isBlank()) return@withContext CinemaExtendedInfo()
+        try {
+            val endpoint = if (isSeries) "tv" else "movie"
+            val url = "https://api.themoviedb.org/3/$endpoint/$id?api_key=$apiKey&append_to_response=watch/providers"
+            val request = Request.Builder().url(url).build()
+            httpClient.newCall(request).execute().use { response ->
+                if (!response.isSuccessful) return@withContext CinemaExtendedInfo()
+                val body = response.body?.string() ?: return@withContext CinemaExtendedInfo()
+                val root = org.json.JSONObject(body)
+
+                val budget = root.optLong("budget", 0L)
+                val revenue = root.optLong("revenue", 0L)
+                val status = root.optString("status").takeIf { it.isNotBlank() }
+
+                // Parse Watch Providers
+                val wpObj = root.optJSONObject("watch/providers")?.optJSONObject("results")
+                val inWp = wpObj?.optJSONObject("IN") ?: wpObj?.optJSONObject("US") ?: wpObj?.let {
+                    if (it.keys().hasNext()) it.optJSONObject(it.keys().next()) else null
+                }
+
+                val providersList = mutableListOf<TmdbWatchProviderItem>()
+                val flatrateArray = inWp?.optJSONArray("flatrate") ?: inWp?.optJSONArray("rent")
+                if (flatrateArray != null) {
+                    for (i in 0 until flatrateArray.length()) {
+                        val p = flatrateArray.optJSONObject(i) ?: continue
+                        providersList.add(
+                            TmdbWatchProviderItem(
+                                providerId = p.optInt("provider_id"),
+                                providerName = p.optString("provider_name"),
+                                logoPath = p.optString("logo_path").takeIf { it.isNotBlank() }
+                            )
+                        )
+                    }
+                }
+
+                // Networks (for TV series like Netflix, HBO, Disney+, Amazon)
+                val networksList = root.optJSONArray("networks")
+                val primaryNetwork = if (networksList != null && networksList.length() > 0) {
+                    networksList.getJSONObject(0).optString("name")
+                } else null
+
+                if (providersList.isEmpty() && primaryNetwork != null) {
+                    providersList.add(
+                        TmdbWatchProviderItem(
+                            providerId = 0,
+                            providerName = primaryNetwork,
+                            logoPath = networksList?.getJSONObject(0)?.optString("logo_path")
+                        )
+                    )
+                }
+
+                // Parse Collection / Prequels (Previous Parts)
+                var collectionName: String? = null
+                var collectionId: Int? = null
+                val previousParts = mutableListOf<TmdbItem>()
+
+                val collObj = root.optJSONObject("belongs_to_collection")
+                if (collObj != null) {
+                    collectionId = collObj.optInt("id")
+                    collectionName = collObj.optString("name")
+                    if (collectionId > 0) {
+                        try {
+                            val collUrl = "https://api.themoviedb.org/3/collection/$collectionId?api_key=$apiKey"
+                            val collReq = Request.Builder().url(collUrl).build()
+                            httpClient.newCall(collReq).execute().use { collResp ->
+                                if (collResp.isSuccessful) {
+                                    val collBody = collResp.body?.string()
+                                    if (!collBody.isNullOrBlank()) {
+                                        val collJson = org.json.JSONObject(collBody)
+                                        val partsArr = collJson.optJSONArray("parts")
+                                        if (partsArr != null) {
+                                            val currentRelDate = releaseDate ?: root.optString("release_date")
+                                            for (j in 0 until partsArr.length()) {
+                                                val part = partsArr.optJSONObject(j) ?: continue
+                                                val partId = part.optInt("id")
+                                                if (partId == id) continue // Skip the current movie itself
+                                                val partDate = part.optString("release_date")
+                                                // Only previous parts (released on or before this movie)
+                                                if (currentRelDate.isNotBlank() && partDate.isNotBlank() && partDate > currentRelDate) {
+                                                    continue
+                                                }
+                                                previousParts.add(
+                                                    TmdbItem(
+                                                        id = partId,
+                                                        title = part.optString("title"),
+                                                        mediaType = "movie",
+                                                        posterPath = part.optString("poster_path").takeIf { it.isNotBlank() },
+                                                        backdropPath = part.optString("backdrop_path").takeIf { it.isNotBlank() },
+                                                        overview = part.optString("overview"),
+                                                        releaseDate = partDate,
+                                                        voteAverage = part.optDouble("vote_average", 0.0)
+                                                    )
+                                                )
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        } catch (e: Exception) {
+                            android.util.Log.w("TmdbApiClient", "Error fetching collection: ${e.message}")
+                        }
+                    }
+                }
+
+                // Sort previous parts descending (most recent prequel first)
+                previousParts.sortByDescending { it.releaseDate ?: "" }
+
+                val officialPlatform = providersList.firstOrNull()?.providerName ?: primaryNetwork
+                val isDirectOtt = isSeries || (officialPlatform != null && providersList.isNotEmpty())
+
+                CinemaExtendedInfo(
+                    budget = budget,
+                    revenue = revenue,
+                    status = status,
+                    collectionName = collectionName,
+                    collectionId = collectionId,
+                    previousParts = previousParts,
+                    watchProviders = providersList,
+                    isDirectOtt = isDirectOtt,
+                    officialPlatformName = officialPlatform,
+                    releaseDate = releaseDate ?: root.optString("release_date")
+                )
+            }
+        } catch (e: Exception) {
+            android.util.Log.e("TmdbApiClient", "Error fetching extended info: ${e.message}")
+            CinemaExtendedInfo()
         }
     }
 

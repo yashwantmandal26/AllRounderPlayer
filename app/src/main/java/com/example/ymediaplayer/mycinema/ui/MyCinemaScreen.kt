@@ -573,6 +573,9 @@ fun MyCinemaScreen(
                             }
                             isLoadingSources = false
                         }
+                    },
+                    onOpenMovie = { prevMovie ->
+                        activeDetailItem = prevMovie
                     }
                 )
             }
@@ -831,19 +834,22 @@ private fun MyCinemaCard(
 
             // Bottom Release Date Banner (for upcoming movies)
             if (showReleaseDate && item.formattedReleaseDate.isNotEmpty()) {
+                val isOtt = item.ottPlatformHint != null && item.ottPlatformHint != "Theatres"
                 Box(
                     modifier = Modifier
                         .align(Alignment.BottomCenter)
                         .fillMaxWidth()
-                        .background(Color.Black.copy(alpha = 0.82f))
-                        .padding(vertical = 3.5.dp),
+                        .background(if (isOtt) Color(0xFF0277BD).copy(alpha = 0.90f) else Color.Black.copy(alpha = 0.85f))
+                        .padding(vertical = 3.5.dp, horizontal = 4.dp),
                     contentAlignment = Alignment.Center
                 ) {
                     Text(
-                        text = "📅 ${item.formattedReleaseDate}",
-                        color = Color(0xFFFFD54F),
-                        fontSize = 9.5.sp,
-                        fontWeight = FontWeight.Bold
+                        text = if (isOtt) "📺 ${item.ottPlatformHint} • ${item.formattedReleaseDate}" else "🎬 Theatres • ${item.formattedReleaseDate}",
+                        color = if (isOtt) Color(0xFFE1F5FE) else Color(0xFFFFD54F),
+                        fontSize = 9.sp,
+                        fontWeight = FontWeight.Bold,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
                     )
                 }
             }

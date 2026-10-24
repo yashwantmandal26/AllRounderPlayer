@@ -22,7 +22,8 @@ data class TmdbItem(
     val overview: String? = null,
     @SerialName("release_date") val releaseDate: String? = null,
     @SerialName("first_air_date") val firstAirDate: String? = null,
-    @SerialName("vote_average") val voteAverage: Double = 0.0
+    @SerialName("vote_average") val voteAverage: Double = 0.0,
+    val ottPlatformHint: String? = null
 ) {
     val displayName: String
         get() = (title ?: name ?: "Untitled").trim()
@@ -41,6 +42,39 @@ data class TmdbItem(
 
     val ratingFormatted: String
         get() = if (voteAverage > 0) String.format(java.util.Locale.US, "%.1f", voteAverage) else "—"
+
+    val isUnreleased: Boolean
+        get() {
+            val raw = releaseDate ?: firstAirDate ?: return false
+            if (raw.isBlank()) return false
+            val today = java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.US).format(java.util.Date())
+            return raw > today
+        }
+
+    val daysUntilRelease: Int?
+        get() {
+            val raw = releaseDate ?: firstAirDate ?: return null
+            return try {
+                val sdf = java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.US)
+                val relDate = sdf.parse(raw) ?: return null
+                val today = sdf.parse(sdf.format(java.util.Date())) ?: return null
+                val diff = (relDate.time - today.time) / (1000 * 60 * 60 * 24)
+                if (diff >= 0) diff.toInt() else null
+            } catch (_: Exception) { null }
+        }
+
+    val countdownLabel: String
+        get() {
+            val days = daysUntilRelease ?: return formattedReleaseDate
+            return when {
+                days == 0 -> "Releasing Today!"
+                days == 1 -> "Releasing Tomorrow!"
+                days < 7 -> "Releasing in $days days"
+                days < 30 -> "In ${days / 7} weeks"
+                days < 60 -> "In 1 month"
+                else -> "In ${days / 30} months"
+            }
+        }
 
     val formattedReleaseDate: String
         get() {
@@ -124,3 +158,73 @@ data class TmdbVideoItem(
     val name: String = "",
     val official: Boolean = false
 )
+
+@Serializable
+data class TmdbWatchProviderItem(
+    @SerialName("provider_id") val providerId: Int = 0,
+    @SerialName("provider_name") val providerName: String = "",
+    @SerialName("logo_path") val logoPath: String? = null
+) {
+    val fullLogoUrl: String?
+        get() = logoPath?.let { "https://image.tmdb.org/t/p/w185$it" }
+}
+
+@Serializable
+data class CinemaExtendedInfo(
+    val budget: Long = 0L,
+    val revenue: Long = 0L,
+    val status: String? = null,
+    val collectionName: String? = null,
+    val collectionId: Int? = null,
+    val previousParts: List<TmdbItem> = emptyList(),
+    val watchProviders: List<TmdbWatchProviderItem> = emptyList(),
+    val isDirectOtt: Boolean = false,
+    val officialPlatformName: String? = null,
+    val releaseDate: String? = null
+) {
+    val budgetFormatted: String
+        get() = formatCurrencyWithInr(budget)
+
+    val revenueFormatted: String
+        get() = if (revenue > 0) formatCurrencyWithInr(revenue) else "Pending / Undisclosed"
+
+    val boxOfficeVerdict: BoxOfficeVerdict?
+        get() {
+            if (budget <= 0L && revenue <= 0L) return null
+            if (revenue <= 0L) return BoxOfficeVerdict.PENDING
+            val ratio = revenue.toDouble() / budget.coerceAtLeast(1L).toDouble()
+            return when {
+                ratio >= 3.0 -> BoxOfficeVerdict.ALL_TIME_BLOCKBUSTER
+                ratio >= 2.2 -> BoxOfficeVerdict.SUPERHIT
+                ratio >= 1.5 -> BoxOfficeVerdict.HIT
+                ratio >= 1.0 -> BoxOfficeVerdict.AVERAGE
+                else -> BoxOfficeVerdict.UNDERPERFORMED
+            }
+        }
+}
+
+enum class BoxOfficeVerdict(val label: String, val colorHex: Long) {
+    ALL_TIME_BLOCKBUSTER("🔥 ALL-TIME BLOCKBUSTER", 0xFF00E676),
+    SUPERHIT("🌟 SUPERHIT", 0xFF00E5FF),
+    HIT("📈 HIT / PROFITABLE", 0xFF26A69A),
+    AVERAGE("⚖️ AVERAGE / RECOVERED", 0xFFFFB300),
+    UNDERPERFORMED("📉 UNDERPERFORMED", 0xFFFF5252),
+    PENDING("⏳ PENDING RELEASE", 0xFFAB47BC)
+}
+
+fun formatCurrencyWithInr(amountUsd: Long): String {
+    if (amountUsd <= 0L) return "Not Disclosed"
+    val usdStr = when {
+        amountUsd >= 1_000_000_000 -> String.format(java.util.Locale.US, "$%.2fB", amountUsd / 1_000_000_000.0)
+        amountUsd >= 1_000_000 -> String.format(java.util.Locale.US, "$%.1fM", amountUsd / 1_000_000.0)
+        amountUsd >= 1_000 -> String.format(java.util.Locale.US, "$%,d", amountUsd)
+        else -> "$$amountUsd"
+    }
+    // Approx INR calculation: 1 USD ≈ 84 INR. 1 Crore = 10,000,000 INR
+    val inrCrores = (amountUsd * 84.0) / 10_000_000.0
+    val inrStr = when {
+        inrCrores >= 1.0 -> String.format(java.util.Locale.US, " (~₹%.0f Cr)", inrCrores)
+        else -> ""
+    }
+    return "$usdStr$inrStr"
+}

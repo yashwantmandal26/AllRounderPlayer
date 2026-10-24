@@ -16,6 +16,8 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.ArrowBack
 import androidx.compose.material.icons.automirrored.rounded.OpenInNew
@@ -34,8 +36,11 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil3.compose.AsyncImage
+import com.example.ymediaplayer.mycinema.data.BoxOfficeVerdict
+import com.example.ymediaplayer.mycinema.data.CinemaExtendedInfo
 import com.example.ymediaplayer.mycinema.data.MyCinemaRepository
 import com.example.ymediaplayer.mycinema.data.TmdbItem
+import com.example.ymediaplayer.mycinema.data.TmdbWatchProviderItem
 import com.example.ymediaplayer.theme.LocalAppColors
 import kotlinx.coroutines.launch
 import java.net.URLEncoder
@@ -46,6 +51,7 @@ fun MyCinemaDetailModal(
     repository: MyCinemaRepository,
     onDismiss: () -> Unit,
     onChooseSource: (TmdbItem) -> Unit,
+    onOpenMovie: (TmdbItem) -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
@@ -57,6 +63,10 @@ fun MyCinemaDetailModal(
     var isBookmarked by remember { mutableStateOf(appPreferences.isCinemaWatchlisted(itemKey)) }
     var isFavorite by remember { mutableStateOf(appPreferences.isCinemaFavorite(itemKey)) }
     var youtubeTrailerKey by remember { mutableStateOf<String?>(null) }
+    var extendedInfo by remember(item.id) { mutableStateOf<CinemaExtendedInfo?>(null) }
+    var isLoadingExtended by remember(item.id) { mutableStateOf(true) }
+
+    val isUnreleased = item.isUnreleased
 
     BackHandler {
         onDismiss()
@@ -64,6 +74,12 @@ fun MyCinemaDetailModal(
 
     LaunchedEffect(item.id) {
         youtubeTrailerKey = repository.getTrailerYoutubeKey(item.isSeries, item.id)
+    }
+
+    LaunchedEffect(item.id) {
+        isLoadingExtended = true
+        extendedInfo = repository.getCinemaExtendedInfo(item)
+        isLoadingExtended = false
     }
 
     Box(
@@ -289,30 +305,166 @@ fun MyCinemaDetailModal(
 
                 Spacer(Modifier.height(20.dp))
 
-                // Primary CTA Button: CHOOSE SOURCE
-                Button(
-                    onClick = { onChooseSource(item) },
-                    shape = RoundedCornerShape(14.dp),
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = Color(0xFFE50914), // Bold Netflix / Cinema Red
-                        contentColor = Color.White
-                    ),
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(52.dp),
-                    contentPadding = PaddingValues(horizontal = 16.dp)
-                ) {
-                    Icon(
-                        Icons.Rounded.Download,
-                        contentDescription = "Choose Source",
-                        modifier = Modifier.size(20.dp)
+                // Primary Action: If unreleased -> Show Coming Soon Card (NO Choose Source); If released -> Show CHOOSE SOURCE Button
+                if (isUnreleased) {
+                    Surface(
+                        shape = RoundedCornerShape(16.dp),
+                        color = Color(0xFF141926),
+                        border = BorderStroke(1.2.dp, Color(0xFF00E5FF).copy(alpha = 0.45f)),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Column(modifier = Modifier.padding(16.dp)) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Box(
+                                    modifier = Modifier
+                                        .size(38.dp)
+                                        .clip(CircleShape)
+                                        .background(Color(0xFF00E5FF).copy(alpha = 0.15f))
+                                        .border(1.dp, Color(0xFF00E5FF).copy(alpha = 0.4f), CircleShape),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Icon(
+                                        Icons.Rounded.HourglassTop,
+                                        contentDescription = null,
+                                        tint = Color(0xFF00E5FF),
+                                        modifier = Modifier.size(20.dp)
+                                    )
+                                }
+                                Spacer(Modifier.width(12.dp))
+                                Column {
+                                    Text(
+                                        text = "UNRELEASED • COMING SOON",
+                                        color = Color(0xFF00E5FF),
+                                        fontSize = 11.sp,
+                                        fontWeight = FontWeight.ExtraBold,
+                                        letterSpacing = 1.sp
+                                    )
+                                    Spacer(Modifier.height(2.dp))
+                                    Text(
+                                        text = item.countdownLabel,
+                                        color = Color.White,
+                                        fontSize = 15.sp,
+                                        fontWeight = FontWeight.Bold
+                                    )
+                                }
+                            }
+
+                            Spacer(Modifier.height(10.dp))
+                            Text(
+                                text = "This title has not been released yet. Sources will become available after its official release.",
+                                color = Color.White.copy(alpha = 0.65f),
+                                fontSize = 12.5.sp,
+                                lineHeight = 17.sp
+                            )
+
+                            Spacer(Modifier.height(14.dp))
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(10.dp)
+                            ) {
+                                // Watch Official Trailer Button
+                                Button(
+                                    onClick = {
+                                        openOfficialTrailer(context, youtubeTrailerKey, item.displayName)
+                                    },
+                                    shape = RoundedCornerShape(12.dp),
+                                    colors = ButtonDefaults.buttonColors(
+                                        containerColor = Color(0xFFFF0000),
+                                        contentColor = Color.White
+                                    ),
+                                    modifier = Modifier.weight(1f).height(44.dp),
+                                    contentPadding = PaddingValues(horizontal = 12.dp)
+                                ) {
+                                    Icon(Icons.Rounded.PlayArrow, contentDescription = null, modifier = Modifier.size(18.dp))
+                                    Spacer(Modifier.width(6.dp))
+                                    Text("TRAILER", fontSize = 12.5.sp, fontWeight = FontWeight.Bold)
+                                }
+
+                                // Remind Me / Add to Watchlist Button
+                                OutlinedButton(
+                                    onClick = {
+                                        isBookmarked = appPreferences.toggleCinemaWatchlist(item)
+                                        Toast.makeText(
+                                            context,
+                                            if (isBookmarked) "Added to Watchlist (Reminder set)" else "Removed from Watchlist",
+                                            Toast.LENGTH_SHORT
+                                        ).show()
+                                    },
+                                    shape = RoundedCornerShape(12.dp),
+                                    border = BorderStroke(1.dp, if (isBookmarked) Color(0xFFFFC107) else Color.White.copy(alpha = 0.25f)),
+                                    colors = ButtonDefaults.outlinedButtonColors(
+                                        containerColor = if (isBookmarked) Color(0xFFFFC107).copy(alpha = 0.15f) else Color.Transparent,
+                                        contentColor = if (isBookmarked) Color(0xFFFFC107) else Color.White
+                                    ),
+                                    modifier = Modifier.weight(1f).height(44.dp),
+                                    contentPadding = PaddingValues(horizontal = 12.dp)
+                                ) {
+                                    Icon(
+                                        if (isBookmarked) Icons.Rounded.BookmarkAdded else Icons.Rounded.BookmarkAdd,
+                                        contentDescription = null,
+                                        modifier = Modifier.size(17.dp)
+                                    )
+                                    Spacer(Modifier.width(6.dp))
+                                    Text(if (isBookmarked) "SAVED" else "REMIND ME", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                                }
+                            }
+                        }
+                    }
+                } else {
+                    // Released Movie: CHOOSE SOURCE
+                    Button(
+                        onClick = { onChooseSource(item) },
+                        shape = RoundedCornerShape(14.dp),
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = Color(0xFFE50914), // Bold Netflix / Cinema Red
+                            contentColor = Color.White
+                        ),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(52.dp),
+                        contentPadding = PaddingValues(horizontal = 16.dp)
+                    ) {
+                        Icon(
+                            Icons.Rounded.Download,
+                            contentDescription = "Choose Source",
+                            modifier = Modifier.size(20.dp)
+                        )
+                        Spacer(Modifier.width(8.dp))
+                        Text(
+                            text = "CHOOSE SOURCE",
+                            fontSize = 14.5.sp,
+                            fontWeight = FontWeight.Bold,
+                            letterSpacing = 1.sp
+                        )
+                    }
+                }
+
+                // 1. WHERE TO WATCH (OFFICIAL AVAILABILITY)
+                if (extendedInfo != null) {
+                    Spacer(Modifier.height(16.dp))
+                    OfficialAvailabilityCard(
+                        extendedInfo = extendedInfo!!,
+                        isUnreleased = isUnreleased,
+                        releaseDateFormatted = releaseDateFormatted
                     )
-                    Spacer(Modifier.width(8.dp))
-                    Text(
-                        text = "CHOOSE SOURCE",
-                        fontSize = 14.5.sp,
-                        fontWeight = FontWeight.Bold,
-                        letterSpacing = 1.sp
+                }
+
+                // 2. BOX OFFICE & OFFICIAL BUDGET
+                if (extendedInfo != null && (extendedInfo!!.budget > 0 || extendedInfo!!.revenue > 0 || !isUnreleased)) {
+                    Spacer(Modifier.height(14.dp))
+                    BoxOfficeBudgetCard(
+                        extendedInfo = extendedInfo!!,
+                        isUnreleased = isUnreleased
+                    )
+                }
+
+                // 3. PREVIOUS PARTS & PREQUELS (Franchise / Collection)
+                if (extendedInfo?.previousParts?.isNotEmpty() == true) {
+                    Spacer(Modifier.height(20.dp))
+                    PreviousPartsSection(
+                        collectionName = extendedInfo?.collectionName,
+                        parts = extendedInfo!!.previousParts,
+                        onOpen = onOpenMovie
                     )
                 }
 
@@ -624,6 +776,415 @@ private fun ReviewExternalPill(
                 letterSpacing = 0.6.sp
             )
         }
+    }
+}
+
+@Composable
+private fun OfficialAvailabilityCard(
+    extendedInfo: CinemaExtendedInfo,
+    isUnreleased: Boolean,
+    releaseDateFormatted: String
+) {
+    Surface(
+        shape = RoundedCornerShape(14.dp),
+        color = Color(0xFF141722),
+        border = BorderStroke(1.dp, Color.White.copy(alpha = 0.12f)),
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        Column(modifier = Modifier.padding(14.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(
+                    if (extendedInfo.isDirectOtt) Icons.Rounded.Tv else Icons.Rounded.Theaters,
+                    contentDescription = null,
+                    tint = if (extendedInfo.isDirectOtt) Color(0xFF00E5FF) else Color(0xFFFFB300),
+                    modifier = Modifier.size(18.dp)
+                )
+                Spacer(Modifier.width(6.dp))
+                Text(
+                    text = "WHERE TO WATCH (OFFICIAL)",
+                    color = Color.White.copy(alpha = 0.8f),
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.Bold,
+                    letterSpacing = 1.sp
+                )
+            }
+
+            Spacer(Modifier.height(10.dp))
+
+            if (extendedInfo.watchProviders.isNotEmpty()) {
+                FlowRow(
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    extendedInfo.watchProviders.take(5).forEach { provider ->
+                        Surface(
+                            shape = RoundedCornerShape(8.dp),
+                            color = Color.White.copy(alpha = 0.08f),
+                            border = BorderStroke(0.8.dp, Color.White.copy(alpha = 0.15f)),
+                            modifier = Modifier.height(34.dp)
+                        ) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                modifier = Modifier.padding(horizontal = 10.dp)
+                            ) {
+                                provider.fullLogoUrl?.let { logoUrl ->
+                                    AsyncImage(
+                                        model = logoUrl,
+                                        contentDescription = provider.providerName,
+                                        modifier = Modifier.size(20.dp).clip(RoundedCornerShape(4.dp))
+                                    )
+                                    Spacer(Modifier.width(6.dp))
+                                }
+                                Text(
+                                    text = provider.providerName,
+                                    color = Color.White,
+                                    fontSize = 11.5.sp,
+                                    fontWeight = FontWeight.SemiBold
+                                )
+                            }
+                        }
+                    }
+                }
+            } else if (extendedInfo.isDirectOtt) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Box(
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(6.dp))
+                            .background(Color(0xFF0288D1).copy(alpha = 0.2f))
+                            .border(0.8.dp, Color(0xFF0288D1).copy(alpha = 0.6f), RoundedCornerShape(6.dp))
+                            .padding(horizontal = 8.dp, vertical = 4.dp)
+                    ) {
+                        Text(
+                            text = "📺 DIRECT OTT PREMIERE",
+                            color = Color(0xFF81D4FA),
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
+                    if (releaseDateFormatted.isNotBlank()) {
+                        Spacer(Modifier.width(8.dp))
+                        Text(
+                            text = "Streaming from $releaseDateFormatted",
+                            color = Color.White.copy(alpha = 0.7f),
+                            fontSize = 12.sp
+                        )
+                    }
+                }
+            } else {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Box(
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(6.dp))
+                            .background(Color(0xFFFFB300).copy(alpha = 0.18f))
+                            .border(0.8.dp, Color(0xFFFFB300).copy(alpha = 0.5f), RoundedCornerShape(6.dp))
+                            .padding(horizontal = 8.dp, vertical = 4.dp)
+                    ) {
+                        Text(
+                            text = "🎬 THEATRICAL RELEASE",
+                            color = Color(0xFFFFD54F),
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
+                    if (releaseDateFormatted.isNotBlank()) {
+                        Spacer(Modifier.width(8.dp))
+                        Text(
+                            text = if (isUnreleased) "In Theatres $releaseDateFormatted" else "Released in Cinemas Worldwide",
+                            color = Color.White.copy(alpha = 0.7f),
+                            fontSize = 12.sp
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun BoxOfficeBudgetCard(
+    extendedInfo: CinemaExtendedInfo,
+    isUnreleased: Boolean
+) {
+    Surface(
+        shape = RoundedCornerShape(14.dp),
+        color = Color(0xFF141722),
+        border = BorderStroke(1.dp, Color.White.copy(alpha = 0.12f)),
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        Column(modifier = Modifier.padding(14.dp)) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween,
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(
+                        Icons.Rounded.AttachMoney,
+                        contentDescription = null,
+                        tint = Color(0xFF00E676),
+                        modifier = Modifier.size(18.dp)
+                    )
+                    Spacer(Modifier.width(4.dp))
+                    Text(
+                        text = "BOX OFFICE & BUDGET",
+                        color = Color.White.copy(alpha = 0.8f),
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.Bold,
+                        letterSpacing = 1.sp
+                    )
+                }
+
+                // Verdict Badge
+                val verdict = extendedInfo.boxOfficeVerdict
+                if (verdict != null) {
+                    Box(
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(6.dp))
+                            .background(Color(verdict.colorHex).copy(alpha = 0.18f))
+                            .border(0.8.dp, Color(verdict.colorHex).copy(alpha = 0.5f), RoundedCornerShape(6.dp))
+                            .padding(horizontal = 7.dp, vertical = 3.dp)
+                    ) {
+                        Text(
+                            text = verdict.label,
+                            color = Color(verdict.colorHex),
+                            fontSize = 9.5.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
+                }
+            }
+
+            Spacer(Modifier.height(12.dp))
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                // Official Budget Box
+                Column(
+                    modifier = Modifier
+                        .weight(1f)
+                        .clip(RoundedCornerShape(10.dp))
+                        .background(Color.White.copy(alpha = 0.05f))
+                        .padding(horizontal = 10.dp, vertical = 8.dp)
+                ) {
+                    Text(
+                        text = "TOTAL BUDGET",
+                        color = Color.White.copy(alpha = 0.5f),
+                        fontSize = 10.sp,
+                        fontWeight = FontWeight.Bold,
+                        letterSpacing = 0.6.sp
+                    )
+                    Spacer(Modifier.height(3.dp))
+                    Text(
+                        text = extendedInfo.budgetFormatted,
+                        color = Color.White,
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.ExtraBold,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
+
+                // Box Office Gross Collection Box
+                Column(
+                    modifier = Modifier
+                        .weight(1f)
+                        .clip(RoundedCornerShape(10.dp))
+                        .background(Color.White.copy(alpha = 0.05f))
+                        .padding(horizontal = 10.dp, vertical = 8.dp)
+                ) {
+                    Text(
+                        text = if (isUnreleased) "BOX OFFICE" else "WORLDWIDE GROSS",
+                        color = Color.White.copy(alpha = 0.5f),
+                        fontSize = 10.sp,
+                        fontWeight = FontWeight.Bold,
+                        letterSpacing = 0.6.sp
+                    )
+                    Spacer(Modifier.height(3.dp))
+                    Text(
+                        text = if (isUnreleased) "Pending Release" else extendedInfo.revenueFormatted,
+                        color = if (isUnreleased) Color(0xFFB0BEC5) else Color(0xFF00E676),
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.ExtraBold,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun PreviousPartsSection(
+    collectionName: String?,
+    parts: List<TmdbItem>,
+    onOpen: (TmdbItem) -> Unit
+) {
+    Column(modifier = Modifier.fillMaxWidth()) {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween,
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(
+                    Icons.Rounded.Layers,
+                    contentDescription = null,
+                    tint = Color(0xFF00E5FF),
+                    modifier = Modifier.size(17.dp)
+                )
+                Spacer(Modifier.width(6.dp))
+                Text(
+                    text = "PREVIOUS PARTS & PREQUELS",
+                    color = Color.White.copy(alpha = 0.8f),
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.Bold,
+                    letterSpacing = 1.sp
+                )
+            }
+            collectionName?.let { cName ->
+                Text(
+                    text = cName,
+                    color = Color(0xFF00E5FF),
+                    fontSize = 11.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.padding(start = 8.dp)
+                )
+            }
+        }
+
+        Spacer(Modifier.height(10.dp))
+
+        LazyRow(
+            horizontalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            items(parts, key = { "prev_${it.id}" }) { prevMovie ->
+                PreviousPartCard(
+                    item = prevMovie,
+                    onOpen = { onOpen(prevMovie) }
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun PreviousPartCard(
+    item: TmdbItem,
+    onOpen: () -> Unit
+) {
+    Surface(
+        shape = RoundedCornerShape(12.dp),
+        color = Color(0xFF161922),
+        border = BorderStroke(1.dp, Color.White.copy(alpha = 0.15f)),
+        modifier = Modifier
+            .width(130.dp)
+            .clickable(onClick = onOpen)
+    ) {
+        Column(modifier = Modifier.padding(8.dp)) {
+            // Poster thumbnail
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(160.dp)
+                    .clip(RoundedCornerShape(8.dp))
+                    .background(Color.Black)
+            ) {
+                AsyncImage(
+                    model = item.fullPosterUrl,
+                    contentDescription = item.displayName,
+                    contentScale = ContentScale.Crop,
+                    modifier = Modifier.fillMaxSize()
+                )
+                // Rating badge
+                if (item.voteAverage > 0) {
+                    Box(
+                        modifier = Modifier
+                            .align(Alignment.TopEnd)
+                            .padding(4.dp)
+                            .clip(RoundedCornerShape(4.dp))
+                            .background(Color.Black.copy(alpha = 0.75f))
+                            .padding(horizontal = 4.dp, vertical = 2.dp)
+                    ) {
+                        Text(
+                            text = "★ ${item.ratingFormatted}",
+                            color = Color(0xFFFFD54F),
+                            fontSize = 9.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
+                }
+                // Release Year
+                if (item.displayYear.isNotEmpty()) {
+                    Box(
+                        modifier = Modifier
+                            .align(Alignment.BottomStart)
+                            .padding(4.dp)
+                            .clip(RoundedCornerShape(4.dp))
+                            .background(Color.Black.copy(alpha = 0.75f))
+                            .padding(horizontal = 4.dp, vertical = 2.dp)
+                    ) {
+                        Text(
+                            text = item.displayYear,
+                            color = Color.White,
+                            fontSize = 9.sp,
+                            fontWeight = FontWeight.SemiBold
+                        )
+                    }
+                }
+            }
+
+            Spacer(Modifier.height(6.dp))
+
+            Text(
+                text = item.displayName,
+                color = Color.White,
+                fontSize = 12.sp,
+                fontWeight = FontWeight.Bold,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+
+            Spacer(Modifier.height(8.dp))
+
+            // OPEN Button
+            Button(
+                onClick = onOpen,
+                shape = RoundedCornerShape(8.dp),
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = Color(0xFFE50914),
+                    contentColor = Color.White
+                ),
+                contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp),
+                modifier = Modifier.fillMaxWidth().height(30.dp)
+            ) {
+                Icon(
+                    Icons.AutoMirrored.Rounded.OpenInNew,
+                    contentDescription = null,
+                    modifier = Modifier.size(12.dp)
+                )
+                Spacer(Modifier.width(4.dp))
+                Text(
+                    text = "OPEN",
+                    fontSize = 10.5.sp,
+                    fontWeight = FontWeight.ExtraBold,
+                    letterSpacing = 0.8.sp
+                )
+            }
+        }
+    }
+}
+
+private fun openOfficialTrailer(context: Context, key: String?, title: String) {
+    if (!key.isNullOrBlank()) {
+        launchYouTubeOrWeb(context, key)
+    } else {
+        val q = URLEncoder.encode("$title official trailer", "UTF-8")
+        launchAppOrWeb(context, "https://www.youtube.com/results?search_query=$q")
     }
 }
 

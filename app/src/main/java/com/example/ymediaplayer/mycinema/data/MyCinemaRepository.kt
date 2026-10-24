@@ -188,6 +188,17 @@ class MyCinemaRepository(
         sources
     }
 
+    private val extendedInfoCache = ConcurrentHashMap<String, CinemaExtendedInfo>()
+
+    suspend fun getCinemaExtendedInfo(item: TmdbItem): CinemaExtendedInfo {
+        val cacheKey = "${if (item.isSeries) "tv" else "movie"}_${item.id}"
+        extendedInfoCache[cacheKey]?.let { return it }
+
+        val info = tmdbClient.fetchCinemaExtendedInfo(item.isSeries, item.id, item.releaseDate)
+        extendedInfoCache[cacheKey] = info
+        return info
+    }
+
     suspend fun getTrailerYoutubeKey(isSeries: Boolean, tmdbId: Int): String? =
         tmdbClient.fetchTrailerYoutubeKey(isSeries, tmdbId)
 
@@ -199,6 +210,7 @@ class MyCinemaRepository(
         cachedUpcomingMovies = null
         cachedUpcomingByFilter.clear()
         sourcesCache.clear()
+        extendedInfoCache.clear()
         try {
             val prefs = YMediaApplication.instance.getSharedPreferences("tmdb_feed_cache", Context.MODE_PRIVATE)
             prefs.edit().clear().apply()
