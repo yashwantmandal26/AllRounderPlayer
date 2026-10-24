@@ -230,7 +230,7 @@ class TmdbApiClient(
         if (id <= 0 || apiKey.isBlank()) return@withContext CinemaExtendedInfo()
         try {
             val endpoint = if (isSeries) "tv" else "movie"
-            val url = "https://api.themoviedb.org/3/$endpoint/$id?api_key=$apiKey&append_to_response=watch/providers"
+            val url = "https://api.themoviedb.org/3/$endpoint/$id?api_key=$apiKey&append_to_response=watch/providers,credits,images"
             val request = Request.Builder().url(url).build()
             httpClient.newCall(request).execute().use { response ->
                 if (!response.isSuccessful) return@withContext CinemaExtendedInfo()
@@ -279,7 +279,60 @@ class TmdbApiClient(
                     )
                 }
 
-                // Parse Collection / Prequels (Previous Parts)
+                // Parse Top Cast
+                val topCast = mutableListOf<TmdbCastMember>()
+                val creditsObj = root.optJSONObject("credits") ?: root.optJSONObject("aggregate_credits")
+                val castArr = creditsObj?.optJSONArray("cast")
+                if (castArr != null) {
+                    val limit = minOf(16, castArr.length())
+                    for (i in 0 until limit) {
+                        val cObj = castArr.optJSONObject(i) ?: continue
+                        val name = cObj.optString("name").ifBlank { cObj.optString("original_name") }
+                        if (name.isBlank()) continue
+                        val character = cObj.optString("character").ifBlank {
+                            cObj.optJSONArray("roles")?.optJSONObject(0)?.optString("character") ?: ""
+                        }
+                        val profilePath = cObj.optString("profile_path").takeIf { it.isNotBlank() }
+                        topCast.add(
+                            TmdbCastMember(
+                                id = cObj.optInt("id"),
+                                name = name,
+                                character = character,
+                                profilePath = profilePath
+                            )
+                        )
+                    }
+                }
+
+                // Parse Gallery Photos & Posters
+                val galleryImages = mutableListOf<TmdbMediaImage>()
+                val imagesObj = root.optJSONObject("images")
+                val backdrops = imagesObj?.optJSONArray("backdrops")
+                val posters = imagesObj?.optJSONArray("posters")
+
+                if (backdrops != null) {
+                    val bLimit = minOf(12, backdrops.length())
+                    for (i in 0 until bLimit) {
+                        val b = backdrops.optJSONObject(i) ?: continue
+                        val path = b.optString("file_path")
+                        if (path.isNotBlank()) {
+                            galleryImages.add(TmdbMediaImage(filePath = path, isBackdrop = true))
+                        }
+                    }
+                }
+
+                if (posters != null) {
+                    val pLimit = minOf(12, posters.length())
+                    for (i in 0 until pLimit) {
+                        val p = posters.optJSONObject(i) ?: continue
+                        val path = p.optString("file_path")
+                        if (path.isNotBlank()) {
+                            galleryImages.add(TmdbMediaImage(filePath = path, isBackdrop = false))
+                        }
+                    }
+                }
+
+                // Parse Collection / Prequels & Sequels
                 var collectionName: String? = null
                 var collectionId: Int? = null
                 val previousParts = mutableListOf<TmdbItem>()
@@ -299,16 +352,11 @@ class TmdbApiClient(
                                         val collJson = org.json.JSONObject(collBody)
                                         val partsArr = collJson.optJSONArray("parts")
                                         if (partsArr != null) {
-                                            val currentRelDate = releaseDate ?: root.optString("release_date")
                                             for (j in 0 until partsArr.length()) {
                                                 val part = partsArr.optJSONObject(j) ?: continue
                                                 val partId = part.optInt("id")
                                                 if (partId == id) continue // Skip the current movie itself
                                                 val partDate = part.optString("release_date")
-                                                // Only previous parts (released on or before this movie)
-                                                if (currentRelDate.isNotBlank() && partDate.isNotBlank() && partDate > currentRelDate) {
-                                                    continue
-                                                }
                                                 previousParts.add(
                                                     TmdbItem(
                                                         id = partId,
@@ -332,8 +380,8 @@ class TmdbApiClient(
                     }
                 }
 
-                // Sort previous parts descending (most recent prequel first)
-                previousParts.sortByDescending { it.releaseDate ?: "" }
+                // Sort chronological by release date
+                previousParts.sortBy { it.releaseDate ?: "" }
 
                 val officialPlatform = providersList.firstOrNull()?.providerName ?: primaryNetwork
                 val isDirectOtt = isSeries || (officialPlatform != null && providersList.isNotEmpty())
@@ -345,6 +393,8 @@ class TmdbApiClient(
                     collectionName = collectionName,
                     collectionId = collectionId,
                     previousParts = previousParts,
+                    topCast = topCast,
+                    galleryImages = galleryImages,
                     watchProviders = providersList,
                     isDirectOtt = isDirectOtt,
                     officialPlatformName = officialPlatform,

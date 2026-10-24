@@ -179,9 +179,19 @@ object VideoPlaybackManager {
         isPlaying.value = true
     }
 
+    fun manualPause() {
+        val p = player ?: return
+        p.pause()
+        p.playWhenReady = false
+        isPausedByCall = false
+        isManuallyResumedDuringCall = false
+        isPlaying.value = false
+    }
+
     private var playerListener: Player.Listener? = null
     private var dynamicsProcessor: VideoDynamicsProcessor? = null
     var activePlaylistQueue: List<VideoItem>? = null
+    var activeStreamingHash: String? = null
 
     fun setAudioDynamics(nightStrength: Float, leveling: Boolean) {
         dynamicsProcessor?.settings = VideoDynamicsProcessor.Settings(nightStrength.coerceIn(0f, 1f), leveling)
@@ -243,11 +253,13 @@ object VideoPlaybackManager {
             .setConnectTimeoutMs(15_000)
             .setReadTimeoutMs(30_000)
             .setAllowCrossProtocolRedirects(true)
-        val dataSourceFactory = DefaultDataSource.Factory(context, httpFactory)
+        val defaultDataSourceFactory = DefaultDataSource.Factory(context, httpFactory)
+        val dataSourceFactory = com.example.ymediaplayer.mycinema.service.TorrentAwareDataSourceFactory(context, defaultDataSourceFactory)
         val extractorsFactory = DefaultExtractorsFactory()
             .setConstantBitrateSeekingEnabled(true)
             .setConstantBitrateSeekingAlwaysEnabled(true)
             .setTsExtractorTimestampSearchBytes(5 * 1024 * 1024)
+            .setMatroskaExtractorFlags(androidx.media3.extractor.mkv.MatroskaExtractor.FLAG_DISABLE_SEEK_FOR_CUES)
         return DefaultMediaSourceFactory(dataSourceFactory, extractorsFactory)
             .setLoadErrorHandlingPolicy(DefaultLoadErrorHandlingPolicy(5))
     }
@@ -627,6 +639,13 @@ object VideoPlaybackManager {
                 com.example.ymediaplayer.service.VideoPlaybackService.serviceInstance?.updateForegroundNotification()
             }
 
+            override fun onPlayWhenReadyChanged(playWhenReady: Boolean, reason: Int) {
+                if (!playWhenReady) {
+                    isPlaying.value = false
+                }
+                com.example.ymediaplayer.service.VideoPlaybackService.serviceInstance?.updateForegroundNotification()
+            }
+
             override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
                 resetRecoveryForNewItem(applicationContext, mediaItem)
                 com.example.ymediaplayer.service.VideoPlaybackService.serviceInstance?.updateForegroundNotification()
@@ -694,15 +713,17 @@ object VideoPlaybackManager {
 
     fun togglePlayPause() {
         val p = player ?: return
-        if (p.isPlaying) {
+        if (p.isPlaying || p.playWhenReady) {
             p.pause()
+            p.playWhenReady = false
             isPausedByCall = false
             isManuallyResumedDuringCall = false
+            isPlaying.value = false
         } else {
             com.example.ymediaplayer.service.MusicService.pauseMusic()
             manualPlay()
+            isPlaying.value = true
         }
-        isPlaying.value = p.isPlaying
     }
 
     fun closeMiniPlayer() {
@@ -715,6 +736,7 @@ object VideoPlaybackManager {
     }
 
     fun releasePlayer() {
+        activeStreamingHash = null
         recoveryJob?.cancel()
         recoveryJob = null
         recoveryAttempt = 0

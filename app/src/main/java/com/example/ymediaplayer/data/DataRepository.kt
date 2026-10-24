@@ -367,7 +367,7 @@ class AppPreferences(private val prefs: SharedPreferences) {
 
     // Player Theme & Visual Customizations
     fun getPlayerTheme(): String {
-        return prefs.getString("player_theme", "SAKURA") ?: "SAKURA"
+        return prefs.getString("player_theme", "YELLOW") ?: "YELLOW"
     }
 
     fun savePlayerTheme(themeName: String) {
@@ -591,9 +591,9 @@ class AppPreferences(private val prefs: SharedPreferences) {
     fun setVideoRouteSoundStrength(route: String, strength: Float) { prefs.edit().putFloat("video_sound_strength_$route", strength.coerceIn(0f, 1f)).apply() }
     fun isVideoVolumeLevelingEnabled(route: String): Boolean = prefs.getBoolean("video_leveling_$route", false)
     fun setVideoVolumeLevelingEnabled(route: String, enabled: Boolean) { prefs.edit().putBoolean("video_leveling_$route", enabled).apply() }
-    fun getVideoAmbientSpread(): Float = prefs.getFloat("video_ambient_spread", 0.92f).coerceIn(0f, 1.5f)
+    fun getVideoAmbientSpread(): Float = prefs.getFloat("video_ambient_spread", 1.34f).coerceIn(0f, 1.5f)
     fun setVideoAmbientSpread(value: Float) { prefs.edit().putFloat("video_ambient_spread", value.coerceIn(0f, 1.5f)).apply() }
-    fun getVideoAmbientSaturation(): Float = prefs.getFloat("video_ambient_saturation", 1.70f).coerceIn(0.4f, 2.5f)
+    fun getVideoAmbientSaturation(): Float = prefs.getFloat("video_ambient_saturation", 1.05f).coerceIn(0.4f, 2.5f)
     fun setVideoAmbientSaturation(value: Float) { prefs.edit().putFloat("video_ambient_saturation", value.coerceIn(0.4f, 2.5f)).apply() }
     fun isVideoAmbientBatterySaver(): Boolean = prefs.getBoolean("video_ambient_battery_saver", false)
     fun setVideoAmbientBatterySaver(enabled: Boolean) { prefs.edit().putBoolean("video_ambient_battery_saver", enabled).apply() }
@@ -942,13 +942,13 @@ class AppPreferences(private val prefs: SharedPreferences) {
         lastProgressUpdate.longValue++
     }
 
-    fun getAmbientGlowSpread(): Float = prefs.getFloat("ambient_glow_spread", 1.8f).coerceIn(0.4f, 2.5f)
+    fun getAmbientGlowSpread(): Float = prefs.getFloat("ambient_glow_spread", 0.94f).coerceIn(0.4f, 2.5f)
     fun setAmbientGlowSpread(spread: Float) {
         prefs.edit().putFloat("ambient_glow_spread", spread.coerceIn(0.4f, 2.5f)).apply()
         lastProgressUpdate.longValue++
     }
 
-    fun getAmbientGlowSaturation(): Float = prefs.getFloat("ambient_glow_saturation", 2.0f).coerceIn(0.4f, 2.5f)
+    fun getAmbientGlowSaturation(): Float = prefs.getFloat("ambient_glow_saturation", 2.32f).coerceIn(0.4f, 2.5f)
     fun setAmbientGlowSaturation(sat: Float) {
         prefs.edit().putFloat("ambient_glow_saturation", sat.coerceIn(0.4f, 2.5f)).apply()
         lastProgressUpdate.longValue++

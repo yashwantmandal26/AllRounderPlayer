@@ -291,7 +291,7 @@ enum class PlayerTheme(
     BLUE(
         id = "BLUE",
         displayName = "Vibrant Blue",
-        description = "Iconic Electric Cobalt & Sapphire (Default)",
+        description = "Iconic Electric Cobalt & Sapphire",
         primaryAccent = Color(0xFF007AFF),
         secondaryAccent = Color(0xFF0051C6),
         highlightColor = Color(0xFF38BDF8),
@@ -323,7 +323,7 @@ enum class PlayerTheme(
     YELLOW(
         id = "YELLOW",
         displayName = "Sunlight Yellow",
-        description = "Radiant Golden Amber & Canary",
+        description = "Radiant Golden Amber & Canary (Default)",
         primaryAccent = Color(0xFFFBBF24),
         secondaryAccent = Color(0xFFD97706),
         highlightColor = Color(0xFFFDE047),
@@ -389,7 +389,7 @@ enum class PlayerTheme(
                 "YELLOW", "SUNSET_GOLD" -> YELLOW
                 "ORANGE", "SUNSET" -> ORANGE
                 "RED", "SAKURA" -> RED
-                else -> entries.find { it.id.equals(id, ignoreCase = true) } ?: BLUE
+                else -> entries.find { it.id.equals(id, ignoreCase = true) } ?: YELLOW
             }
         }
     }

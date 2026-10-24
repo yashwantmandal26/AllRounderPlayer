@@ -170,6 +170,26 @@ data class TmdbWatchProviderItem(
 }
 
 @Serializable
+data class TmdbCastMember(
+    val id: Int = 0,
+    val name: String = "",
+    val character: String = "",
+    @SerialName("profile_path") val profilePath: String? = null
+) {
+    val fullProfileUrl: String?
+        get() = profilePath?.let { "https://image.tmdb.org/t/p/w185$it" }
+}
+
+@Serializable
+data class TmdbMediaImage(
+    val filePath: String = "",
+    val isBackdrop: Boolean = false
+) {
+    val fullImageUrl: String
+        get() = if (isBackdrop) "https://image.tmdb.org/t/p/w780$filePath" else "https://image.tmdb.org/t/p/w500$filePath"
+}
+
+@Serializable
 data class CinemaExtendedInfo(
     val budget: Long = 0L,
     val revenue: Long = 0L,
@@ -177,6 +197,8 @@ data class CinemaExtendedInfo(
     val collectionName: String? = null,
     val collectionId: Int? = null,
     val previousParts: List<TmdbItem> = emptyList(),
+    val topCast: List<TmdbCastMember> = emptyList(),
+    val galleryImages: List<TmdbMediaImage> = emptyList(),
     val watchProviders: List<TmdbWatchProviderItem> = emptyList(),
     val isDirectOtt: Boolean = false,
     val officialPlatformName: String? = null,

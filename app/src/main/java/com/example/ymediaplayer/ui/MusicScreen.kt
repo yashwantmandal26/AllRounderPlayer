@@ -730,17 +730,15 @@ fun MusicScreen(
                     }
                 }
             } else {
-                // Standard Online Top Bar with Search & Quick Controls
-                Row(
+                // Standard Online Top Bar with Full-Width Search (Just like Video mode)
+                Box(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(horizontal = 16.dp, vertical = 8.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.SpaceBetween
+                        .padding(horizontal = 16.dp, vertical = 6.dp)
                 ) {
                     Row(
                         modifier = Modifier
-                            .weight(1f)
+                            .fillMaxWidth()
                             .height(48.dp)
                             .shadow(
                                 elevation = 8.dp,
@@ -812,78 +810,7 @@ fun MusicScreen(
                             }
                         }
                     }
-                            Spacer(Modifier.width(10.dp))
-                        Box {
-                            IconButton(
-                                onClick = { showSortMenu = true },
-                                modifier = Modifier
-                                    .size(42.dp)
-                                    .shadow(elevation = if (c.isMatte && c.isDark) 0.dp else 4.dp, shape = CircleShape, ambientColor = c.cardShadowColor, spotColor = c.cardShadowColor)
-                                    .clip(CircleShape)
-                                    .background((if (c.isMatte && c.isDark) androidx.compose.ui.graphics.SolidColor(c.cardBg) else Brush.verticalGradient(listOf(c.cardBgElevated, c.cardBg))))
-                                    .border(1.2.dp, (if (c.isMatte && c.isDark) androidx.compose.ui.graphics.SolidColor(c.glassBorder) else Brush.verticalGradient(listOf(c.cardBorderHighlight, c.cardBorderShadow))), CircleShape)
-                            ) {
-                                Icon(Icons.AutoMirrored.Rounded.Sort, contentDescription = "Sort", tint = c.textPrimary, modifier = Modifier.size(19.dp))
-                            }
-                                DropdownMenu(
-                                    expanded = showSortMenu,
-                                    onDismissRequest = { showSortMenu = false },
-                                    containerColor = c.dropdownBg,
-                                    modifier = Modifier
-                                        .border(1.dp, c.glassBorder, RoundedCornerShape(14.dp))
-                                        .shadow(if (c.isMatte && c.isDark) 0.dp else 12.dp, RoundedCornerShape(14.dp))
-                                ) {
-                                    Text(
-                                        "SORT TRACKS",
-                                        fontSize = 11.sp,
-                                        fontWeight = FontWeight.Bold,
-                                        color = c.textSecondary,
-                                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
-                                    )
-                                    HorizontalDivider(color = c.glassBorder)
-                                    listOf(
-                                        "TITLE" to ("Title (A to Z)" to Icons.Rounded.SortByAlpha),
-                                        "TITLE_DESC" to ("Title (Z to A)" to Icons.Rounded.SortByAlpha),
-                                        "ARTIST" to ("Artist (A to Z)" to Icons.Rounded.Person),
-                                        "DATE" to ("Date Added (Newest)" to Icons.Rounded.Schedule),
-                                        "DATE_ASC" to ("Date Added (Oldest)" to Icons.Rounded.Schedule),
-                                        "DURATION" to ("Duration (Longest)" to Icons.Rounded.Schedule),
-                                        "DURATION_ASC" to ("Duration (Shortest)" to Icons.Rounded.Schedule),
-                                        "SIZE" to ("Size (Largest)" to Icons.Rounded.Storage)
-                                    ).forEach { (order, pair) ->
-                                        val (label, icon) = pair
-                                        val isSelected = sortOrder == order
-                                        DropdownMenuItem(
-                                            leadingIcon = {
-                                                Icon(
-                                                    icon,
-                                                    contentDescription = null,
-                                                    tint = if (isSelected) c.accentBlue else c.textSecondary,
-                                                    modifier = Modifier.size(18.dp)
-                                                )
-                                            },
-                                            text = {
-                                                Text(
-                                                    label,
-                                                    color = if (isSelected) c.accentBlue else c.textPrimary,
-                                                    fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
-                                                    fontSize = 14.sp
-                                                )
-                                            },
-                                            trailingIcon = {
-                                                if (isSelected) {
-                                                    Icon(Icons.Rounded.Check, contentDescription = null, tint = c.accentBlue, modifier = Modifier.size(18.dp))
-                                                }
-                                            },
-                                            onClick = {
-                                                sortOrder = order
-                                                showSortMenu = false
-                                            }
-                                        )
-                                    }
-                                }
-                            }
-                    }
+                }
 
                 // ─── Modern Online Category Pills ───────────────────────────
                 if (!isSearching && searchQuery.isEmpty()) {
@@ -1813,7 +1740,82 @@ fun MusicScreen(
                                     Spacer(Modifier.width(6.dp))
                                     Text("Shuffle All", color = c.accentBlue, fontSize = 12.sp, fontWeight = FontWeight.Bold)
                                 }
-                                Text("${filteredSongs.size} tracks", color = c.textSecondary, fontSize = 12.sp)
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                ) {
+                                    Text("${filteredSongs.size} tracks", color = c.textSecondary, fontSize = 12.sp)
+                                    Box {
+                                        IconButton(
+                                            onClick = { showSortMenu = true },
+                                            modifier = Modifier.size(28.dp)
+                                        ) {
+                                            Icon(
+                                                Icons.AutoMirrored.Rounded.Sort,
+                                                contentDescription = "Sort Tracks",
+                                                tint = c.textSecondary,
+                                                modifier = Modifier.size(16.dp)
+                                            )
+                                        }
+                                        DropdownMenu(
+                                            expanded = showSortMenu,
+                                            onDismissRequest = { showSortMenu = false },
+                                            containerColor = c.dropdownBg,
+                                            modifier = Modifier
+                                                .border(1.dp, c.glassBorder, RoundedCornerShape(14.dp))
+                                                .shadow(if (c.isMatte && c.isDark) 0.dp else 12.dp, RoundedCornerShape(14.dp))
+                                        ) {
+                                            Text(
+                                                "SORT TRACKS",
+                                                fontSize = 11.sp,
+                                                fontWeight = FontWeight.Bold,
+                                                color = c.textSecondary,
+                                                modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
+                                            )
+                                            HorizontalDivider(color = c.glassBorder)
+                                            listOf(
+                                                "TITLE" to ("Title (A to Z)" to Icons.Rounded.SortByAlpha),
+                                                "TITLE_DESC" to ("Title (Z to A)" to Icons.Rounded.SortByAlpha),
+                                                "ARTIST" to ("Artist (A to Z)" to Icons.Rounded.Person),
+                                                "DATE" to ("Date Added (Newest)" to Icons.Rounded.Schedule),
+                                                "DATE_ASC" to ("Date Added (Oldest)" to Icons.Rounded.Schedule),
+                                                "DURATION" to ("Duration (Longest)" to Icons.Rounded.Schedule),
+                                                "DURATION_ASC" to ("Duration (Shortest)" to Icons.Rounded.Schedule),
+                                                "SIZE" to ("Size (Largest)" to Icons.Rounded.Storage)
+                                            ).forEach { (order, pair) ->
+                                                val (label, icon) = pair
+                                                val isSelected = sortOrder == order
+                                                DropdownMenuItem(
+                                                    leadingIcon = {
+                                                        Icon(
+                                                            icon,
+                                                            contentDescription = null,
+                                                            tint = if (isSelected) c.accentBlue else c.textSecondary,
+                                                            modifier = Modifier.size(18.dp)
+                                                        )
+                                                    },
+                                                    text = {
+                                                        Text(
+                                                            label,
+                                                            color = if (isSelected) c.accentBlue else c.textPrimary,
+                                                            fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
+                                                            fontSize = 14.sp
+                                                        )
+                                                    },
+                                                    trailingIcon = {
+                                                        if (isSelected) {
+                                                            Icon(Icons.Rounded.Check, contentDescription = null, tint = c.accentBlue, modifier = Modifier.size(18.dp))
+                                                        }
+                                                    },
+                                                    onClick = {
+                                                        sortOrder = order
+                                                        showSortMenu = false
+                                                    }
+                                                )
+                                            }
+                                        }
+                                    }
+                                }
                             }
                         }
                         items(filteredSongs, key = { it.id }) { song ->

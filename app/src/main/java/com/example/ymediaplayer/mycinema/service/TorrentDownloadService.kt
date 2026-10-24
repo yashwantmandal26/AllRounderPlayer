@@ -98,9 +98,10 @@ class TorrentDownloadService : Service() {
             ACTION_CANCEL -> {
                 if (hash.isNotBlank()) TorrentEngine.cancel(hash)
                 val remaining = TorrentEngine.downloads.value.values.any {
-                    it.status == TorrentDownloadState.Status.DOWNLOADING ||
-                    it.status == TorrentDownloadState.Status.CONNECTING ||
-                    it.status == TorrentDownloadState.Status.STREAMING
+                    !it.isStream && (
+                        it.status == TorrentDownloadState.Status.DOWNLOADING ||
+                        it.status == TorrentDownloadState.Status.CONNECTING
+                    )
                 }
                 if (!remaining) {
                     stopForeground(STOP_FOREGROUND_REMOVE)
@@ -118,27 +119,24 @@ class TorrentDownloadService : Service() {
             while (isActive) {
                 delay(1000)
                 TorrentEngine.updateProgressTicks()
-                val activeList = TorrentEngine.downloads.value.values.toList()
+                val activeList = TorrentEngine.downloads.value.values.filter { !it.isStream }.toList()
 
                 // Check for any newly finished downloads and notify immediately
                 for (d in activeList) {
                     if (d.status == TorrentDownloadState.Status.FINISHED && !notifiedFinishedHashes.contains(d.id)) {
                         notifiedFinishedHashes.add(d.id)
-                        if (!d.isStream) {
-                            val path = d.savePath ?: TorrentEngine.getFilePath(this@TorrentDownloadService, d.id)
-                            if (path != null) {
-                                MediaScannerConnection.scanFile(this@TorrentDownloadService, arrayOf(path), null) { _, _ -> }
-                                showCompletedNotification(d.title, path)
-                                com.example.ymediaplayer.data.VideoRepository.invalidateCache()
-                            }
+                        val path = d.savePath ?: TorrentEngine.getFilePath(this@TorrentDownloadService, d.id)
+                        if (path != null) {
+                            MediaScannerConnection.scanFile(this@TorrentDownloadService, arrayOf(path), null) { _, _ -> }
+                            showCompletedNotification(d.title, path)
+                            com.example.ymediaplayer.data.VideoRepository.invalidateCache()
                         }
                     }
                 }
 
                 val downloading = activeList.firstOrNull {
                     it.status == TorrentDownloadState.Status.DOWNLOADING ||
-                    it.status == TorrentDownloadState.Status.CONNECTING ||
-                    it.status == TorrentDownloadState.Status.STREAMING
+                    it.status == TorrentDownloadState.Status.CONNECTING
                 }
 
                 if (downloading != null) {

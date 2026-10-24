@@ -163,6 +163,10 @@ class VideoPlaybackService : MediaSessionService() {
                 VideoPlaybackManager.manualPlay()
             }
 
+            override fun pause() {
+                VideoPlaybackManager.manualPause()
+            }
+
             override fun seekToNext() {
                 VideoPlaybackManager.onPlayNextAction?.invoke()
             }
@@ -413,10 +417,7 @@ class VideoPlaybackService : MediaSessionService() {
         super.onStartCommand(intent, flags, startId)
         when (intent?.action) {
             ACTION_PLAY_PAUSE -> {
-                val p = VideoPlaybackManager.player
-                if (p != null) {
-                    if (p.isPlaying) p.pause() else VideoPlaybackManager.manualPlay()
-                }
+                VideoPlaybackManager.togglePlayPause()
             }
             ACTION_REWIND -> {
                 val p = VideoPlaybackManager.player

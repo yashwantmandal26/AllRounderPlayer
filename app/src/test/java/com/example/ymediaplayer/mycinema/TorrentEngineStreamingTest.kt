@@ -62,4 +62,41 @@ class TorrentEngineStreamingTest {
         assertNotNull(method)
         assertEquals(Boolean::class.javaPrimitiveType, method.returnType)
     }
+
+    @Test
+    fun testMatroskaExtractorFlagDisableSeekForCues() {
+        val flag = androidx.media3.extractor.mkv.MatroskaExtractor.FLAG_DISABLE_SEEK_FOR_CUES
+        assertTrue(flag > 0)
+        val factory = androidx.media3.extractor.DefaultExtractorsFactory()
+        factory.setMatroskaExtractorFlags(flag)
+    }
+
+    @Test
+    fun testFileStorageMethods() {
+        val methods = org.libtorrent4j.FileStorage::class.java.methods.map { it.name }
+        assertTrue(methods.contains("fileOffset"))
+        val offsetMethod = org.libtorrent4j.FileStorage::class.java.getMethod("fileOffset", Int::class.javaPrimitiveType)
+        assertNotNull(offsetMethod)
+        assertEquals(Long::class.javaPrimitiveType, offsetMethod.returnType)
+    }
+
+    @Test
+    fun testIsStreamTorrentDefaultsToFalseForUnknownHash() {
+        assertFalse(TorrentEngine.isStreamTorrent("unknown_hash"))
+    }
+
+    @Test
+    fun testIsPieceDownloadedReturnsFalseForUnknownHash() {
+        assertFalse(TorrentEngine.isPieceDownloaded("unknown_hash", 0))
+    }
+
+    @Test
+    fun testGetPieceForFileOffsetReturnsNullWhenNotInitialized() {
+        assertNull(TorrentEngine.getPieceForFileOffset("unknown_hash", 1024L))
+    }
+
+    @Test
+    fun testGetAvailableDownloadedBytesFromReturnsZeroForUnknownHash() {
+        assertEquals(0L, TorrentEngine.getAvailableDownloadedBytesFrom("unknown_hash", 0L))
+    }
 }

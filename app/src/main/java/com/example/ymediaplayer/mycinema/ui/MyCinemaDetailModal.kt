@@ -42,7 +42,9 @@ import com.example.ymediaplayer.R
 import com.example.ymediaplayer.mycinema.data.BoxOfficeVerdict
 import com.example.ymediaplayer.mycinema.data.CinemaExtendedInfo
 import com.example.ymediaplayer.mycinema.data.MyCinemaRepository
+import com.example.ymediaplayer.mycinema.data.TmdbCastMember
 import com.example.ymediaplayer.mycinema.data.TmdbItem
+import com.example.ymediaplayer.mycinema.data.TmdbMediaImage
 import com.example.ymediaplayer.mycinema.data.TmdbWatchProviderItem
 import com.example.ymediaplayer.theme.LocalAppColors
 import kotlinx.coroutines.launch
@@ -442,6 +444,12 @@ fun MyCinemaDetailModal(
                     }
                 }
 
+                // TOP CAST SECTION (Just after the movie/series introduction)
+                if (extendedInfo?.topCast?.isNotEmpty() == true) {
+                    Spacer(Modifier.height(18.dp))
+                    TopCastSection(cast = extendedInfo!!.topCast)
+                }
+
                 // 1. WHERE TO WATCH (OFFICIAL AVAILABILITY)
                 if (extendedInfo != null) {
                     Spacer(Modifier.height(16.dp))
@@ -462,7 +470,7 @@ fun MyCinemaDetailModal(
                     )
                 }
 
-                // 3. PREVIOUS PARTS & PREQUELS (Franchise / Collection)
+                // 3. PREQUELS & SEQUELS (Franchise / Collection)
                 if (extendedInfo?.previousParts?.isNotEmpty() == true) {
                     Spacer(Modifier.height(20.dp))
                     PreviousPartsSection(
@@ -720,6 +728,12 @@ fun MyCinemaDetailModal(
                             launchAppOrWeb(context, "https://www.imdb.com/find/?q=$q")
                         }
                     )
+                }
+
+                // POSTERS & PHOTOS GALLERY (After Research & Reviews)
+                if (extendedInfo?.galleryImages?.isNotEmpty() == true) {
+                    Spacer(Modifier.height(24.dp))
+                    PostersGallerySection(images = extendedInfo!!.galleryImages)
                 }
 
                 Spacer(Modifier.height(56.dp).navigationBarsPadding())
@@ -1081,7 +1095,7 @@ private fun PreviousPartsSection(
                 )
                 Spacer(Modifier.width(6.dp))
                 Text(
-                    text = "PREVIOUS PARTS & PREQUELS",
+                    text = "PREQUELS & SEQUELS",
                     color = Color.White.copy(alpha = 0.8f),
                     fontSize = 12.sp,
                     fontWeight = FontWeight.Bold,
@@ -1315,6 +1329,178 @@ private fun getOttProviderBrowseUrl(providerName: String, title: String, tmdbWat
                 providerName.replace(" ", "+")
             }
             "https://www.google.com/search?q=watch+$encodedTitle+on+$encodedProvider"
+        }
+    }
+}
+
+// ─── TOP CAST SECTION (With Direct Google Search on Click) ───────────────────
+@Composable
+private fun TopCastSection(
+    cast: List<TmdbCastMember>
+) {
+    if (cast.isEmpty()) return
+    val context = LocalContext.current
+
+    Column(modifier = Modifier.fillMaxWidth()) {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Icon(
+                Icons.Rounded.Person,
+                contentDescription = null,
+                tint = Color(0xFF00E5FF),
+                modifier = Modifier.size(17.dp)
+            )
+            Spacer(Modifier.width(6.dp))
+            Text(
+                text = "TOP CAST",
+                color = Color.White.copy(alpha = 0.8f),
+                fontSize = 12.sp,
+                fontWeight = FontWeight.Bold,
+                letterSpacing = 1.sp
+            )
+            Spacer(Modifier.weight(1f))
+            Text(
+                text = "Tap to search Google",
+                color = Color.White.copy(alpha = 0.4f),
+                fontSize = 10.5.sp
+            )
+        }
+
+        Spacer(Modifier.height(12.dp))
+
+        LazyRow(
+            horizontalArrangement = Arrangement.spacedBy(14.dp),
+            contentPadding = PaddingValues(horizontal = 2.dp)
+        ) {
+            items(cast, key = { "cast_${it.id}" }) { member ->
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    modifier = Modifier
+                        .width(76.dp)
+                        .clickable {
+                            try {
+                                val query = URLEncoder.encode("${member.name} actor", "UTF-8")
+                                val intent = Intent(Intent.ACTION_VIEW, Uri.parse("https://www.google.com/search?q=$query"))
+                                intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                                context.startActivity(intent)
+                            } catch (e: Exception) {
+                                Toast.makeText(context, "Could not open browser", Toast.LENGTH_SHORT).show()
+                            }
+                        }
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .size(62.dp)
+                            .clip(CircleShape)
+                            .background(Color.White.copy(alpha = 0.08f))
+                            .border(1.5.dp, Color(0xFF00E5FF).copy(alpha = 0.35f), CircleShape)
+                    ) {
+                        if (!member.profilePath.isNullOrBlank()) {
+                            AsyncImage(
+                                model = member.fullProfileUrl,
+                                contentDescription = member.name,
+                                contentScale = ContentScale.Crop,
+                                modifier = Modifier.fillMaxSize()
+                            )
+                        } else {
+                            Box(
+                                modifier = Modifier.fillMaxSize(),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Icon(
+                                    Icons.Rounded.Person,
+                                    contentDescription = null,
+                                    tint = Color.White.copy(alpha = 0.5f),
+                                    modifier = Modifier.size(30.dp)
+                                )
+                            }
+                        }
+                    }
+
+                    Spacer(Modifier.height(6.dp))
+
+                    Text(
+                        text = member.name,
+                        color = Color.White,
+                        fontSize = 11.5.sp,
+                        fontWeight = FontWeight.Bold,
+                        textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+
+                    if (member.character.isNotBlank()) {
+                        Text(
+                            text = member.character,
+                            color = Color.White.copy(alpha = 0.55f),
+                            fontSize = 10.sp,
+                            textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+// ─── POSTERS & PHOTOS GALLERY (After Research & Reviews) ─────────────────────
+@Composable
+private fun PostersGallerySection(
+    images: List<TmdbMediaImage>
+) {
+    if (images.isEmpty()) return
+
+    Column(modifier = Modifier.fillMaxWidth()) {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Icon(
+                Icons.Rounded.Image,
+                contentDescription = null,
+                tint = Color(0xFF00E5FF),
+                modifier = Modifier.size(17.dp)
+            )
+            Spacer(Modifier.width(6.dp))
+            Text(
+                text = "POSTERS & GALLERY",
+                color = Color.White.copy(alpha = 0.8f),
+                fontSize = 12.sp,
+                fontWeight = FontWeight.Bold,
+                letterSpacing = 1.sp
+            )
+        }
+
+        Spacer(Modifier.height(12.dp))
+
+        LazyRow(
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
+            contentPadding = PaddingValues(horizontal = 2.dp)
+        ) {
+            items(images, key = { "img_${it.filePath}" }) { img ->
+                val isBackdrop = img.isBackdrop
+                Box(
+                    modifier = Modifier
+                        .size(
+                            width = if (isBackdrop) 195.dp else 115.dp,
+                            height = 135.dp
+                        )
+                        .clip(RoundedCornerShape(14.dp))
+                        .background(Color(0xFF141722))
+                        .border(1.dp, Color.White.copy(alpha = 0.15f), RoundedCornerShape(14.dp))
+                ) {
+                    AsyncImage(
+                        model = img.fullImageUrl,
+                        contentDescription = "Movie Photo",
+                        contentScale = ContentScale.Crop,
+                        modifier = Modifier.fillMaxSize()
+                    )
+                }
+            }
         }
     }
 }

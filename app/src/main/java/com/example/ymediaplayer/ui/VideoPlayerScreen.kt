@@ -83,6 +83,7 @@ import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.layout.layout
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalHapticFeedback
@@ -765,6 +766,7 @@ fun VideoPlayerScreen(
 
     LaunchedEffect(streamTorrentHash) {
         val hash = streamTorrentHash ?: return@LaunchedEffect
+        com.example.ymediaplayer.player.VideoPlaybackManager.activeStreamingHash = hash
         while (true) {
             if (com.example.ymediaplayer.mycinema.service.TorrentEngine.isStreamBufferReady(context, hash)) {
                 val path = com.example.ymediaplayer.mycinema.service.TorrentEngine.getFilePath(context, hash)
@@ -1568,13 +1570,25 @@ fun VideoPlayerScreen(
     }
 
     val togglePlayPause: () -> Unit = {
-        if (isPlaying) {
+        val actuallyPlaying = isPlaying || exoPlayer.isPlaying || exoPlayer.playWhenReady
+        if (actuallyPlaying) {
             exoPlayer.pause()
+            exoPlayer.playWhenReady = false
+            isPlaying = false
+            VideoPlaybackManager.isPlaying.value = false
+            try {
+                com.example.ymediaplayer.service.VideoPlaybackService.notifyPlayerUpdated()
+            } catch (_: Exception) {}
         } else {
             if (exoPlayer.playbackState == Player.STATE_ENDED || (duration > 0L && exoPlayer.currentPosition >= duration - 500L)) {
                 safeSeek(0L)
             }
             VideoPlaybackManager.manualPlay()
+            isPlaying = true
+            VideoPlaybackManager.isPlaying.value = true
+            try {
+                com.example.ymediaplayer.service.VideoPlaybackService.notifyPlayerUpdated()
+            } catch (_: Exception) {}
         }
     }
 
@@ -1839,6 +1853,18 @@ fun VideoPlayerScreen(
                     } else {
                         showControls = true
                     }
+                }
+            }
+
+            override fun onIsPlayingChanged(playing: Boolean) {
+                isPlaying = playing
+                VideoPlaybackManager.isPlaying.value = playing
+            }
+
+            override fun onPlayWhenReadyChanged(playWhenReady: Boolean, reason: Int) {
+                if (!playWhenReady) {
+                    isPlaying = false
+                    VideoPlaybackManager.isPlaying.value = false
                 }
             }
         }
@@ -2307,8 +2333,16 @@ fun VideoPlayerScreen(
             } else {
                 downloadedRanges = emptyList()
             }
-            // When controls are hidden and A-B loop is not active, relaxing delay frees CPU/GPU for 60/120fps video rendering
-            val pollDelay = if (!showControls && lStart == null) 1000.milliseconds else if (isPlayingNow) 200.milliseconds else 500.milliseconds
+            val isShortVideo = duration in 1L..60_000L
+            // When controls are visible or for short videos, 16ms delivers super buttery smooth 60fps/120fps progress bar animation.
+            // When controls are hidden and not looping or short video, 500ms delay conserves CPU/battery.
+            val pollDelay = if (!showControls && lStart == null && !isShortVideo) {
+                500.milliseconds
+            } else if (isPlayingNow) {
+                16.milliseconds
+            } else {
+                100.milliseconds
+            }
             delay(pollDelay)
         }
     }
@@ -2625,13 +2659,12 @@ fun VideoPlayerScreen(
     val handleExit: () -> Unit = {
         if (!isExitingToMiniPlayer) {
             isExitingToMiniPlayer = true
-            val hash = activeTorrentHash
+            val hash = activeTorrentHash ?: streamTorrentHash
             if (hash != null) {
-                if (streamTorrentHash != null && !isStreamReady) {
+                if (streamTorrentHash != null || cinemaDownloads[hash]?.isStream == true) {
+                    com.example.ymediaplayer.player.VideoPlaybackManager.activeStreamingHash = null
                     com.example.ymediaplayer.mycinema.service.TorrentEngine.cancel(hash)
                     com.example.ymediaplayer.mycinema.service.TorrentEngine.cleanupStream(context, hash)
-                } else if (streamTorrentHash != null || cinemaDownloads[hash]?.isStream == true) {
-                    com.example.ymediaplayer.mycinema.service.TorrentEngine.pause(hash)
                 }
             }
             // Immediately stop audio & playback with zero delay
@@ -4228,37 +4261,6 @@ fun VideoPlayerScreen(
                                         modifier = Modifier.size(19.dp)
                                     )
                                 }
-
-                                // Rotate Screen Button (Floating above seekbar right end)
-                                PlayerIconButton(
-                                    name = "Rotate screen",
-                                    description = "Toggle landscape and portrait video orientation",
-                                    onClick = {
-                                        val nextOrientation = if (isLandscape) 0 else 1
-                                        userOrientationOverride = nextOrientation
-                                        sensorBucketAtOverride = lastSensorOrientation[0]
-                                        currentOrientationSetting[0] = nextOrientation
-                                        activity?.requestedOrientation = if (nextOrientation == 1) {
-                                            ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
-                                        } else {
-                                            ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
-                                        }
-                                    },
-                                    icon = Icons.Rounded.ScreenRotation,
-                                    modifier = Modifier
-                                        .size(36.dp)
-                                        .shadow(4.dp, CircleShape, ambientColor = Color.Black.copy(0.4f), spotColor = Color.Black.copy(0.4f))
-                                        .clip(CircleShape)
-                                        .background(Brush.verticalGradient(listOf(Color.Black.copy(alpha = 0.50f), Color.Black.copy(alpha = 0.35f))))
-                                        .border(1.2.dp, Brush.verticalGradient(listOf(Color.White.copy(alpha = 0.40f), primaryAccent.copy(alpha = 0.35f))), CircleShape)
-                                ) {
-                                    Icon(
-                                        Icons.Rounded.ScreenRotation,
-                                        contentDescription = "Rotate Screen",
-                                        tint = Color.White,
-                                        modifier = Modifier.size(19.dp)
-                                    )
-                                }
                             }
                         }
 
@@ -4279,10 +4281,12 @@ fun VideoPlayerScreen(
                                 val pointerOffset = (totalWidth * playFraction - cardLeft).coerceIn(10.dp, 140.dp)
                                 Box(
                                     modifier = Modifier
-                                        .offset(
-                                            x = cardLeft,
-                                            y = (-145).dp
-                                        )
+                                        .layout { measurable, constraints ->
+                                            val placeable = measurable.measure(constraints)
+                                            layout(0, 0) {
+                                                placeable.placeRelative(cardLeft.roundToPx(), (-145).dp.roundToPx())
+                                            }
+                                        }
                                         .width(150.dp)
                                         .zIndex(20f)
                                 ) {
@@ -4435,6 +4439,36 @@ fun VideoPlayerScreen(
                                 Icon(
                                     Icons.Rounded.PictureInPicture,
                                     contentDescription = "PiP",
+                                    tint = primaryAccent,
+                                    modifier = Modifier.size(22.dp)
+                                )
+                            }
+
+                            // 7. Rotate Screen
+                            PlayerIconButton(
+                                name = "Rotate screen",
+                                description = "Toggle landscape and portrait video orientation",
+                                onClick = {
+                                    val nextOrientation = if (isLandscape) 0 else 1
+                                    userOrientationOverride = nextOrientation
+                                    sensorBucketAtOverride = lastSensorOrientation[0]
+                                    currentOrientationSetting[0] = nextOrientation
+                                    activity?.requestedOrientation = if (nextOrientation == 1) {
+                                        ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
+                                    } else {
+                                        ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
+                                    }
+                                },
+                                icon = Icons.Rounded.ScreenRotation,
+                                modifier = Modifier
+                                    .size(42.dp)
+                                    .clip(CircleShape)
+                                    .background(Brush.verticalGradient(listOf(Color(0xFF252636), Color(0xFF11121C))))
+                                    .border(1.2.dp, Brush.verticalGradient(listOf(primaryAccent.copy(0.6f), primaryAccent.copy(0.2f))), CircleShape)
+                            ) {
+                                Icon(
+                                    Icons.Rounded.ScreenRotation,
+                                    contentDescription = "Rotate Screen",
                                     tint = primaryAccent,
                                     modifier = Modifier.size(22.dp)
                                 )
@@ -5494,14 +5528,39 @@ private fun StreamPreRollBufferingOverlay(
     val dlBytes = state?.downloadedBytes ?: 0L
     val targetBufferBytes = com.example.ymediaplayer.mycinema.service.TorrentEngine.DEFAULT_STREAM_BUFFER_BYTES // ~8MB initial playback buffer
     val progressFraction = (dlBytes.toFloat() / targetBufferBytes.toFloat()).coerceIn(0f, 1f)
+    val animatedProgress by animateFloatAsState(
+        targetValue = progressFraction,
+        animationSpec = tween(durationMillis = 400, easing = FastOutSlowInEasing),
+        label = "streamBufferingProgress"
+    )
+
+    val infiniteTransition = rememberInfiniteTransition(label = "cinemaGlow")
+    val glowAlpha by infiniteTransition.animateFloat(
+        initialValue = 0.25f,
+        targetValue = 0.55f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(2200, easing = FastOutSlowInEasing),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "cinemaGlowAlpha"
+    )
+    val pulseScale by infiniteTransition.animateFloat(
+        initialValue = 0.985f,
+        targetValue = 1.015f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(2500, easing = FastOutSlowInEasing),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "cinemaPosterPulse"
+    )
 
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .background(Color(0xFF0C0D14))
+            .background(Color(0xFF080910))
             .clickable(interactionSource = remember { androidx.compose.foundation.interaction.MutableInteractionSource() }, indication = null) {}
     ) {
-        // Blurred backdrop poster if available
+        // High quality blurred backdrop
         if (posterUrl.isNotBlank()) {
             AsyncImage(
                 model = posterUrl,
@@ -5509,25 +5568,57 @@ private fun StreamPreRollBufferingOverlay(
                 contentScale = ContentScale.Crop,
                 modifier = Modifier
                     .fillMaxSize()
-                    .alpha(0.2f)
-                    .blur(32.dp)
+                    .alpha(0.35f)
+                    .blur(48.dp)
             )
         }
 
-        // Top bar with Back button
+        // Ambient radial glow behind center poster
+        Box(
+            modifier = Modifier
+                .align(Alignment.Center)
+                .size(340.dp)
+                .background(
+                    Brush.radialGradient(
+                        colors = listOf(
+                            Color(0xFF00E5FF).copy(alpha = glowAlpha * 0.35f),
+                            Color(0xFF2979FF).copy(alpha = glowAlpha * 0.15f),
+                            Color.Transparent
+                        )
+                    )
+                )
+        )
+
+        // Vignette gradients (top & bottom darkness)
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(
+                    Brush.verticalGradient(
+                        0.0f to Color.Black.copy(alpha = 0.75f),
+                        0.35f to Color.Transparent,
+                        0.7f to Color.Black.copy(alpha = 0.65f),
+                        1.0f to Color.Black.copy(alpha = 0.92f)
+                    )
+                )
+        )
+
+        // Top bar with Glass Back button & Pill badge
         Row(
             modifier = Modifier
                 .fillMaxWidth()
                 .statusBarsPadding()
-                .padding(horizontal = 16.dp, vertical = 12.dp),
-            verticalAlignment = Alignment.CenterVertically
+                .padding(horizontal = 20.dp, vertical = 14.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween
         ) {
             IconButton(
                 onClick = onCancel,
                 modifier = Modifier
-                    .size(40.dp)
+                    .size(42.dp)
                     .clip(CircleShape)
                     .background(Color.White.copy(alpha = 0.12f))
+                    .border(1.dp, Color.White.copy(alpha = 0.2f), CircleShape)
             ) {
                 Icon(
                     Icons.AutoMirrored.Rounded.ArrowBack,
@@ -5536,31 +5627,71 @@ private fun StreamPreRollBufferingOverlay(
                     modifier = Modifier.size(20.dp)
                 )
             }
-            Spacer(Modifier.width(12.dp))
-            Text(
-                text = "STREAMING CINEMA",
-                color = Color.White.copy(alpha = 0.85f),
-                fontSize = 14.sp,
-                fontWeight = FontWeight.Bold,
-                letterSpacing = 1.sp
-            )
+
+            // Streaming Cinema Badge
+            Row(
+                modifier = Modifier
+                    .clip(RoundedCornerShape(20.dp))
+                    .background(Color(0xFF141624).copy(alpha = 0.85f))
+                    .border(1.dp, Color(0xFF00E5FF).copy(alpha = 0.35f), RoundedCornerShape(20.dp))
+                    .padding(horizontal = 14.dp, vertical = 7.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Box(
+                    modifier = Modifier
+                        .size(8.dp)
+                        .clip(CircleShape)
+                        .background(Color(0xFF00E5FF))
+                )
+                Spacer(Modifier.width(8.dp))
+                Text(
+                    text = "STREAMING CINEMA",
+                    color = Color.White,
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.Bold,
+                    letterSpacing = 1.2.sp
+                )
+            }
+
+            // Balanced spacing spacer
+            Spacer(Modifier.size(42.dp))
         }
 
         // Center card with loading indicators
         Column(
             modifier = Modifier
                 .align(Alignment.Center)
-                .padding(horizontal = 28.dp),
+                .fillMaxWidth()
+                .padding(horizontal = 28.dp)
+                .verticalScroll(rememberScrollState()),
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.Center
         ) {
+            Spacer(Modifier.height(56.dp))
+
+            // Movie Poster - Much larger, cinematic aspect ratio, with soft pulse & ambient glow
             if (posterUrl.isNotBlank()) {
                 Box(
                     modifier = Modifier
-                        .size(width = 110.dp, height = 160.dp)
-                        .clip(RoundedCornerShape(14.dp))
-                        .border(1.dp, Color.White.copy(alpha = 0.2f), RoundedCornerShape(14.dp))
-                        .background(Color.White.copy(alpha = 0.08f))
+                        .size(width = 195.dp, height = 285.dp)
+                        .graphicsLayer {
+                            scaleX = pulseScale
+                            scaleY = pulseScale
+                        }
+                        .shadow(elevation = 24.dp, shape = RoundedCornerShape(22.dp), spotColor = Color(0xFF00E5FF).copy(alpha = 0.45f))
+                        .clip(RoundedCornerShape(22.dp))
+                        .background(Color(0xFF161826))
+                        .border(
+                            1.5.dp,
+                            Brush.verticalGradient(
+                                listOf(
+                                    Color.White.copy(alpha = 0.45f),
+                                    Color(0xFF00E5FF).copy(alpha = 0.35f),
+                                    Color.White.copy(alpha = 0.1f)
+                                )
+                            ),
+                            RoundedCornerShape(22.dp)
+                        )
                 ) {
                     AsyncImage(
                         model = posterUrl,
@@ -5569,110 +5700,192 @@ private fun StreamPreRollBufferingOverlay(
                         modifier = Modifier.fillMaxSize()
                     )
                 }
-                Spacer(Modifier.height(18.dp))
+                Spacer(Modifier.height(20.dp))
             }
 
+            // Movie Title
             Text(
                 text = title,
                 color = Color.White,
-                fontSize = 18.sp,
-                fontWeight = FontWeight.Bold,
+                fontSize = 21.sp,
+                fontWeight = FontWeight.ExtraBold,
                 textAlign = TextAlign.Center,
                 maxLines = 2,
                 overflow = TextOverflow.Ellipsis
             )
 
-            Spacer(Modifier.height(8.dp))
+            Spacer(Modifier.height(10.dp))
 
             // Status message
             val statusText = when {
                 state?.status == com.example.ymediaplayer.mycinema.service.TorrentDownloadState.Status.ERROR ->
                     "Connection error: " + (state.error ?: "Failed to connect")
-                state == null || state.seeds == 0 -> "Finding seeders & connecting..."
-                dlBytes < 1024 * 1024 -> "Connecting to peers..."
-                else -> "Buffering stream chunks..."
+                state == null || state.seeds == 0 -> "Finding seeders & swarm..."
+                dlBytes < 1024 * 1024 -> "Connecting to high-speed peers..."
+                else -> "Buffering cinema stream chunks..."
             }
 
-            Text(
-                text = statusText,
-                color = Color(0xFF29B6F6),
-                fontSize = 13.sp,
-                fontWeight = FontWeight.Medium
-            )
+            // Animated Status Pill
+            Row(
+                modifier = Modifier
+                    .clip(RoundedCornerShape(16.dp))
+                    .background(Color(0xFF141624).copy(alpha = 0.85f))
+                    .border(1.dp, Color(0xFF00E5FF).copy(alpha = 0.3f), RoundedCornerShape(16.dp))
+                    .padding(horizontal = 14.dp, vertical = 6.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                CircularProgressIndicator(
+                    strokeWidth = 2.dp,
+                    color = Color(0xFF00E5FF),
+                    modifier = Modifier.size(13.dp)
+                )
+                Spacer(Modifier.width(8.dp))
+                Text(
+                    text = statusText,
+                    color = Color(0xFF80D8FF),
+                    fontSize = 12.5.sp,
+                    fontWeight = FontWeight.SemiBold
+                )
+            }
 
-            Spacer(Modifier.height(18.dp))
+            Spacer(Modifier.height(20.dp))
 
             // Smooth linear progress bar
             Box(
                 modifier = Modifier
-                    .fillMaxWidth(0.78f)
-                    .height(6.dp)
-                    .clip(RoundedCornerShape(3.dp))
-                    .background(Color.White.copy(alpha = 0.12f))
+                    .fillMaxWidth(0.85f)
+                    .height(8.dp)
+                    .clip(RoundedCornerShape(4.dp))
+                    .background(Color.White.copy(alpha = 0.14f))
             ) {
                 Box(
                     modifier = Modifier
                         .fillMaxHeight()
-                        .fillMaxWidth(progressFraction)
+                        .fillMaxWidth(animatedProgress)
                         .background(
                             Brush.horizontalGradient(
-                                listOf(Color(0xFF00E5FF), Color(0xFF29B6F6))
+                                listOf(Color(0xFF00E5FF), Color(0xFF2979FF), Color(0xFF7C4DFF))
                             )
                         )
                 )
             }
 
-            Spacer(Modifier.height(10.dp))
+            Spacer(Modifier.height(8.dp))
 
-            // Downloaded vs Buffer size
+            // Buffer metric row: Cached vs Target + %
             val mbBuffered = String.format(java.util.Locale.US, "%.1f MB", dlBytes / (1024.0 * 1024.0))
-            Text(
-                text = "$mbBuffered / ~8 MB ready",
-                color = Color.White.copy(alpha = 0.6f),
-                fontSize = 12.sp
-            )
-
-            Spacer(Modifier.height(16.dp))
-
-            // Peer & Speed Stats Row
             Row(
-                modifier = Modifier
-                    .clip(RoundedCornerShape(20.dp))
-                    .background(Color.White.copy(alpha = 0.08f))
-                    .padding(horizontal = 14.dp, vertical = 6.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(14.dp)
+                modifier = Modifier.fillMaxWidth(0.85f),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
             ) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Icon(
-                        Icons.Rounded.Speed,
-                        contentDescription = null,
-                        tint = Color(0xFF00E676),
-                        modifier = Modifier.size(15.dp)
-                    )
-                    Spacer(Modifier.width(4.dp))
-                    Text(
-                        text = state?.speedFormatted ?: "0 KB/s",
-                        color = Color.White,
-                        fontSize = 12.5.sp,
-                        fontWeight = FontWeight.Bold
-                    )
+                Text(
+                    text = "$mbBuffered / ~8 MB ready",
+                    color = Color.White.copy(alpha = 0.7f),
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.Medium
+                )
+                Text(
+                    text = "${(animatedProgress * 100).toInt()}% READY",
+                    color = Color(0xFF00E5FF),
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.Bold
+                )
+            }
+
+            Spacer(Modifier.height(20.dp))
+
+            // Telemetry Dashboard: Speed & Seeders Cards
+            Row(
+                modifier = Modifier.fillMaxWidth(0.9f),
+                horizontalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                // Speed Card
+                Row(
+                    modifier = Modifier
+                        .weight(1f)
+                        .height(58.dp)
+                        .clip(RoundedCornerShape(16.dp))
+                        .background(Color(0xFF151726).copy(alpha = 0.8f))
+                        .border(1.dp, Color.White.copy(alpha = 0.12f), RoundedCornerShape(16.dp))
+                        .padding(horizontal = 12.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .size(32.dp)
+                            .clip(CircleShape)
+                            .background(Color(0xFF00E676).copy(alpha = 0.15f)),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            Icons.Rounded.Speed,
+                            contentDescription = null,
+                            tint = Color(0xFF00E676),
+                            modifier = Modifier.size(17.dp)
+                        )
+                    }
+                    Spacer(Modifier.width(10.dp))
+                    Column {
+                        Text(
+                            text = "SPEED",
+                            fontSize = 9.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = Color.White.copy(alpha = 0.5f),
+                            letterSpacing = 0.5.sp
+                        )
+                        Text(
+                            text = state?.speedFormatted ?: "0 KB/s",
+                            color = Color.White,
+                            fontSize = 13.5.sp,
+                            fontWeight = FontWeight.ExtraBold,
+                            maxLines = 1
+                        )
+                    }
                 }
 
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Icon(
-                        Icons.Rounded.CloudDownload,
-                        contentDescription = null,
-                        tint = Color(0xFF29B6F6),
-                        modifier = Modifier.size(15.dp)
-                    )
-                    Spacer(Modifier.width(4.dp))
-                    Text(
-                        text = "${state?.seeds ?: 0} seeds",
-                        color = Color.White,
-                        fontSize = 12.5.sp,
-                        fontWeight = FontWeight.Bold
-                    )
+                // Seeders Card
+                Row(
+                    modifier = Modifier
+                        .weight(1f)
+                        .height(58.dp)
+                        .clip(RoundedCornerShape(16.dp))
+                        .background(Color(0xFF151726).copy(alpha = 0.8f))
+                        .border(1.dp, Color.White.copy(alpha = 0.12f), RoundedCornerShape(16.dp))
+                        .padding(horizontal = 12.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .size(32.dp)
+                            .clip(CircleShape)
+                            .background(Color(0xFF00E5FF).copy(alpha = 0.15f)),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            Icons.Rounded.CloudDownload,
+                            contentDescription = null,
+                            tint = Color(0xFF00E5FF),
+                            modifier = Modifier.size(17.dp)
+                        )
+                    }
+                    Spacer(Modifier.width(10.dp))
+                    Column {
+                        Text(
+                            text = "SWARM",
+                            fontSize = 9.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = Color.White.copy(alpha = 0.5f),
+                            letterSpacing = 0.5.sp
+                        )
+                        Text(
+                            text = "${state?.seeds ?: 0} seeds",
+                            color = Color.White,
+                            fontSize = 13.5.sp,
+                            fontWeight = FontWeight.ExtraBold,
+                            maxLines = 1
+                        )
+                    }
                 }
             }
 
@@ -5682,20 +5895,24 @@ private fun StreamPreRollBufferingOverlay(
             OutlinedButton(
                 onClick = onCancel,
                 shape = RoundedCornerShape(24.dp),
-                border = BorderStroke(1.dp, Color.White.copy(alpha = 0.25f)),
+                border = BorderStroke(1.2.dp, Color.White.copy(alpha = 0.22f)),
                 colors = ButtonDefaults.outlinedButtonColors(
+                    containerColor = Color(0xFF1E202E).copy(alpha = 0.6f),
                     contentColor = Color.White.copy(alpha = 0.9f)
                 ),
-                contentPadding = PaddingValues(horizontal = 24.dp, vertical = 8.dp)
+                contentPadding = PaddingValues(horizontal = 28.dp, vertical = 10.dp)
             ) {
                 Icon(
                     Icons.Rounded.Close,
                     contentDescription = null,
+                    tint = Color.White.copy(alpha = 0.85f),
                     modifier = Modifier.size(16.dp)
                 )
-                Spacer(Modifier.width(6.dp))
-                Text("Cancel", fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+                Spacer(Modifier.width(8.dp))
+                Text("Cancel Streaming", fontSize = 13.5.sp, fontWeight = FontWeight.SemiBold)
             }
+
+            Spacer(Modifier.height(48.dp))
         }
     }
 }

@@ -666,27 +666,8 @@ fun FolderListScreen(
                                             )
                                         }
 
-                                        // 3. Sort (for Video) or Downloads (for MYCinema)
-                                        if (currentTab == "Video") {
-                                            Box(
-                                                modifier = Modifier
-                                                    .size(40.dp)
-                                                    .clip(CircleShape)
-                                                    .combinedClickable(
-                                                        onClick = {
-                                                            view.performHaptic(HapticType.LIGHT)
-                                                            showSortMenu = true
-                                                        },
-                                                        onLongClick = {
-                                                            haptic.performHapticFeedback(androidx.compose.ui.hapticfeedback.HapticFeedbackType.LongPress)
-                                                            Toast.makeText(context, "Sort Videos", Toast.LENGTH_SHORT).show()
-                                                        }
-                                                    ),
-                                                contentAlignment = Alignment.Center
-                                            ) {
-                                                Icon(Icons.AutoMirrored.Rounded.Sort, contentDescription = "Sort", tint = c.textPrimary, modifier = Modifier.size(22.dp))
-                                            }
-                                        } else if (currentTab == "MYCinema") {
+                                        // 3. Downloads badge (for MYCinema)
+                                        if (currentTab == "MYCinema") {
                                             val activeCount = cinemaDownloads.values.count {
                                                 it.status == TorrentDownloadState.Status.DOWNLOADING ||
                                                 it.status == TorrentDownloadState.Status.CONNECTING ||
@@ -939,7 +920,6 @@ fun FolderListScreen(
                                             appPreferences.saveCinemaPoster(hash, item.fullPosterUrl)
                                         }
                                         appPreferences.saveCinemaWatchHistory(item)
-                                        TorrentDownloadService.start(context, hash, item.displayName)
                                         val streamIntent = Intent(context, com.example.ymediaplayer.ui.VideoPlayerActivity::class.java).apply {
                                             flags = Intent.FLAG_ACTIVITY_REORDER_TO_FRONT or Intent.FLAG_ACTIVITY_SINGLE_TOP
                                             putExtra(com.example.ymediaplayer.ui.VideoPlayerActivity.EXTRA_VIDEO_URL, TorrentEngine.getFilePath(context, hash) ?: "")
