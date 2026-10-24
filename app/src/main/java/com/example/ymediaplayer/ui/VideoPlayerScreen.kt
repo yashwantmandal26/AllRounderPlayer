@@ -675,36 +675,45 @@ fun VideoPlayerScreen(
     LaunchedEffect(videoUrl) {
         currentUrl = videoUrl
         withContext(Dispatchers.IO) {
+            val normTarget = videoUrl.removePrefix("file://")
             val targetUri = try { android.net.Uri.parse(videoUrl) } catch (_: Exception) { null }
             val customQueue = VideoPlaybackManager.activePlaylistQueue
-            if (!customQueue.isNullOrEmpty() && customQueue.any { it.uri.toString() == videoUrl || (targetUri != null && it.uri == targetUri) }) {
+            if (!customQueue.isNullOrEmpty() && customQueue.any { 
+                it.uri.toString().removePrefix("file://") == normTarget || (targetUri != null && it.uri == targetUri) 
+            }) {
                 playlistVideos = customQueue
             } else {
                 val folders = repository.getFoldersWithVideos()
                 allFolders = folders
                 val parentFolder = folders.find { folder ->
                     folder.id != "all_videos" && folder.videos.any { v ->
-                        v.uri.toString() == videoUrl || (targetUri != null && v.uri == targetUri)
+                        v.uri.toString().removePrefix("file://") == normTarget || (targetUri != null && v.uri == targetUri)
                     }
                 } ?: folders.find { folder ->
                     folder.videos.any { v ->
-                        v.uri.toString() == videoUrl || (targetUri != null && v.uri == targetUri)
+                        v.uri.toString().removePrefix("file://") == normTarget || (targetUri != null && v.uri == targetUri)
                     }
-                } ?: folders.firstOrNull()
+                }
 
                 if (parentFolder != null) {
                     playlistVideos = parentFolder.videos
+                } else if (!customQueue.isNullOrEmpty()) {
+                    playlistVideos = customQueue
                 } else {
                     playlistVideos = folders.flatMap { it.videos }.distinctBy { it.id }
                 }
             }
 
             val index = playlistVideos.indexOfFirst {
-                it.uri.toString() == videoUrl || (targetUri != null && it.uri == targetUri)
+                it.uri.toString().removePrefix("file://") == normTarget || (targetUri != null && it.uri == targetUri)
             }
             currentVideoIndex = if (index >= 0) index else 0
             if (index >= 0) {
-                videoTitle = playlistVideos[index].title.substringBeforeLast(".")
+                videoTitle = if (streamTitle.isNotBlank()) streamTitle else playlistVideos[index].title.substringBeforeLast(".")
+            } else if (streamTitle.isNotBlank()) {
+                videoTitle = streamTitle
+            } else {
+                videoTitle = java.io.File(normTarget).nameWithoutExtension
             }
         }
     }
@@ -828,6 +837,9 @@ fun VideoPlayerScreen(
     LaunchedEffect(currentUrl, videoTitle) {
         VideoPlaybackManager.currentVideoUrl.value = currentUrl
         VideoPlaybackManager.currentVideoTitle.value = videoTitle
+        val poster = streamPosterUrl.ifBlank { appPreferences.getCinemaPoster(videoTitle) ?: "" }
+        VideoPlaybackManager.currentPosterUrl.value = poster
+        com.example.ymediaplayer.service.VideoPlaybackService.notifyPlayerUpdated()
     }
 
     // ─── Player State ─────────────────────────────────────────────────────────

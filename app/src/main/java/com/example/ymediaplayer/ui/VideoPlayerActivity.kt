@@ -137,18 +137,27 @@ class VideoPlayerActivity : ComponentActivity() {
     override fun onUserLeaveHint() {
         super.onUserLeaveHint()
         onUserLeaveHintListener?.invoke()
+        if (com.example.ymediaplayer.player.VideoPlaybackManager.player?.isPlaying == true) {
+            com.example.ymediaplayer.service.VideoPlaybackService.startService(this)
+            com.example.ymediaplayer.service.VideoPlaybackService.notifyPlayerUpdated()
+        }
     }
 
     override fun onPause() {
         super.onPause()
+        val player = com.example.ymediaplayer.player.VideoPlaybackManager.player
         if (isFinishing && !com.example.ymediaplayer.player.VideoPlaybackManager.isMiniPlayerActive.value) {
-            com.example.ymediaplayer.player.VideoPlaybackManager.player?.let { p ->
+            com.example.ymediaplayer.service.VideoPlaybackService.stopService(this)
+            player?.let { p ->
                 try {
                     p.volume = 0f
                     p.pause()
                     p.stop()
                 } catch (_: Exception) {}
             }
+        } else if (player?.isPlaying == true) {
+            com.example.ymediaplayer.service.VideoPlaybackService.startService(this)
+            com.example.ymediaplayer.service.VideoPlaybackService.notifyPlayerUpdated()
         }
     }
 
@@ -166,11 +175,20 @@ class VideoPlayerActivity : ComponentActivity() {
     override fun onStop() {
         super.onStop()
         val prefs = com.example.ymediaplayer.data.AppPreferences(this)
-        if (!isInPictureInPictureMode && !prefs.isBackgroundPlayEnabled() &&
-            !com.example.ymediaplayer.player.VideoPlaybackManager.isMiniPlayerActive.value) {
-            com.example.ymediaplayer.player.VideoPlaybackManager.player?.pause()
+        val isPip = isInPictureInPictureMode
+        val isBg = prefs.isBackgroundPlayEnabled() || com.example.ymediaplayer.player.VideoPlaybackManager.isMiniPlayerActive.value
+        val player = com.example.ymediaplayer.player.VideoPlaybackManager.player
+
+        if (!isPip && !isBg) {
+            player?.pause()
+            com.example.ymediaplayer.service.VideoPlaybackService.stopService(this)
+        } else if (player != null && player.isPlaying) {
+            com.example.ymediaplayer.service.VideoPlaybackService.startService(this)
+            com.example.ymediaplayer.service.VideoPlaybackService.notifyPlayerUpdated()
         }
+
         if (isFinishing && !com.example.ymediaplayer.player.VideoPlaybackManager.isMiniPlayerActive.value) {
+            com.example.ymediaplayer.service.VideoPlaybackService.stopService(this)
             com.example.ymediaplayer.player.VideoPlaybackManager.releasePlayer()
         }
     }
@@ -182,6 +200,7 @@ class VideoPlayerActivity : ComponentActivity() {
             com.example.ymediaplayer.mycinema.service.TorrentEngine.cleanupStream(this, streamTorrentHash!!)
         }
         if (!isChangingConfigurations && !com.example.ymediaplayer.player.VideoPlaybackManager.isMiniPlayerActive.value) {
+            com.example.ymediaplayer.service.VideoPlaybackService.stopService(this)
             com.example.ymediaplayer.player.VideoPlaybackManager.releasePlayer()
         }
     }

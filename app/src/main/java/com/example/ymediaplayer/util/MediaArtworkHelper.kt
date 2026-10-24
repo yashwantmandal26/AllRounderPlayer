@@ -108,6 +108,42 @@ object MediaArtworkHelper {
         return null
     }
 
+    /**
+     * Resolves a Bitmap for video / movie playback (e.g. for notification largeIcon).
+     * Supports online movie posters, local poster files, and video keyframes.
+     */
+    fun getVideoThumbnailBitmap(context: Context, videoUri: Uri?, posterUrl: String? = null): Bitmap? {
+        if (!posterUrl.isNullOrBlank()) {
+            try {
+                if (posterUrl.startsWith("http://") || posterUrl.startsWith("https://")) {
+                    val url = java.net.URL(posterUrl)
+                    val conn = url.openConnection()
+                    conn.connectTimeout = 3000
+                    conn.readTimeout = 3000
+                    conn.getInputStream().use { stream ->
+                        val bmp = BitmapFactory.decodeStream(stream)
+                        if (bmp != null) return bmp
+                    }
+                } else if (posterUrl.startsWith("/")) {
+                    val bmp = BitmapFactory.decodeFile(posterUrl)
+                    if (bmp != null) return bmp
+                } else {
+                    context.contentResolver.openInputStream(Uri.parse(posterUrl))?.use { stream ->
+                        val bmp = BitmapFactory.decodeStream(stream)
+                        if (bmp != null) return bmp
+                    }
+                }
+            } catch (_: Throwable) {}
+        }
+
+        if (videoUri != null) {
+            try {
+                return VideoThumbnailFrame.extract(context, videoUri)
+            } catch (_: Throwable) {}
+        }
+        return null
+    }
+
     fun compressToJpegBytes(bitmap: Bitmap): ByteArray {
         val scaled = if (bitmap.width > MAX_ARTWORK_DIMENSION || bitmap.height > MAX_ARTWORK_DIMENSION) {
             val ratio = MAX_ARTWORK_DIMENSION.toFloat() / maxOf(bitmap.width, bitmap.height)

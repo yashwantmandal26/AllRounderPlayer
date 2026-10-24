@@ -65,6 +65,7 @@ object VideoPlaybackManager {
     val isMiniPlayerActive: MutableState<Boolean> = mutableStateOf(false)
     val currentVideoUrl: MutableState<String?> = mutableStateOf(null)
     val currentVideoTitle: MutableState<String?> = mutableStateOf(null)
+    val currentPosterUrl: MutableState<String?> = mutableStateOf(null)
     val isPlaying: MutableState<Boolean> = mutableStateOf(false)
     val currentPosition: MutableState<Long> = mutableLongStateOf(0L)
     val duration: MutableState<Long> = mutableLongStateOf(0L)
@@ -538,6 +539,7 @@ object VideoPlaybackManager {
         val listener = object : Player.Listener {
             override fun onIsPlayingChanged(playing: Boolean) {
                 isPlaying.value = playing
+                com.example.ymediaplayer.service.VideoPlaybackService.serviceInstance?.updateForegroundNotification()
             }
 
             override fun onPlaybackStateChanged(playbackState: Int) {
@@ -556,10 +558,12 @@ object VideoPlaybackManager {
                 } else if (playbackState == Player.STATE_ENDED) {
                     isPlaying.value = false
                 }
+                com.example.ymediaplayer.service.VideoPlaybackService.serviceInstance?.updateForegroundNotification()
             }
 
             override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
                 resetRecoveryForNewItem(applicationContext, mediaItem)
+                com.example.ymediaplayer.service.VideoPlaybackService.serviceInstance?.updateForegroundNotification()
             }
 
             override fun onPlayerError(error: PlaybackException) {

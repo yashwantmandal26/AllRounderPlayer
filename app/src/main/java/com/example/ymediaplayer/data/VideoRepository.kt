@@ -38,7 +38,33 @@ class VideoRepository(private val context: Context) {
 
         val videoDimensionsCache = java.util.concurrent.ConcurrentHashMap<String, Pair<Int, Int>>()
 
-        fun getVideoDimensions(uriString: String): Pair<Int, Int>? = videoDimensionsCache[uriString]
+        fun getVideoDimensions(uriString: String): Pair<Int, Int>? {
+            videoDimensionsCache[uriString]?.let { return it }
+            try {
+                val mmr = android.media.MediaMetadataRetriever()
+                try {
+                    val path = if (uriString.startsWith("file://")) uriString.removePrefix("file://") else uriString
+                    if (path.startsWith("/")) {
+                        mmr.setDataSource(path)
+                    } else {
+                        mmr.setDataSource(com.example.ymediaplayer.YMediaApplication.instance, android.net.Uri.parse(uriString))
+                    }
+                    val w = mmr.extractMetadata(android.media.MediaMetadataRetriever.METADATA_KEY_VIDEO_WIDTH)?.toIntOrNull() ?: 0
+                    val h = mmr.extractMetadata(android.media.MediaMetadataRetriever.METADATA_KEY_VIDEO_HEIGHT)?.toIntOrNull() ?: 0
+                    val rot = mmr.extractMetadata(android.media.MediaMetadataRetriever.METADATA_KEY_VIDEO_ROTATION)?.toIntOrNull() ?: 0
+                    val effW = if (rot == 90 || rot == 270) h else w
+                    val effH = if (rot == 90 || rot == 270) w else h
+                    if (effW > 0 && effH > 0) {
+                        val pair = Pair(effW, effH)
+                        videoDimensionsCache[uriString] = pair
+                        return pair
+                    }
+                } finally {
+                    try { mmr.release() } catch (_: Exception) {}
+                }
+            } catch (_: Exception) {}
+            return null
+        }
 
         fun cacheVideoDimensions(uriString: String, width: Int, height: Int) {
             if (width > 0 && height > 0) {

@@ -850,15 +850,34 @@ class MusicService : MediaSessionService() {
             this, 1, prevIntent, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
 
+        val rewindIntent = Intent(this, MusicService::class.java).apply { action = CUSTOM_ACTION_REWIND }
+        val rewindPendingIntent = PendingIntent.getService(
+            this, 4, rewindIntent, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+
         val playPauseIntent = Intent(this, MusicService::class.java).apply { action = ACTION_PLAY_PAUSE }
         val playPausePendingIntent = PendingIntent.getService(
             this, 2, playPauseIntent, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+
+        val forwardIntent = Intent(this, MusicService::class.java).apply { action = CUSTOM_ACTION_FORWARD }
+        val forwardPendingIntent = PendingIntent.getService(
+            this, 5, forwardIntent, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
 
         val nextIntent = Intent(this, MusicService::class.java).apply { action = ACTION_NEXT }
         val nextPendingIntent = PendingIntent.getService(
             this, 3, nextIntent, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
+
+        val mediaStyle = androidx.media.app.NotificationCompat.MediaStyle()
+            .setShowActionsInCompactView(0, 2, 4)
+
+        try {
+            mediaSession?.platformToken?.let { token ->
+                mediaStyle.setMediaSession(android.support.v4.media.session.MediaSessionCompat.Token.fromToken(token))
+            }
+        } catch (_: Exception) {}
 
         val builder = androidx.core.app.NotificationCompat.Builder(this, MUSIC_NOTIFICATION_CHANNEL_ID)
             .setSmallIcon(R.mipmap.ic_launcher)
@@ -870,16 +889,15 @@ class MusicService : MediaSessionService() {
             .setOngoing(isPlaying)
             .setShowWhen(false)
             .addAction(android.R.drawable.ic_media_previous, "Previous", prevPendingIntent)
+            .addAction(R.drawable.ic_notif_rewind_10, "Rewind 10s", rewindPendingIntent)
             .addAction(
                 if (isPlaying) android.R.drawable.ic_media_pause else android.R.drawable.ic_media_play,
                 if (isPlaying) "Pause" else "Play",
                 playPausePendingIntent
             )
+            .addAction(R.drawable.ic_notif_forward_10, "Forward 10s", forwardPendingIntent)
             .addAction(android.R.drawable.ic_media_next, "Next", nextPendingIntent)
-            .setStyle(
-                androidx.media.app.NotificationCompat.MediaStyle()
-                    .setShowActionsInCompactView(0, 1, 2)
-            )
+            .setStyle(mediaStyle)
 
         try {
             val artUri = nowPlayingArtUri.value ?: currentMusicItem.value?.albumArtUri
@@ -954,6 +972,16 @@ class MusicService : MediaSessionService() {
             ACTION_PLAY_PAUSE -> togglePlayPause()
             ACTION_PREV -> playPrevious()
             ACTION_NEXT -> playNext()
+            CUSTOM_ACTION_REWIND -> {
+                playerInstance?.let { p ->
+                    p.seekTo((p.currentPosition - 10_000L).coerceAtLeast(0L))
+                }
+            }
+            CUSTOM_ACTION_FORWARD -> {
+                playerInstance?.let { p ->
+                    p.seekTo((p.currentPosition + 10_000L).coerceAtMost(p.duration.coerceAtLeast(0L)))
+                }
+            }
         }
         updateForegroundNotification()
         return START_STICKY

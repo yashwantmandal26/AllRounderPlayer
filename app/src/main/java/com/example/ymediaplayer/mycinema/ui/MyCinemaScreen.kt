@@ -78,7 +78,7 @@ fun MyCinemaScreen(
     repository: MyCinemaRepository = remember { MyCinemaRepository() },
     refreshTrigger: Int = 0,
     onDetailStateChanged: (Boolean) -> Unit = {},
-    onPlayOfflineMovie: (String) -> Unit = {},
+    onPlayOfflineMovie: (OfflineCinemaMovie, List<OfflineCinemaMovie>) -> Unit = { _, _ -> },
     onStreamSource: (TmdbItem, TorrentSource) -> Unit,
     onDownloadSource: (TmdbItem, TorrentSource) -> Unit,
     libraryOpenType: String? = null,
@@ -407,7 +407,7 @@ fun MyCinemaScreen(
                                 items(offlineMovies, key = { it.file.absolutePath }) { movie ->
                                     OfflineMovieCinemaCard(
                                         movie = movie,
-                                        onClick = { onPlayOfflineMovie(movie.file.absolutePath) },
+                                        onClick = { onPlayOfflineMovie(movie, offlineMovies) },
                                         onLongClick = { selectedOfflineMovieForOptions = movie },
                                         modifier = Modifier.width(movieCardWidth)
                                     )
@@ -639,7 +639,7 @@ fun MyCinemaScreen(
                 onDismiss = { selectedOfflineMovieForOptions = null },
                 onPlay = {
                     selectedOfflineMovieForOptions = null
-                    onPlayOfflineMovie(movie.file.absolutePath)
+                    onPlayOfflineMovie(movie, offlineMovies)
                 },
                 onShare = {
                     selectedOfflineMovieForOptions = null

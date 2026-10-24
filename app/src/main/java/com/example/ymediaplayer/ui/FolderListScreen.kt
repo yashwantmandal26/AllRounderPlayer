@@ -864,7 +864,35 @@ fun FolderListScreen(
                                 repository = cinemaRepository,
                                 refreshTrigger = cinemaRefreshTrigger,
                                 onDetailStateChanged = { isCinemaDetailOpen = it },
-                                onPlayOfflineMovie = { path -> onVideoClick(path) },
+                                onPlayOfflineMovie = { movie, allOffline ->
+                                    val playlist = allOffline.map { m ->
+                                        VideoItem(
+                                            id = m.file.absolutePath.hashCode().toLong(),
+                                            uri = android.net.Uri.fromFile(m.file),
+                                            title = m.title,
+                                            duration = m.durationMs,
+                                            size = m.file.length(),
+                                            bucketId = "mycinema",
+                                            bucketName = "MYCinema",
+                                            relativePath = "Movies/MYCinema/",
+                                            dateAdded = m.file.lastModified() / 1000L
+                                        )
+                                    }
+                                    com.example.ymediaplayer.player.VideoPlaybackManager.activePlaylistQueue = playlist
+                                    val dims = com.example.ymediaplayer.data.VideoRepository.getVideoDimensions(movie.file.absolutePath)
+                                    if (dims != null) {
+                                        com.example.ymediaplayer.player.VideoPlaybackManager.setInitialDimensions(dims.first, dims.second)
+                                    }
+                                    val movieIntent = Intent(context, com.example.ymediaplayer.ui.VideoPlayerActivity::class.java).apply {
+                                        flags = Intent.FLAG_ACTIVITY_REORDER_TO_FRONT or Intent.FLAG_ACTIVITY_SINGLE_TOP
+                                        putExtra(com.example.ymediaplayer.ui.VideoPlayerActivity.EXTRA_VIDEO_URL, movie.file.absolutePath)
+                                        putExtra(com.example.ymediaplayer.ui.VideoPlayerActivity.EXTRA_VIDEO_TITLE, movie.title)
+                                        if (!movie.posterUrl.isNullOrBlank()) {
+                                            putExtra(com.example.ymediaplayer.ui.VideoPlayerActivity.EXTRA_POSTER_URL, movie.posterUrl)
+                                        }
+                                    }
+                                    context.startActivity(movieIntent)
+                                },
                                 onStreamSource = { item, source ->
                                     val hash = TorrentEngine.startStream(context, source, item.displayName)
                                     if (hash != null) {
