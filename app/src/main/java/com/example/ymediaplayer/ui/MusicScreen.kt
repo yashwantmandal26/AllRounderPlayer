@@ -97,6 +97,7 @@ import com.example.ymediaplayer.player.SongLyrics
 import com.example.ymediaplayer.player.LyricLine
 import com.example.ymediaplayer.theme.LocalAppColors
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import java.util.Locale
 import kotlin.math.abs
@@ -224,7 +225,8 @@ fun MusicScreen(
     onFullScreenChanged: (Boolean) -> Unit = {},
     hasMediaPermission: Boolean = true,
     onRequestPermission: () -> Unit = {},
-    showFloatingMiniPlayer: Boolean = false
+    showFloatingMiniPlayer: Boolean = false,
+    isTabSelected: Boolean = true
 ) {
     val context = LocalContext.current
     val view = androidx.compose.ui.platform.LocalView.current
@@ -581,16 +583,29 @@ fun MusicScreen(
         }
     }
 
-    // ─── Online Streaming Data Groupings ──────────────────────────────────────────
-    val artistsMap = remember(allSongs) {
+    // ─── Smart Category Partitioning: Pure Music vs Call Recordings vs Ringtones ──
+    val pureSongs = remember(allSongs) {
+        allSongs.filter { it.audioCategory == com.example.ymediaplayer.data.AudioCategory.SONG }
+    }
+    val recordingSongs = remember(allSongs) {
+        allSongs.filter { it.audioCategory == com.example.ymediaplayer.data.AudioCategory.RECORDING }
+    }
+    val ringtoneSongs = remember(allSongs) {
+        allSongs.filter { it.audioCategory == com.example.ymediaplayer.data.AudioCategory.RINGTONE }
+    }
 
-        allSongs.groupBy { it.artist.ifBlank { "Unknown Artist" } }
+    // ─── Online Streaming Data Groupings ──────────────────────────────────────────
+    val artistsMap = remember(pureSongs, allSongs) {
+        val pool = if (pureSongs.isNotEmpty()) pureSongs else allSongs
+        pool.groupBy { it.artist.ifBlank { "Unknown Artist" } }
     }
-    val albumsMap = remember(allSongs) {
-        allSongs.groupBy { it.albumId }
+    val albumsMap = remember(pureSongs, allSongs) {
+        val pool = if (pureSongs.isNotEmpty()) pureSongs else allSongs
+        pool.groupBy { it.albumId }
     }
-    val quickPicks = remember(allSongs) {
-        if (allSongs.size > 9) allSongs.shuffled().take(9) else allSongs
+    val quickPicks = remember(pureSongs, allSongs) {
+        val pool = if (pureSongs.isNotEmpty()) pureSongs else allSongs
+        if (pool.size > 9) pool.shuffled().take(9) else pool
     }
     val topArtists = remember(artistsMap) {
         artistsMap.toList().sortedByDescending { it.second.size }
@@ -598,8 +613,9 @@ fun MusicScreen(
     val featuredAlbums = remember(albumsMap) {
         albumsMap.toList()
     }
-    val recentlyAddedSongs = remember(allSongs) {
-        allSongs.sortedByDescending { it.id }.take(10)
+    val recentlyAddedSongs = remember(pureSongs, allSongs) {
+        val pool = if (pureSongs.isNotEmpty()) pureSongs else allSongs
+        pool.sortedByDescending { it.id }.take(10)
     }
 
     val totalMusicSize = remember(allSongs) { allSongs.sumOf { it.size } }
@@ -610,9 +626,25 @@ fun MusicScreen(
         MusicService.totalTracksSize.longValue = totalMusicSize
     }
 
-    var randomFeaturedSong by remember(allSongs) {
-        mutableStateOf(allSongs.shuffled().firstOrNull())
+    var randomFeaturedSong by remember { mutableStateOf<MusicItem?>(null) }
+    var wasTabSelected by remember { mutableStateOf(false) }
+
+    // Always refresh Featured Pick when switching from Video or MYCinema to Music tab
+    LaunchedEffect(isTabSelected, pureSongs, allSongs) {
+        val pool = if (pureSongs.isNotEmpty()) pureSongs else allSongs
+        if (isTabSelected && !wasTabSelected) {
+            if (pool.isNotEmpty()) {
+                val candidateList = if (randomFeaturedSong != null && pool.size > 1) {
+                    pool.filter { it.id != randomFeaturedSong?.id }
+                } else pool
+                randomFeaturedSong = candidateList.randomOrNull() ?: pool.firstOrNull()
+            }
+        } else if (randomFeaturedSong == null && pool.isNotEmpty()) {
+            randomFeaturedSong = pool.randomOrNull() ?: pool.firstOrNull()
+        }
+        wasTabSelected = isTabSelected
     }
+
     val recentlyPlayedUris = remember(allSongs, appPreferences.lastProgressUpdate.longValue) {
         appPreferences.getRecentlyPlayedMusicUris()
     }
@@ -625,10 +657,13 @@ fun MusicScreen(
     }
 
     // Filter and sort songs for Tracks & Favorites views
-    val filteredSongs = remember(allSongs, searchQuery, selectedCategory, sortOrder, favorites, recentlyPlayedSongs) {
+    val filteredSongs = remember(allSongs, pureSongs, recordingSongs, ringtoneSongs, searchQuery, selectedCategory, sortOrder, favorites, recentlyPlayedSongs) {
         var list = when (selectedCategory) {
             "Favorites" -> allSongs.filter { favorites.contains(it.uri.toString()) }
             "Recent" -> recentlyPlayedSongs
+            "Tracks" -> pureSongs
+            "Recordings" -> recordingSongs
+            "Ringtones" -> ringtoneSongs
             else -> allSongs
         }
         if (searchQuery.isNotBlank()) {
@@ -818,6 +853,8 @@ fun MusicScreen(
                         "Explore" to Icons.Rounded.AutoAwesome,
                         "Recent" to Icons.Rounded.History,
                         "Tracks" to Icons.Rounded.MusicNote,
+                        "Recordings" to Icons.Rounded.Mic,
+                        "Ringtones" to Icons.Rounded.NotificationsActive,
                         "Artists" to Icons.Rounded.Person,
                         "Albums" to Icons.Rounded.Album,
                         "Playlists" to Icons.AutoMirrored.Rounded.PlaylistPlay,
@@ -832,7 +869,9 @@ fun MusicScreen(
                             val chipShape = RoundedCornerShape(16.dp)
                             val countLabel = when (cat) {
                                 "Recent" -> " (${recentlyPlayedSongs.size})"
-                                "Tracks" -> " (${allSongs.size})"
+                                "Tracks" -> " (${pureSongs.size})"
+                                "Recordings" -> " (${recordingSongs.size})"
+                                "Ringtones" -> " (${ringtoneSongs.size})"
                                 "Artists" -> " (${artistsMap.size})"
                                 "Albums" -> " (${albumsMap.size})"
                                 "Playlists" -> " (${playlists.size})"
@@ -1711,8 +1750,8 @@ fun MusicScreen(
                     }
                 }
 
-                // ─── 2. TRACKS (FULL LIBRARY VIEW) ───────────────────────────
-                "Tracks" -> {
+                // ─── 2. TRACKS / RECORDINGS / RINGTONES (FILTERED VIEW) ──────
+                "Tracks", "Recordings", "Ringtones" -> {
                     LazyColumn(
                         modifier = Modifier.fillMaxSize(),
                         contentPadding = PaddingValues(bottom = if (currentlyPlaying != null) 210.dp else 120.dp)
@@ -4775,7 +4814,12 @@ fun FullScreenMusicPlayer(
             Spacer(Modifier.height(20.dp))
 
             // ─── Seekbar ────────────────────────────────────────────────────
-            MusicSeekBar(currentPosition = currentPosition, duration = duration, onSeek = onSeek)
+            MusicSeekBar(
+                currentPosition = currentPosition,
+                duration = duration,
+                isPlaying = isPlaying,
+                onSeek = onSeek
+            )
 
             Spacer(Modifier.height(14.dp))
 
@@ -6487,16 +6531,36 @@ fun BeatVisualizer(
 private fun MusicSeekBar(
     currentPosition: Long,
     duration: Long,
+    isPlaying: Boolean,
     onSeek: (Long) -> Unit,
     modifier: Modifier = Modifier
 ) {
-    var sliderPosition by remember { mutableFloatStateOf(currentPosition.toFloat()) }
     var isDragging by remember { mutableStateOf(false) }
-    val view = androidx.compose.ui.platform.LocalView.current
+    var scrubPosition by remember { mutableFloatStateOf(currentPosition.toFloat()) }
+    var smoothPosition by remember { mutableFloatStateOf(currentPosition.toFloat()) }
 
-    LaunchedEffect(currentPosition) {
+    var lastSyncPos by remember { mutableFloatStateOf(currentPosition.toFloat()) }
+    var lastSyncTime by remember { mutableLongStateOf(android.os.SystemClock.elapsedRealtime()) }
+
+    LaunchedEffect(currentPosition, isPlaying) {
+        lastSyncPos = currentPosition.toFloat()
+        lastSyncTime = android.os.SystemClock.elapsedRealtime()
         if (!isDragging) {
-            sliderPosition = currentPosition.toFloat()
+            smoothPosition = currentPosition.toFloat()
+        }
+    }
+
+    // 60fps / 120fps buttery smooth frame clock for continuous fluid progress
+    LaunchedEffect(isPlaying, duration) {
+        if (!isPlaying || duration <= 0) return@LaunchedEffect
+        while (isActive) {
+            withFrameMillis { _ ->
+                if (!isDragging) {
+                    val elapsed = (android.os.SystemClock.elapsedRealtime() - lastSyncTime).coerceAtLeast(0L)
+                    val interpolated = (lastSyncPos + elapsed).coerceIn(0f, duration.toFloat().coerceAtLeast(1f))
+                    smoothPosition = interpolated
+                }
+            }
         }
     }
 
@@ -6513,17 +6577,23 @@ private fun MusicSeekBar(
         label = "trackHeight"
     )
 
+    val currentDisplayValue = if (isDragging) scrubPosition else smoothPosition.coerceIn(0f, duration.toFloat().coerceAtLeast(1f))
+
+    val view = androidx.compose.ui.platform.LocalView.current
+
     Column(modifier = modifier) {
         Slider(
-            value = if (isDragging) sliderPosition else currentPosition.toFloat().coerceIn(0f, duration.toFloat().coerceAtLeast(1f)),
+            value = currentDisplayValue,
             onValueChange = {
                 isDragging = true
-                sliderPosition = it
-                onSeek(it.toLong())
+                scrubPosition = it
             },
             onValueChangeFinished = {
                 isDragging = false
-                onSeek(sliderPosition.toLong())
+                smoothPosition = scrubPosition
+                lastSyncPos = scrubPosition
+                lastSyncTime = android.os.SystemClock.elapsedRealtime()
+                onSeek(scrubPosition.toLong())
                 view.performHaptic(HapticType.LIGHT)
             },
             valueRange = 0f..duration.toFloat().coerceAtLeast(1f),
@@ -6565,8 +6635,19 @@ private fun MusicSeekBar(
             modifier = Modifier.fillMaxWidth().padding(horizontal = 4.dp),
             horizontalArrangement = Arrangement.SpaceBetween
         ) {
-            Text(formatTime(sliderPosition.toLong()), color = Color.White.copy(0.85f), fontSize = 12.sp, fontFamily = FontFamily.Monospace, fontWeight = FontWeight.SemiBold)
-            Text(formatTime(duration), color = Color.White.copy(0.7f), fontSize = 12.sp, fontFamily = FontFamily.Monospace)
+            Text(
+                formatTime(currentDisplayValue.toLong()),
+                color = Color.White.copy(0.85f),
+                fontSize = 12.sp,
+                fontFamily = FontFamily.Monospace,
+                fontWeight = FontWeight.SemiBold
+            )
+            Text(
+                formatTime(duration),
+                color = Color.White.copy(0.7f),
+                fontSize = 12.sp,
+                fontFamily = FontFamily.Monospace
+            )
         }
     }
 }

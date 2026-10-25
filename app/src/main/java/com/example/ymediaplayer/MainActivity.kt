@@ -517,7 +517,7 @@ fun PermissionFallbackScreen(
                 Spacer(Modifier.height(10.dp))
 
                 Text(
-                    text = "YMedia Player needs access to your media files to display and play videos and audio stored on your device.",
+                    text = "AllRounder Media Player needs access to your media files to display and play videos and audio stored on your device.",
                     fontSize = 14.sp,
                     color = appColors.textSecondary,
                     textAlign = TextAlign.Center,

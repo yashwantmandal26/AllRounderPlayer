@@ -22,6 +22,10 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.gestures.detectTransformGestures
 import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.gestures.calculatePan
+import androidx.compose.foundation.gestures.calculateZoom
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.geometry.Offset
@@ -1627,20 +1631,17 @@ private fun FullscreenImageGallery(
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         IconButton(
                             onClick = onDismiss,
-                            modifier = Modifier
-                                .size(38.dp)
-                                .clip(CircleShape)
-                                .background(Color.White.copy(alpha = 0.15f))
+                            modifier = Modifier.size(36.dp)
                         ) {
                             Icon(
                                 Icons.Rounded.Close,
                                 contentDescription = "Close",
                                 tint = Color.White,
-                                modifier = Modifier.size(20.dp)
+                                modifier = Modifier.size(22.dp)
                             )
                         }
 
-                        Spacer(Modifier.width(12.dp))
+                        Spacer(Modifier.width(8.dp))
 
                         Text(
                             text = "${pagerState.currentPage + 1} / ${images.size}",
@@ -1650,10 +1651,10 @@ private fun FullscreenImageGallery(
                         )
                     }
 
-                    // Action buttons: Copy, Save, Share
+                    // Action buttons: Copy, Save, Share - sleek & non-overlapping
                     Row(
                         verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        horizontalArrangement = Arrangement.spacedBy(4.dp)
                     ) {
                         // 1. Copy link button
                         IconButton(
@@ -1665,16 +1666,13 @@ private fun FullscreenImageGallery(
                                     Toast.makeText(context, "Image link copied to clipboard", Toast.LENGTH_SHORT).show()
                                 }
                             },
-                            modifier = Modifier
-                                .size(38.dp)
-                                .clip(CircleShape)
-                                .background(Color.White.copy(alpha = 0.15f))
+                            modifier = Modifier.size(36.dp)
                         ) {
                             Icon(
                                 Icons.Rounded.ContentCopy,
                                 contentDescription = "Copy link",
                                 tint = Color.White,
-                                modifier = Modifier.size(18.dp)
+                                modifier = Modifier.size(20.dp)
                             )
                         }
 
@@ -1685,16 +1683,13 @@ private fun FullscreenImageGallery(
                                     saveImageToGallery(context, coroutineScope, currentImage.fullImageUrl)
                                 }
                             },
-                            modifier = Modifier
-                                .size(38.dp)
-                                .clip(CircleShape)
-                                .background(Color.White.copy(alpha = 0.15f))
+                            modifier = Modifier.size(36.dp)
                         ) {
                             Icon(
                                 Icons.Rounded.Download,
                                 contentDescription = "Save to Gallery",
                                 tint = Color.White,
-                                modifier = Modifier.size(19.dp)
+                                modifier = Modifier.size(22.dp)
                             )
                         }
 
@@ -1705,41 +1700,17 @@ private fun FullscreenImageGallery(
                                     shareGalleryImage(context, coroutineScope, currentImage.fullImageUrl)
                                 }
                             },
-                            modifier = Modifier
-                                .size(38.dp)
-                                .clip(CircleShape)
-                                .background(Color.White.copy(alpha = 0.15f))
+                            modifier = Modifier.size(36.dp)
                         ) {
                             Icon(
                                 Icons.Rounded.Share,
                                 contentDescription = "Share",
                                 tint = Color.White,
-                                modifier = Modifier.size(18.dp)
+                                modifier = Modifier.size(20.dp)
                             )
                         }
                     }
                 }
-            }
-
-            // Bottom subtle indicator / hint
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .align(Alignment.BottomCenter)
-                    .background(
-                        Brush.verticalGradient(
-                            listOf(Color.Transparent, Color.Black.copy(alpha = 0.65f))
-                        )
-                    )
-                    .navigationBarsPadding()
-                    .padding(vertical = 12.dp),
-                contentAlignment = Alignment.Center
-            ) {
-                Text(
-                    text = "Pinch to zoom  •  Double tap to zoom  •  Swipe to change",
-                    color = Color.White.copy(alpha = 0.55f),
-                    fontSize = 11.5.sp
-                )
             }
         }
     }
@@ -1779,22 +1750,43 @@ private fun ZoomableGalleryPage(
                     }
                 )
             }
-            .pointerInput(Unit) {
-                detectTransformGestures { _, pan, zoom, _ ->
-                    val newScale = (scale * zoom).coerceIn(1f, 4.5f)
-                    scale = newScale
-                    onZoomStateChanged(newScale > 1.05f)
-                    if (newScale > 1f) {
-                        val maxOffsetX = (newScale - 1f) * 600f
-                        val maxOffsetY = (newScale - 1f) * 900f
-                        val newOffset = offset + pan
-                        offset = Offset(
-                            newOffset.x.coerceIn(-maxOffsetX, maxOffsetX),
-                            newOffset.y.coerceIn(-maxOffsetY, maxOffsetY)
-                        )
-                    } else {
-                        offset = Offset.Zero
-                    }
+            .pointerInput(scale) {
+                awaitEachGesture {
+                    awaitFirstDown(requireUnconsumed = false)
+                    do {
+                        val event = awaitPointerEvent()
+                        val pointerCount = event.changes.size
+
+                        if (pointerCount > 1) {
+                            // Two fingers: Pinch-to-zoom & pan
+                            val zoomChange = event.calculateZoom()
+                            val panChange = event.calculatePan()
+                            val newScale = (scale * zoomChange).coerceIn(1f, 4.5f)
+                            scale = newScale
+                            onZoomStateChanged(newScale > 1.05f)
+
+                            val maxOffsetX = (newScale - 1f) * 600f
+                            val maxOffsetY = (newScale - 1f) * 900f
+                            val newOffset = offset + panChange
+                            offset = Offset(
+                                newOffset.x.coerceIn(-maxOffsetX, maxOffsetX),
+                                newOffset.y.coerceIn(-maxOffsetY, maxOffsetY)
+                            )
+                            event.changes.forEach { it.consume() }
+                        } else if (scale > 1.05f) {
+                            // Single finger while zoomed in: pan around the photo
+                            val panChange = event.calculatePan()
+                            val maxOffsetX = (scale - 1f) * 600f
+                            val maxOffsetY = (scale - 1f) * 900f
+                            val newOffset = offset + panChange
+                            offset = Offset(
+                                newOffset.x.coerceIn(-maxOffsetX, maxOffsetX),
+                                newOffset.y.coerceIn(-maxOffsetY, maxOffsetY)
+                            )
+                            event.changes.forEach { it.consume() }
+                        }
+                        // When scale <= 1.05f and single finger: DO NOT CONSUME. Allow HorizontalPager to swipe smoothly!
+                    } while (event.changes.any { it.pressed })
                 }
             },
         contentAlignment = Alignment.Center

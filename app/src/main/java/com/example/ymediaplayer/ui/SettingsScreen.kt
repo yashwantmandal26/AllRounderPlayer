@@ -8,6 +8,9 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.pager.HorizontalPager
+import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.foundation.selection.selectableGroup
@@ -129,6 +132,16 @@ fun SettingsScreen(
     // ─── Search & Category Navigation States ──────────────────────────────────
     var searchQuery by remember { mutableStateOf("") }
     var selectedCategory by remember { mutableStateOf(SettingsCategory.ALL) }
+    val pagerState = rememberPagerState(initialPage = selectedCategory.ordinal) { SettingsCategory.entries.size }
+    val categoryRowState = rememberLazyListState()
+
+    LaunchedEffect(pagerState.settledPage) {
+        val settledCat = SettingsCategory.entries.getOrNull(pagerState.settledPage) ?: return@LaunchedEffect
+        if (selectedCategory != settledCat) {
+            selectedCategory = settledCat
+            categoryRowState.animateScrollToItem(pagerState.settledPage)
+        }
+    }
 
     // ─── Appearance States ────────────────────────────────────────────────────
     var currentThemeMode by remember { mutableStateOf(themeController.mode) }
@@ -351,6 +364,7 @@ fun SettingsScreen(
 
                 // Row 3: Horizontal Category Navigation Chips
                 LazyRow(
+                    state = categoryRowState,
                     modifier = Modifier.fillMaxWidth(),
                     contentPadding = PaddingValues(horizontal = 16.dp, vertical = 4.dp),
                     horizontalArrangement = Arrangement.spacedBy(8.dp)
@@ -369,6 +383,9 @@ fun SettingsScreen(
                                 .clickable {
                                     selectedCategory = cat
                                     if (searchQuery.isNotEmpty()) searchQuery = ""
+                                    scope.launch {
+                                        pagerState.animateScrollToPage(cat.ordinal)
+                                    }
                                 }
                                 .padding(horizontal = 11.dp, vertical = 7.dp),
                             verticalAlignment = Alignment.CenterVertically,
@@ -393,126 +410,126 @@ fun SettingsScreen(
         }
     }
 ) { paddingValues ->
-        val q = searchQuery.trim()
+        @Composable
+        fun SettingsCategoryColumn(currentCat: SettingsCategory, queryStr: String, modifier: Modifier = Modifier) {
+            val q = queryStr.trim()
 
-        fun itemMatches(title: String, subtitle: String = ""): Boolean {
-            if (q.isBlank()) return true
-            return title.contains(q, ignoreCase = true) || subtitle.contains(q, ignoreCase = true)
-        }
-
-        val showPlayback = (q.isBlank() && (selectedCategory == SettingsCategory.ALL || selectedCategory == SettingsCategory.PLAYBACK)) ||
-                (q.isNotBlank() && (
-                    "Playback & Video Engine".contains(q, ignoreCase = true) ||
-                    itemMatches("Resume Playback", "Always auto-resume Start Over") ||
-                    itemMatches("Remember Playback Speed", "Preserve custom playback speed") ||
-                    itemMatches("Double-Tap Seek Step", "seconds") ||
-                    itemMatches("Auto Picture-in-Picture", "floating PiP window") ||
-                    itemMatches("Background Audio Play", "audio app minimized") ||
-                    itemMatches("Auto-Play Next in Playlist", "next video finishes") ||
-                    itemMatches("Remember Playlist Queue", "queue order remember") ||
-                    itemMatches("Controls Auto-Hide Timeout", "seconds Never auto-hide") ||
-                    itemMatches("Default Video Fit Mode", "Fit to Screen Zoom Crop Fixed Width Stretch Fill") ||
-                    itemMatches("Hardware Acceleration", "GPU decoders 4K 60fps") ||
-                    itemMatches("Keep Screen Awake", "display sleeping") ||
-                    itemMatches("Play During Phone Calls", "video music phone calls")
-                ))
-
-        val showGestures = (q.isBlank() && (selectedCategory == SettingsCategory.ALL || selectedCategory == SettingsCategory.GESTURES)) ||
-                (q.isNotBlank() && (
-                    "Gestures & Touch Controls".contains(q, ignoreCase = true) ||
-                    itemMatches("Left Swipe: Screen Brightness", "brightness") ||
-                    itemMatches("Right Swipe: Media Volume", "volume") ||
-                    itemMatches("Horizontal Seek Swipe", "scrub timeline preview") ||
-                    itemMatches("Center Double-Tap: Play / Pause", "toggles playback") ||
-                    itemMatches("Press & Hold Speed Boost", "speed boost hold 2x") ||
-                    itemMatches("Haptic Vibration Feedback", "Tactile feedback sliders vibration")
-                ))
-
-        val showSubtitles = (q.isBlank() && (selectedCategory == SettingsCategory.ALL || selectedCategory == SettingsCategory.SUBTITLES)) ||
-                (q.isNotBlank() && (
-                    "Subtitles & Styling".contains(q, ignoreCase = true) ||
-                    itemMatches("Subtitle Font Size", "size sp") ||
-                    itemMatches("Subtitle Text Color", "color text White Yellow Cyan Neon") ||
-                    itemMatches("Subtitle Background Box", "background box overlay toggle without") ||
-                    itemMatches("Subtitle Background Style", "Semi-transparent Solid Deep Black Frosted Dark Glass Blur Slate Blue Amber") ||
-                    itemMatches("Text Outline & Shadow", "Drop Shadow Bold Outline")
-                ))
-
-        val showAppearance = (q.isBlank() && (selectedCategory == SettingsCategory.ALL || selectedCategory == SettingsCategory.APPEARANCE)) ||
-                (q.isNotBlank() && (
-                    "Appearance & Themes".contains(q, ignoreCase = true) ||
-                    itemMatches("Theme Mode", "Dark Light OLED Black System") ||
-                    itemMatches("Color Accent Theme", "Cyber Neon Amber Emerald Rose Sapphire") ||
-                    itemMatches("Ambient Gradient Glow", "Subtle Vibrant Neon Boost glow gradient") ||
-                    itemMatches("Card Corner Style", "Sleek Modern Extra corners") ||
-                    itemMatches("Dynamic Video Ambient Mode", "soft lighting halo video")
-                ))
-
-        val showLibrary = (q.isBlank() && (selectedCategory == SettingsCategory.ALL || selectedCategory == SettingsCategory.LIBRARY)) ||
-                (q.isNotBlank() && (
-                    "Library & Folders".contains(q, ignoreCase = true) ||
-                    itemMatches("Default Starting Tab", "Video MYCinema Music home tab screen") ||
-                    itemMatches("Default Media View", "Grid List Detailed") ||
-                    itemMatches("Default Sort Order", "Sort Name Date Size") ||
-                    itemMatches("Show Continue Watching", "in-progress videos carousel") ||
-                    itemMatches("Continue Watching Limit", "limit videos") ||
-                    itemMatches("Show Recently Added Feed", "newest added videos") ||
-                    itemMatches("Exclude Short Clips", "Hide clips shorter than") ||
-                    itemMatches("Exclude Hidden Folders", "nomedia hidden dot") ||
-                    itemMatches("Confirm File Deletions", "warning dialog delete bin")
-                ))
-
-        val showMusic = (q.isBlank() && (selectedCategory == SettingsCategory.ALL || selectedCategory == SettingsCategory.MUSIC)) ||
-                (q.isNotBlank() && (
-                    "Music Player".contains(q, ignoreCase = true) ||
-                    itemMatches("Now Playing Screen Style", "Vinyl Card Sonic Reactor Cassette Cyber Orb Wave") ||
-                    itemMatches("Gapless Playback", "silence songs zero preload") ||
-                    itemMatches("Pause on Headset / Bluetooth Disconnect", "headphones Bluetooth disconnect pause unplug") ||
-                    itemMatches("Resume on Headset Connect", "headphones Bluetooth reconnect auto play") ||
-                    itemMatches("Crossfade Between Tracks", "seconds DJ transition fade blend") ||
-                    itemMatches("Default Sleep Timer", "minutes timer sleep duration") ||
-                    itemMatches("Sleep Timer Fade Out", "gradual volume decrease smooth fade") ||
-                    itemMatches("Audio Focus & Call Ducking", "duck notifications phone calls") ||
-                    itemMatches("Lock Screen Controls & Album Art", "lockscreen widget cover art") ||
-                    itemMatches("Default Equalizer Sound Profile", "Balanced Bass Boost Vocal Rock Club Acoustic EQ preset")
-                ))
-
-        val showStorage = (q.isBlank() && (selectedCategory == SettingsCategory.ALL || selectedCategory == SettingsCategory.STORAGE)) ||
-                (q.isNotBlank() && (
-                    "Data, Storage & About".contains(q, ignoreCase = true) ||
-                    itemMatches("Clear Continue Watching History", "progress timestamps") ||
-                    itemMatches("Clear Video Bookmarks", "bookmarks") ||
-                    itemMatches("Clear Image & Thumbnail Cache", "cache storage memory") ||
-                    itemMatches("Check for Updates", "update version release latest github") ||
-                    itemMatches("Auto-Check for Updates", "automatic update notify") ||
-                    itemMatches("Reset All Settings to Defaults", "restore factory defaults")
-                ))
-
-        val anySectionVisible = showPlayback || showGestures || showSubtitles || showAppearance || showLibrary || showMusic || showStorage
-
-        LazyColumn(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(paddingValues),
-            contentPadding = PaddingValues(horizontal = 16.dp, vertical = 12.dp),
-            verticalArrangement = Arrangement.spacedBy(16.dp)
-        ) {
-            // ─── Header Profile Banner (Shown when browsing 'All' and not searching) ───
-            if (q.isBlank() && selectedCategory == SettingsCategory.ALL) {
-                item {
-                    SettingsHeaderCard(
-                        themeName = currentColorTheme.displayName,
-                        themeMode = currentThemeMode.displayName,
-                        primaryAccent = primaryAccent,
-                        secondaryAccent = secondaryAccent
-                    )
-                }
+            fun itemMatches(title: String, subtitle: String = ""): Boolean {
+                if (q.isBlank()) return true
+                return title.contains(q, ignoreCase = true) || subtitle.contains(q, ignoreCase = true)
             }
 
-            // ─── 0. Top Check For Updates Banner ──────────────────────────────
-            if ((q.isBlank() && (selectedCategory == SettingsCategory.ALL || selectedCategory == SettingsCategory.STORAGE)) ||
-                (q.isNotBlank() && itemMatches("Check for Updates", "update version release latest github"))
+            val showPlayback = (q.isBlank() && (currentCat == SettingsCategory.ALL || currentCat == SettingsCategory.PLAYBACK)) ||
+                    (q.isNotBlank() && (
+                        "Playback & Video Engine".contains(q, ignoreCase = true) ||
+                        itemMatches("Resume Playback", "Always auto-resume Start Over") ||
+                        itemMatches("Remember Playback Speed", "Preserve custom playback speed") ||
+                        itemMatches("Double-Tap Seek Step", "seconds") ||
+                        itemMatches("Auto Picture-in-Picture", "floating PiP window") ||
+                        itemMatches("Background Audio Play", "audio app minimized") ||
+                        itemMatches("Auto-Play Next in Playlist", "next video finishes") ||
+                        itemMatches("Remember Playlist Queue", "queue order remember") ||
+                        itemMatches("Controls Auto-Hide Timeout", "seconds Never auto-hide") ||
+                        itemMatches("Default Video Fit Mode", "Fit to Screen Zoom Crop Fixed Width Stretch Fill") ||
+                        itemMatches("Hardware Acceleration", "GPU decoders 4K 60fps") ||
+                        itemMatches("Keep Screen Awake", "display sleeping") ||
+                        itemMatches("Play During Phone Calls", "video music phone calls")
+                    ))
+
+            val showGestures = (q.isBlank() && (currentCat == SettingsCategory.ALL || currentCat == SettingsCategory.GESTURES)) ||
+                    (q.isNotBlank() && (
+                        "Gestures & Touch Controls".contains(q, ignoreCase = true) ||
+                        itemMatches("Left Swipe: Screen Brightness", "brightness") ||
+                        itemMatches("Right Swipe: Media Volume", "volume") ||
+                        itemMatches("Horizontal Seek Swipe", "scrub timeline preview") ||
+                        itemMatches("Center Double-Tap: Play / Pause", "toggles playback") ||
+                        itemMatches("Press & Hold Speed Boost", "speed boost hold 2x") ||
+                        itemMatches("Haptic Vibration Feedback", "Tactile feedback sliders vibration")
+                    ))
+
+            val showSubtitles = (q.isBlank() && (currentCat == SettingsCategory.ALL || currentCat == SettingsCategory.SUBTITLES)) ||
+                    (q.isNotBlank() && (
+                        "Subtitles & Styling".contains(q, ignoreCase = true) ||
+                        itemMatches("Subtitle Font Size", "size sp") ||
+                        itemMatches("Subtitle Text Color", "color text White Yellow Cyan Neon") ||
+                        itemMatches("Subtitle Background Box", "background box overlay toggle without") ||
+                        itemMatches("Subtitle Background Style", "Semi-transparent Solid Deep Black Frosted Dark Glass Blur Slate Blue Amber") ||
+                        itemMatches("Text Outline & Shadow", "Drop Shadow Bold Outline")
+                    ))
+
+            val showAppearance = (q.isBlank() && (currentCat == SettingsCategory.ALL || currentCat == SettingsCategory.APPEARANCE)) ||
+                    (q.isNotBlank() && (
+                        "Appearance & Themes".contains(q, ignoreCase = true) ||
+                        itemMatches("Theme Mode", "Dark Light OLED Black System") ||
+                        itemMatches("Color Accent Theme", "Cyber Neon Amber Emerald Rose Sapphire") ||
+                        itemMatches("Ambient Gradient Glow", "Subtle Vibrant Neon Boost glow gradient") ||
+                        itemMatches("Card Corner Style", "Sleek Modern Extra corners") ||
+                        itemMatches("Dynamic Video Ambient Mode", "soft lighting halo video")
+                    ))
+
+            val showLibrary = (q.isBlank() && (currentCat == SettingsCategory.ALL || currentCat == SettingsCategory.LIBRARY)) ||
+                    (q.isNotBlank() && (
+                        "Library & Folders".contains(q, ignoreCase = true) ||
+                        itemMatches("Default Starting Tab", "Video MYCinema Music home tab screen") ||
+                        itemMatches("Default Media View", "Grid List Detailed") ||
+                        itemMatches("Default Sort Order", "Sort Name Date Size") ||
+                        itemMatches("Show Continue Watching", "in-progress videos carousel") ||
+                        itemMatches("Continue Watching Limit", "limit videos") ||
+                        itemMatches("Show Recently Added Feed", "newest added videos") ||
+                        itemMatches("Exclude Short Clips", "Hide clips shorter than") ||
+                        itemMatches("Exclude Hidden Folders", "nomedia hidden dot") ||
+                        itemMatches("Confirm File Deletions", "warning dialog delete bin")
+                    ))
+
+            val showMusic = (q.isBlank() && (currentCat == SettingsCategory.ALL || currentCat == SettingsCategory.MUSIC)) ||
+                    (q.isNotBlank() && (
+                        "Music Player".contains(q, ignoreCase = true) ||
+                        itemMatches("Now Playing Screen Style", "Vinyl Card Sonic Reactor Cassette Cyber Orb Wave") ||
+                        itemMatches("Gapless Playback", "silence songs zero preload") ||
+                        itemMatches("Pause on Headset / Bluetooth Disconnect", "headphones Bluetooth disconnect pause unplug") ||
+                        itemMatches("Resume on Headset Connect", "headphones Bluetooth reconnect auto play") ||
+                        itemMatches("Crossfade Between Tracks", "seconds DJ transition fade blend") ||
+                        itemMatches("Default Sleep Timer", "minutes timer sleep duration") ||
+                        itemMatches("Sleep Timer Fade Out", "gradual volume decrease smooth fade") ||
+                        itemMatches("Audio Focus & Call Ducking", "duck notifications phone calls") ||
+                        itemMatches("Lock Screen Controls & Album Art", "lockscreen widget cover art") ||
+                        itemMatches("Default Equalizer Sound Profile", "Balanced Bass Boost Vocal Rock Club Acoustic EQ preset")
+                    ))
+
+            val showStorage = (q.isBlank() && (currentCat == SettingsCategory.ALL || currentCat == SettingsCategory.STORAGE)) ||
+                    (q.isNotBlank() && (
+                        "Data, Storage & About".contains(q, ignoreCase = true) ||
+                        itemMatches("Clear Continue Watching History", "progress timestamps") ||
+                        itemMatches("Clear Video Bookmarks", "bookmarks") ||
+                        itemMatches("Clear Image & Thumbnail Cache", "cache storage memory") ||
+                        itemMatches("Check for Updates", "update version release latest github") ||
+                        itemMatches("Auto-Check for Updates", "automatic update notify") ||
+                        itemMatches("Reset All Settings to Defaults", "restore factory defaults")
+                    ))
+
+            val anySectionVisible = showPlayback || showGestures || showSubtitles || showAppearance || showLibrary || showMusic || showStorage
+
+            LazyColumn(
+                modifier = modifier,
+                contentPadding = PaddingValues(horizontal = 16.dp, vertical = 12.dp),
+                verticalArrangement = Arrangement.spacedBy(16.dp)
             ) {
+                // ─── Header Profile Banner (Shown when browsing 'All' and not searching) ───
+                if (q.isBlank() && currentCat == SettingsCategory.ALL) {
+                    item {
+                        SettingsHeaderCard(
+                            themeName = currentColorTheme.displayName,
+                            themeMode = currentThemeMode.displayName,
+                            primaryAccent = primaryAccent,
+                            secondaryAccent = secondaryAccent
+                        )
+                    }
+                }
+
+                // ─── 0. Top Check For Updates Banner ──────────────────────────────
+                if ((q.isBlank() && (currentCat == SettingsCategory.ALL || currentCat == SettingsCategory.STORAGE)) ||
+                    (q.isNotBlank() && itemMatches("Check for Updates", "update version release latest github"))
+                ) {
                 item {
                     val isCheckingUpdates = UpdateManager.isChecking.value
                     Box(
@@ -1769,7 +1786,7 @@ fun SettingsScreen(
         }
 
         // ─── App Info Card ────────────────────────────────────────────────
-        if (q.isBlank() && (selectedCategory == SettingsCategory.ALL || selectedCategory == SettingsCategory.STORAGE)) {
+        if (q.isBlank() && (currentCat == SettingsCategory.ALL || currentCat == SettingsCategory.STORAGE)) {
             item {
                 Box(
                     modifier = Modifier
@@ -1783,7 +1800,7 @@ fun SettingsScreen(
                 ) {
                     Column(horizontalAlignment = Alignment.CenterHorizontally) {
                         Text(
-                            text = "YMedia Player",
+                            text = "AllRounder Media Player",
                             fontSize = 16.sp,
                             fontWeight = FontWeight.Bold,
                             color = c.textPrimary
@@ -1806,7 +1823,33 @@ fun SettingsScreen(
             }
         }
         }
+    } // end SettingsCategoryColumn
+
+    if (searchQuery.isNotBlank()) {
+        SettingsCategoryColumn(
+            currentCat = selectedCategory,
+            queryStr = searchQuery,
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(paddingValues)
+        )
+    } else {
+        HorizontalPager(
+            state = pagerState,
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(paddingValues),
+            beyondViewportPageCount = 1
+        ) { page ->
+            val pageCategory = SettingsCategory.entries.getOrElse(page) { SettingsCategory.ALL }
+            SettingsCategoryColumn(
+                currentCat = pageCategory,
+                queryStr = "",
+                modifier = Modifier.fillMaxSize()
+            )
+        }
     }
+}
 
     // ─── Dialogs ──────────────────────────────────────────────────────────────
     when (activeDialog) {

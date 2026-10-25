@@ -9,6 +9,12 @@ import kotlinx.coroutines.withContext
 
 import android.os.Build
 
+enum class AudioCategory(val displayName: String) {
+    SONG("Songs"),
+    RECORDING("Recordings"),
+    RINGTONE("Ringtones")
+}
+
 data class MusicItem(
     val id: Long,
     val uri: Uri,
@@ -26,6 +32,41 @@ data class MusicItem(
             Uri.parse("content://media/external/audio/albumart"),
             albumId
         )
+
+    val audioCategory: AudioCategory
+        get() {
+            val lowerPath = (path + " " + relativePath).lowercase()
+            val lowerTitle = title.lowercase()
+
+            // 1. Detect Phone Call Recordings & Voice Memos
+            if (lowerPath.contains("call") ||
+                lowerPath.contains("recording") ||
+                lowerPath.contains("sound_recorder") ||
+                lowerPath.contains("voicenotes") ||
+                lowerPath.contains("voice recorder") ||
+                lowerTitle.startsWith("call ") ||
+                lowerTitle.startsWith("call_") ||
+                lowerTitle.startsWith("call@") ||
+                lowerTitle.contains("call recording") ||
+                lowerTitle.contains("+91") ||
+                lowerTitle.matches(Regex(".*call\\s*[+0-9].*"))
+            ) {
+                return AudioCategory.RECORDING
+            }
+
+            // 2. Detect Ringtones, Notifications & Alarm Sounds
+            if (lowerPath.contains("ringtone") ||
+                lowerPath.contains("notification") ||
+                lowerPath.contains("alarm") ||
+                lowerTitle.contains("ringtone") ||
+                (duration in 1000..40000 && (lowerTitle.contains("tone") || lowerTitle.contains("alert") || lowerTitle.contains("alarm")))
+            ) {
+                return AudioCategory.RINGTONE
+            }
+
+            // 3. True Music Tracks
+            return AudioCategory.SONG
+        }
 }
 
 class MusicRepository(private val context: Context) {

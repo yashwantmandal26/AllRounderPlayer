@@ -1393,6 +1393,53 @@ fun FolderListScreen(
                             }
                         }
                     } else {
+                        // Recently Added (Top Priority)
+                        if (recentlyAddedVideos.isNotEmpty() && !isSearching && activeChip == null) {
+                            item {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.SpaceBetween
+                                ) {
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        Icon(Icons.Rounded.Schedule, contentDescription = null, tint = c.accentBlue, modifier = Modifier.size(16.dp))
+                                        Spacer(Modifier.width(6.dp))
+                                        Text("RECENTLY ADDED", color = c.textSecondary, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+                                    }
+                                    Text("See all", color = c.accentBlue, fontSize = 12.sp,
+                                        modifier = Modifier.clickable { activeChip = "All Videos" }.padding(4.dp))
+                                }
+                            }
+                            item {
+                                LazyRow(
+                                    contentPadding = PaddingValues(horizontal = 16.dp),
+                                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                                    modifier = Modifier.padding(bottom = 6.dp)
+                                ) {
+                                    items(recentlyAddedVideos, key = { "recent_${it.id}" }) { video ->
+                                        RecentlyAddedVideoCard(
+                                            video = video,
+                                            appPreferences = appPreferences,
+                                            onClick = {
+                                                val excludeSec = appPreferences.getExcludeShortClipsSeconds()
+                                                val recentSortedQueue = allUniqueVideos.filter { v ->
+                                                    excludeSec == 0 || v.duration >= excludeSec * 1000L
+                                                }.sortedWith(
+                                                    compareByDescending<VideoItem> { it.dateAdded }.thenByDescending { it.id }
+                                                )
+                                                com.example.ymediaplayer.player.VideoPlaybackManager.activePlaylistQueue = recentSortedQueue
+                                                onVideoClick(video.uri.toString())
+                                            },
+                                            onLongPress = {
+                                                view.performHaptic(HapticType.HEAVY)
+                                                if (!inSelectionMode) videoActionTarget = video
+                                            }
+                                        )
+                                    }
+                                }
+                            }
+                        }
+
                         // Continue Watching
                         if (continueWatchingVideos.isNotEmpty() && !isSearching) {
                             item {
@@ -1440,53 +1487,6 @@ fun FolderListScreen(
                                                 }
                                             )
                                         }
-                                    }
-                                }
-                            }
-                        }
-
-                        // Recently Added
-                        if (recentlyAddedVideos.isNotEmpty() && !isSearching && activeChip == null) {
-                            item {
-                                Row(
-                                    modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp),
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.SpaceBetween
-                                ) {
-                                    Row(verticalAlignment = Alignment.CenterVertically) {
-                                        Icon(Icons.Rounded.Schedule, contentDescription = null, tint = c.accentBlue, modifier = Modifier.size(16.dp))
-                                        Spacer(Modifier.width(6.dp))
-                                        Text("RECENTLY ADDED", color = c.textSecondary, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
-                                    }
-                                    Text("See all", color = c.accentBlue, fontSize = 12.sp,
-                                        modifier = Modifier.clickable { activeChip = "All Videos" }.padding(4.dp))
-                                }
-                            }
-                            item {
-                                LazyRow(
-                                    contentPadding = PaddingValues(horizontal = 16.dp),
-                                    horizontalArrangement = Arrangement.spacedBy(12.dp),
-                                    modifier = Modifier.padding(bottom = 6.dp)
-                                ) {
-                                    items(recentlyAddedVideos, key = { "recent_${it.id}" }) { video ->
-                                        RecentlyAddedVideoCard(
-                                            video = video,
-                                            appPreferences = appPreferences,
-                                            onClick = {
-                                                val excludeSec = appPreferences.getExcludeShortClipsSeconds()
-                                                val recentSortedQueue = allUniqueVideos.filter { v ->
-                                                    excludeSec == 0 || v.duration >= excludeSec * 1000L
-                                                }.sortedWith(
-                                                    compareByDescending<VideoItem> { it.dateAdded }.thenByDescending { it.id }
-                                                )
-                                                com.example.ymediaplayer.player.VideoPlaybackManager.activePlaylistQueue = recentSortedQueue
-                                                onVideoClick(video.uri.toString())
-                                            },
-                                            onLongPress = {
-                                                view.performHaptic(HapticType.HEAVY)
-                                                if (!inSelectionMode) videoActionTarget = video
-                                            }
-                                        )
                                     }
                                 }
                             }
@@ -1653,7 +1653,8 @@ fun FolderListScreen(
                                 onFullScreenChanged = { musicPlayerExpanded = it },
                                 hasMediaPermission = hasAudioPermission,
                                 onRequestPermission = onRequestPermissions,
-                                showFloatingMiniPlayer = false
+                                showFloatingMiniPlayer = false,
+                                isTabSelected = (currentTab == "Music" || pagerState.settledPage == 2)
                             )
                         }
                     }
