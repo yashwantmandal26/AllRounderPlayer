@@ -149,7 +149,6 @@ fun FolderListScreen(
     var isGridView by rememberSaveable { mutableStateOf(false) }
     var currentMediaViewType by remember { mutableStateOf(appPreferences.getMediaViewType()) }
     var favorites by remember { mutableStateOf(appPreferences.getFavorites()) }
-    var showHomeGuide by remember { mutableStateOf(!appPreferences.hasSeenHomeGuide()) }
 
     val searchFocusRequester = remember { FocusRequester() }
 
@@ -831,6 +830,12 @@ fun FolderListScreen(
                     if (pagerState.currentPage != targetPage || pagerState.targetPage != targetPage) {
                         pagerState.animateScrollToPage(targetPage)
                     }
+                }
+            }
+
+            LaunchedEffect(MainActivity.openCinemaDeepLink.value) {
+                if (MainActivity.openCinemaDeepLink.value != null) {
+                    currentTab = "MYCinema"
                 }
             }
 
@@ -1760,8 +1765,8 @@ fun FolderListScreen(
                         )
                 ) {
                     Row(
-                        modifier = Modifier.padding(horizontal = 5.dp, vertical = 4.dp),
-                        horizontalArrangement = Arrangement.spacedBy(3.dp),
+                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 5.dp),
+                        horizontalArrangement = Arrangement.spacedBy(4.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         val view = androidx.compose.ui.platform.LocalView.current
@@ -1832,15 +1837,15 @@ fun FolderListScreen(
                                         if (label != "Video") selectedVideoIds = emptySet() 
                                     }
                                     .padding(
-                                        horizontal = if (selected) 13.dp else 9.dp,
-                                        vertical = 7.dp
+                                        horizontal = if (selected) 14.5.dp else 10.dp,
+                                        vertical = 8.dp
                                     )
                             ) {
                                 Icon(
                                     icon,
                                     contentDescription = label,
                                     tint = pillTextColor,
-                                    modifier = Modifier.size(17.dp)
+                                    modifier = Modifier.size(17.5.dp)
                                 )
                                 AnimatedVisibility(
                                     visible = selected,
@@ -2102,16 +2107,6 @@ fun FolderListScreen(
                 currentTheme = themeController.colorTheme,
                 onSelectTheme = { themeController.updateColorTheme(it) },
                 onDismiss = { showThemeDialog = false }
-            )
-        }
-
-        // ─── First-Time Contextual Home Page Guide ──────────────────────────────────
-        if (showHomeGuide && !musicPlayerExpanded) {
-            HomePageFeatureGuide(
-                onDismiss = {
-                    showHomeGuide = false
-                    appPreferences.setSeenHomeGuide(true)
-                }
             )
         }
 

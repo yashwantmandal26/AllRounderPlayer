@@ -880,21 +880,6 @@ fun SettingsScreen(
                             appPreferences.setHapticsEnabled(it)
                         }
                     )
-
-                    SettingsDivider()
-
-                    SettingsItemAction(
-                        title = "Replay Feature Guides",
-                        subtitle = "Show the interactive gesture and button placement guides on next playback",
-                        icon = Icons.Rounded.HelpOutline,
-                        iconTint = primaryAccent,
-                        onClick = {
-                            appPreferences.resetAllGuides()
-                            Toast.makeText(context, "Feature guides reset! They will appear on Home, Video, and Music", Toast.LENGTH_SHORT).show()
-                        }
-                    )
-
-
                 }
             }
         }

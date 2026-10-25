@@ -3697,7 +3697,6 @@ fun FullScreenMusicPlayer(
     val view = androidx.compose.ui.platform.LocalView.current
     val density = androidx.compose.ui.platform.LocalDensity.current
     val appPreferences = remember { com.example.ymediaplayer.data.AppPreferences(context) }
-    var showMusicGuide by remember { mutableStateOf(!appPreferences.hasSeenMusicGuide()) }
     var showLyrics by remember { mutableStateOf(false) }
 
     // Keep status bar transparent with crisp white icons in full screen player
@@ -3845,8 +3844,8 @@ fun FullScreenMusicPlayer(
                         }
                         if (isVertical) {
                             change.consume()
-                            // Calculate 1:1 drag travel distance matching the 210.dp bar
-                            val barTravelPx = with(density) { 210.dp.toPx() }.coerceAtLeast(100f)
+                            // Calculate 1:1 drag travel distance matching the 136.dp bar
+                            val barTravelPx = with(density) { 136.dp.toPx() }.coerceAtLeast(100f)
                             val dragDelta = -dragAmount.y / barTravelPx
                             if (isLeft) {
                                 brightnessPct = (brightnessPct + dragDelta).coerceIn(0.01f, 1f)
@@ -4998,11 +4997,12 @@ fun FullScreenMusicPlayer(
         // ─── Brightness Gesture Bar (Left) ──────────────────────────────────
         AnimatedVisibility(
             visible = showBrightnessBar,
-            enter = fadeIn(tween(140)),
-            exit = fadeOut(tween(250)),
+            enter = fadeIn(tween(140)) + slideInHorizontally(initialOffsetX = { -it }, animationSpec = tween(140)),
+            exit = fadeOut(tween(220)) + slideOutHorizontally(targetOffsetX = { -it }, animationSpec = tween(220)),
             modifier = Modifier
                 .align(Alignment.CenterStart)
-                .padding(start = 18.dp)
+                .offset(y = (-28).dp)
+                .padding(start = 6.dp)
         ) {
             MusicVerticalGestureBar(
                 icon = Icons.Rounded.LightMode,
@@ -5021,11 +5021,12 @@ fun FullScreenMusicPlayer(
         // ─── Volume Gesture Bar (Right) ─────────────────────────────────────
         AnimatedVisibility(
             visible = showVolumeBar,
-            enter = fadeIn(tween(140)),
-            exit = fadeOut(tween(250)),
+            enter = fadeIn(tween(140)) + slideInHorizontally(initialOffsetX = { it }, animationSpec = tween(140)),
+            exit = fadeOut(tween(220)) + slideOutHorizontally(targetOffsetX = { it }, animationSpec = tween(220)),
             modifier = Modifier
                 .align(Alignment.CenterEnd)
-                .padding(end = 18.dp)
+                .offset(y = (-28).dp)
+                .padding(end = 6.dp)
         ) {
             MusicVerticalGestureBar(
                 icon = if (volumePct <= 0f) Icons.AutoMirrored.Rounded.VolumeOff else Icons.AutoMirrored.Rounded.VolumeUp,
@@ -5098,16 +5099,6 @@ fun FullScreenMusicPlayer(
                 }
             }
         }
-
-        // ─── First-Time Contextual Music Feature & Gesture Guide ─────────────────
-        if (showMusicGuide) {
-            MusicPlayerFeatureGuide(
-                onDismiss = {
-                    showMusicGuide = false
-                    appPreferences.setSeenMusicGuide(true)
-                }
-            )
-        }
     }
 }
 
@@ -5150,16 +5141,15 @@ private fun MusicVerticalGestureBar(
         onValueChange(cl)
     }
 
-    // Outer touch area (70.dp wide for effortless finger touch target)
-    Box(
+    // Outer touch area (26.dp wide, sleek & compact to prevent colliding with or overriding any UI elements)
+    Column(
         modifier = modifier
-            .width(70.dp)
-            .height(210.dp)
+            .width(26.dp)
             .pointerInput(clampedPct) {
                 awaitEachGesture {
                     val down = awaitFirstDown(requireUnconsumed = false)
                     val downY = down.position.y
-                    val barHeight = size.height.toFloat().coerceAtLeast(1f)
+                    val barHeight = 136.dp.toPx().coerceAtLeast(1f)
                     var hasMoved = false
 
                     while (true) {
@@ -5188,20 +5178,40 @@ private fun MusicVerticalGestureBar(
                     }
                 }
             },
-        contentAlignment = Alignment.Center
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(4.dp)
     ) {
-        // Main Frosted Glass Capsule (44.dp wide, 192.dp tall) with native rounded shadow
+        // 1. Sleek Floating Percentage Pill
+        Surface(
+            shape = RoundedCornerShape(6.dp),
+            color = Color(0xEE12141F),
+            border = BorderStroke(0.8.dp, Color.White.copy(alpha = 0.22f)),
+            shadowElevation = 4.dp
+        ) {
+            Text(
+                text = label,
+                color = Color.White,
+                fontSize = 9.sp,
+                fontWeight = FontWeight.Bold,
+                fontFamily = FontFamily.Monospace,
+                letterSpacing = (-0.3).sp,
+                maxLines = 1,
+                modifier = Modifier.padding(horizontal = 4.dp, vertical = 2.dp)
+            )
+        }
+
+        // 2. Slim Capsule Slider (14.dp wide, 136.dp tall) - Ultra-thin, elegant, zero element collision
         Box(
             modifier = Modifier
-                .width(44.dp)
-                .height(192.dp)
+                .width(14.dp)
+                .height(136.dp)
                 .shadow(
-                    elevation = 16.dp,
-                    shape = RoundedCornerShape(22.dp),
-                    ambientColor = Color.Black.copy(alpha = 0.65f),
-                    spotColor = glowColor.copy(alpha = 0.50f)
+                    elevation = 8.dp,
+                    shape = RoundedCornerShape(7.dp),
+                    ambientColor = Color.Black.copy(alpha = 0.55f),
+                    spotColor = glowColor.copy(alpha = 0.40f)
                 )
-                .clip(RoundedCornerShape(22.dp))
+                .clip(RoundedCornerShape(7.dp))
                 // Dark tinted acrylic base
                 .background(Color(0xDD0B0C13))
                 // Frosted glass micro-gradient
@@ -5210,22 +5220,21 @@ private fun MusicVerticalGestureBar(
                         listOf(
                             Color.White.copy(alpha = 0.16f),
                             Color.White.copy(alpha = 0.04f),
-                            Color.Black.copy(alpha = 0.20f),
-                            Color.Black.copy(alpha = 0.35f)
+                            Color.Black.copy(alpha = 0.25f)
                         )
                     )
                 )
                 // Specular Glass Rim Border
                 .border(
-                    width = 1.3.dp,
+                    width = 1.dp,
                     brush = Brush.verticalGradient(
                         listOf(
-                            Color.White.copy(alpha = 0.45f), // Top glass specular rim
-                            glowColor.copy(alpha = 0.65f),   // Mid accent rim
-                            Color.White.copy(alpha = 0.12f)  // Bottom subtle rim
+                            Color.White.copy(alpha = 0.45f),
+                            glowColor.copy(alpha = 0.60f),
+                            Color.White.copy(alpha = 0.12f)
                         )
                     ),
-                    shape = RoundedCornerShape(22.dp)
+                    shape = RoundedCornerShape(7.dp)
                 )
         ) {
             // Fluid Track Fill
@@ -5234,92 +5243,73 @@ private fun MusicVerticalGestureBar(
                     .fillMaxWidth()
                     .fillMaxHeight(animatedPct)
                     .align(Alignment.BottomCenter)
-                    .clip(RoundedCornerShape(bottomStart = 22.dp, bottomEnd = 22.dp, topStart = if (animatedPct > 0.95f) 22.dp else 6.dp, topEnd = if (animatedPct > 0.95f) 22.dp else 6.dp))
+                    .clip(
+                        RoundedCornerShape(
+                            bottomStart = 7.dp,
+                            bottomEnd = 7.dp,
+                            topStart = if (animatedPct > 0.95f) 7.dp else 2.dp,
+                            topEnd = if (animatedPct > 0.95f) 7.dp else 2.dp
+                        )
+                    )
                     .background(gradient)
             )
 
-            // 5. Glowing Fluid Meniscus (Top surface line of liquid)
+            // Glowing Fluid Meniscus (Top surface line of liquid)
             if (animatedPct in 0.02f..0.98f) {
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .height(2.5.dp)
+                        .height(2.dp)
                         .align(Alignment.BottomCenter)
-                        .offset { androidx.compose.ui.unit.IntOffset(0, ((-192.dp.toPx() * animatedPct) + 2.dp.toPx()).roundToInt()) }
+                        .offset {
+                            androidx.compose.ui.unit.IntOffset(
+                                0,
+                                ((-136.dp.toPx() * animatedPct) + 1.dp.toPx()).roundToInt()
+                            )
+                        }
                         .clip(RoundedCornerShape(1.dp))
                         .background(
                             Brush.horizontalGradient(
                                 listOf(
-                                    Color.White.copy(alpha = 0.3f),
-                                    Color.White.copy(alpha = 0.95f),
-                                    Color.White.copy(alpha = 0.3f)
+                                    Color.White.copy(alpha = 0.35f),
+                                    Color.White,
+                                    Color.White.copy(alpha = 0.35f)
                                 )
                             )
                         )
                 )
             }
 
-            // 6. Top Specular Glass Reflection
+            // Top subtle reflection
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(44.dp)
+                    .height(24.dp)
                     .align(Alignment.TopCenter)
                     .background(
                         Brush.verticalGradient(
                             listOf(
-                                Color.White.copy(alpha = 0.18f),
+                                Color.White.copy(alpha = 0.15f),
                                 Color.Transparent
                             )
                         )
                     )
             )
 
-            // 7. High-Contrast Inner Icons & Typography
-            Column(
+            // Bottom Icon (Speaker / Light Sun)
+            Box(
                 modifier = Modifier
-                    .fillMaxSize()
-                    .padding(vertical = 12.dp),
-                horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.SpaceBetween
+                    .fillMaxWidth()
+                    .align(Alignment.BottomCenter)
+                    .padding(bottom = 4.dp),
+                contentAlignment = Alignment.Center
             ) {
-                // Top Icon with subtle frosted circular backing for contrast
-                Box(
-                    modifier = Modifier
-                        .size(30.dp)
-                        .clip(CircleShape)
-                        .background(Color.Black.copy(alpha = 0.28f)),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Icon(
-                        imageVector = icon,
-                        contentDescription = null,
-                        tint = Color.White,
-                        modifier = Modifier.size(19.dp)
-                    )
-                }
-
-                // Bottom Percentage Label (only keep text, no dark bg card)
-                Box(
-                    modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.dp),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Text(
-                        text = label,
-                        color = Color.White,
-                        fontSize = 10.sp,
-                        fontWeight = FontWeight.ExtraBold,
-                        fontFamily = FontFamily.Monospace,
-                        letterSpacing = (-0.5).sp,
-                        maxLines = 1,
-                        style = androidx.compose.ui.text.TextStyle(
-                            shadow = androidx.compose.ui.graphics.Shadow(
-                                color = Color.Black.copy(alpha = 0.85f),
-                                blurRadius = 3f
-                            )
-                        )
-                    )
-                }
+                Icon(
+                    imageVector = icon,
+                    contentDescription = null,
+                    tint = Color.White,
+                    modifier = Modifier.size(10.dp)
+                )
             }
         }
     }
@@ -6512,6 +6502,17 @@ private fun MusicSeekBar(
 
     val c = LocalAppColors.current
 
+    val thumbSize by animateDpAsState(
+        targetValue = if (isDragging) 18.dp else 13.dp,
+        animationSpec = spring(stiffness = Spring.StiffnessMediumLow, dampingRatio = Spring.DampingRatioMediumBouncy),
+        label = "thumbSize"
+    )
+    val currentTrackHeight by animateDpAsState(
+        targetValue = if (isDragging) 4.5.dp else 3.dp,
+        animationSpec = spring(stiffness = Spring.StiffnessMediumLow),
+        label = "trackHeight"
+    )
+
     Column(modifier = modifier) {
         Slider(
             value = if (isDragging) sliderPosition else currentPosition.toFloat().coerceIn(0f, duration.toFloat().coerceAtLeast(1f)),
@@ -6528,12 +6529,12 @@ private fun MusicSeekBar(
             valueRange = 0f..duration.toFloat().coerceAtLeast(1f),
             modifier = Modifier
                 .fillMaxWidth()
-                .height(36.dp),
+                .height(32.dp),
             thumb = {
                 Box(
                     modifier = Modifier
-                        .size(if (isDragging) 22.dp else 16.dp)
-                        .shadow(if (isDragging) 8.dp else 4.dp, CircleShape, ambientColor = Color.White, spotColor = c.accentBlue)
+                        .size(thumbSize)
+                        .shadow(if (isDragging) 6.dp else 3.dp, CircleShape, ambientColor = Color.White, spotColor = c.accentBlue)
                         .clip(CircleShape)
                         .background(Color.White)
                         .border(2.dp, c.accentBlue, CircleShape)
@@ -6543,14 +6544,22 @@ private fun MusicSeekBar(
                 SliderDefaults.Track(
                     sliderState = sliderState,
                     modifier = Modifier
-                        .height(6.dp)
-                        .clip(RoundedCornerShape(3.dp)),
+                        .height(currentTrackHeight)
+                        .clip(RoundedCornerShape(currentTrackHeight / 2)),
                     colors = SliderDefaults.colors(
                         activeTrackColor = c.accentBlue,
-                        inactiveTrackColor = Color.White.copy(alpha = 0.35f)
-                    )
+                        inactiveTrackColor = Color.White.copy(alpha = 0.22f)
+                    ),
+                    thumbTrackGapSize = 0.dp,
+                    trackInsideCornerSize = 0.dp,
+                    drawStopIndicator = null
                 )
-            }
+            },
+            colors = SliderDefaults.colors(
+                thumbColor = Color.White,
+                activeTrackColor = c.accentBlue,
+                inactiveTrackColor = Color.White.copy(alpha = 0.22f)
+            )
         )
         Row(
             modifier = Modifier.fillMaxWidth().padding(horizontal = 4.dp),

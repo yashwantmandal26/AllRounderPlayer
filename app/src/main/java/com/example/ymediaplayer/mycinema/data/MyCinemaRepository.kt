@@ -202,6 +202,9 @@ class MyCinemaRepository(
     suspend fun getTrailerYoutubeKey(isSeries: Boolean, tmdbId: Int): String? =
         tmdbClient.fetchTrailerYoutubeKey(isSeries, tmdbId)
 
+    suspend fun getItemById(isSeries: Boolean, tmdbId: Int): TmdbItem? =
+        tmdbClient.fetchItemById(isSeries, tmdbId)
+
     fun clearCache() {
         cachedRecentlyReleased = null
         cachedTrendingMovies = null

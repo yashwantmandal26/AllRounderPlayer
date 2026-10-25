@@ -1,5 +1,8 @@
 package com.example.ymediaplayer.update
 
+import android.app.NotificationChannel
+import android.app.NotificationManager
+import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
@@ -8,6 +11,7 @@ import android.os.Environment
 import android.provider.Settings
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
+import androidx.core.app.NotificationCompat
 import androidx.core.content.FileProvider
 import androidx.core.content.pm.PackageInfoCompat
 import com.example.ymediaplayer.data.AppPreferences
@@ -55,6 +59,10 @@ object UpdateManager {
     val historyError = mutableStateOf<String?>(null)
     val readyToInstallTag = mutableStateOf<String?>(null)
     private val downloadMutex = Mutex()
+    private var hasCheckedOnStartup = false
+
+    private const val UPDATE_CHANNEL_ID = "app_updates_channel"
+    private const val UPDATE_NOTIFICATION_ID = 9001
 
     /**
      * Checks GitHub for the latest release.
@@ -70,14 +78,15 @@ object UpdateManager {
             return@withContext Result.success(null)
         }
 
-        // Throttle automatic checks: at most once every 6 hours
-        val now = System.currentTimeMillis()
-        if (!isManual) {
-            val lastCheck = appPreferences.getLastUpdateCheckTime()
-            if (now - lastCheck < 6 * 60 * 60 * 1000L) {
-                return@withContext Result.success(null)
-            }
+        // On automatic startup check, check once per app launch session
+        if (!isManual && hasCheckedOnStartup) {
+            return@withContext Result.success(null)
         }
+        if (!isManual) {
+            hasCheckedOnStartup = true
+        }
+
+        val now = System.currentTimeMillis()
 
         withContext(Dispatchers.Main) {
             isChecking.value = true
@@ -175,8 +184,9 @@ object UpdateManager {
 
                 withContext(Dispatchers.Main) {
                     availableUpdate.value = release
-                    if (isManual) showUpdateDialog.value = true
+                    showUpdateDialog.value = true
                     isChecking.value = false
+                    postUpdateNotification(context, release)
                 }
                 return@withContext Result.success(release)
             } else {
@@ -427,16 +437,68 @@ object UpdateManager {
         showUpdateDialog.value = true
     }
 
-    fun dismissUpdate() {
+    fun dismissUpdate(context: Context? = null) {
         if (isDownloading.value) return
         showUpdateDialog.value = false
         downloadProgress.floatValue = 0f
         errorMessage.value = null
+        context?.let { dismissNotification(it) }
     }
 
-    fun skipVersion(appPreferences: AppPreferences, tagName: String) {
+    fun skipVersion(appPreferences: AppPreferences, tagName: String, context: Context? = null) {
         appPreferences.setSkippedUpdateTag(tagName)
-        dismissUpdate()
+        dismissUpdate(context)
+    }
+
+    fun postUpdateNotification(context: Context, release: ReleaseInfo) {
+        try {
+            val nm = context.getSystemService(Context.NOTIFICATION_SERVICE) as? NotificationManager ?: return
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                val channel = NotificationChannel(
+                    UPDATE_CHANNEL_ID,
+                    "App Updates",
+                    NotificationManager.IMPORTANCE_DEFAULT
+                ).apply {
+                    description = "Notifications when a new version of AllRounder Player is available"
+                }
+                nm.createNotificationChannel(channel)
+            }
+
+            val launchIntent = Intent(context, com.example.ymediaplayer.MainActivity::class.java).apply {
+                flags = Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP
+                putExtra("open_update_dialog", true)
+            }
+            val pendingIntent = PendingIntent.getActivity(
+                context,
+                0,
+                launchIntent,
+                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+            )
+
+            val notification = NotificationCompat.Builder(context, UPDATE_CHANNEL_ID)
+                .setSmallIcon(com.example.ymediaplayer.R.mipmap.ic_launcher)
+                .setContentTitle("New Update Available: ${release.title}")
+                .setContentText("Version ${release.versionName} is ready to install. Tap to update or skip.")
+                .setStyle(
+                    NotificationCompat.BigTextStyle()
+                        .bigText("Version ${release.versionName} is ready to install.\n\n${release.changelog.take(200)}")
+                )
+                .setAutoCancel(true)
+                .setContentIntent(pendingIntent)
+                .setPriority(NotificationCompat.PRIORITY_DEFAULT)
+                .build()
+
+            nm.notify(UPDATE_NOTIFICATION_ID, notification)
+        } catch (_: Exception) {
+            // Notification post may fail if permissions are not yet granted
+        }
+    }
+
+    fun dismissNotification(context: Context) {
+        try {
+            val nm = context.getSystemService(Context.NOTIFICATION_SERVICE) as? NotificationManager
+            nm?.cancel(UPDATE_NOTIFICATION_ID)
+        } catch (_: Exception) {}
     }
 
     /**

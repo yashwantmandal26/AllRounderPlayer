@@ -46,6 +46,27 @@
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
+            <!-- Web / Universal Link: TMDb Movies & TV Series -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="https" android:host="www.themoviedb.org" android:pathPrefix="/movie/" />
+                <data android:scheme="https" android:host="www.themoviedb.org" android:pathPrefix="/tv/" />
+                <data android:scheme="https" android:host="themoviedb.org" android:pathPrefix="/movie/" />
+                <data android:scheme="https" android:host="themoviedb.org" android:pathPrefix="/tv/" />
+                <data android:scheme="http" android:host="www.themoviedb.org" android:pathPrefix="/movie/" />
+                <data android:scheme="http" android:host="www.themoviedb.org" android:pathPrefix="/tv/" />
+                <data android:scheme="http" android:host="themoviedb.org" android:pathPrefix="/movie/" />
+                <data android:scheme="http" android:host="themoviedb.org" android:pathPrefix="/tv/" />
+            </intent-filter>
+            <!-- Custom URI Scheme for Direct In-App Deep Linking -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="ymedia" android:host="cinema" />
+            </intent-filter>
         </activity>
         <activity
             android:name=".ui.VideoPlayerActivity"

@@ -52,9 +52,9 @@ fun UpdateDialog(release: ReleaseInfo, onDismiss: () -> Unit) {
             errorMessage = UpdateManager.errorMessage.value,
             readyToInstall = UpdateManager.readyToInstallTag.value == release.tagName,
             onDownload = { scope.launch { UpdateManager.downloadAndInstall(context, release) } },
-            onLater = { UpdateManager.dismissUpdate(); onDismiss() },
-            onSkip = { UpdateManager.skipVersion(preferences, release.tagName); onDismiss() },
-            onClose = onDismiss,
+            onLater = { UpdateManager.dismissUpdate(context); onDismiss() },
+            onSkip = { UpdateManager.skipVersion(preferences, release.tagName, context); onDismiss() },
+            onClose = { UpdateManager.dismissUpdate(context); onDismiss() },
             modifier = Modifier.padding(16.dp).heightIn(max = (configuration.screenHeightDp * 0.9f).dp))
     }
 }

@@ -72,6 +72,7 @@ class MainActivity : ComponentActivity() {
         val openMusicTrigger = mutableStateOf(false)
         val openSettingsTrigger = mutableStateOf(false)
         val openVideoUrl = mutableStateOf<String?>(null)
+        val openCinemaDeepLink = mutableStateOf<Pair<String, Int>?>(null)
         var onUserLeaveHintListener: (() -> Unit)? = null
     }
 
@@ -148,11 +149,15 @@ class MainActivity : ComponentActivity() {
     override fun onNewIntent(intent: android.content.Intent) {
         super.onNewIntent(intent)
         setIntent(intent)
+        handleCinemaDeepLink(intent)
         if (intent.getBooleanExtra(com.example.ymediaplayer.service.MusicService.EXTRA_OPEN_MUSIC_PLAYER, false)) {
             openMusicTrigger.value = true
         }
         if (intent.getBooleanExtra("OPEN_SETTINGS", false)) {
             openSettingsTrigger.value = true
+        }
+        if (intent.getBooleanExtra("open_update_dialog", false)) {
+            com.example.ymediaplayer.update.UpdateManager.showUpdateDialog.value = true
         }
         val videoUrlExtra = intent.getStringExtra(EXTRA_OPEN_VIDEO_URL)
         if (!videoUrlExtra.isNullOrEmpty()) {
@@ -160,14 +165,41 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    private fun handleCinemaDeepLink(intent: android.content.Intent?) {
+        val uri = intent?.data ?: return
+        val scheme = uri.scheme?.lowercase()
+        val host = uri.host?.lowercase()
+        val path = uri.path ?: ""
+        if ((scheme == "https" || scheme == "http") && (host == "www.themoviedb.org" || host == "themoviedb.org")) {
+            val segments = path.trim('/').split('/')
+            if (segments.size >= 2) {
+                val type = if (segments[0].equals("tv", ignoreCase = true)) "tv" else "movie"
+                val id = segments[1].substringBefore('-').toIntOrNull()
+                if (id != null) {
+                    openCinemaDeepLink.value = Pair(type, id)
+                }
+            }
+        } else if (scheme == "ymedia" && host == "cinema") {
+            val type = uri.getQueryParameter("type") ?: "movie"
+            val id = uri.getQueryParameter("id")?.toIntOrNull()
+            if (id != null) {
+                openCinemaDeepLink.value = Pair(type, id)
+            }
+        }
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        handleCinemaDeepLink(intent)
         
         if (intent?.getBooleanExtra(com.example.ymediaplayer.service.MusicService.EXTRA_OPEN_MUSIC_PLAYER, false) == true) {
             openMusicTrigger.value = true
         }
         if (intent?.getBooleanExtra("OPEN_SETTINGS", false) == true) {
             openSettingsTrigger.value = true
+        }
+        if (intent?.getBooleanExtra("open_update_dialog", false) == true) {
+            com.example.ymediaplayer.update.UpdateManager.showUpdateDialog.value = true
         }
         val videoUrlExtra = intent?.getStringExtra(EXTRA_OPEN_VIDEO_URL)
         if (!videoUrlExtra.isNullOrEmpty()) {
@@ -223,8 +255,9 @@ fun AppRoot(content: @Composable () -> Unit) {
             val update = com.example.ymediaplayer.update.UpdateManager.availableUpdate.value
             if (lifecycleState == androidx.lifecycle.Lifecycle.State.RESUMED && update != null &&
                 com.example.ymediaplayer.update.UpdateManager.showUpdateDialog.value) {
+                val context = androidx.compose.ui.platform.LocalContext.current
                 com.example.ymediaplayer.ui.UpdateDialog(update,
-                    onDismiss = { com.example.ymediaplayer.update.UpdateManager.dismissUpdate() })
+                    onDismiss = { com.example.ymediaplayer.update.UpdateManager.dismissUpdate(context) })
             }
         }
     }

@@ -641,8 +641,8 @@ fun AppSlider(
     steps: Int = 0,
     onValueChangeFinished: (() -> Unit)? = null,
     accentColor: Color = MaterialTheme.colorScheme.primary,
-    trackHeight: Dp = 5.dp,
-    thumbSize: Dp = 16.dp
+    trackHeight: Dp = 3.5.dp,
+    thumbSize: Dp = 14.dp
 ) {
     Slider(
         value = value,
@@ -671,7 +671,10 @@ fun AppSlider(
                     inactiveTrackColor = accentColor.copy(alpha = 0.22f),
                     disabledActiveTrackColor = accentColor.copy(alpha = 0.4f),
                     disabledInactiveTrackColor = Color.White.copy(alpha = 0.12f)
-                )
+                ),
+                thumbTrackGapSize = 0.dp,
+                trackInsideCornerSize = 0.dp,
+                drawStopIndicator = null
             )
         },
         colors = SliderDefaults.colors(

@@ -19,6 +19,18 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.gestures.detectTransformGestures
+import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
+import android.os.Build
+import java.io.File
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.ArrowBack
 import androidx.compose.material.icons.automirrored.rounded.OpenInNew
@@ -127,12 +139,13 @@ fun MyCinemaDetailModal(
                 .statusBarsPadding()
                 .verticalScroll(rememberScrollState())
         ) {
-            // Top Nav Row: Back button
+            // Top Nav Row: Back button (Left) and Share button (Right)
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(horizontal = 16.dp, vertical = 12.dp),
-                verticalAlignment = Alignment.CenterVertically
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween
             ) {
                 IconButton(
                     onClick = onDismiss,
@@ -145,6 +158,33 @@ fun MyCinemaDetailModal(
                     Icon(
                         Icons.AutoMirrored.Rounded.ArrowBack,
                         contentDescription = "Back",
+                        tint = Color.White,
+                        modifier = Modifier.size(20.dp)
+                    )
+                }
+
+                // Share movie/series (icon only)
+                IconButton(
+                    onClick = {
+                        val shareType = if (item.isSeries) "tv" else "movie"
+                        val shareUrl = "https://www.themoviedb.org/$shareType/${item.id}"
+                        val shareText = "Watch \"${item.displayName}\" on AllRounder Player:\n$shareUrl"
+                        val shareIntent = Intent(Intent.ACTION_SEND).apply {
+                            type = "text/plain"
+                            putExtra(Intent.EXTRA_SUBJECT, item.displayName)
+                            putExtra(Intent.EXTRA_TEXT, shareText)
+                        }
+                        context.startActivity(Intent.createChooser(shareIntent, "Share ${item.displayName}"))
+                    },
+                    modifier = Modifier
+                        .size(40.dp)
+                        .clip(CircleShape)
+                        .background(Color.Black.copy(alpha = 0.65f))
+                        .border(1.dp, Color.White.copy(alpha = 0.15f), CircleShape)
+                ) {
+                    Icon(
+                        Icons.Rounded.Share,
+                        contentDescription = "Share",
                         tint = Color.White,
                         modifier = Modifier.size(20.dp)
                     )
@@ -1454,6 +1494,8 @@ private fun PostersGallerySection(
 ) {
     if (images.isEmpty()) return
 
+    var activeViewerIndex by remember { mutableStateOf<Int?>(null) }
+
     Column(modifier = Modifier.fillMaxWidth()) {
         Row(
             verticalAlignment = Alignment.CenterVertically,
@@ -1481,7 +1523,7 @@ private fun PostersGallerySection(
             horizontalArrangement = Arrangement.spacedBy(10.dp),
             contentPadding = PaddingValues(horizontal = 2.dp)
         ) {
-            items(images, key = { "img_${it.filePath}" }) { img ->
+            itemsIndexed(images, key = { _, img -> "img_${img.filePath}" }) { index, img ->
                 val isBackdrop = img.isBackdrop
                 Box(
                     modifier = Modifier
@@ -1492,6 +1534,9 @@ private fun PostersGallerySection(
                         .clip(RoundedCornerShape(14.dp))
                         .background(Color(0xFF141722))
                         .border(1.dp, Color.White.copy(alpha = 0.15f), RoundedCornerShape(14.dp))
+                        .clickable {
+                            activeViewerIndex = index
+                        }
                 ) {
                     AsyncImage(
                         model = img.fullImageUrl,
@@ -1500,6 +1545,369 @@ private fun PostersGallerySection(
                         modifier = Modifier.fillMaxSize()
                     )
                 }
+            }
+        }
+    }
+
+    activeViewerIndex?.let { index ->
+        FullscreenImageGallery(
+            images = images,
+            initialIndex = index,
+            onDismiss = { activeViewerIndex = null }
+        )
+    }
+}
+
+@Composable
+private fun FullscreenImageGallery(
+    images: List<TmdbMediaImage>,
+    initialIndex: Int,
+    onDismiss: () -> Unit
+) {
+    val context = LocalContext.current
+    val coroutineScope = rememberCoroutineScope()
+    val pagerState = androidx.compose.foundation.pager.rememberPagerState(
+        initialPage = initialIndex.coerceIn(0, (images.size - 1).coerceAtLeast(0)),
+        pageCount = { images.size }
+    )
+
+    var isCurrentZoomed by remember { mutableStateOf(false) }
+
+    Dialog(
+        onDismissRequest = onDismiss,
+        properties = DialogProperties(
+            usePlatformDefaultWidth = false,
+            decorFitsSystemWindows = false
+        )
+    ) {
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(Color.Black)
+        ) {
+            val currentImage = images.getOrNull(pagerState.currentPage)
+
+            // Horizontal Pager for swiping between photos
+            androidx.compose.foundation.pager.HorizontalPager(
+                state = pagerState,
+                userScrollEnabled = !isCurrentZoomed,
+                modifier = Modifier.fillMaxSize()
+            ) { page ->
+                val img = images[page]
+                ZoomableGalleryPage(
+                    imageUrl = img.fullImageUrl,
+                    isCurrentPage = pagerState.currentPage == page,
+                    onZoomStateChanged = { zoomed ->
+                        if (pagerState.currentPage == page) {
+                            isCurrentZoomed = zoomed
+                        }
+                    }
+                )
+            }
+
+            // Top Control Bar with Glass overlay
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .align(Alignment.TopCenter)
+                    .background(
+                        Brush.verticalGradient(
+                            listOf(Color.Black.copy(alpha = 0.85f), Color.Black.copy(alpha = 0.40f), Color.Transparent)
+                        )
+                    )
+                    .statusBarsPadding()
+                    .padding(horizontal = 14.dp, vertical = 10.dp)
+            ) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    // Close button & Image counter
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        IconButton(
+                            onClick = onDismiss,
+                            modifier = Modifier
+                                .size(38.dp)
+                                .clip(CircleShape)
+                                .background(Color.White.copy(alpha = 0.15f))
+                        ) {
+                            Icon(
+                                Icons.Rounded.Close,
+                                contentDescription = "Close",
+                                tint = Color.White,
+                                modifier = Modifier.size(20.dp)
+                            )
+                        }
+
+                        Spacer(Modifier.width(12.dp))
+
+                        Text(
+                            text = "${pagerState.currentPage + 1} / ${images.size}",
+                            color = Color.White,
+                            fontSize = 15.sp,
+                            fontWeight = FontWeight.SemiBold
+                        )
+                    }
+
+                    // Action buttons: Copy, Save, Share
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        // 1. Copy link button
+                        IconButton(
+                            onClick = {
+                                if (currentImage != null) {
+                                    val cm = context.getSystemService(Context.CLIPBOARD_SERVICE) as? android.content.ClipboardManager
+                                    val clip = android.content.ClipData.newPlainText("Image URL", currentImage.fullImageUrl)
+                                    cm?.setPrimaryClip(clip)
+                                    Toast.makeText(context, "Image link copied to clipboard", Toast.LENGTH_SHORT).show()
+                                }
+                            },
+                            modifier = Modifier
+                                .size(38.dp)
+                                .clip(CircleShape)
+                                .background(Color.White.copy(alpha = 0.15f))
+                        ) {
+                            Icon(
+                                Icons.Rounded.ContentCopy,
+                                contentDescription = "Copy link",
+                                tint = Color.White,
+                                modifier = Modifier.size(18.dp)
+                            )
+                        }
+
+                        // 2. Save image to Gallery button
+                        IconButton(
+                            onClick = {
+                                if (currentImage != null) {
+                                    saveImageToGallery(context, coroutineScope, currentImage.fullImageUrl)
+                                }
+                            },
+                            modifier = Modifier
+                                .size(38.dp)
+                                .clip(CircleShape)
+                                .background(Color.White.copy(alpha = 0.15f))
+                        ) {
+                            Icon(
+                                Icons.Rounded.Download,
+                                contentDescription = "Save to Gallery",
+                                tint = Color.White,
+                                modifier = Modifier.size(19.dp)
+                            )
+                        }
+
+                        // 3. Share image button
+                        IconButton(
+                            onClick = {
+                                if (currentImage != null) {
+                                    shareGalleryImage(context, coroutineScope, currentImage.fullImageUrl)
+                                }
+                            },
+                            modifier = Modifier
+                                .size(38.dp)
+                                .clip(CircleShape)
+                                .background(Color.White.copy(alpha = 0.15f))
+                        ) {
+                            Icon(
+                                Icons.Rounded.Share,
+                                contentDescription = "Share",
+                                tint = Color.White,
+                                modifier = Modifier.size(18.dp)
+                            )
+                        }
+                    }
+                }
+            }
+
+            // Bottom subtle indicator / hint
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .align(Alignment.BottomCenter)
+                    .background(
+                        Brush.verticalGradient(
+                            listOf(Color.Transparent, Color.Black.copy(alpha = 0.65f))
+                        )
+                    )
+                    .navigationBarsPadding()
+                    .padding(vertical = 12.dp),
+                contentAlignment = Alignment.Center
+            ) {
+                Text(
+                    text = "Pinch to zoom  •  Double tap to zoom  •  Swipe to change",
+                    color = Color.White.copy(alpha = 0.55f),
+                    fontSize = 11.5.sp
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun ZoomableGalleryPage(
+    imageUrl: String,
+    isCurrentPage: Boolean,
+    onZoomStateChanged: (Boolean) -> Unit
+) {
+    var scale by remember { mutableFloatStateOf(1f) }
+    var offset by remember { mutableStateOf(Offset.Zero) }
+
+    LaunchedEffect(isCurrentPage) {
+        if (!isCurrentPage) {
+            scale = 1f
+            offset = Offset.Zero
+            onZoomStateChanged(false)
+        }
+    }
+
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .pointerInput(Unit) {
+                detectTapGestures(
+                    onDoubleTap = {
+                        scale = if (scale > 1.2f) {
+                            offset = Offset.Zero
+                            onZoomStateChanged(false)
+                            1f
+                        } else {
+                            onZoomStateChanged(true)
+                            2.5f
+                        }
+                    }
+                )
+            }
+            .pointerInput(Unit) {
+                detectTransformGestures { _, pan, zoom, _ ->
+                    val newScale = (scale * zoom).coerceIn(1f, 4.5f)
+                    scale = newScale
+                    onZoomStateChanged(newScale > 1.05f)
+                    if (newScale > 1f) {
+                        val maxOffsetX = (newScale - 1f) * 600f
+                        val maxOffsetY = (newScale - 1f) * 900f
+                        val newOffset = offset + pan
+                        offset = Offset(
+                            newOffset.x.coerceIn(-maxOffsetX, maxOffsetX),
+                            newOffset.y.coerceIn(-maxOffsetY, maxOffsetY)
+                        )
+                    } else {
+                        offset = Offset.Zero
+                    }
+                }
+            },
+        contentAlignment = Alignment.Center
+    ) {
+        AsyncImage(
+            model = imageUrl,
+            contentDescription = "Full Image",
+            contentScale = ContentScale.Fit,
+            modifier = Modifier
+                .fillMaxSize()
+                .graphicsLayer {
+                    scaleX = scale
+                    scaleY = scale
+                    translationX = offset.x
+                    translationY = offset.y
+                }
+        )
+    }
+}
+
+private fun saveImageToGallery(
+    context: Context,
+    scope: kotlinx.coroutines.CoroutineScope,
+    imageUrl: String
+) {
+    scope.launch(Dispatchers.IO) {
+        try {
+            withContext(Dispatchers.Main) {
+                Toast.makeText(context, "Saving photo to gallery...", Toast.LENGTH_SHORT).show()
+            }
+            val conn = java.net.URL(imageUrl).openConnection() as java.net.HttpURLConnection
+            conn.connectTimeout = 10000
+            conn.readTimeout = 15000
+            val bytes = conn.inputStream.use { it.readBytes() }
+
+            val fileName = "AllRounder_${System.currentTimeMillis()}.jpg"
+
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                val contentValues = android.content.ContentValues().apply {
+                    put(android.provider.MediaStore.Images.Media.DISPLAY_NAME, fileName)
+                    put(android.provider.MediaStore.Images.Media.MIME_TYPE, "image/jpeg")
+                    put(android.provider.MediaStore.Images.Media.RELATIVE_PATH, android.os.Environment.DIRECTORY_PICTURES + "/AllRounderPlayer")
+                    put(android.provider.MediaStore.Images.Media.IS_PENDING, 1)
+                }
+                val resolver = context.contentResolver
+                val uri = resolver.insert(android.provider.MediaStore.Images.Media.EXTERNAL_CONTENT_URI, contentValues)
+                if (uri != null) {
+                    resolver.openOutputStream(uri)?.use { os ->
+                        os.write(bytes)
+                    }
+                    contentValues.clear()
+                    contentValues.put(android.provider.MediaStore.Images.Media.IS_PENDING, 0)
+                    resolver.update(uri, contentValues, null, null)
+                }
+            } else {
+                val dir = File(android.os.Environment.getExternalStoragePublicDirectory(android.os.Environment.DIRECTORY_PICTURES), "AllRounderPlayer")
+                dir.mkdirs()
+                val file = File(dir, fileName)
+                file.writeBytes(bytes)
+                android.media.MediaScannerConnection.scanFile(context, arrayOf(file.absolutePath), arrayOf("image/jpeg"), null)
+            }
+
+            withContext(Dispatchers.Main) {
+                Toast.makeText(context, "Saved to Gallery (Pictures/AllRounderPlayer)", Toast.LENGTH_SHORT).show()
+            }
+        } catch (e: Exception) {
+            withContext(Dispatchers.Main) {
+                Toast.makeText(context, "Failed to save: ${e.message}", Toast.LENGTH_SHORT).show()
+            }
+        }
+    }
+}
+
+private fun shareGalleryImage(
+    context: Context,
+    scope: kotlinx.coroutines.CoroutineScope,
+    imageUrl: String
+) {
+    scope.launch(Dispatchers.IO) {
+        try {
+            val conn = java.net.URL(imageUrl).openConnection() as java.net.HttpURLConnection
+            conn.connectTimeout = 8000
+            conn.readTimeout = 10000
+            val bytes = conn.inputStream.use { it.readBytes() }
+
+            val cacheDir = File(context.cacheDir, "shared_images")
+            cacheDir.mkdirs()
+            val file = File(cacheDir, "shared_${System.currentTimeMillis()}.jpg")
+            file.writeBytes(bytes)
+
+            val uri = androidx.core.content.FileProvider.getUriForFile(
+                context,
+                "${context.packageName}.provider",
+                file
+            )
+
+            val shareIntent = Intent(Intent.ACTION_SEND).apply {
+                type = "image/jpeg"
+                putExtra(Intent.EXTRA_STREAM, uri)
+                putExtra(Intent.EXTRA_TEXT, imageUrl)
+                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            }
+
+            withContext(Dispatchers.Main) {
+                context.startActivity(Intent.createChooser(shareIntent, "Share Image"))
+            }
+        } catch (_: Exception) {
+            withContext(Dispatchers.Main) {
+                val textIntent = Intent(Intent.ACTION_SEND).apply {
+                    type = "text/plain"
+                    putExtra(Intent.EXTRA_TEXT, imageUrl)
+                }
+                context.startActivity(Intent.createChooser(textIntent, "Share Image Link"))
             }
         }
     }

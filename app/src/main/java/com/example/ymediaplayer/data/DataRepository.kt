@@ -448,21 +448,21 @@ class AppPreferences(private val prefs: SharedPreferences) {
         prefs.edit().putString("music_artwork_style", validStyle).apply()
     }
 
-    // Feature Introductions & Tour Guides (One-Time Visual Spotlights)
-    fun hasSeenHomeGuide(): Boolean = prefs.getBoolean("has_seen_visual_home_guide_v4", false)
+    // Feature Introductions & Tour Guides (Disabled)
+    fun hasSeenHomeGuide(): Boolean = true
     fun setSeenHomeGuide(seen: Boolean = true) { prefs.edit().putBoolean("has_seen_visual_home_guide_v4", seen).apply() }
 
-    fun hasSeenVideoPlayerGuide(): Boolean = prefs.getBoolean("has_seen_visual_video_guide_v4", false)
+    fun hasSeenVideoPlayerGuide(): Boolean = true
     fun setSeenVideoPlayerGuide(seen: Boolean = true) { prefs.edit().putBoolean("has_seen_visual_video_guide_v4", seen).apply() }
 
-    fun hasSeenMusicGuide(): Boolean = prefs.getBoolean("has_seen_visual_music_guide_v4", false)
+    fun hasSeenMusicGuide(): Boolean = true
     fun setSeenMusicGuide(seen: Boolean = true) { prefs.edit().putBoolean("has_seen_visual_music_guide_v4", seen).apply() }
 
     fun resetAllGuides() {
         prefs.edit()
-            .putBoolean("has_seen_visual_home_guide_v4", false)
-            .putBoolean("has_seen_visual_video_guide_v4", false)
-            .putBoolean("has_seen_visual_music_guide_v4", false)
+            .putBoolean("has_seen_visual_home_guide_v4", true)
+            .putBoolean("has_seen_visual_video_guide_v4", true)
+            .putBoolean("has_seen_visual_music_guide_v4", true)
             .apply()
     }
 

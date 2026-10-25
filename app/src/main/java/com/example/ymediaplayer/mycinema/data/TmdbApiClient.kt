@@ -460,4 +460,21 @@ class TmdbApiClient(
             null
         }
     }
+
+    suspend fun fetchItemById(isSeries: Boolean, tmdbId: Int): TmdbItem? = withContext(Dispatchers.IO) {
+        if (tmdbId <= 0 || apiKey.isBlank()) return@withContext null
+        try {
+            val endpoint = if (isSeries) "tv" else "movie"
+            val url = "https://api.themoviedb.org/3/$endpoint/$tmdbId?api_key=$apiKey"
+            val request = Request.Builder().url(url).build()
+            httpClient.newCall(request).execute().use { response ->
+                if (!response.isSuccessful) return@withContext null
+                val body = response.body?.string() ?: return@withContext null
+                val item = json.decodeFromString<TmdbItem>(body)
+                item.copy(mediaType = if (isSeries) "tv" else "movie")
+            }
+        } catch (_: Exception) {
+            null
+        }
+    }
 }

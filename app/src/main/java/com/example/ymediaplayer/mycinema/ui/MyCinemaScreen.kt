@@ -2,6 +2,7 @@ package com.example.ymediaplayer.mycinema.ui
 
 import android.content.Intent
 import android.widget.Toast
+import com.example.ymediaplayer.MainActivity
 import androidx.compose.animation.*
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
@@ -132,6 +133,18 @@ fun MyCinemaScreen(
 
     LaunchedEffect(activeDetailItem, libraryOpenType) {
         onDetailStateChanged(activeDetailItem != null || libraryOpenType != null)
+    }
+
+    LaunchedEffect(MainActivity.openCinemaDeepLink.value) {
+        val target = MainActivity.openCinemaDeepLink.value ?: return@LaunchedEffect
+        MainActivity.openCinemaDeepLink.value = null
+        val mediaType = target.first
+        val id = target.second
+        val isSeries = mediaType.equals("tv", ignoreCase = true)
+        val item = repository.getItemById(isSeries, id)
+        if (item != null) {
+            activeDetailItem = item
+        }
     }
 
     // Scan offline downloaded movies
