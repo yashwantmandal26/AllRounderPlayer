@@ -8,8 +8,8 @@ import org.junit.Test
 class TorrentEngineStreamingTest {
 
     @Test
-    fun defaultStreamBufferIsEightMegabytes() {
-        assertEquals(8 * 1024 * 1024L, TorrentEngine.DEFAULT_STREAM_BUFFER_BYTES)
+    fun defaultStreamBufferIsFourMegabytes() {
+        assertEquals(4 * 1024 * 1024L, TorrentEngine.DEFAULT_STREAM_BUFFER_BYTES)
     }
 
     @Test
@@ -98,5 +98,49 @@ class TorrentEngineStreamingTest {
     @Test
     fun testGetAvailableDownloadedBytesFromReturnsZeroForUnknownHash() {
         assertEquals(0L, TorrentEngine.getAvailableDownloadedBytesFrom("unknown_hash", 0L))
+    }
+
+    @Test
+    fun testSelectedFileIndexTracking() {
+        val testHash = "4a5b6c7d8e9f0123456789abcdef0123456789ab"
+        assertNull(TorrentEngine.getSelectedFileIndex(testHash))
+
+        TorrentEngine.setSelectedFileIndex(testHash, 3)
+        assertEquals(3, TorrentEngine.getSelectedFileIndex(testHash))
+        // Case-insensitive lookup
+        assertEquals(3, TorrentEngine.getSelectedFileIndex(testHash.uppercase()))
+
+        TorrentEngine.setSelectedFileIndex(testHash, 7)
+        assertEquals(7, TorrentEngine.getSelectedFileIndex(testHash))
+    }
+
+    @Test
+    fun base32InfoHashAndSelectedFileIndexNormalizeToHex() {
+        val base32Hash = "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+        val hexHash = "0".repeat(40)
+
+        assertEquals(hexHash, TorrentEngine.normalizeInfoHash(base32Hash))
+        TorrentEngine.setSelectedFileIndex(base32Hash, 5)
+        assertEquals(5, TorrentEngine.getSelectedFileIndex(hexHash))
+    }
+
+    @Test
+    fun malformedInfoHashIsRejected() {
+        assertNull(TorrentEngine.normalizeInfoHash("not-a-valid-hash"))
+    }
+
+    @Test
+    fun testTorrentFileInfoSizeFormatting() {
+        val fileInfo = TorrentEngine.TorrentFileInfo(
+            index = 2,
+            name = "Series.S01E03.1080p.mkv",
+            path = "Series/Series.S01E03.1080p.mkv",
+            sizeBytes = 1_500_000_000L,
+            isVideo = true
+        )
+        assertEquals(2, fileInfo.index)
+        assertEquals("Series.S01E03.1080p.mkv", fileInfo.name)
+        assertTrue(fileInfo.isVideo)
+        assertTrue(fileInfo.sizeFormatted.contains("GB") || fileInfo.sizeFormatted.contains("MB"))
     }
 }

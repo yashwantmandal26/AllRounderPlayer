@@ -43,6 +43,7 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
@@ -50,6 +51,7 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -62,7 +64,13 @@ import com.example.ymediaplayer.mycinema.data.TmdbCastMember
 import com.example.ymediaplayer.mycinema.data.TmdbItem
 import com.example.ymediaplayer.mycinema.data.TmdbMediaImage
 import com.example.ymediaplayer.mycinema.data.TmdbWatchProviderItem
+import com.example.ymediaplayer.mycinema.data.TmdbSeasonInfo
+import com.example.ymediaplayer.mycinema.data.TmdbEpisodeItem
+import com.example.ymediaplayer.mycinema.data.DownloadSite
+import com.example.ymediaplayer.mycinema.data.DownloadSitesManager
+import com.example.ymediaplayer.mycinema.data.currentCinemaDateIso
 import com.example.ymediaplayer.theme.LocalAppColors
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import java.net.URLEncoder
 
@@ -79,6 +87,14 @@ fun MyCinemaDetailModal(
     val c = LocalAppColors.current
     val appPreferences = remember(context) { com.example.ymediaplayer.data.AppPreferences(context) }
     val itemKey = remember(item.id, item.mediaType) { "${item.mediaType}_${item.id}" }
+    var currentDate by remember { mutableStateOf(currentCinemaDateIso()) }
+
+    LaunchedEffect(Unit) {
+        while (true) {
+            delay(60_000)
+            currentDate = currentCinemaDateIso()
+        }
+    }
 
     var isOverviewExpanded by remember { mutableStateOf(false) }
     var isBookmarked by remember { mutableStateOf(appPreferences.isCinemaWatchlisted(itemKey)) }
@@ -87,7 +103,16 @@ fun MyCinemaDetailModal(
     var extendedInfo by remember(item.id) { mutableStateOf<CinemaExtendedInfo?>(null) }
     var isLoadingExtended by remember(item.id) { mutableStateOf(true) }
 
-    val isUnreleased = item.isUnreleased
+    val isUnreleased = remember(item, extendedInfo, currentDate) {
+        val raw = item.releaseDate ?: item.firstAirDate
+        val status = extendedInfo?.status?.lowercase()?.trim()
+        val releaseDate = raw?.take(10).orEmpty()
+        when {
+            releaseDate.matches(Regex("\\d{4}-\\d{2}-\\d{2}")) -> releaseDate > currentDate
+            status != null && status in listOf("post production", "in production", "planned", "rumored") -> true
+            else -> false
+        }
+    }
 
     BackHandler {
         onDismiss()
@@ -354,115 +379,101 @@ fun MyCinemaDetailModal(
 
                 Spacer(Modifier.height(20.dp))
 
-                // Primary Action: If unreleased -> Show Coming Soon Card (NO Choose Source); If released -> Show CHOOSE SOURCE Button
+                // Primary Action: If unreleased -> Show "Coming on {Date}" Button (NO Choose Source); If released -> Show CHOOSE SOURCE Button
                 if (isUnreleased) {
+                    val comingDateText = if (releaseDateFormatted.isNotBlank() && releaseDateFormatted != "Unknown") {
+                        "Coming on $releaseDateFormatted"
+                    } else {
+                        "Coming Soon"
+                    }
+
                     Surface(
-                        shape = RoundedCornerShape(16.dp),
-                        color = Color(0xFF141926),
+                        shape = RoundedCornerShape(14.dp),
+                        color = Color(0xFF191F2C),
                         border = BorderStroke(1.2.dp, Color(0xFF00E5FF).copy(alpha = 0.45f)),
-                        modifier = Modifier.fillMaxWidth()
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(52.dp)
                     ) {
-                        Column(modifier = Modifier.padding(16.dp)) {
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                Box(
-                                    modifier = Modifier
-                                        .size(38.dp)
-                                        .clip(CircleShape)
-                                        .background(Color(0xFF00E5FF).copy(alpha = 0.15f))
-                                        .border(1.dp, Color(0xFF00E5FF).copy(alpha = 0.4f), CircleShape),
-                                    contentAlignment = Alignment.Center
-                                ) {
-                                    Icon(
-                                        Icons.Rounded.HourglassTop,
-                                        contentDescription = null,
-                                        tint = Color(0xFF00E5FF),
-                                        modifier = Modifier.size(20.dp)
-                                    )
-                                }
-                                Spacer(Modifier.width(12.dp))
-                                Column {
-                                    Text(
-                                        text = "UNRELEASED • COMING SOON",
-                                        color = Color(0xFF00E5FF),
-                                        fontSize = 11.sp,
-                                        fontWeight = FontWeight.ExtraBold,
-                                        letterSpacing = 1.sp
-                                    )
-                                    Spacer(Modifier.height(2.dp))
-                                    Text(
-                                        text = item.countdownLabel,
-                                        color = Color.White,
-                                        fontSize = 15.sp,
-                                        fontWeight = FontWeight.Bold
-                                    )
-                                }
-                            }
-
-                            Spacer(Modifier.height(10.dp))
-                            Text(
-                                text = "This title has not been released yet. Sources will become available after its official release.",
-                                color = Color.White.copy(alpha = 0.65f),
-                                fontSize = 12.5.sp,
-                                lineHeight = 17.sp
+                        Row(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .padding(horizontal = 16.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.Center
+                        ) {
+                            Icon(
+                                Icons.Rounded.Event,
+                                contentDescription = null,
+                                tint = Color(0xFF00E5FF),
+                                modifier = Modifier.size(20.dp)
                             )
+                            Spacer(Modifier.width(10.dp))
+                            Text(
+                                text = comingDateText,
+                                color = Color(0xFF00E5FF),
+                                fontSize = 14.5.sp,
+                                fontWeight = FontWeight.Bold,
+                                letterSpacing = 0.5.sp
+                            )
+                        }
+                    }
 
-                            Spacer(Modifier.height(14.dp))
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.spacedBy(10.dp)
-                            ) {
-                                // Watch Official Trailer Button
-                                Button(
-                                    onClick = {
-                                        openOfficialTrailer(context, youtubeTrailerKey, item.displayName)
-                                    },
-                                    shape = RoundedCornerShape(12.dp),
-                                    colors = ButtonDefaults.buttonColors(
-                                        containerColor = Color(0xFFFF0000),
-                                        contentColor = Color.White
-                                    ),
-                                    modifier = Modifier.weight(1f).height(44.dp),
-                                    contentPadding = PaddingValues(horizontal = 12.dp)
-                                ) {
-                                    Icon(Icons.Rounded.PlayArrow, contentDescription = null, modifier = Modifier.size(18.dp))
-                                    Spacer(Modifier.width(6.dp))
-                                    Text("TRAILER", fontSize = 12.5.sp, fontWeight = FontWeight.Bold)
-                                }
+                    Spacer(Modifier.height(12.dp))
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        // Watch Official Trailer Button
+                        Button(
+                            onClick = {
+                                openOfficialTrailer(context, youtubeTrailerKey, item.displayName)
+                            },
+                            shape = RoundedCornerShape(12.dp),
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = Color(0xFFFF0000),
+                                contentColor = Color.White
+                            ),
+                            modifier = Modifier.weight(1f).height(44.dp),
+                            contentPadding = PaddingValues(horizontal = 12.dp)
+                        ) {
+                            Icon(Icons.Rounded.PlayArrow, contentDescription = null, modifier = Modifier.size(18.dp))
+                            Spacer(Modifier.width(6.dp))
+                            Text("TRAILER", fontSize = 12.5.sp, fontWeight = FontWeight.Bold)
+                        }
 
-                                // Remind Me / Add to Watchlist Button
-                                OutlinedButton(
-                                    onClick = {
-                                        isBookmarked = appPreferences.toggleCinemaWatchlist(item)
-                                        Toast.makeText(
-                                            context,
-                                            if (isBookmarked) "Added to Watchlist (Reminder set)" else "Removed from Watchlist",
-                                            Toast.LENGTH_SHORT
-                                        ).show()
-                                    },
-                                    shape = RoundedCornerShape(12.dp),
-                                    border = BorderStroke(1.dp, if (isBookmarked) Color(0xFFFFC107) else Color.White.copy(alpha = 0.25f)),
-                                    colors = ButtonDefaults.outlinedButtonColors(
-                                        containerColor = if (isBookmarked) Color(0xFFFFC107).copy(alpha = 0.15f) else Color.Transparent,
-                                        contentColor = if (isBookmarked) Color(0xFFFFC107) else Color.White
-                                    ),
-                                    modifier = Modifier.weight(1f).height(44.dp),
-                                    contentPadding = PaddingValues(horizontal = 12.dp)
-                                ) {
-                                    Icon(
-                                        if (isBookmarked) Icons.Rounded.BookmarkAdded else Icons.Rounded.BookmarkAdd,
-                                        contentDescription = null,
-                                        modifier = Modifier.size(17.dp)
-                                    )
-                                    Spacer(Modifier.width(6.dp))
-                                    Text(if (isBookmarked) "SAVED" else "REMIND ME", fontSize = 12.sp, fontWeight = FontWeight.Bold)
-                                }
-                            }
+                        // Remind Me / Add to Watchlist Button
+                        OutlinedButton(
+                            onClick = {
+                                isBookmarked = appPreferences.toggleCinemaWatchlist(item)
+                                Toast.makeText(
+                                    context,
+                                    if (isBookmarked) "Added to Watchlist (Reminder set)" else "Removed from Watchlist",
+                                    Toast.LENGTH_SHORT
+                                ).show()
+                            },
+                            shape = RoundedCornerShape(12.dp),
+                            border = BorderStroke(1.dp, if (isBookmarked) Color(0xFFFFC107) else Color.White.copy(alpha = 0.25f)),
+                            colors = ButtonDefaults.outlinedButtonColors(
+                                containerColor = if (isBookmarked) Color(0xFFFFC107).copy(alpha = 0.15f) else Color.Transparent,
+                                contentColor = if (isBookmarked) Color(0xFFFFC107) else Color.White
+                            ),
+                            modifier = Modifier.weight(1f).height(44.dp),
+                            contentPadding = PaddingValues(horizontal = 12.dp)
+                        ) {
+                            Icon(
+                                if (isBookmarked) Icons.Rounded.BookmarkAdded else Icons.Rounded.BookmarkAdd,
+                                contentDescription = null,
+                                modifier = Modifier.size(17.dp)
+                            )
+                            Spacer(Modifier.width(6.dp))
+                            Text(if (isBookmarked) "SAVED" else "REMIND ME", fontSize = 12.sp, fontWeight = FontWeight.Bold)
                         }
                     }
                 } else {
                     // Released Movie: CHOOSE SOURCE
                     Button(
-                        onClick = { onChooseSource(item) },
+                        onClick = { onChooseSource(item.copy(logoPath = extendedInfo?.logoPath ?: item.logoPath)) },
                         shape = RoundedCornerShape(14.dp),
                         colors = ButtonDefaults.buttonColors(
                             containerColor = Color(0xFFE50914), // Bold Netflix / Cinema Red
@@ -486,9 +497,38 @@ fun MyCinemaDetailModal(
                             letterSpacing = 1.sp
                         )
                     }
+
+                    // DIRECT DOWNLOAD WEBSITES (HDHub4u & KatMovieHD) - Directly below Main Stream/Download Button (Only for Released Movies)
+                    Spacer(Modifier.height(14.dp))
+                    DirectDownloadSitesCard(
+                        item = item,
+                        context = context
+                    )
                 }
 
-                // TOP CAST SECTION (Just after the movie/series introduction)
+                // BROWSE THE SHOW (Seasons & Episodes System) - Immediately visible for Series
+                if (item.isSeries) {
+                    Spacer(Modifier.height(18.dp))
+                    BrowseTheShowSection(
+                        item = item,
+                        seasons = extendedInfo?.seasons ?: emptyList(),
+                        repository = repository,
+                        onChooseEpisodeSource = { ep ->
+                            val epCode = String.format(java.util.Locale.US, "S%02dE%02d", ep.seasonNumber, ep.episodeNumber)
+                            val epQuery = "${item.displayName} $epCode"
+                            onChooseSource(
+                                item.copy(
+                                    title = epQuery,
+                                    name = epQuery,
+                                    overview = ep.overview ?: item.overview,
+                                    logoPath = extendedInfo?.logoPath ?: item.logoPath
+                                )
+                            )
+                        }
+                    )
+                }
+
+                // TOP CAST SECTION (Just after the movie/series introduction & episodes)
                 if (extendedInfo?.topCast?.isNotEmpty() == true) {
                     Spacer(Modifier.height(18.dp))
                     TopCastSection(cast = extendedInfo!!.topCast)
@@ -501,7 +541,8 @@ fun MyCinemaDetailModal(
                         extendedInfo = extendedInfo!!,
                         isUnreleased = isUnreleased,
                         releaseDateFormatted = releaseDateFormatted,
-                        movieTitle = item.displayName
+                        movieTitle = item.displayName,
+                        movieYear = item.displayYear
                     )
                 }
 
@@ -849,7 +890,8 @@ private fun OfficialAvailabilityCard(
     extendedInfo: CinemaExtendedInfo,
     isUnreleased: Boolean,
     releaseDateFormatted: String,
-    movieTitle: String
+    movieTitle: String,
+    movieYear: String
 ) {
     val context = LocalContext.current
     Surface(
@@ -889,6 +931,7 @@ private fun OfficialAvailabilityCard(
                                 val browseUrl = getOttProviderBrowseUrl(
                                     providerName = provider.providerName,
                                     title = movieTitle,
+                                    year = movieYear,
                                     tmdbWatchLink = extendedInfo.tmdbWatchLink
                                 )
                                 launchBrowserUrl(context, browseUrl)
@@ -935,6 +978,7 @@ private fun OfficialAvailabilityCard(
                         val browseUrl = getOttProviderBrowseUrl(
                             providerName = platform,
                             title = movieTitle,
+                            year = movieYear,
                             tmdbWatchLink = extendedInfo.tmdbWatchLink
                         )
                         launchBrowserUrl(context, browseUrl)
@@ -997,6 +1041,102 @@ private fun OfficialAvailabilityCard(
                         )
                     }
                 }
+            }
+        }
+    }
+}
+
+@Composable
+private fun DirectDownloadSitesCard(
+    item: TmdbItem,
+    context: Context
+) {
+    val coroutineScope = rememberCoroutineScope()
+    var resolvingSiteId by remember { mutableStateOf<String?>(null) }
+    var downloadSiteNotice by remember { mutableStateOf<String?>(null) }
+
+    fun handleSiteClick(site: DownloadSite) {
+        if (resolvingSiteId != null) return
+        resolvingSiteId = site.id
+        downloadSiteNotice = null
+        coroutineScope.launch {
+            try {
+                val result = DownloadSitesManager.resolveDownloadSiteUrl(
+                    context = context,
+                    siteId = site.id,
+                    title = item.displayName,
+                    year = item.displayYear
+                )
+                if (result.notice != null) {
+                    downloadSiteNotice = result.notice
+                }
+                DownloadSitesManager.openInBrowser(context, result.searchUrl)
+            } catch (e: Exception) {
+                Toast.makeText(context, "Could not open ${site.name}: ${e.message}", Toast.LENGTH_SHORT).show()
+            } finally {
+                resolvingSiteId = null
+            }
+        }
+    }
+
+    Surface(
+        shape = RoundedCornerShape(14.dp),
+        color = Color(0xFF141722),
+        border = BorderStroke(1.dp, Color.White.copy(alpha = 0.12f)),
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        Column(modifier = Modifier.padding(14.dp)) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Icon(
+                    Icons.Rounded.CloudDownload,
+                    contentDescription = null,
+                    tint = Color(0xFF22D3EE),
+                    modifier = Modifier.size(17.dp)
+                )
+                Spacer(Modifier.width(6.dp))
+                Text(
+                    text = "DOWNLOAD FROM WEBSITES",
+                    color = Color.White.copy(alpha = 0.85f),
+                    fontSize = 11.5.sp,
+                    fontWeight = FontWeight.Bold,
+                    letterSpacing = 0.8.sp
+                )
+                Spacer(Modifier.weight(1f))
+                Text(
+                    text = "HDHub4u & KatMovieHD",
+                    color = Color.White.copy(alpha = 0.4f),
+                    fontSize = 10.sp
+                )
+            }
+
+            Spacer(Modifier.height(10.dp))
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                DownloadSitesManager.SITES.forEach { site ->
+                    DownloadSiteButton(
+                        site = site,
+                        isResolving = resolvingSiteId == site.id,
+                        enabled = resolvingSiteId == null,
+                        modifier = Modifier.weight(1f),
+                        onClick = { handleSiteClick(site) }
+                    )
+                }
+            }
+
+            if (!downloadSiteNotice.isNullOrBlank()) {
+                Spacer(Modifier.height(6.dp))
+                Text(
+                    text = downloadSiteNotice!!,
+                    color = Color(0xFFFFB300),
+                    fontSize = 11.sp,
+                    fontWeight = FontWeight.Medium
+                )
             }
         }
     }
@@ -1342,16 +1482,24 @@ private fun launchBrowserUrl(context: Context, url: String) {
 /**
  * Resolves the official watch / search URL for an OTT streaming platform.
  */
-private fun getOttProviderBrowseUrl(providerName: String, title: String, tmdbWatchLink: String? = null): String {
+private fun getOttProviderBrowseUrl(
+    providerName: String,
+    title: String,
+    year: String = "",
+    tmdbWatchLink: String? = null
+): String {
     val cleanTitle = title.trim()
+    val cleanYear = year.trim().takeIf { it.matches(Regex("\\d{4}")) }
+    val searchTitle = if (cleanYear != null) "$cleanTitle ($cleanYear)" else cleanTitle
     val encodedTitle = try {
-        URLEncoder.encode(cleanTitle, "UTF-8")
+        URLEncoder.encode(searchTitle, "UTF-8")
     } catch (_: Exception) {
-        cleanTitle.replace(" ", "+")
+        searchTitle.replace(" ", "+")
     }
     val lower = providerName.lowercase()
 
     return when {
+        (lower.contains("hotstar") || lower.contains("disney")) && !tmdbWatchLink.isNullOrBlank() -> tmdbWatchLink
         lower.contains("netflix") -> "https://www.google.com/search?q=watch+$encodedTitle+on+Netflix"
         lower.contains("prime") || lower.contains("amazon") -> "https://www.google.com/search?q=watch+$encodedTitle+on+Prime+Video"
         lower.contains("hotstar") || lower.contains("disney") -> "https://www.google.com/search?q=watch+$encodedTitle+on+Disney+Hotstar"
@@ -1900,6 +2048,455 @@ private fun shareGalleryImage(
                     putExtra(Intent.EXTRA_TEXT, imageUrl)
                 }
                 context.startActivity(Intent.createChooser(textIntent, "Share Image Link"))
+            }
+        }
+    }
+}
+
+// ─── BROWSE THE SHOW (SEASONS & EPISODES CATALOG) ───────────────────────────
+@Composable
+private fun BrowseTheShowSection(
+    item: TmdbItem,
+    seasons: List<TmdbSeasonInfo>,
+    repository: MyCinemaRepository,
+    onChooseEpisodeSource: (TmdbEpisodeItem) -> Unit
+) {
+    val displaySeasons = remember(seasons) {
+        if (seasons.isEmpty()) {
+            listOf(TmdbSeasonInfo(seasonNumber = 1, name = "Season 1", episodeCount = 0))
+        } else {
+            val regular = seasons.filter { it.seasonNumber > 0 }
+            if (regular.isNotEmpty()) regular else seasons
+        }
+    }
+
+    var selectedSeasonNumber by remember(displaySeasons) {
+        mutableIntStateOf(displaySeasons.firstOrNull()?.seasonNumber ?: 1)
+    }
+
+    var episodes by remember { mutableStateOf<List<TmdbEpisodeItem>>(emptyList()) }
+    var isLoadingEpisodes by remember { mutableStateOf(true) }
+
+    LaunchedEffect(item.id, selectedSeasonNumber) {
+        isLoadingEpisodes = true
+        episodes = repository.getSeasonEpisodes(item.id, selectedSeasonNumber)
+        isLoadingEpisodes = false
+    }
+
+    Column(modifier = Modifier.fillMaxWidth()) {
+        // Section Header
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween
+        ) {
+            Column {
+                Text(
+                    text = "BROWSE THE SHOW",
+                    color = Color.White.copy(alpha = 0.5f),
+                    fontSize = 11.sp,
+                    fontWeight = FontWeight.Bold,
+                    letterSpacing = 1.2.sp
+                )
+                Spacer(Modifier.height(2.dp))
+                Text(
+                    text = "Seasons & Episode Guide",
+                    color = Color.White,
+                    fontSize = 16.5.sp,
+                    fontWeight = FontWeight.ExtraBold
+                )
+            }
+
+            val currentSeason = displaySeasons.firstOrNull { it.seasonNumber == selectedSeasonNumber }
+            if (currentSeason != null && currentSeason.episodeCount > 0) {
+                Surface(
+                    shape = RoundedCornerShape(12.dp),
+                    color = Color.White.copy(alpha = 0.08f),
+                    border = BorderStroke(1.dp, Color.White.copy(alpha = 0.12f))
+                ) {
+                    Text(
+                        text = "${currentSeason.episodeCount} Episodes",
+                        color = Color(0xFF64B5F6),
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Bold,
+                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp)
+                    )
+                }
+            }
+        }
+
+        Spacer(Modifier.height(14.dp))
+
+        // Season Selector Pills
+        LazyRow(
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            items(displaySeasons) { s ->
+                val isSelected = s.seasonNumber == selectedSeasonNumber
+                Surface(
+                    onClick = { selectedSeasonNumber = s.seasonNumber },
+                    shape = RoundedCornerShape(20.dp),
+                    color = if (isSelected) Color(0xFFFF6B00) else Color(0xFF141722),
+                    border = BorderStroke(
+                        1.dp,
+                        if (isSelected) Color(0xFFFF6B00) else Color.White.copy(alpha = 0.14f)
+                    ),
+                    modifier = Modifier.height(36.dp)
+                ) {
+                    Row(
+                        modifier = Modifier.padding(horizontal = 14.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = s.name,
+                            color = if (isSelected) Color.White else Color.White.copy(alpha = 0.75f),
+                            fontSize = 12.5.sp,
+                            fontWeight = if (isSelected) FontWeight.ExtraBold else FontWeight.Medium
+                        )
+                        if (s.episodeCount > 0) {
+                            Spacer(Modifier.width(6.dp))
+                            Text(
+                                text = "(${s.episodeCount})",
+                                color = if (isSelected) Color.White.copy(alpha = 0.85f) else Color.White.copy(alpha = 0.45f),
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Normal
+                            )
+                        }
+                    }
+                }
+            }
+        }
+
+        Spacer(Modifier.height(16.dp))
+
+        // Episode List Cards
+        if (isLoadingEpisodes) {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(140.dp),
+                contentAlignment = Alignment.Center
+            ) {
+                CircularProgressIndicator(
+                    strokeWidth = 2.dp,
+                    color = Color(0xFFFF6B00),
+                    modifier = Modifier.size(28.dp)
+                )
+            }
+        } else if (episodes.isEmpty()) {
+            Surface(
+                shape = RoundedCornerShape(14.dp),
+                color = Color(0xFF141722),
+                border = BorderStroke(1.dp, Color.White.copy(alpha = 0.08f)),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(vertical = 8.dp)
+            ) {
+                Text(
+                    text = "Episode details pending release or unavailable for this season.",
+                    color = Color.White.copy(alpha = 0.5f),
+                    fontSize = 12.5.sp,
+                    textAlign = TextAlign.Center,
+                    modifier = Modifier.padding(20.dp)
+                )
+            }
+        } else {
+            Column(
+                verticalArrangement = Arrangement.spacedBy(12.dp),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                episodes.forEach { ep ->
+                    EpisodeCardItem(
+                        item = item,
+                        episode = ep,
+                        onChooseSource = { onChooseEpisodeSource(ep) }
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun EpisodeCardItem(
+    item: TmdbItem,
+    episode: TmdbEpisodeItem,
+    onChooseSource: () -> Unit
+) {
+    val context = LocalContext.current
+    val appPrefs = remember { com.example.ymediaplayer.data.AppPreferences(context) }
+    val progressVersion = appPrefs.lastProgressUpdate.longValue
+    val isWatched = remember(progressVersion, episode.seasonNumber, episode.episodeNumber) {
+        appPrefs.isEpisodeCompleted(item.id, episode.seasonNumber, episode.episodeNumber)
+    }
+    val (progressMs, durationMs) = remember(progressVersion, episode.seasonNumber, episode.episodeNumber) {
+        appPrefs.getEpisodeProgress(item.id, episode.seasonNumber, episode.episodeNumber)
+    }
+    val progressFraction = if (durationMs > 0L) (progressMs.toFloat() / durationMs.toFloat()).coerceIn(0f, 1f) else 0f
+
+    val stillUrl = episode.fullStillUrl ?: item.fullBackdropUrl ?: item.fullPosterUrl
+
+    Surface(
+        shape = RoundedCornerShape(14.dp),
+        color = Color(0xFF131520),
+        border = BorderStroke(
+            1.dp,
+            if (isWatched) Color(0xFF00E676).copy(alpha = 0.4f) else Color.White.copy(alpha = 0.1f)
+        ),
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        Column(modifier = Modifier.padding(12.dp)) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.Top
+            ) {
+                // Still Image thumbnail with 16:9 ratio, badges & bottom progress bar
+                Box(
+                    modifier = Modifier
+                        .size(width = 120.dp, height = 72.dp)
+                        .clip(RoundedCornerShape(8.dp))
+                        .background(Color(0xFF1E2130))
+                ) {
+                    if (stillUrl != null) {
+                        AsyncImage(
+                            model = stillUrl,
+                            contentDescription = episode.name,
+                            contentScale = ContentScale.Crop,
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .alpha(if (isWatched) 0.65f else 1f)
+                        )
+                    }
+
+                    // S01 E01 Overlay Badge
+                    Surface(
+                        shape = RoundedCornerShape(bottomEnd = 6.dp),
+                        color = Color.Black.copy(alpha = 0.75f),
+                        modifier = Modifier.align(Alignment.TopStart)
+                    ) {
+                        Text(
+                            text = episode.episodeCode,
+                            color = Color(0xFFFF9E00),
+                            fontSize = 10.sp,
+                            fontWeight = FontWeight.Bold,
+                            modifier = Modifier.padding(horizontal = 5.dp, vertical = 2.dp)
+                        )
+                    }
+
+                    // Watched Status Checkmark Badge
+                    if (isWatched) {
+                        Surface(
+                            shape = RoundedCornerShape(bottomStart = 6.dp),
+                            color = Color(0xFF00E676),
+                            modifier = Modifier.align(Alignment.TopEnd)
+                        ) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                modifier = Modifier.padding(horizontal = 4.dp, vertical = 2.dp)
+                            ) {
+                                Icon(
+                                    Icons.Rounded.Check,
+                                    contentDescription = null,
+                                    tint = Color.Black,
+                                    modifier = Modifier.size(10.dp)
+                                )
+                                Spacer(Modifier.width(2.dp))
+                                Text(
+                                    text = "WATCHED",
+                                    color = Color.Black,
+                                    fontSize = 8.5.sp,
+                                    fontWeight = FontWeight.ExtraBold
+                                )
+                            }
+                        }
+                    }
+
+                    // In-Progress Bar across thumbnail bottom
+                    if (progressFraction > 0.05f && !isWatched) {
+                        Box(
+                            modifier = Modifier
+                                .align(Alignment.BottomCenter)
+                                .fillMaxWidth()
+                                .height(4.dp)
+                                .background(Color.Black.copy(alpha = 0.6f))
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxHeight()
+                                    .fillMaxWidth(progressFraction)
+                                    .background(Color(0xFFFF6B00))
+                            )
+                        }
+                    }
+                }
+
+                Spacer(Modifier.width(12.dp))
+
+                // Title, Air Date, Release Status, Watched Toggle
+                Column(modifier = Modifier.weight(1f)) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = episode.name.ifBlank { "Episode ${episode.episodeNumber}" },
+                            color = if (isWatched) Color.White.copy(alpha = 0.75f) else Color.White,
+                            fontSize = 14.sp,
+                            fontWeight = FontWeight.Bold,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.weight(1f, fill = false)
+                        )
+
+                        // Interactive Watched Toggle Checkmark Button
+                        IconButton(
+                            onClick = {
+                                val newWatched = appPrefs.toggleEpisodeCompleted(item.id, episode.seasonNumber, episode.episodeNumber)
+                                Toast.makeText(
+                                    context,
+                                    if (newWatched) "Marked ${episode.episodeCode} as Watched" else "Marked ${episode.episodeCode} as Unwatched",
+                                    Toast.LENGTH_SHORT
+                                ).show()
+                            },
+                            modifier = Modifier.size(28.dp)
+                        ) {
+                            Icon(
+                                imageVector = if (isWatched) Icons.Rounded.CheckCircle else Icons.Rounded.RadioButtonUnchecked,
+                                contentDescription = if (isWatched) "Mark as Unwatched" else "Mark as Watched",
+                                tint = if (isWatched) Color(0xFF00E676) else Color.White.copy(alpha = 0.35f),
+                                modifier = Modifier.size(19.dp)
+                            )
+                        }
+                    }
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        // Release status pill
+                        if (episode.released) {
+                            Surface(
+                                shape = RoundedCornerShape(4.dp),
+                                color = Color(0xFF00E676).copy(alpha = 0.18f),
+                                border = BorderStroke(0.5.dp, Color(0xFF00E676).copy(alpha = 0.4f))
+                            ) {
+                                Text(
+                                    text = "RELEASED",
+                                    color = Color(0xFF00E676),
+                                    fontSize = 8.5.sp,
+                                    fontWeight = FontWeight.ExtraBold,
+                                    modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.5.dp)
+                                )
+                            }
+                        } else {
+                            Surface(
+                                shape = RoundedCornerShape(4.dp),
+                                color = Color(0xFFFF9100).copy(alpha = 0.18f),
+                                border = BorderStroke(0.5.dp, Color(0xFFFF9100).copy(alpha = 0.4f))
+                            ) {
+                                Text(
+                                    text = "UPCOMING",
+                                    color = Color(0xFFFF9100),
+                                    fontSize = 8.5.sp,
+                                    fontWeight = FontWeight.ExtraBold,
+                                    modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.5.dp)
+                                )
+                            }
+                        }
+
+                        if (!episode.airDate.isNullOrBlank()) {
+                            Text(
+                                text = "Aired: ${episode.airDate}",
+                                color = Color.White.copy(alpha = 0.5f),
+                                fontSize = 11.sp
+                            )
+                        }
+
+                        if (progressFraction > 0.05f && !isWatched) {
+                            Text(
+                                text = "• ${(progressFraction * 100).toInt()}% watched",
+                                color = Color(0xFFFF9E00),
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.SemiBold
+                            )
+                        }
+                    }
+
+                    if (!episode.overview.isNullOrBlank()) {
+                        Spacer(Modifier.height(4.dp))
+                        Text(
+                            text = episode.overview,
+                            color = Color.White.copy(alpha = 0.68f),
+                            fontSize = 11.5.sp,
+                            maxLines = 2,
+                            overflow = TextOverflow.Ellipsis,
+                            lineHeight = 15.sp
+                        )
+                    }
+                }
+            }
+
+            Spacer(Modifier.height(10.dp))
+
+            // Action: Choose Source button (or Coming Soon if unreleased)
+            if (episode.released) {
+                Button(
+                    onClick = onChooseSource,
+                    shape = RoundedCornerShape(8.dp),
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = Color(0xFFFF6B00),
+                        contentColor = Color.White
+                    ),
+                    contentPadding = PaddingValues(horizontal = 14.dp, vertical = 6.dp),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(34.dp)
+                ) {
+                    Icon(
+                        Icons.Rounded.PlayArrow,
+                        contentDescription = null,
+                        modifier = Modifier.size(15.dp)
+                    )
+                    Spacer(Modifier.width(6.dp))
+                    Text(
+                        text = "CHOOSE SOURCE FOR ${episode.episodeCode}",
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Bold,
+                        letterSpacing = 0.5.sp
+                    )
+                }
+            } else {
+                Surface(
+                    shape = RoundedCornerShape(8.dp),
+                    color = Color.White.copy(alpha = 0.08f),
+                    border = BorderStroke(0.8.dp, Color(0xFF00E5FF).copy(alpha = 0.4f)),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(34.dp)
+                ) {
+                    Row(
+                        modifier = Modifier.fillMaxSize().padding(horizontal = 10.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.Center
+                    ) {
+                        Icon(
+                            Icons.Rounded.Event,
+                            contentDescription = null,
+                            tint = Color(0xFF00E5FF),
+                            modifier = Modifier.size(14.dp)
+                        )
+                        Spacer(Modifier.width(6.dp))
+                        Text(
+                            text = if (!episode.airDate.isNullOrBlank()) "Coming on ${episode.airDate}" else "Coming Soon",
+                            color = Color(0xFF00E5FF),
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.SemiBold
+                        )
+                    }
+                }
             }
         }
     }

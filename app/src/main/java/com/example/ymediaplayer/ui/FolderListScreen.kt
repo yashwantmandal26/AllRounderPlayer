@@ -102,7 +102,7 @@ data class CinemaStreamSession(
 fun FolderListScreen(
     onFolderClick: (String, String) -> Unit,
     onVideoClick: (String) -> Unit,
-    onOpenSettings: () -> Unit = {},
+    onOpenSettings: (String?) -> Unit = {},
     hasVideoPermission: Boolean = true,
     hasAudioPermission: Boolean = true,
     onRequestPermissions: () -> Unit = {},
@@ -718,7 +718,7 @@ fun FolderListScreen(
                                                         if (currentTab == "MYCinema") {
                                                             showCinemaMenu = true
                                                         } else {
-                                                            onOpenSettings()
+                                                            onOpenSettings(if (currentTab == "Music") "Music" else null)
                                                         }
                                                     },
                                                     onLongClick = {
@@ -798,7 +798,7 @@ fun FolderListScreen(
                                                         leadingIcon = { Icon(Icons.Rounded.Settings, contentDescription = null, tint = c.textSecondary, modifier = Modifier.size(20.dp)) },
                                                         onClick = {
                                                             showCinemaMenu = false
-                                                            onOpenSettings()
+                                                            onOpenSettings(null)
                                                         }
                                                     )
                                                 }
@@ -930,6 +930,8 @@ fun FolderListScreen(
                                             putExtra(com.example.ymediaplayer.ui.VideoPlayerActivity.EXTRA_VIDEO_URL, TorrentEngine.getFilePath(context, hash) ?: "")
                                             putExtra(com.example.ymediaplayer.ui.VideoPlayerActivity.EXTRA_VIDEO_TITLE, item.displayName)
                                             putExtra(com.example.ymediaplayer.ui.VideoPlayerActivity.EXTRA_POSTER_URL, item.fullPosterUrl ?: "")
+                                            putExtra(com.example.ymediaplayer.ui.VideoPlayerActivity.EXTRA_BACKDROP_URL, item.fullBackdropUrl ?: "")
+                                            putExtra(com.example.ymediaplayer.ui.VideoPlayerActivity.EXTRA_LOGO_URL, item.fullLogoUrl ?: "")
                                             putExtra(com.example.ymediaplayer.ui.VideoPlayerActivity.EXTRA_TORRENT_HASH, hash)
                                             putExtra(com.example.ymediaplayer.ui.VideoPlayerActivity.EXTRA_IS_STREAMING, true)
                                         }

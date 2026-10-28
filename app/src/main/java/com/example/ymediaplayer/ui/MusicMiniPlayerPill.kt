@@ -204,6 +204,51 @@ fun MusicMiniPlayerPill(
                 )
             }
 
+            // Keep a fixed slot immediately before the transport controls. The
+            // bars animate in place, so play/pause never moves the buttons.
+            Box(
+                modifier = Modifier.size(width = 16.dp, height = 14.dp),
+                contentAlignment = Alignment.BottomCenter
+            ) {
+                if (isPlaying) {
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(2.dp),
+                        verticalAlignment = Alignment.Bottom,
+                        modifier = Modifier.fillMaxSize()
+                    ) {
+                        val infiniteTransition = rememberInfiniteTransition(label = "nowPlayingBars")
+                        val bar1 by infiniteTransition.animateFloat(
+                            initialValue = 0.25f,
+                            targetValue = 1f,
+                            animationSpec = infiniteRepeatable(tween(350, easing = LinearEasing), RepeatMode.Reverse),
+                            label = "b1"
+                        )
+                        val bar2 by infiniteTransition.animateFloat(
+                            initialValue = 0.5f,
+                            targetValue = 0.15f,
+                            animationSpec = infiniteRepeatable(tween(450, easing = LinearEasing), RepeatMode.Reverse),
+                            label = "b2"
+                        )
+                        val bar3 by infiniteTransition.animateFloat(
+                            initialValue = 0.2f,
+                            targetValue = 0.9f,
+                            animationSpec = infiniteRepeatable(tween(300, easing = LinearEasing), RepeatMode.Reverse),
+                            label = "b3"
+                        )
+
+                        listOf(bar1, bar2, bar3).forEach { factor ->
+                            Box(
+                                modifier = Modifier
+                                    .width(2.2.dp)
+                                    .fillMaxHeight(factor)
+                                    .clip(RoundedCornerShape(1.dp))
+                                    .background(c.accentBlue)
+                            )
+                        }
+                    }
+                }
+            }
+
             // ─── Skip Previous Button ───────────────────────────────────
             IconButton(
                 onClick = {
@@ -260,47 +305,6 @@ fun MusicMiniPlayerPill(
                     tint = Color.White,
                     modifier = Modifier.size(20.dp)
                 )
-            }
-
-            // ─── Animated Equalizer Bars ────────────────────────────────
-            if (isPlaying) {
-                Row(
-                    horizontalArrangement = Arrangement.spacedBy(2.dp),
-                    verticalAlignment = Alignment.Bottom,
-                    modifier = Modifier
-                        .height(14.dp)
-                        .padding(horizontal = 2.dp)
-                ) {
-                    val infiniteTransition = rememberInfiniteTransition(label = "nowPlayingBars")
-                    val bar1 by infiniteTransition.animateFloat(
-                        initialValue = 0.25f,
-                        targetValue = 1f,
-                        animationSpec = infiniteRepeatable(tween(350, easing = LinearEasing), RepeatMode.Reverse),
-                        label = "b1"
-                    )
-                    val bar2 by infiniteTransition.animateFloat(
-                        initialValue = 0.5f,
-                        targetValue = 0.15f,
-                        animationSpec = infiniteRepeatable(tween(450, easing = LinearEasing), RepeatMode.Reverse),
-                        label = "b2"
-                    )
-                    val bar3 by infiniteTransition.animateFloat(
-                        initialValue = 0.2f,
-                        targetValue = 0.9f,
-                        animationSpec = infiniteRepeatable(tween(300, easing = LinearEasing), RepeatMode.Reverse),
-                        label = "b3"
-                    )
-
-                    listOf(bar1, bar2, bar3).forEach { factor ->
-                        Box(
-                            modifier = Modifier
-                                .width(2.2.dp)
-                                .fillMaxHeight(factor)
-                                .clip(RoundedCornerShape(1.dp))
-                                .background(c.accentBlue)
-                        )
-                    }
-                }
             }
 
             // ─── Close / Exit (X) Button ────────────────────────────────

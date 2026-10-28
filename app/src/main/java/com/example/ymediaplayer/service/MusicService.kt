@@ -61,10 +61,12 @@ class MusicService : MediaSessionService() {
         const val CUSTOM_ACTION_FAVORITE = "com.example.ymediaplayer.ACTION_FAVORITE"
         const val CUSTOM_ACTION_REWIND = "com.example.ymediaplayer.ACTION_REWIND_10"
         const val CUSTOM_ACTION_FORWARD = "com.example.ymediaplayer.ACTION_FORWARD_10"
+        const val CUSTOM_ACTION_STOP = "com.example.ymediaplayer.ACTION_STOP_PLAYBACK"
 
         const val ACTION_PLAY_PAUSE = "com.example.ymediaplayer.ACTION_PLAY_PAUSE"
         const val ACTION_PREV = "com.example.ymediaplayer.ACTION_PREV"
         const val ACTION_NEXT = "com.example.ymediaplayer.ACTION_NEXT"
+        const val ACTION_STOP = "com.example.ymediaplayer.ACTION_STOP"
 
         var currentAudioSessionId: androidx.compose.runtime.MutableState<Int> =
             androidx.compose.runtime.mutableIntStateOf(0)
@@ -365,10 +367,13 @@ class MusicService : MediaSessionService() {
             isMiniPlayerDismissed.value = true
             fadeJob?.cancel()
             playerInstance?.let {
+                it.playWhenReady = false
                 it.stop()
                 it.clearMediaItems()
                 it.volume = 1f
             }
+            currentPlaylist = emptyList()
+            currentSongIndex = -1
             onStopAction?.invoke()
             isMusicPlaying.value = false
             nowPlayingTitle.value = ""
@@ -379,6 +384,7 @@ class MusicService : MediaSessionService() {
                 serviceInstance?.stopForeground(STOP_FOREGROUND_REMOVE)
                 val nm = serviceInstance?.getSystemService(Context.NOTIFICATION_SERVICE) as? NotificationManager
                 nm?.cancel(MUSIC_NOTIFICATION_ID)
+                serviceInstance?.stopSelf()
             } catch (_: Exception) {}
         }
 
@@ -671,6 +677,7 @@ class MusicService : MediaSessionService() {
                     .add(SessionCommand(CUSTOM_ACTION_FAVORITE, Bundle.EMPTY))
                     .add(SessionCommand(CUSTOM_ACTION_REWIND, Bundle.EMPTY))
                     .add(SessionCommand(CUSTOM_ACTION_FORWARD, Bundle.EMPTY))
+                    .add(SessionCommand(CUSTOM_ACTION_STOP, Bundle.EMPTY))
                     .build()
 
                 val playerCommands = MediaSession.ConnectionResult.DEFAULT_PLAYER_COMMANDS.buildUpon()
@@ -708,6 +715,11 @@ class MusicService : MediaSessionService() {
                     }
                     CUSTOM_ACTION_FORWARD -> {
                         player.seekTo((player.currentPosition + 10_000L).coerceAtMost(player.duration.coerceAtLeast(0L)))
+                        return Futures.immediateFuture(SessionResult(SessionResult.RESULT_SUCCESS))
+                    }
+                    CUSTOM_ACTION_STOP -> {
+                        stopAndDismiss()
+                        stopSelf()
                         return Futures.immediateFuture(SessionResult(SessionResult.RESULT_SUCCESS))
                     }
                 }
@@ -850,19 +862,9 @@ class MusicService : MediaSessionService() {
             this, 1, prevIntent, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
 
-        val rewindIntent = Intent(this, MusicService::class.java).apply { action = CUSTOM_ACTION_REWIND }
-        val rewindPendingIntent = PendingIntent.getService(
-            this, 4, rewindIntent, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
-        )
-
         val playPauseIntent = Intent(this, MusicService::class.java).apply { action = ACTION_PLAY_PAUSE }
         val playPausePendingIntent = PendingIntent.getService(
             this, 2, playPauseIntent, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
-        )
-
-        val forwardIntent = Intent(this, MusicService::class.java).apply { action = CUSTOM_ACTION_FORWARD }
-        val forwardPendingIntent = PendingIntent.getService(
-            this, 5, forwardIntent, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
 
         val nextIntent = Intent(this, MusicService::class.java).apply { action = ACTION_NEXT }
@@ -870,8 +872,13 @@ class MusicService : MediaSessionService() {
             this, 3, nextIntent, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
 
+        val stopIntent = Intent(this, MusicService::class.java).apply { action = ACTION_STOP }
+        val stopPendingIntent = PendingIntent.getService(
+            this, 6, stopIntent, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+
         val mediaStyle = androidx.media.app.NotificationCompat.MediaStyle()
-            .setShowActionsInCompactView(0, 2, 4)
+            .setShowActionsInCompactView(0, 1, 2)
 
         try {
             mediaSession?.platformToken?.let { token ->
@@ -889,14 +896,14 @@ class MusicService : MediaSessionService() {
             .setOngoing(isPlaying)
             .setShowWhen(false)
             .addAction(android.R.drawable.ic_media_previous, "Previous", prevPendingIntent)
-            .addAction(R.drawable.ic_notif_rewind_10, "Rewind 10s", rewindPendingIntent)
             .addAction(
                 if (isPlaying) android.R.drawable.ic_media_pause else android.R.drawable.ic_media_play,
                 if (isPlaying) "Pause" else "Play",
                 playPausePendingIntent
             )
-            .addAction(R.drawable.ic_notif_forward_10, "Forward 10s", forwardPendingIntent)
             .addAction(android.R.drawable.ic_media_next, "Next", nextPendingIntent)
+            .addAction(android.R.drawable.ic_menu_close_clear_cancel, "Stop", stopPendingIntent)
+            .setDeleteIntent(stopPendingIntent)
             .setStyle(mediaStyle)
 
         try {
@@ -923,14 +930,22 @@ class MusicService : MediaSessionService() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             try {
                 val notification = buildMediaNotification()
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                    startForeground(
-                        MUSIC_NOTIFICATION_ID,
-                        notification,
-                        android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PLAYBACK
-                    )
+                if (playerInstance?.isPlaying == true) {
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                        startForeground(
+                            MUSIC_NOTIFICATION_ID,
+                            notification,
+                            android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PLAYBACK
+                        )
+                    } else {
+                        startForeground(MUSIC_NOTIFICATION_ID, notification)
+                    }
                 } else {
-                    startForeground(MUSIC_NOTIFICATION_ID, notification)
+                    // A paused player doesn't need foreground-service priority. Detaching
+                    // leaves its controls visible and lets the user dismiss the notification.
+                    stopForeground(STOP_FOREGROUND_DETACH)
+                    val nm = getSystemService(Context.NOTIFICATION_SERVICE) as? NotificationManager
+                    nm?.notify(MUSIC_NOTIFICATION_ID, notification)
                 }
             } catch (e: Exception) {
                 android.util.Log.e("MusicService", "Error in updateForegroundNotification", e)
@@ -958,7 +973,13 @@ class MusicService : MediaSessionService() {
             .setSessionCommand(SessionCommand(CUSTOM_ACTION_FAVORITE, Bundle.EMPTY))
             .build()
 
-        return listOf(rewindButton, favoriteButton)
+        val stopButton = CommandButton.Builder()
+            .setDisplayName("Stop")
+            .setIconResId(android.R.drawable.ic_menu_close_clear_cancel)
+            .setSessionCommand(SessionCommand(CUSTOM_ACTION_STOP, Bundle.EMPTY))
+            .build()
+
+        return listOf(rewindButton, favoriteButton, stopButton)
     }
 
     fun updateSessionCustomLayout() {
@@ -972,6 +993,11 @@ class MusicService : MediaSessionService() {
             ACTION_PLAY_PAUSE -> togglePlayPause()
             ACTION_PREV -> playPrevious()
             ACTION_NEXT -> playNext()
+            ACTION_STOP -> {
+                stopAndDismiss()
+                stopSelfResult(startId)
+                return START_NOT_STICKY
+            }
             CUSTOM_ACTION_REWIND -> {
                 playerInstance?.let { p ->
                     p.seekTo((p.currentPosition - 10_000L).coerceAtLeast(0L))
@@ -985,6 +1011,14 @@ class MusicService : MediaSessionService() {
         }
         updateForegroundNotification()
         return START_STICKY
+    }
+
+    override fun onTaskRemoved(rootIntent: Intent?) {
+        // Removing the app from Recents is an explicit stop request here. Use
+        // Media3's helper so every session/player managed by this service is paused
+        // and the service is stopped, even when a controller is still bound.
+        stopAndDismiss()
+        pauseAllPlayersAndStopSelf()
     }
 
     fun attachAudioEffects(audioSessionId: Int) {

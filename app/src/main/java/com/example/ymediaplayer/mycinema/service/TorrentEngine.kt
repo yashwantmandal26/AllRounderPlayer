@@ -3,6 +3,7 @@ package com.example.ymediaplayer.mycinema.service
 import android.content.Context
 import android.os.Environment
 import com.example.ymediaplayer.mycinema.data.TorrentSource
+import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -108,6 +109,59 @@ object TorrentEngine {
     private val _downloads = MutableStateFlow<Map<String, TorrentDownloadState>>(emptyMap())
     val downloads: StateFlow<Map<String, TorrentDownloadState>> = _downloads.asStateFlow()
 
+    private val engineScope = CoroutineScope(Dispatchers.IO + SupervisorJob())
+    private var progressTickerJob: Job? = null
+
+    fun startProgressTicker() {
+        if (progressTickerJob?.isActive == true) return
+        progressTickerJob = engineScope.launch {
+            while (isActive) {
+                try {
+                    updateProgressTicks()
+                } catch (_: Exception) {}
+                delay(400)
+            }
+        }
+    }
+
+    fun normalizeToHexInfoHash(raw: String): String {
+        val clean = raw.trim()
+        if (clean.length == 40) return clean.lowercase()
+        if (clean.length == 32) {
+            try {
+                val base32Chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567"
+                val upper = clean.uppercase()
+                var buffer = 0L
+                var bitsLeft = 0
+                val bytes = mutableListOf<Byte>()
+                for (c in upper) {
+                    val val5 = base32Chars.indexOf(c)
+                    if (val5 < 0) return clean.lowercase()
+                    buffer = (buffer shl 5) or val5.toLong()
+                    bitsLeft += 5
+                    if (bitsLeft >= 8) {
+                        bitsLeft -= 8
+                        bytes.add(((buffer shr bitsLeft) and 0xFF).toByte())
+                    }
+                }
+                if (bytes.size >= 20) {
+                    return bytes.take(20).joinToString("") { "%02x".format(it) }
+                }
+            } catch (_: Exception) {}
+        }
+        return clean.lowercase()
+    }
+
+    fun normalizeInfoHash(raw: String): String? {
+        val clean = raw.trim()
+        return when {
+            clean.length == 40 && clean.all { it.digitToIntOrNull(16) != null } -> clean.lowercase()
+            clean.length == 32 && clean.all { it.uppercaseChar() in "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567" } ->
+                normalizeToHexInfoHash(clean).takeIf { it.length == 40 }
+            else -> null
+        }
+    }
+
     private val VIDEO_EXTENSIONS = setOf("mp4", "mkv", "avi", "webm", "mov", "ts", "m4v")
 
     /**
@@ -180,7 +234,71 @@ object TorrentEngine {
         return if (largestVideoIndex >= 0) largestVideoIndex else largestAnyIndex
     }
 
-    const val DEFAULT_STREAM_BUFFER_BYTES = 8 * 1024 * 1024L // 8 MB buffer for instant streaming
+    const val DEFAULT_STREAM_BUFFER_BYTES = 4 * 1024 * 1024L // 4 MB lightweight buffer for near-instant streaming
+
+    data class TorrentFileInfo(
+        val index: Int,
+        val name: String,
+        val path: String,
+        val sizeBytes: Long,
+        val isVideo: Boolean
+    ) {
+        val sizeFormatted: String
+            get() = formatTorrentBytes(sizeBytes)
+    }
+
+    private val selectedFileIndices = java.util.concurrent.ConcurrentHashMap<String, Int>()
+
+    fun setSelectedFileIndex(hash: String, fileIndex: Int) {
+        val cleanHash = normalizeInfoHash(hash) ?: return
+        selectedFileIndices[cleanHash] = fileIndex
+        val sha1 = try { Sha1Hash.parseHex(cleanHash) } catch (_: Throwable) { return }
+        val handle = sessionManager?.find(sha1) ?: return
+        if (handle.isValid && handle.torrentFile() != null) {
+            val isStream = _downloads.value[cleanHash]?.isStream ?: false
+            applyTorrentFilePriorities(handle, isStream)
+        }
+    }
+
+    fun getSelectedFileIndex(hash: String): Int? {
+        val cleanHash = normalizeInfoHash(hash) ?: return null
+        return selectedFileIndices[cleanHash]
+    }
+
+    fun getTargetVideoFileIndex(handle: TorrentHandle): Int {
+        val hash = handle.infoHash().toHex().lowercase()
+        val customIdx = getSelectedFileIndex(hash)
+        val files = handle.torrentFile()?.files() ?: return -1
+        if (customIdx != null && customIdx in 0 until files.numFiles()) {
+            return customIdx
+        }
+        return findMainVideoFileIndex(files)
+    }
+
+    fun getTorrentFiles(hash: String): List<TorrentFileInfo> {
+        val sha1 = try { Sha1Hash.parseHex(hash.lowercase().trim()) } catch (_: Throwable) { return emptyList() }
+        val handle = sessionManager?.find(sha1) ?: return emptyList()
+        if (!handle.isValid) return emptyList()
+        val tf = handle.torrentFile() ?: return emptyList()
+        val files = tf.files() ?: return emptyList()
+        val numFiles = files.numFiles()
+        if (numFiles <= 0) return emptyList()
+
+        val list = mutableListOf<TorrentFileInfo>()
+        for (i in 0 until numFiles) {
+            val path = files.filePath(i)
+            val name = java.io.File(path).name
+            val size = files.fileSize(i)
+            val ext = path.substringAfterLast(".", "").lowercase()
+            val isVideo = VIDEO_EXTENSIONS.contains(ext) && size > 30 * 1024 * 1024L // >30MB video episode
+            list.add(TorrentFileInfo(index = i, name = name, path = path, sizeBytes = size, isVideo = isVideo))
+        }
+        return list
+    }
+
+    fun getVideoFiles(hash: String): List<TorrentFileInfo> {
+        return getTorrentFiles(hash).filter { it.isVideo }
+    }
 
     data class PieceRange(val firstPiece: Int, val lastPiece: Int)
 
@@ -189,8 +307,8 @@ object TorrentEngine {
         val files = tf.files() ?: return null
         val numFiles = files.numFiles()
         if (numFiles <= 0) return null
-        val mainIdx = findMainVideoFileIndex(files)
-        val fileIdx = if (mainIdx >= 0) mainIdx else 0
+        val targetIdx = getTargetVideoFileIndex(handle)
+        val fileIdx = if (targetIdx >= 0) targetIdx else 0
         val firstPiece = files.pieceIndexAtFile(fileIdx)
         val lastPiece = files.lastPieceIndexAtFile(fileIdx)
         val numPieces = tf.numPieces()
@@ -202,9 +320,9 @@ object TorrentEngine {
         val tf = handle.torrentFile() ?: return
         val files = tf.files() ?: return
         val numFiles = files.numFiles()
-        val mainFileIndex = findMainVideoFileIndex(files)
+        val mainFileIndex = getTargetVideoFileIndex(handle)
 
-        // Ignore all non-main files (samples, extras, images, text) except subtitles
+        // Ignore all non-selected files (samples, extras, other episodes in pack) except subtitles
         if (numFiles > 1 && mainFileIndex >= 0) {
             for (i in 0 until numFiles) {
                 if (i != mainFileIndex) {
@@ -217,15 +335,15 @@ object TorrentEngine {
             handle.filePriority(mainFileIndex, Priority.TOP_PRIORITY)
         }
 
+        // Both sequential downloads and active streams must download pieces sequentially from the start
         handle.setFlags(TorrentFlags.SEQUENTIAL_DOWNLOAD)
 
         val range = getMainFilePieceRange(handle)
         if (range != null) {
             val (firstPiece, lastPiece) = range
             if (isStream) {
-                // For live streaming, prioritize strictly sequentially from the head of the file.
-                // Do NOT set deadlines on tail pieces! ExoPlayer plays linearly with FLAG_DISABLE_SEEK_FOR_CUES.
-                val headLimit = minOf(lastPiece, firstPiece + 25)
+                // For live streaming, prioritize initial head pieces with ascending deadlines
+                val headLimit = minOf(lastPiece, firstPiece + 12)
                 for (i in firstPiece..headLimit) {
                     handle.piecePriority(i, Priority.TOP_PRIORITY)
                     try {
@@ -234,6 +352,15 @@ object TorrentEngine {
                 }
                 for (i in (headLimit + 1)..lastPiece) {
                     handle.piecePriority(i, Priority.DEFAULT)
+                }
+
+                // High priority for tail pieces of the movie (MP4 moov atom / MKV cues index) so player can seek anywhere
+                val tailStart = maxOf(headLimit + 1, lastPiece - 6)
+                for (i in tailStart..lastPiece) {
+                    handle.piecePriority(i, Priority.TOP_PRIORITY)
+                    try {
+                        handle.setPieceDeadline(i, 200)
+                    } catch (_: Exception) {}
                 }
             } else {
                 val totalPieces = lastPiece - firstPiece + 1
@@ -259,9 +386,14 @@ object TorrentEngine {
     }
 
     fun getDownloadDir(context: Context): File {
-        val baseDir = context.getExternalFilesDir(Environment.DIRECTORY_MOVIES) 
-            ?: File(context.filesDir, "MYCinema")
-        val dir = File(baseDir, "MYCinema")
+        val publicMovies = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_MOVIES)
+        val dir = if (publicMovies != null && (publicMovies.exists() || publicMovies.mkdirs())) {
+            File(publicMovies, "AllRounderPlayer")
+        } else {
+            val baseDir = context.getExternalFilesDir(Environment.DIRECTORY_MOVIES)
+                ?: File(context.filesDir, "MYCinema")
+            File(baseDir, "MYCinema")
+        }
         if (!dir.exists()) {
             dir.mkdirs()
         }
@@ -317,6 +449,24 @@ object TorrentEngine {
         if (isInitialized) return
         try {
             val sm = SessionManager()
+            try {
+                val sp = SettingsPack()
+                sp.setEnableDht(true)
+                sp.setEnableLsd(true)
+                sp.activeDhtLimit(200)
+                sp.activeTrackerLimit(200)
+                sp.activeDownloads(10)
+                sp.activeLimit(50)
+                sp.connectionsLimit(250)
+                sp.setDhtBootstrapNodes(
+                    "router.bittorrent.com:6881,dht.transmissionbt.com:6881,router.utorrent.com:6881,dht.aelitis.com:6881"
+                )
+                sp.alertQueueSize(5000)
+                sm.applySettings(sp)
+            } catch (e: Exception) {
+                android.util.Log.w("TorrentEngine", "Failed to apply SettingsPack: ${e.message}")
+            }
+
             sm.addListener(object : AlertListener {
                 override fun types(): IntArray? = null
 
@@ -327,7 +477,15 @@ object TorrentEngine {
                                 val handle = alert.handle()
                                 val hash = handle.infoHash().toHex().lowercase()
                                 val state = _downloads.value[hash]
-                                applyTorrentFilePriorities(handle, state?.isStream == true)
+                                val isStream = state?.isStream == true
+                                val isSeq = state?.isSequential == true || isStream
+                                if (isSeq) {
+                                    handle.setFlags(TorrentFlags.SEQUENTIAL_DOWNLOAD)
+                                }
+                                com.example.ymediaplayer.mycinema.data.TorrentScraperClient.EXTRA_TRACKERS.forEach { tr ->
+                                    try { handle.addTracker(AnnounceEntry(tr)) } catch (_: Exception) {}
+                                }
+                                applyTorrentFilePriorities(handle, isStream)
                                 updateState(hash) { it.copy(status = TorrentDownloadState.Status.DOWNLOADING) }
                             } catch (_: Exception) {}
                         }
@@ -343,6 +501,12 @@ object TorrentEngine {
                             if (targetFile != null) {
                                 try {
                                     com.example.ymediaplayer.data.AppPreferences(context).markCinemaDownloadCompleted(targetFile)
+                                    android.media.MediaScannerConnection.scanFile(
+                                        context,
+                                        arrayOf(targetFile),
+                                        arrayOf("video/*"),
+                                        null
+                                    )
                                 } catch (_: Exception) {}
                             }
                             updateState(hash) {
@@ -365,8 +529,10 @@ object TorrentEngine {
                 }
             })
             sm.start()
+            try { sm.startDht() } catch (_: Exception) {}
             sessionManager = sm
             isInitialized = true
+            startProgressTicker()
         } catch (e: Exception) {
             android.util.Log.e("TorrentEngine", "Failed to init SessionManager: ${e.message}")
         }
@@ -389,28 +555,45 @@ object TorrentEngine {
             }
         }
 
+        startProgressTicker()
         return try {
             val hashMatch = Regex("xt=urn:btih:([a-zA-Z0-9]+)", RegexOption.IGNORE_CASE).find(source.magnet)
-            val infoHash = hashMatch?.groupValues?.getOrNull(1)?.lowercase() ?: return null
+            val rawHash = hashMatch?.groupValues?.getOrNull(1)?.lowercase() ?: return null
+            val infoHash = normalizeInfoHash(rawHash) ?: return null
 
+            val effectiveSequential = isSequential || isStream
             val initialState = TorrentDownloadState(
                 id = infoHash,
                 title = title,
                 magnet = source.magnet,
-                isSequential = isSequential,
+                isSequential = effectiveSequential,
                 isStream = isStream,
-                status = if (isSequential) TorrentDownloadState.Status.STREAMING else TorrentDownloadState.Status.CONNECTING
+                status = if (isStream) TorrentDownloadState.Status.STREAMING else TorrentDownloadState.Status.CONNECTING
             )
             _downloads.value = _downloads.value + (infoHash to initialState)
 
-            val flags = if (isSequential) TorrentFlags.SEQUENTIAL_DOWNLOAD else TorrentFlags.AUTO_MANAGED
-            sm.download(source.magnet, saveDir, flags)
+            val flags = if (effectiveSequential) TorrentFlags.SEQUENTIAL_DOWNLOAD else TorrentFlags.AUTO_MANAGED
+
+            // Enrich magnet with extra trackers if not present
+            var enrichedMagnet = source.magnet
+            val trackers = com.example.ymediaplayer.mycinema.data.TorrentScraperClient.EXTRA_TRACKERS
+            trackers.forEach { tr ->
+                val encoded = java.net.URLEncoder.encode(tr, "UTF-8")
+                if (!enrichedMagnet.contains(encoded) && !enrichedMagnet.contains(tr)) {
+                    enrichedMagnet += "&tr=$encoded"
+                }
+            }
+
+            sm.download(enrichedMagnet, saveDir, flags)
 
             val sha1 = Sha1Hash.parseHex(infoHash)
             val handle = sm.find(sha1)
             if (handle != null && handle.isValid) {
-                if (isSequential) {
+                if (effectiveSequential) {
                     handle.setFlags(TorrentFlags.SEQUENTIAL_DOWNLOAD)
+                }
+                trackers.forEach { tr ->
+                    try { handle.addTracker(AnnounceEntry(tr)) } catch (_: Exception) {}
                 }
                 if (handle.torrentFile() != null) {
                     applyTorrentFilePriorities(handle, isStream)
@@ -424,13 +607,17 @@ object TorrentEngine {
         }
     }
 
+    @Synchronized
     fun updateProgressTicks() {
         val sm = sessionManager ?: return
         val currentMap = _downloads.value.toMutableMap()
         var changed = false
 
         for ((hash, state) in currentMap) {
-            if (state.status == TorrentDownloadState.Status.FINISHED || state.status == TorrentDownloadState.Status.ERROR) {
+            if (state.status == TorrentDownloadState.Status.FINISHED ||
+                state.status == TorrentDownloadState.Status.ERROR ||
+                state.status == TorrentDownloadState.Status.PAUSED
+            ) {
                 continue
             }
             try {
@@ -443,7 +630,9 @@ object TorrentEngine {
                 val speed = status.downloadPayloadRate().toLong()
                 val downloaded = status.totalDone()
                 val total = status.totalWanted()
-                val seeds = status.numSeeds()
+                val connectedPeers = maxOf(status.numSeeds(), status.numPeers(), status.numConnections())
+                val totalSwarm = maxOf(connectedPeers, status.listSeeds(), status.listPeers())
+                val seeds = if (connectedPeers > 0) connectedPeers else totalSwarm
 
                 val newStatus = if (progress >= 1f) {
                     TorrentDownloadState.Status.FINISHED
@@ -470,21 +659,28 @@ object TorrentEngine {
         }
     }
 
+    @Synchronized
     fun pause(hash: String) {
         try {
-            val sha1 = Sha1Hash.parseHex(hash)
+            val cleanHash = normalizeInfoHash(hash) ?: return
+            val sha1 = Sha1Hash.parseHex(cleanHash)
             val handle = sessionManager?.find(sha1)
             handle?.pause()
-            updateState(hash) { it.copy(status = TorrentDownloadState.Status.PAUSED) }
+            updateState(cleanHash) { it.copy(status = TorrentDownloadState.Status.PAUSED) }
         } catch (_: Exception) {}
     }
 
+    @Synchronized
     fun resume(hash: String) {
         try {
-            val sha1 = Sha1Hash.parseHex(hash)
+            val cleanHash = normalizeInfoHash(hash) ?: return
+            val sha1 = Sha1Hash.parseHex(cleanHash)
             val handle = sessionManager?.find(sha1)
             handle?.resume()
-            updateState(hash) { it.copy(status = TorrentDownloadState.Status.DOWNLOADING) }
+            updateState(cleanHash) {
+                it.copy(status = if (it.isStream || it.isSequential) TorrentDownloadState.Status.STREAMING
+                else TorrentDownloadState.Status.DOWNLOADING)
+            }
         } catch (_: Exception) {}
     }
 
@@ -545,8 +741,8 @@ object TorrentEngine {
         val torrentFile = handle.torrentFile() ?: return null
         val files = torrentFile.files() ?: return null
         if (files.numFiles() > 0) {
-            val mainIdx = findMainVideoFileIndex(files)
-            val relPath = files.filePath(if (mainIdx >= 0) mainIdx else 0)
+            val targetIdx = getSelectedFileIndex(hash) ?: findMainVideoFileIndex(files)
+            val relPath = files.filePath(if (targetIdx >= 0) targetIdx else 0)
             val isStream = _downloads.value[hash]?.isStream ?: false
             val primaryDir = if (isStream) getStreamCacheDir(context) else getDownloadDir(context)
             val secondaryDir = if (isStream) getDownloadDir(context) else getStreamCacheDir(context)
@@ -628,8 +824,8 @@ object TorrentEngine {
         val files = tf.files() ?: return null
         val numFiles = files.numFiles()
         if (numFiles <= 0) return null
-        val mainIdx = findMainVideoFileIndex(files)
-        val fileIdx = if (mainIdx >= 0) mainIdx else 0
+        val targetIdx = getSelectedFileIndex(hash) ?: findMainVideoFileIndex(files)
+        val fileIdx = if (targetIdx >= 0) targetIdx else 0
         val baseOffset = try { files.fileOffset(fileIdx) } catch (_: Exception) { 0L }
         val pieceLength = tf.pieceLength()
         if (pieceLength <= 0) return null
@@ -646,7 +842,7 @@ object TorrentEngine {
         return try { handle.havePiece(pieceIndex) } catch (_: Exception) { false }
     }
 
-    fun prioritizeStreamPiece(hash: String, currentPiece: Int) {
+    fun prioritizeStreamPiece(hash: String, currentPiece: Int, isSeek: Boolean = false) {
         val sha1 = try { Sha1Hash.parseHex(hash) } catch (_: Exception) { return }
         val handle = sessionManager?.find(sha1) ?: return
         if (!handle.isValid) return
@@ -655,14 +851,21 @@ object TorrentEngine {
         if (numPieces <= 0) return
 
         try {
+            // When seeking to a new offset, clear stale deadlines from previous positions
+            if (isSeek) {
+                try {
+                    handle.clearPieceDeadlines()
+                } catch (_: Exception) {}
+            }
+
             // Immediate priority for current piece
             if (!handle.havePiece(currentPiece)) {
                 handle.piecePriority(currentPiece, Priority.TOP_PRIORITY)
                 handle.setPieceDeadline(currentPiece, 0)
             }
 
-            // High priority with ascending deadlines for the next 5 pieces
-            val immediateLimit = minOf(numPieces - 1, currentPiece + 5)
+            // High priority with ascending deadlines for the next 6 pieces
+            val immediateLimit = minOf(numPieces - 1, currentPiece + 6)
             for (p in (currentPiece + 1)..immediateLimit) {
                 if (!handle.havePiece(p)) {
                     handle.piecePriority(p, Priority.TOP_PRIORITY)
@@ -687,8 +890,8 @@ object TorrentEngine {
         if (!handle.isValid) return 0L
         val tf = handle.torrentFile() ?: return 0L
         val files = tf.files() ?: return 0L
-        val mainIdx = findMainVideoFileIndex(files)
-        val fileIdx = if (mainIdx >= 0) mainIdx else 0
+        val targetIdx = getSelectedFileIndex(hash) ?: findMainVideoFileIndex(files)
+        val fileIdx = if (targetIdx >= 0) targetIdx else 0
         val baseOffset = try { files.fileOffset(fileIdx) } catch (_: Exception) { 0L }
         val fileSize = files.fileSize(fileIdx)
         val pieceLength = tf.pieceLength()
@@ -732,8 +935,8 @@ object TorrentEngine {
         val (firstPiece, lastPiece) = range
 
         val required = getRequiredBufferBytes(hash)
-        // Pieces needed to satisfy buffer requirement (at least 2 pieces, at most 8)
-        val piecesNeeded = maxOf(2, minOf(8, Math.ceil(required.toDouble() / pieceLength).toInt()))
+        // Pieces needed to satisfy initial buffer (only 2 to 4 pieces, e.g. ~3MB-4MB for instant start)
+        val piecesNeeded = maxOf(2, minOf(4, Math.ceil(required.toDouble() / pieceLength).toInt()))
         val requiredHeadLimit = minOf(lastPiece + 1, firstPiece + piecesNeeded)
 
         // ALL initial contiguous head pieces must be verified and downloaded!
@@ -840,10 +1043,55 @@ object TorrentEngine {
         val sha1 = try { Sha1Hash.parseHex(hash) } catch (_: Exception) { return }
         val handle = sm.find(sha1) ?: return
         if (!handle.isValid) return
+        val range = getMainFilePieceRange(handle) ?: return
+        val (firstPiece, lastPiece) = range
+        val numPieces = lastPiece - firstPiece + 1
+        if (numPieces <= 0) return
+
+        val targetPiece = (firstPiece + progressFraction * (numPieces - 1)).toInt().coerceIn(firstPiece, lastPiece)
         try {
             handle.clearPieceDeadlines()
+            handle.unsetFlags(TorrentFlags.SEQUENTIAL_DOWNLOAD)
+
+            // Immediate priority on seek target piece
+            if (!handle.havePiece(targetPiece)) {
+                handle.piecePriority(targetPiece, Priority.TOP_PRIORITY)
+                handle.setPieceDeadline(targetPiece, 0)
+            }
+
+            // High priority with ascending deadlines on next 8 pieces
+            val immediateLimit = minOf(lastPiece, targetPiece + 8)
+            for (p in (targetPiece + 1)..immediateLimit) {
+                if (!handle.havePiece(p)) {
+                    handle.piecePriority(p, Priority.TOP_PRIORITY)
+                    handle.setPieceDeadline(p, (p - targetPiece) * 50)
+                }
+            }
+
+            updateStreamSlidingWindow(hash, progressFraction, totalDurationSec)
         } catch (_: Exception) {}
-        updateStreamSlidingWindow(hash, progressFraction, totalDurationSec)
+    }
+
+    fun getMainFileSize(hash: String): Long? {
+        val sha1 = try { Sha1Hash.parseHex(hash) } catch (_: Exception) { return null }
+        val handle = sessionManager?.find(sha1) ?: return null
+        if (!handle.isValid) return null
+        val tf = handle.torrentFile() ?: return null
+        val files = tf.files() ?: return null
+        val numFiles = files.numFiles()
+        if (numFiles <= 0) return null
+        val targetIdx = getSelectedFileIndex(hash) ?: findMainVideoFileIndex(files)
+        val fileIdx = if (targetIdx >= 0) targetIdx else 0
+        return try { files.fileSize(fileIdx) } catch (_: Exception) { null }
+    }
+
+    fun getPieceLength(hash: String): Long? {
+        val sha1 = try { Sha1Hash.parseHex(hash) } catch (_: Exception) { return null }
+        val handle = sessionManager?.find(sha1) ?: return null
+        if (!handle.isValid) return null
+        val tf = handle.torrentFile() ?: return null
+        val pl = tf.pieceLength()
+        return if (pl > 0) pl.toLong() else null
     }
 
     fun isSeekBufferReady(hash: String, progressFraction: Double): Boolean {

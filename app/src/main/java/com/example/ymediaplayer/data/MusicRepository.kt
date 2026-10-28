@@ -34,39 +34,41 @@ data class MusicItem(
         )
 
     val audioCategory: AudioCategory
-        get() {
-            val lowerPath = (path + " " + relativePath).lowercase()
-            val lowerTitle = title.lowercase()
+        get() = classifyAudioCategory(title, path, relativePath, duration)
+}
 
-            // 1. Detect Phone Call Recordings & Voice Memos
-            if (lowerPath.contains("call") ||
-                lowerPath.contains("recording") ||
-                lowerPath.contains("sound_recorder") ||
-                lowerPath.contains("voicenotes") ||
-                lowerPath.contains("voice recorder") ||
-                lowerTitle.startsWith("call ") ||
-                lowerTitle.startsWith("call_") ||
-                lowerTitle.startsWith("call@") ||
-                lowerTitle.contains("call recording") ||
-                lowerTitle.contains("+91") ||
-                lowerTitle.matches(Regex(".*call\\s*[+0-9].*"))
-            ) {
-                return AudioCategory.RECORDING
-            }
+internal fun classifyAudioCategory(title: String, path: String, relativePath: String, duration: Long): AudioCategory {
+    val lowerTitle = title.trim().lowercase()
+    val directories = (java.io.File(path).parent.orEmpty() + "/" + relativePath)
+        .lowercase()
+        .split('/', '\\')
+        .filter(String::isNotBlank)
 
-            // 2. Detect Ringtones, Notifications & Alarm Sounds
-            if (lowerPath.contains("ringtone") ||
-                lowerPath.contains("notification") ||
-                lowerPath.contains("alarm") ||
-                lowerTitle.contains("ringtone") ||
-                (duration in 1000..40000 && (lowerTitle.contains("tone") || lowerTitle.contains("alert") || lowerTitle.contains("alarm")))
-            ) {
-                return AudioCategory.RINGTONE
-            }
+    val recordingDirectories = setOf(
+        "recordings", "call recordings", "recorded calls", "call", "calls", "sound_recorder",
+        "voice recorder", "voice recordings", "voice notes", "voicenotes", "whatsapp voice notes"
+    )
+    val isKnownRecordingDirectory = directories.any { it in recordingDirectories }
+    val isWhatsAppVoiceNote = lowerTitle.matches(Regex("^(aud|ptt)-\\d{8}-wa\\d+.*"))
+    val isCallRecordingName = lowerTitle.contains("call recording") ||
+        lowerTitle.matches(Regex("^call[_ @-]*\\+?[0-9][0-9 ()-]{4,}.*"))
 
-            // 3. True Music Tracks
-            return AudioCategory.SONG
-        }
+    if (isKnownRecordingDirectory || isWhatsAppVoiceNote || isCallRecordingName) {
+        return AudioCategory.RECORDING
+    }
+
+    val ringtoneDirectories = setOf("ringtones", "notifications", "alarms")
+    val isRingtoneDirectory = directories.any { it in ringtoneDirectories }
+    val isRingtoneName = lowerTitle.contains("ringtone") || lowerTitle.contains("notification") ||
+        lowerTitle.contains("alarm tone") || lowerTitle.contains("alert tone")
+    val isExplicitToneName = duration in 1_000L..45_000L &&
+        lowerTitle.matches(Regex(".*\\b(ringtone|notification|alarm|alert)\\b.*"))
+
+    return if (isRingtoneDirectory || isRingtoneName || isExplicitToneName) {
+        AudioCategory.RINGTONE
+    } else {
+        AudioCategory.SONG
+    }
 }
 
 class MusicRepository(private val context: Context) {

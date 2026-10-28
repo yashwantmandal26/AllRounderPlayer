@@ -26,6 +26,8 @@ class TorrentStreamDataSource(
     private var uri: Uri? = null
     private var bytesRemaining: Long = 0L
     private var currentPosition: Long = 0L
+    private var lastRequestedPiece: Int = -1
+    private var isInitialReadAfterOpen: Boolean = true
 
     @Volatile
     private var opened: Boolean = false
@@ -33,15 +35,27 @@ class TorrentStreamDataSource(
     override fun open(dataSpec: DataSpec): Long {
         uri = dataSpec.uri
         transferInitializing(dataSpec)
+        isInitialReadAfterOpen = true
 
         val f = File(filePath)
         if (!f.exists()) {
             throw IOException("Torrent stream file not found on disk: $filePath")
         }
 
+        val trueMovieSize = TorrentEngine.getMainFileSize(hash)
+        if (trueMovieSize != null && trueMovieSize > 0L) {
+            try {
+                if (f.length() < trueMovieSize) {
+                    RandomAccessFile(f, "rw").use { rwRaf ->
+                        rwRaf.setLength(trueMovieSize)
+                    }
+                }
+            } catch (_: Exception) {}
+        }
+
         val raf = RandomAccessFile(f, "r")
         file = raf
-        val totalLength = f.length()
+        val totalLength = trueMovieSize?.takeIf { it > 0L } ?: f.length()
         currentPosition = dataSpec.position
 
         if (currentPosition > totalLength) {
@@ -71,19 +85,25 @@ class TorrentStreamDataSource(
 
         // Map current file byte offset to libtorrent piece
         val currentPiece = TorrentEngine.getPieceForFileOffset(hash, currentPosition)
+        val maxWaitMs = 30_000L
+
         if (currentPiece != null) {
-            // Urgently prioritize current piece & queue next lookahead pieces
-            TorrentEngine.prioritizeStreamPiece(hash, currentPiece)
+            val isSeek = isInitialReadAfterOpen || (lastRequestedPiece >= 0 && kotlin.math.abs(currentPiece - lastRequestedPiece) > 2)
+            isInitialReadAfterOpen = false
+            lastRequestedPiece = currentPiece
+
+            // Urgently prioritize current piece & queue next lookahead pieces (clearing stale deadlines if seeking)
+            TorrentEngine.prioritizeStreamPiece(hash, currentPiece, isSeek = isSeek)
 
             // Progressive buffer loop: wait until libtorrent has downloaded and verified this piece
             val waitStart = System.currentTimeMillis()
             while (!TorrentEngine.isPieceDownloaded(hash, currentPiece)) {
                 if (!opened) return C.RESULT_END_OF_INPUT
-                if (System.currentTimeMillis() - waitStart > 60_000L) {
+                if (System.currentTimeMillis() - waitStart > maxWaitMs) {
                     throw IOException("Torrent streaming timeout waiting for piece $currentPiece")
                 }
                 try {
-                    Thread.sleep(50)
+                    Thread.sleep(40)
                 } catch (_: InterruptedException) {
                     return C.RESULT_END_OF_INPUT
                 }
@@ -93,14 +113,28 @@ class TorrentStreamDataSource(
         if (!opened) return C.RESULT_END_OF_INPUT
 
         // Determine how many safe contiguous bytes are currently available on disk
-        val safeBytesAvailable = TorrentEngine.getAvailableDownloadedBytesFrom(hash, currentPosition)
-        val maxSafeToRead = if (safeBytesAvailable > 0) {
-            minOf(length.toLong(), bytesRemaining, safeBytesAvailable).toInt()
-        } else {
-            minOf(length.toLong(), bytesRemaining).toInt()
+        var safeBytesAvailable = TorrentEngine.getAvailableDownloadedBytesFrom(hash, currentPosition)
+        if (safeBytesAvailable <= 0L && currentPiece != null) {
+            val waitStart = System.currentTimeMillis()
+            while (safeBytesAvailable <= 0L && System.currentTimeMillis() - waitStart < maxWaitMs) {
+                if (!opened) return C.RESULT_END_OF_INPUT
+                try {
+                    Thread.sleep(30)
+                } catch (_: InterruptedException) {
+                    return C.RESULT_END_OF_INPUT
+                }
+                safeBytesAvailable = TorrentEngine.getAvailableDownloadedBytesFrom(hash, currentPosition)
+            }
         }
 
-        val bytesRead = raf.read(buffer, offset, maxSafeToRead.coerceAtLeast(1))
+        if (!opened) return C.RESULT_END_OF_INPUT
+        if (safeBytesAvailable <= 0L) {
+            throw IOException("Torrent stream has no verified data available at byte $currentPosition")
+        }
+
+        val maxSafeToRead = minOf(length.toLong(), bytesRemaining, safeBytesAvailable).toInt().coerceAtLeast(1)
+
+        val bytesRead = raf.read(buffer, offset, maxSafeToRead)
         if (bytesRead > 0) {
             currentPosition += bytesRead
             if (bytesRemaining != C.LENGTH_UNSET.toLong()) {

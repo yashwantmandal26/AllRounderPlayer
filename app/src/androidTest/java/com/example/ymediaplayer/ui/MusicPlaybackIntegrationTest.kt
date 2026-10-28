@@ -27,6 +27,7 @@ import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Before
+import org.junit.BeforeClass
 import org.junit.Rule
 import org.junit.Test
 import java.io.File
@@ -66,13 +67,23 @@ class MusicPlaybackIntegrationTest {
         return uri
     }
 
+    companion object {
+        @BeforeClass
+        @JvmStatic
+        fun grantPermissionsBeforeComposeHostLaunches() {
+            val context = InstrumentationRegistry.getInstrumentation().targetContext
+            val automation = InstrumentationRegistry.getInstrumentation().uiAutomation
+            if (android.os.Build.VERSION.SDK_INT >= 33) {
+                automation.grantRuntimePermission(context.packageName, android.Manifest.permission.READ_MEDIA_AUDIO)
+                automation.grantRuntimePermission(context.packageName, android.Manifest.permission.POST_NOTIFICATIONS)
+            } else {
+                automation.grantRuntimePermission(context.packageName, android.Manifest.permission.READ_EXTERNAL_STORAGE)
+            }
+        }
+    }
+
     @Before fun prepareGeneratedFixture() {
         check(context.packageName.endsWith(".debug")) { "Use the isolated debug application for integration tests" }
-        val automation = InstrumentationRegistry.getInstrumentation().uiAutomation
-        if (android.os.Build.VERSION.SDK_INT >= 33) {
-            automation.grantRuntimePermission(context.packageName, android.Manifest.permission.READ_MEDIA_AUDIO)
-            automation.grantRuntimePermission(context.packageName, android.Manifest.permission.POST_NOTIFICATIONS)
-        } else automation.grantRuntimePermission(context.packageName, android.Manifest.permission.READ_EXTERNAL_STORAGE)
         val firstUri = createFixture("QA_A_30s.mp3")
         val secondUri = createFixture("QA_B_30s.mp3")
         MusicRepository.invalidateCache()
@@ -101,6 +112,7 @@ class MusicPlaybackIntegrationTest {
             MusicService.nowPlayingTitle.value = ""
             MusicService.nowPlayingArtist.value = ""
             MusicService.nowPlayingArtUri.value = null
+            MusicService.isMiniPlayerDismissed.value = false
             mounted.value = true
         }
         rule.setContent {
@@ -148,7 +160,7 @@ class MusicPlaybackIntegrationTest {
 
     @Test fun uiPlaybackShouldAddGeneratedTrackToRecentlyPlayed() {
         playFixtureThroughSearchUi()
-        rule.onNodeWithContentDescription("Close").performClick()
+        rule.onNodeWithContentDescription("Clear").performClick()
         rule.onNode(hasText("Recent (", substring = true)).performTouchInput { click() }
         rule.onNodeWithText("Recently Played").assertExists()
         saveScreenshot("fullqa-music-recent.png")

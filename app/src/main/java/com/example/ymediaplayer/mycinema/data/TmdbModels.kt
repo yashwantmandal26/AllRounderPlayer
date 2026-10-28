@@ -3,6 +3,9 @@ package com.example.ymediaplayer.mycinema.data
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 
+fun currentCinemaDateIso(): String =
+    java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.US).format(java.util.Date())
+
 @Serializable
 data class TmdbSearchResponse(
     val page: Int = 1,
@@ -23,7 +26,8 @@ data class TmdbItem(
     @SerialName("release_date") val releaseDate: String? = null,
     @SerialName("first_air_date") val firstAirDate: String? = null,
     @SerialName("vote_average") val voteAverage: Double = 0.0,
-    val ottPlatformHint: String? = null
+    val ottPlatformHint: String? = null,
+    val logoPath: String? = null
 ) {
     val displayName: String
         get() = (title ?: name ?: "Untitled").trim()
@@ -40,6 +44,9 @@ data class TmdbItem(
     val fullBackdropUrl: String?
         get() = backdropPath?.let { if (it.startsWith("http")) it else "https://image.tmdb.org/t/p/w1280$it" }
 
+    val fullLogoUrl: String?
+        get() = logoPath?.let { if (it.startsWith("http")) it else "https://image.tmdb.org/t/p/w500$it" }
+
     val ratingFormatted: String
         get() = if (voteAverage > 0) String.format(java.util.Locale.US, "%.1f", voteAverage) else "—"
 
@@ -47,8 +54,14 @@ data class TmdbItem(
         get() {
             val raw = releaseDate ?: firstAirDate ?: return false
             if (raw.isBlank()) return false
-            val today = java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.US).format(java.util.Date())
+            val today = currentCinemaDateIso()
             return raw > today
+        }
+
+    val hasPassedReleaseDate: Boolean
+        get() {
+            val raw = releaseDate ?: firstAirDate ?: return false
+            return raw.length >= 10 && raw.substring(0, 10) < currentCinemaDateIso()
         }
 
     val daysUntilRelease: Int?
@@ -190,6 +203,33 @@ data class TmdbMediaImage(
 }
 
 @Serializable
+data class TmdbSeasonInfo(
+    val seasonNumber: Int,
+    val name: String,
+    val episodeCount: Int = 0,
+    val posterPath: String? = null,
+    val overview: String? = null
+)
+
+@Serializable
+data class TmdbEpisodeItem(
+    val seasonNumber: Int,
+    val episodeNumber: Int,
+    val name: String,
+    val overview: String? = null,
+    val airDate: String? = null,
+    val stillPath: String? = null,
+    val voteAverage: Double = 0.0,
+    val released: Boolean = true
+) {
+    val episodeCode: String
+        get() = String.format(java.util.Locale.US, "S%02d E%02d", seasonNumber, episodeNumber)
+
+    val fullStillUrl: String?
+        get() = stillPath?.let { if (it.startsWith("http")) it else "https://image.tmdb.org/t/p/w780$it" }
+}
+
+@Serializable
 data class CinemaExtendedInfo(
     val budget: Long = 0L,
     val revenue: Long = 0L,
@@ -203,7 +243,9 @@ data class CinemaExtendedInfo(
     val isDirectOtt: Boolean = false,
     val officialPlatformName: String? = null,
     val releaseDate: String? = null,
-    val tmdbWatchLink: String? = null
+    val tmdbWatchLink: String? = null,
+    val seasons: List<TmdbSeasonInfo> = emptyList(),
+    val logoPath: String? = null
 ) {
     val budgetFormatted: String
         get() = formatCurrencyWithInr(budget)

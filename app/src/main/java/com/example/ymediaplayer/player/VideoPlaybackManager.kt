@@ -259,7 +259,6 @@ object VideoPlaybackManager {
             .setConstantBitrateSeekingEnabled(true)
             .setConstantBitrateSeekingAlwaysEnabled(true)
             .setTsExtractorTimestampSearchBytes(5 * 1024 * 1024)
-            .setMatroskaExtractorFlags(androidx.media3.extractor.mkv.MatroskaExtractor.FLAG_DISABLE_SEEK_FOR_CUES)
         return DefaultMediaSourceFactory(dataSourceFactory, extractorsFactory)
             .setLoadErrorHandlingPolicy(DefaultLoadErrorHandlingPolicy(5))
     }

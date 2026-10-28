@@ -8,6 +8,7 @@ import android.net.Uri
 import android.widget.Toast
 import androidx.compose.animation.*
 import androidx.compose.animation.core.*
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -34,11 +35,45 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil3.compose.AsyncImage
+import androidx.compose.foundation.Image
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.res.painterResource
+import com.example.ymediaplayer.R
+import com.example.ymediaplayer.mycinema.data.DownloadSite
+import com.example.ymediaplayer.mycinema.data.DownloadSitesManager
 import com.example.ymediaplayer.mycinema.data.TmdbItem
+import kotlinx.coroutines.launch
 import com.example.ymediaplayer.mycinema.data.TorrentSource
 import com.example.ymediaplayer.mycinema.service.TorrentDownloadState
 import com.example.ymediaplayer.mycinema.service.TorrentEngine
 import com.example.ymediaplayer.theme.LocalAppColors
+
+private fun TorrentSource.qualityRank(): Int = when (normalizedQuality) {
+    "2160p" -> 4
+    "1080p" -> 3
+    "720p" -> 2
+    "480p" -> 1
+    else -> 0
+}
+
+private fun TorrentSource.sizeForSorting(): Long = parsedSizeBytes.takeIf { it > 0L } ?: Long.MAX_VALUE
+
+private fun sortTorrentSources(sources: List<TorrentSource>, sortOption: String): List<TorrentSource> = when (sortOption) {
+    "SIZE" -> sources.sortedWith(
+        compareBy<TorrentSource> { it.sizeForSorting() }
+            .thenByDescending { it.seeds }
+    )
+    "QUALITY" -> sources.sortedWith(
+        compareByDescending<TorrentSource> { it.qualityRank() }
+            .thenByDescending { it.seeds }
+            .thenBy { it.sizeForSorting() }
+    )
+    else -> sources.sortedWith(
+        compareByDescending<TorrentSource> { it.seeds }
+            .thenByDescending { it.peers }
+            .thenBy { it.sizeForSorting() }
+    )
+}
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -53,10 +88,48 @@ fun TorrentSourcesBottomSheet(
     val c = LocalAppColors.current
     val context = LocalContext.current
     val haptic = LocalHapticFeedback.current
+    val coroutineScope = rememberCoroutineScope()
+
+    var resolvingSiteId by remember { mutableStateOf<String?>(null) }
+    var downloadSiteNotice by remember { mutableStateOf<String?>(null) }
+    var packSourceForEpisodePicker by remember { mutableStateOf<TorrentSource?>(null) }
+
+    fun handleDownloadSiteClick(site: DownloadSite) {
+        if (resolvingSiteId != null) return
+        haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+        resolvingSiteId = site.id
+        downloadSiteNotice = null
+        coroutineScope.launch {
+            try {
+                val result = DownloadSitesManager.resolveDownloadSiteUrl(
+                    context = context,
+                    siteId = site.id,
+                    title = item.displayName,
+                    year = item.displayYear
+                )
+                if (result.notice != null) {
+                    downloadSiteNotice = result.notice
+                }
+                DownloadSitesManager.openInBrowser(context, result.searchUrl)
+            } catch (e: Exception) {
+                Toast.makeText(context, "Could not open ${site.name}: ${e.message}", Toast.LENGTH_SHORT).show()
+            } finally {
+                resolvingSiteId = null
+            }
+        }
+    }
 
     var selectedLangFilter by remember { mutableStateOf("All") } // "All", "Hindi", "Korean", "Tamil", "Telugu", "Malayalam", "Kannada", "Bangla", "English", "Dual"
     var selectedQualityFilter by remember { mutableStateOf("All") } // "All", "2160p", "1080p", "720p"
+    var selectedSeasonFilter by remember { mutableStateOf("All") } // "All", "Packs", "S1", "S2", "S3"...
     var selectedSortOption by remember { mutableStateOf("SPEED") } // "SPEED", "SIZE", "QUALITY"
+
+    val isSeriesItem = remember(item, sources) {
+        item.isSeries || sources.any {
+            val t = it.title.lowercase()
+            t.contains(Regex("""s\d{1,2}|season\s*\d{1,2}|pack|batch"""))
+        }
+    }
 
     val hindiCount = remember(sources) { sources.count { it.hasHindi } }
     val koreanCount = remember(sources) { sources.count { it.hasKorean } }
@@ -71,7 +144,27 @@ fun TorrentSourcesBottomSheet(
     val q1080Count = remember(sources) { sources.count { it.normalizedQuality == "1080p" } }
     val q720Count = remember(sources) { sources.count { it.normalizedQuality == "720p" } }
 
-    val filteredSources = remember(sources, selectedLangFilter, selectedQualityFilter, selectedSortOption) {
+    val packsCount = remember(sources) {
+        sources.count {
+            val t = it.title.lowercase()
+            t.contains("pack") || t.contains("complete") || t.contains("batch") || t.contains("s01-") || t.contains("season 1-")
+        }
+    }
+
+    val seasonCounts = remember(sources) {
+        (1..8).associateWith { s ->
+            val sPad = String.format(java.util.Locale.US, "s%02d", s)
+            val sText = "season $s"
+            val sDot = "season.$s"
+            val sShort = "s$s"
+            sources.count {
+                val t = it.title.lowercase()
+                t.contains(sPad) || t.contains("$sShort ") || t.contains("$sShort.") || t.contains(sText) || t.contains(sDot)
+            }
+        }
+    }
+
+    val filteredSources = remember(sources, selectedLangFilter, selectedQualityFilter, selectedSeasonFilter, selectedSortOption) {
         val filtered = sources.filter { source ->
             val langMatch = when (selectedLangFilter) {
                 "Hindi" -> source.hasHindi
@@ -91,13 +184,26 @@ fun TorrentSourcesBottomSheet(
                 "720p" -> source.normalizedQuality == "720p"
                 else -> true
             }
-            langMatch && qualityMatch
+            val seasonMatch = when (selectedSeasonFilter) {
+                "All" -> true
+                "Packs" -> {
+                    val t = source.title.lowercase()
+                    t.contains("pack") || t.contains("complete") || t.contains("batch") || t.contains("s01-") || t.contains("season 1-")
+                }
+                else -> {
+                    val sNum = selectedSeasonFilter.removePrefix("S").toIntOrNull() ?: 1
+                    val sPad = String.format(java.util.Locale.US, "s%02d", sNum)
+                    val sText = "season $sNum"
+                    val sDot = "season.$sNum"
+                    val sShort = "s$sNum"
+                    val t = source.title.lowercase()
+                    t.contains(sPad) || t.contains("$sShort ") || t.contains("$sShort.") || t.contains(sText) || t.contains(sDot) ||
+                    (t.contains("complete") || t.contains("pack"))
+                }
+            }
+            langMatch && qualityMatch && seasonMatch
         }
-        when (selectedSortOption) {
-            "SIZE" -> filtered.sortedBy { it.parsedSizeBytes.let { b -> if (b > 0) b else Long.MAX_VALUE } }
-            "QUALITY" -> filtered.sortedByDescending { it.healthScore }
-            else -> filtered.sortedByDescending { it.seeds }
-        }
+        sortTorrentSources(filtered, selectedSortOption)
     }
 
     ModalBottomSheet(
@@ -164,7 +270,7 @@ fun TorrentSourcesBottomSheet(
                 }
             }
 
-            // Sort & Language Filter Chips
+            // Sort controls
             LazyRow(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -190,6 +296,22 @@ fun TorrentSourcesBottomSheet(
                         label = "🌟 Best Quality",
                         isSelected = selectedSortOption == "QUALITY",
                         onClick = { selectedSortOption = "QUALITY" }
+                    )
+                }
+            }
+
+            // Keep language chips on their own row below sorting.
+            LazyRow(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(bottom = 8.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                item {
+                    FilterPill(
+                        label = "🌐 All Languages",
+                        isSelected = selectedLangFilter == "All",
+                        onClick = { selectedLangFilter = "All" }
                     )
                 }
                 if (hindiCount > 0) {
@@ -301,6 +423,45 @@ fun TorrentSourcesBottomSheet(
                 }
             }
 
+            // Series Season / Pack Filter Chips (Matching Image 2)
+            if (isSeriesItem) {
+                LazyRow(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(bottom = 10.dp),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    item {
+                        QualityFilterPill(
+                            label = "All Seasons",
+                            isSelected = selectedSeasonFilter == "All",
+                            onClick = { selectedSeasonFilter = "All" }
+                        )
+                    }
+                    if (packsCount > 0) {
+                        item {
+                            QualityFilterPill(
+                                label = "📦 Packs ($packsCount)",
+                                isSelected = selectedSeasonFilter == "Packs",
+                                onClick = { selectedSeasonFilter = if (selectedSeasonFilter == "Packs") "All" else "Packs" }
+                            )
+                        }
+                    }
+                    for (s in 1..8) {
+                        val count = seasonCounts[s] ?: 0
+                        if (count > 0 || (s <= 2 && sources.isEmpty())) {
+                            item {
+                                QualityFilterPill(
+                                    label = "S$s (${if (count > 0) count else "—"})",
+                                    isSelected = selectedSeasonFilter == "S$s",
+                                    onClick = { selectedSeasonFilter = if (selectedSeasonFilter == "S$s") "All" else "S$s" }
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+
             HorizontalDivider(color = c.glassBorder, thickness = 1.dp)
 
             AnimatedVisibility(
@@ -395,17 +556,41 @@ fun TorrentSourcesBottomSheet(
                             textAlign = androidx.compose.ui.text.style.TextAlign.Center,
                             lineHeight = 17.sp
                         )
-                        if (selectedLangFilter != "All" || selectedQualityFilter != "All") {
+                        if (selectedLangFilter != "All" || selectedQualityFilter != "All" || selectedSeasonFilter != "All") {
                             Spacer(Modifier.height(12.dp))
                             OutlinedButton(
                                 onClick = {
                                     selectedLangFilter = "All"
                                     selectedQualityFilter = "All"
+                                    selectedSeasonFilter = "All"
                                 },
                                 shape = RoundedCornerShape(8.dp),
                                 border = androidx.compose.foundation.BorderStroke(1.dp, c.accentBlue.copy(alpha = 0.5f))
                             ) {
                                 Text("Reset Filters", color = c.accentBlue, fontSize = 12.sp)
+                            }
+                        } else {
+                            Spacer(Modifier.height(14.dp))
+                            Text(
+                                text = "Still can't find? Try web download sites:",
+                                color = Color.White.copy(alpha = 0.5f),
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.SemiBold
+                            )
+                            Spacer(Modifier.height(8.dp))
+                            Row(
+                                modifier = Modifier.fillMaxWidth(0.9f),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                DownloadSitesManager.SITES.forEach { site ->
+                                    DownloadSiteButton(
+                                        site = site,
+                                        isResolving = resolvingSiteId == site.id,
+                                        enabled = resolvingSiteId == null,
+                                        modifier = Modifier.weight(1f),
+                                        onClick = { handleDownloadSiteClick(site) }
+                                    )
+                                }
                             }
                         }
                     }
@@ -421,7 +606,16 @@ fun TorrentSourcesBottomSheet(
                     items(filteredSources, key = { it.magnet }) { source ->
                         TorrentSourceCard(
                             source = source,
-                            onStreamClick = { onStreamClick(source) },
+                            onStreamClick = {
+                                if (isPackSource(source.title)) {
+                                    packSourceForEpisodePicker = source
+                                } else {
+                                    onStreamClick(source)
+                                }
+                            },
+                            onPackClick = {
+                                packSourceForEpisodePicker = source
+                            },
                             onDownloadClick = { onDownloadClick(source) },
                             onCopyMagnet = {
                                 val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
@@ -442,6 +636,32 @@ fun TorrentSourcesBottomSheet(
                     }
                 }
             }
+
+            // ─── CAN'T FIND? BOTTOM DOCKED BAR ─────────────────────────────────────
+            DownloadSitesFooter(
+                resolvingSiteId = resolvingSiteId,
+                downloadSiteNotice = downloadSiteNotice,
+                onSiteClick = { site -> handleDownloadSiteClick(site) }
+            )
+        }
+
+        // Pack Episode Picker Modal
+        packSourceForEpisodePicker?.let { packSrc ->
+            PackEpisodePickerBottomSheet(
+                source = packSrc,
+                item = item,
+                onDismiss = { packSourceForEpisodePicker = null },
+                onSelectEpisode = { src, epFile ->
+                    packSourceForEpisodePicker = null
+                    val rawHash = Regex("xt=urn:btih:([a-zA-Z0-9]+)", RegexOption.IGNORE_CASE)
+                        .find(src.magnet)?.groupValues?.getOrNull(1)
+                    val hash = rawHash?.let(TorrentEngine::normalizeInfoHash)
+                    if (hash != null) {
+                        TorrentEngine.setSelectedFileIndex(hash, epFile.index)
+                    }
+                    onStreamClick(src)
+                }
+            )
         }
     }
 }
@@ -496,11 +716,13 @@ private fun QualityFilterPill(
 private fun TorrentSourceCard(
     source: TorrentSource,
     onStreamClick: () -> Unit,
+    onPackClick: () -> Unit,
     onDownloadClick: () -> Unit,
     onCopyMagnet: () -> Unit,
     onOpenExternal: () -> Unit
 ) {
     val c = LocalAppColors.current
+    val isPack = isPackSource(source.title)
 
     val qualityBadgeColor = when (source.normalizedQuality) {
         "2160p" -> Color(0xFFFFB300) // Gold / Amber
@@ -513,7 +735,7 @@ private fun TorrentSourceCard(
     val hashMatch = remember(source.magnet) {
         Regex("xt=urn:btih:([a-zA-Z0-9]+)", RegexOption.IGNORE_CASE).find(source.magnet)
     }
-    val infoHash = hashMatch?.groupValues?.getOrNull(1)?.lowercase()
+    val infoHash = hashMatch?.groupValues?.getOrNull(1)?.let(TorrentEngine::normalizeInfoHash)
     val activeDownload = infoHash?.let { allDownloads[it] }
 
     val isDownloading = activeDownload != null && (activeDownload.status == TorrentDownloadState.Status.DOWNLOADING || activeDownload.status == TorrentDownloadState.Status.CONNECTING)
@@ -567,14 +789,20 @@ private fun TorrentSourceCard(
                         modifier = Modifier
                             .size(6.dp)
                             .clip(CircleShape)
-                            .background(if (source.seeds >= 20) Color(0xFF4CAF50) else Color(0xFFFF9800))
+                            .background(
+                                when {
+                                    source.seeds >= 20 -> Color(0xFF4CAF50)
+                                    source.seeds > 0 -> Color(0xFFFF9800)
+                                    else -> Color(0xFFFF5252)
+                                }
+                            )
                     )
                     Spacer(Modifier.width(4.dp))
                     Text(
-                        text = "${source.seeds}",
-                        color = c.textSecondary,
+                        text = if (source.seeds > 0) "${source.seeds}" else "0 (Dead)",
+                        color = if (source.seeds > 0) c.textSecondary else Color(0xFFFF5252),
                         fontSize = 11.5.sp,
-                        fontWeight = FontWeight.Medium
+                        fontWeight = if (source.seeds > 0) FontWeight.Medium else FontWeight.Bold
                     )
                 }
 
@@ -615,7 +843,7 @@ private fun TorrentSourceCard(
                     else -> Color(0xFFE57373)
                 }
                 val speedText = if (isDownloading) {
-                    "⬇ ${activeDownload?.speedFormatted ?: ""} • ${activeDownload?.progressPercent ?: 0}%"
+                    "⬇ ${activeDownload.speedFormatted} • ${activeDownload.progressPercent}%"
                 } else if (source.estimatedEtaFormatted.isNotEmpty()) {
                     "${source.estimatedSpeedFormatted} • ${source.estimatedEtaFormatted}"
                 } else {
@@ -786,6 +1014,19 @@ private fun TorrentSourceCard(
                         Text(text = "⚡ HEVC", color = Color(0xFFCE93D8), fontSize = 9.sp, fontWeight = FontWeight.Bold)
                     }
                 }
+
+                // Season Pack Badge
+                if (isPack) {
+                    Box(
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(4.dp))
+                            .background(Color(0xFFFF6B00).copy(alpha = 0.18f))
+                            .border(0.6.dp, Color(0xFFFF6B00).copy(alpha = 0.5f), RoundedCornerShape(4.dp))
+                            .padding(horizontal = 5.dp, vertical = 2.dp)
+                    ) {
+                        Text(text = "📦 PACK", color = Color(0xFFFF9E00), fontSize = 9.sp, fontWeight = FontWeight.Bold)
+                    }
+                }
             }
 
             Spacer(Modifier.height(8.dp))
@@ -809,30 +1050,56 @@ private fun TorrentSourceCard(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                // Stream Now Button
-                Button(
-                    onClick = onStreamClick,
-                    shape = RoundedCornerShape(10.dp),
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = c.accentBlue.copy(alpha = 0.15f),
-                        contentColor = c.accentBlue
-                    ),
-                    border = androidx.compose.foundation.BorderStroke(1.dp, c.accentBlue.copy(0.4f)),
-                    modifier = Modifier
-                        .weight(1f)
-                        .height(38.dp),
-                    contentPadding = PaddingValues(horizontal = 4.dp, vertical = 0.dp)
-                ) {
-                    Icon(Icons.Rounded.PlayArrow, contentDescription = "Stream", modifier = Modifier.size(16.dp))
-                    Spacer(Modifier.width(3.dp))
-                    Text(
-                        text = "Stream Now",
-                        fontSize = 12.sp,
-                        fontWeight = FontWeight.SemiBold,
-                        maxLines = 1,
-                        softWrap = false,
-                        overflow = TextOverflow.Ellipsis
-                    )
+                // Stream / Choose Episode Button
+                if (isPack) {
+                    Button(
+                        onClick = onPackClick,
+                        shape = RoundedCornerShape(10.dp),
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = Color(0xFFFF6B00).copy(alpha = 0.18f),
+                            contentColor = Color(0xFFFF9E00)
+                        ),
+                        border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFFF6B00).copy(0.45f)),
+                        modifier = Modifier
+                            .weight(1f)
+                            .height(38.dp),
+                        contentPadding = PaddingValues(horizontal = 4.dp, vertical = 0.dp)
+                    ) {
+                        Icon(Icons.Rounded.VideoLibrary, contentDescription = "Episodes", modifier = Modifier.size(15.dp))
+                        Spacer(Modifier.width(4.dp))
+                        Text(
+                            text = "Choose Episode",
+                            fontSize = 11.5.sp,
+                            fontWeight = FontWeight.Bold,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
+                } else {
+                    Button(
+                        onClick = onStreamClick,
+                        shape = RoundedCornerShape(10.dp),
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = c.accentBlue.copy(alpha = 0.15f),
+                            contentColor = c.accentBlue
+                        ),
+                        border = androidx.compose.foundation.BorderStroke(1.dp, c.accentBlue.copy(0.4f)),
+                        modifier = Modifier
+                            .weight(1f)
+                            .height(38.dp),
+                        contentPadding = PaddingValues(horizontal = 4.dp, vertical = 0.dp)
+                    ) {
+                        Icon(Icons.Rounded.PlayArrow, contentDescription = "Stream", modifier = Modifier.size(16.dp))
+                        Spacer(Modifier.width(3.dp))
+                        Text(
+                            text = "Stream Now",
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            maxLines = 1,
+                            softWrap = false,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
                 }
 
                 // Download Button
@@ -857,7 +1124,7 @@ private fun TorrentSourceCard(
                     Text(
                         text = when {
                             isFinished -> "Downloaded"
-                            isDownloading -> "${activeDownload?.progressPercent ?: 0}%"
+                            isDownloading -> "${activeDownload.progressPercent}%"
                             else -> "Download"
                         },
                         fontSize = 12.sp,
@@ -971,6 +1238,381 @@ private fun TorrentSourceSkeletonCard() {
                         .clip(RoundedCornerShape(8.dp))
                         .background(c.textSecondary.copy(alpha = alpha * 0.2f))
                 )
+            }
+        }
+    }
+}
+
+@Composable
+fun DownloadSiteButton(
+    site: DownloadSite,
+    isResolving: Boolean,
+    enabled: Boolean = true,
+    modifier: Modifier = Modifier,
+    onClick: () -> Unit
+) {
+    Surface(
+        onClick = onClick,
+        enabled = enabled && !isResolving,
+        shape = RoundedCornerShape(10.dp),
+        color = Color.White.copy(alpha = 0.04f),
+        border = androidx.compose.foundation.BorderStroke(
+            1.dp,
+            if (isResolving) Color(site.accentColorHex).copy(alpha = 0.6f) else Color.White.copy(alpha = 0.12f)
+        ),
+        modifier = modifier.height(42.dp)
+    ) {
+        Box(
+            modifier = Modifier.fillMaxSize(),
+            contentAlignment = Alignment.Center
+        ) {
+            if (isResolving) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.Center
+                ) {
+                    CircularProgressIndicator(
+                        modifier = Modifier.size(15.dp),
+                        color = Color(site.accentColorHex),
+                        strokeWidth = 2.dp
+                    )
+                    Spacer(Modifier.width(8.dp))
+                    Text(
+                        text = "Finding...",
+                        color = Color.White.copy(alpha = 0.7f),
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Medium
+                    )
+                }
+            } else {
+                Image(
+                    painter = painterResource(id = site.logoResId),
+                    contentDescription = site.name,
+                    modifier = Modifier
+                        .height(21.dp)
+                        .padding(horizontal = 8.dp),
+                    contentScale = ContentScale.Fit
+                )
+            }
+        }
+    }
+}
+
+@Composable
+fun DownloadSitesFooter(
+    resolvingSiteId: String?,
+    downloadSiteNotice: String?,
+    onSiteClick: (DownloadSite) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Column(
+        modifier = modifier
+            .fillMaxWidth()
+            .background(Color(0xFF0C1017))
+            .border(
+                width = 1.dp,
+                color = Color.White.copy(alpha = 0.08f),
+                shape = RoundedCornerShape(0.dp)
+            )
+            .padding(horizontal = 16.dp, vertical = 10.dp)
+            .navigationBarsPadding()
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            Text(
+                text = "CAN'T FIND?",
+                color = Color.White.copy(alpha = 0.35f),
+                fontSize = 10.sp,
+                fontWeight = FontWeight.Black,
+                letterSpacing = 1.2.sp
+            )
+
+            DownloadSitesManager.SITES.forEach { site ->
+                DownloadSiteButton(
+                    site = site,
+                    isResolving = resolvingSiteId == site.id,
+                    enabled = resolvingSiteId == null,
+                    modifier = Modifier.weight(1f),
+                    onClick = { onSiteClick(site) }
+                )
+            }
+        }
+
+        if (!downloadSiteNotice.isNullOrBlank()) {
+            Spacer(Modifier.height(5.dp))
+            Text(
+                text = downloadSiteNotice,
+                color = Color(0xFFFFB300),
+                fontSize = 11.sp,
+                fontWeight = FontWeight.Medium
+            )
+        }
+    }
+}
+
+fun isPackSource(title: String): Boolean {
+    val t = title.lowercase()
+    return t.contains("pack") || t.contains("complete") || t.contains("batch") ||
+            t.contains("s01-") || t.contains("season 1-") || t.contains("s01 -") ||
+            t.contains("seasons") || t.contains("s1-") || t.contains("season 1 ")
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun PackEpisodePickerBottomSheet(
+    source: TorrentSource,
+    item: TmdbItem,
+    onDismiss: () -> Unit,
+    onSelectEpisode: (TorrentSource, TorrentEngine.TorrentFileInfo) -> Unit
+) {
+    val context = LocalContext.current
+    val hash = remember(source.magnet) {
+        Regex("xt=urn:btih:([a-zA-Z0-9]+)", RegexOption.IGNORE_CASE)
+            .find(source.magnet)?.groupValues?.getOrNull(1)
+            ?.let(TorrentEngine::normalizeInfoHash).orEmpty()
+    }
+
+    var videoFiles by remember { mutableStateOf<List<TorrentEngine.TorrentFileInfo>>(emptyList()) }
+    var secondsWaiting by remember { mutableIntStateOf(0) }
+    var metadataTimedOut by remember { mutableStateOf(false) }
+    val selectionHandoff = remember(hash) { java.util.concurrent.atomic.AtomicBoolean(false) }
+
+    DisposableEffect(hash) {
+        onDispose {
+            if (hash.isNotBlank() && !selectionHandoff.get()) {
+                TorrentEngine.cleanupStream(context, hash)
+            }
+        }
+    }
+
+    LaunchedEffect(hash) {
+        if (hash.isBlank()) {
+            metadataTimedOut = true
+            return@LaunchedEffect
+        }
+
+        val startedHash = TorrentEngine.startStream(context, source, item.displayName)
+        if (startedHash == null) {
+            metadataTimedOut = true
+            return@LaunchedEffect
+        }
+
+        for (attempt in 1..50) {
+            kotlinx.coroutines.delay(600)
+            secondsWaiting = attempt
+            val files = TorrentEngine.getVideoFiles(startedHash)
+            if (files.isNotEmpty()) {
+                videoFiles = files.sortedWith(
+                    compareBy<TorrentEngine.TorrentFileInfo> {
+                        val epNum = Regex("""[Ee](\d{1,2})""").find(it.name)?.groupValues?.get(1)?.toIntOrNull() ?: 999
+                        epNum
+                    }.thenBy { it.name }
+                )
+                return@LaunchedEffect
+            }
+        }
+        metadataTimedOut = true
+        TorrentEngine.cleanupStream(context, startedHash)
+    }
+
+    val configuration = androidx.compose.ui.platform.LocalConfiguration.current
+    val isLandscape = configuration.orientation == android.content.res.Configuration.ORIENTATION_LANDSCAPE
+
+    ModalBottomSheet(
+        onDismissRequest = onDismiss,
+        containerColor = Color(0xFF10121C),
+        shape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp)
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 20.dp, vertical = 12.dp)
+                .navigationBarsPadding()
+        ) {
+            // Header
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Column {
+                    Text(
+                        text = "📦 SEASON PACK EPISODES",
+                        color = Color(0xFFFF9E00),
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Bold,
+                        letterSpacing = 1.sp
+                    )
+                    Spacer(Modifier.height(2.dp))
+                    Text(
+                        text = "Choose Episode to Stream",
+                        color = Color.White,
+                        fontSize = 16.sp,
+                        fontWeight = FontWeight.ExtraBold
+                    )
+                }
+
+                IconButton(
+                    onClick = onDismiss,
+                    modifier = Modifier.size(32.dp)
+                ) {
+                    Icon(
+                        Icons.Rounded.Close,
+                        contentDescription = "Close",
+                        tint = Color.White.copy(alpha = 0.7f),
+                        modifier = Modifier.size(18.dp)
+                    )
+                }
+            }
+
+            Spacer(Modifier.height(14.dp))
+
+            if (videoFiles.isEmpty()) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(vertical = 36.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
+                    if (metadataTimedOut) {
+                        Text(
+                            text = "Could not read the episode list. Try another source or close this picker.",
+                            color = Color.White.copy(alpha = 0.8f),
+                            fontSize = 13.sp
+                        )
+                    } else {
+                        CircularProgressIndicator(
+                            strokeWidth = 2.5.dp,
+                            color = Color(0xFFFF6B00),
+                            modifier = Modifier.size(32.dp)
+                        )
+                        Spacer(Modifier.height(14.dp))
+                        Text(
+                            text = "Connecting to swarm & reading episode list...",
+                            color = Color.White.copy(alpha = 0.85f),
+                            fontSize = 13.sp,
+                            fontWeight = FontWeight.Medium
+                        )
+                        Spacer(Modifier.height(4.dp))
+                        Text(
+                            text = "Metadata loading ($secondsWaiting s)",
+                            color = Color.White.copy(alpha = 0.45f),
+                            fontSize = 11.sp
+                        )
+                    }
+                }
+            } else {
+                Text(
+                    text = "${videoFiles.size} Episodes Found in Pack",
+                    color = Color.White.copy(alpha = 0.5f),
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.SemiBold
+                )
+
+                Spacer(Modifier.height(10.dp))
+
+                LazyColumn(
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .heightIn(max = if (isLandscape) 200.dp else 420.dp)
+                ) {
+                    items(videoFiles) { f ->
+                        val sMatch = Regex("""(?i)[Ss](\d{1,2})[Ee](\d{1,2})""").find(f.name)
+                        val xMatch = Regex("""(?i)(\d{1,2})x(\d{1,2})""").find(f.name)
+                        val epMatch = Regex("""(?i)(?:ep|episode)\.?\s*(\d{1,2})""").find(f.name)
+                        val epLabel = when {
+                            sMatch != null -> "S${sMatch.groupValues[1]} E${sMatch.groupValues[2]}"
+                            xMatch != null -> "S${xMatch.groupValues[1]} E${xMatch.groupValues[2]}"
+                            epMatch != null -> "EP ${epMatch.groupValues[1].padStart(2, '0')}"
+                            else -> "Episode ${f.index + 1}"
+                        }
+
+                        Surface(
+                            onClick = {
+                                selectionHandoff.set(true)
+                                onSelectEpisode(source, f)
+                            },
+                            shape = RoundedCornerShape(12.dp),
+                            color = Color(0xFF171926),
+                            border = BorderStroke(1.dp, Color.White.copy(alpha = 0.08f)),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(12.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.SpaceBetween
+                            ) {
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    modifier = Modifier.weight(1f)
+                                ) {
+                                    Surface(
+                                        shape = RoundedCornerShape(6.dp),
+                                        color = Color(0xFFFF6B00).copy(alpha = 0.15f),
+                                        border = BorderStroke(0.8.dp, Color(0xFFFF6B00).copy(alpha = 0.4f))
+                                    ) {
+                                        Text(
+                                            text = epLabel,
+                                            color = Color(0xFFFF9E00),
+                                            fontSize = 11.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 3.dp)
+                                        )
+                                    }
+
+                                    Spacer(Modifier.width(10.dp))
+
+                                    Column(modifier = Modifier.weight(1f)) {
+                                        Text(
+                                            text = f.name,
+                                            color = Color.White,
+                                            fontSize = 12.5.sp,
+                                            fontWeight = FontWeight.SemiBold,
+                                            maxLines = 1,
+                                            overflow = TextOverflow.Ellipsis
+                                        )
+                                        Spacer(Modifier.height(2.dp))
+                                        Text(
+                                            text = f.sizeFormatted,
+                                            color = Color.White.copy(alpha = 0.5f),
+                                            fontSize = 11.sp
+                                        )
+                                    }
+                                }
+
+                                Spacer(Modifier.width(10.dp))
+
+                                Button(
+                                    onClick = {
+                                        selectionHandoff.set(true)
+                                        onSelectEpisode(source, f)
+                                    },
+                                    shape = RoundedCornerShape(8.dp),
+                                    colors = ButtonDefaults.buttonColors(
+                                        containerColor = Color(0xFFFF6B00),
+                                        contentColor = Color.White
+                                    ),
+                                    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp),
+                                    modifier = Modifier.height(32.dp)
+                                ) {
+                                    Icon(
+                                        Icons.Rounded.PlayArrow,
+                                        contentDescription = null,
+                                        modifier = Modifier.size(14.dp)
+                                    )
+                                    Spacer(Modifier.width(4.dp))
+                                    Text("Stream", fontSize = 11.5.sp, fontWeight = FontWeight.Bold)
+                                }
+                            }
+                        }
+                    }
+                }
             }
         }
     }

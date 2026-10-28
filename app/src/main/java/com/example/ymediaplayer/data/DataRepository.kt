@@ -12,6 +12,7 @@ class AppPreferences(private val prefs: SharedPreferences) {
         private val preferencesRevision = androidx.compose.runtime.mutableLongStateOf(0L)
         private val progressCache = java.util.concurrent.ConcurrentHashMap<String, Long>()
         private val completedCache = java.util.concurrent.ConcurrentHashMap<String, Boolean>()
+        private val cinemaJson = kotlinx.serialization.json.Json { ignoreUnknownKeys = true }
 
         fun clearCache() {
             progressCache.clear()
@@ -161,7 +162,7 @@ class AppPreferences(private val prefs: SharedPreferences) {
         } else {
             set.add(id)
             try {
-                val jsonStr = kotlinx.serialization.json.Json { ignoreUnknownKeys = true }.encodeToString(TmdbItem.serializer(), item)
+                val jsonStr = cinemaJson.encodeToString(TmdbItem.serializer(), item)
                 prefs.edit().putString("cinema_item_$id", jsonStr).apply()
             } catch (_: Exception) {}
             true
@@ -188,10 +189,9 @@ class AppPreferences(private val prefs: SharedPreferences) {
 
     fun getCinemaWatchlist(): List<TmdbItem> {
         val ids = prefs.getStringSet("cinema_watchlist", emptySet()) ?: emptySet()
-        val json = kotlinx.serialization.json.Json { ignoreUnknownKeys = true }
         return ids.mapNotNull { id ->
             val str = prefs.getString("cinema_item_$id", null) ?: return@mapNotNull null
-            try { json.decodeFromString(TmdbItem.serializer(), str) } catch (_: Exception) { null }
+            try { cinemaJson.decodeFromString(TmdbItem.serializer(), str) } catch (_: Exception) { null }
         }
     }
 
@@ -212,7 +212,7 @@ class AppPreferences(private val prefs: SharedPreferences) {
         } else {
             set.add(id)
             try {
-                val jsonStr = kotlinx.serialization.json.Json { ignoreUnknownKeys = true }.encodeToString(TmdbItem.serializer(), item)
+                val jsonStr = cinemaJson.encodeToString(TmdbItem.serializer(), item)
                 prefs.edit().putString("cinema_item_$id", jsonStr).apply()
             } catch (_: Exception) {}
             true
@@ -239,10 +239,9 @@ class AppPreferences(private val prefs: SharedPreferences) {
 
     fun getCinemaFavorites(): List<TmdbItem> {
         val ids = prefs.getStringSet("cinema_favorites", emptySet()) ?: emptySet()
-        val json = kotlinx.serialization.json.Json { ignoreUnknownKeys = true }
         return ids.mapNotNull { id ->
             val str = prefs.getString("cinema_item_$id", null) ?: return@mapNotNull null
-            try { json.decodeFromString(TmdbItem.serializer(), str) } catch (_: Exception) { null }
+            try { cinemaJson.decodeFromString(TmdbItem.serializer(), str) } catch (_: Exception) { null }
         }
     }
 
@@ -267,6 +266,42 @@ class AppPreferences(private val prefs: SharedPreferences) {
         set.remove(norm)
         set.remove(java.io.File(norm).name)
         prefs.edit().putStringSet("completed_cinema_downloads", set).apply()
+    }
+
+    // ─── Episode Watch Progress & Completion Checkmarks ───────────────────────
+    fun saveEpisodeProgress(showId: Int, seasonNumber: Int, episodeNumber: Int, positionMs: Long, durationMs: Long) {
+        val key = "ep_${showId}_s${seasonNumber}_e${episodeNumber}"
+        val isDone = durationMs > 0L && positionMs >= (durationMs * 0.90) // 90% watched = completed
+        prefs.edit()
+            .putLong("${key}_pos", positionMs)
+            .putLong("${key}_dur", durationMs)
+            .putBoolean("${key}_done", isDone)
+            .putLong("${key}_last_played", System.currentTimeMillis())
+            .apply()
+        preferencesRevision.longValue++
+    }
+
+    fun getEpisodeProgress(showId: Int, seasonNumber: Int, episodeNumber: Int): Pair<Long, Long> {
+        val key = "ep_${showId}_s${seasonNumber}_e${episodeNumber}"
+        val pos = prefs.getLong("${key}_pos", 0L)
+        val dur = prefs.getLong("${key}_dur", 0L)
+        return Pair(pos, dur)
+    }
+
+    fun isEpisodeCompleted(showId: Int, seasonNumber: Int, episodeNumber: Int): Boolean {
+        val key = "ep_${showId}_s${seasonNumber}_e${episodeNumber}"
+        return prefs.getBoolean("${key}_done", false)
+    }
+
+    fun toggleEpisodeCompleted(showId: Int, seasonNumber: Int, episodeNumber: Int): Boolean {
+        val key = "ep_${showId}_s${seasonNumber}_e${episodeNumber}"
+        val current = prefs.getBoolean("${key}_done", false)
+        val newDone = !current
+        prefs.edit()
+            .putBoolean("${key}_done", newDone)
+            .apply()
+        preferencesRevision.longValue++
+        return newDone
     }
 
     // ─── Cinema Watch History ──────────────────────────────────────────────────
@@ -308,8 +343,7 @@ class AppPreferences(private val prefs: SharedPreferences) {
         )
         val capped = current.take(50)
         try {
-            val json = kotlinx.serialization.json.Json { ignoreUnknownKeys = true }
-            val jsonStr = json.encodeToString(
+            val jsonStr = cinemaJson.encodeToString(
                 kotlinx.serialization.builtins.ListSerializer(CinemaWatchHistoryItem.serializer()),
                 capped
             )
@@ -320,8 +354,7 @@ class AppPreferences(private val prefs: SharedPreferences) {
     fun getCinemaWatchHistory(): List<CinemaWatchHistoryItem> {
         val jsonStr = prefs.getString("cinema_watch_history", null) ?: return emptyList()
         return try {
-            val json = kotlinx.serialization.json.Json { ignoreUnknownKeys = true }
-            json.decodeFromString(
+            cinemaJson.decodeFromString(
                 kotlinx.serialization.builtins.ListSerializer(CinemaWatchHistoryItem.serializer()),
                 jsonStr
             )
@@ -334,8 +367,7 @@ class AppPreferences(private val prefs: SharedPreferences) {
         val current = getCinemaWatchHistory().toMutableList()
         current.removeAll { it.id == id && it.isSeries == isSeries }
         try {
-            val json = kotlinx.serialization.json.Json { ignoreUnknownKeys = true }
-            val jsonStr = json.encodeToString(
+            val jsonStr = cinemaJson.encodeToString(
                 kotlinx.serialization.builtins.ListSerializer(CinemaWatchHistoryItem.serializer()),
                 current
             )
@@ -769,7 +801,7 @@ class AppPreferences(private val prefs: SharedPreferences) {
     fun getResumeMode(): String = prefs.getString("resume_mode", "AUTO") ?: "AUTO"
     fun setResumeMode(mode: String) { prefs.edit().putString("resume_mode", mode).apply() }
 
-    fun isRememberPlaybackSpeed(): Boolean = prefs.getBoolean("remember_playback_speed", false)
+    fun isRememberPlaybackSpeed(): Boolean = prefs.getBoolean("remember_playback_speed", true)
     fun setRememberPlaybackSpeed(remember: Boolean) { prefs.edit().putBoolean("remember_playback_speed", remember).apply() }
 
     fun getLastPlaybackSpeed(): Float = prefs.getFloat("last_playback_speed", 1.0f)
@@ -778,10 +810,10 @@ class AppPreferences(private val prefs: SharedPreferences) {
     fun getDoubleTapSeekSeconds(): Int = prefs.getInt("double_tap_seek_seconds", 10)
     fun setDoubleTapSeekSeconds(sec: Int) { prefs.edit().putInt("double_tap_seek_seconds", sec).apply() }
 
-    fun isBackgroundPlayEnabled(): Boolean = prefs.getBoolean("background_play_enabled", false)
+    fun isBackgroundPlayEnabled(): Boolean = prefs.getBoolean("background_play_enabled", true)
     fun setBackgroundPlayEnabled(enabled: Boolean) { prefs.edit().putBoolean("background_play_enabled", enabled).apply() }
 
-    fun isAutoPipEnabled(): Boolean = prefs.getBoolean("auto_pip_enabled", false)
+    fun isAutoPipEnabled(): Boolean = prefs.getBoolean("auto_pip_enabled", true)
     fun setAutoPipEnabled(enabled: Boolean) { prefs.edit().putBoolean("auto_pip_enabled", enabled).apply() }
 
     fun isAutoPlayNextEnabled(): Boolean = prefs.getBoolean("auto_play_next_in_playlist", true)
@@ -836,10 +868,10 @@ class AppPreferences(private val prefs: SharedPreferences) {
     fun isAutoBrightnessEnabled(): Boolean = prefs.getBoolean("player_auto_brightness", true)
     fun setAutoBrightnessEnabled(enabled: Boolean) { prefs.edit().putBoolean("player_auto_brightness", enabled).apply() }
 
-    fun isPlayDuringCallsEnabled(): Boolean = prefs.getBoolean("play_during_calls", false)
+    fun isPlayDuringCallsEnabled(): Boolean = prefs.getBoolean("play_during_calls", true)
     fun setPlayDuringCallsEnabled(enabled: Boolean) { prefs.edit().putBoolean("play_during_calls", enabled).apply() }
 
-    fun isVideoSwitchGestureEnabled(): Boolean = prefs.getBoolean("gesture_video_switch_enabled", false)
+    fun isVideoSwitchGestureEnabled(): Boolean = prefs.getBoolean("gesture_video_switch_enabled", true)
     fun setVideoSwitchGestureEnabled(enabled: Boolean) { prefs.edit().putBoolean("gesture_video_switch_enabled", enabled).apply() }
 
     fun isDoubleTapCenterPlayPauseEnabled(): Boolean = prefs.getBoolean("double_tap_center_play_pause", true)
@@ -935,6 +967,18 @@ class AppPreferences(private val prefs: SharedPreferences) {
     fun isLockscreenControlsEnabled(): Boolean = prefs.getBoolean("lockscreen_controls_enabled", true)
     fun setLockscreenControlsEnabled(enabled: Boolean) { prefs.edit().putBoolean("lockscreen_controls_enabled", enabled).apply() }
 
+    fun isIncludeAudioRecordingsEnabled(): Boolean = prefs.getBoolean("music_include_audio_recordings", false)
+    fun setIncludeAudioRecordingsEnabled(enabled: Boolean) {
+        prefs.edit().putBoolean("music_include_audio_recordings", enabled).apply()
+        lastProgressUpdate.longValue++
+    }
+
+    fun isIncludeRingtonesEnabled(): Boolean = prefs.getBoolean("music_include_ringtones", false)
+    fun setIncludeRingtonesEnabled(enabled: Boolean) {
+        prefs.edit().putBoolean("music_include_ringtones", enabled).apply()
+        lastProgressUpdate.longValue++
+    }
+
     // ─── UI & Visual Customization Preferences ─────────────────────────────────
     fun getAmbientGlowStrength(): Float = prefs.getFloat("ambient_glow_strength", 1.0f)
     fun setAmbientGlowStrength(strength: Float) {
@@ -1002,6 +1046,8 @@ class AppPreferences(private val prefs: SharedPreferences) {
             .remove("play_during_calls")
             .remove("music_artwork_style")
             .remove("music_sound_mode")
+            .remove("music_include_audio_recordings")
+            .remove("music_include_ringtones")
             .remove("ui_corner_style")
             .remove("player_auto_brightness")
             .remove("eq_preset").remove("eq_bands").remove("eq_bass_boost")

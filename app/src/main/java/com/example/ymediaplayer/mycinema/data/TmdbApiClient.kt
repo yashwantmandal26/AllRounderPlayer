@@ -332,6 +332,48 @@ class TmdbApiClient(
                     }
                 }
 
+                // Parse Title Logo
+                var titleLogoPath: String? = null
+                val logos = imagesObj?.optJSONArray("logos")
+                if (logos != null && logos.length() > 0) {
+                    var bestLogo: String? = null
+                    for (i in 0 until logos.length()) {
+                        val lObj = logos.optJSONObject(i) ?: continue
+                        val lang = lObj.optString("iso_639_1")
+                        val path = lObj.optString("file_path")
+                        if (path.isNotBlank()) {
+                            if (lang.equals("en", ignoreCase = true) || bestLogo == null) {
+                                bestLogo = path
+                                if (lang.equals("en", ignoreCase = true)) break
+                            }
+                        }
+                    }
+                    titleLogoPath = bestLogo
+                }
+
+                // Parse Seasons (for TV Series)
+                val seasonsList = mutableListOf<TmdbSeasonInfo>()
+                val seasonsArr = root.optJSONArray("seasons")
+                if (seasonsArr != null) {
+                    for (i in 0 until seasonsArr.length()) {
+                        val sObj = seasonsArr.optJSONObject(i) ?: continue
+                        val sNum = sObj.optInt("season_number")
+                        val sName = sObj.optString("name").ifBlank { "Season $sNum" }
+                        val epCount = sObj.optInt("episode_count", 0)
+                        val poster = sObj.optString("poster_path").takeIf { it.isNotBlank() }
+                        val overview = sObj.optString("overview").takeIf { it.isNotBlank() }
+                        seasonsList.add(
+                            TmdbSeasonInfo(
+                                seasonNumber = sNum,
+                                name = sName,
+                                episodeCount = epCount,
+                                posterPath = poster,
+                                overview = overview
+                            )
+                        )
+                    }
+                }
+
                 // Parse Collection / Prequels & Sequels
                 var collectionName: String? = null
                 var collectionId: Int? = null
@@ -399,12 +441,56 @@ class TmdbApiClient(
                     isDirectOtt = isDirectOtt,
                     officialPlatformName = officialPlatform,
                     releaseDate = releaseDate ?: root.optString("release_date"),
-                    tmdbWatchLink = tmdbWatchLink
+                    tmdbWatchLink = tmdbWatchLink,
+                    seasons = seasonsList,
+                    logoPath = titleLogoPath
                 )
             }
         } catch (e: Exception) {
             android.util.Log.e("TmdbApiClient", "Error fetching extended info: ${e.message}")
             CinemaExtendedInfo()
+        }
+    }
+
+    suspend fun fetchSeasonEpisodes(tvId: Int, seasonNumber: Int): List<TmdbEpisodeItem> = withContext(Dispatchers.IO) {
+        if (tvId <= 0 || apiKey.isBlank()) return@withContext emptyList()
+        try {
+            val url = "https://api.themoviedb.org/3/tv/$tvId/season/$seasonNumber?api_key=$apiKey"
+            val request = Request.Builder().url(url).build()
+            httpClient.newCall(request).execute().use { response ->
+                if (!response.isSuccessful) return@withContext emptyList()
+                val body = response.body?.string() ?: return@withContext emptyList()
+                val root = org.json.JSONObject(body)
+                val episodesArr = root.optJSONArray("episodes") ?: return@withContext emptyList()
+                val todayStr = java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.US).format(java.util.Date())
+                val list = mutableListOf<TmdbEpisodeItem>()
+                for (i in 0 until episodesArr.length()) {
+                    val epObj = episodesArr.optJSONObject(i) ?: continue
+                    val epNum = epObj.optInt("episode_number")
+                    val name = epObj.optString("name").ifBlank { "Episode $epNum" }
+                    val overview = epObj.optString("overview").takeIf { it.isNotBlank() }
+                    val airDate = epObj.optString("air_date").takeIf { it.isNotBlank() }
+                    val stillPath = epObj.optString("still_path").takeIf { it.isNotBlank() }
+                    val voteAvg = epObj.optDouble("vote_average", 0.0)
+                    val released = airDate != null && airDate <= todayStr
+                    list.add(
+                        TmdbEpisodeItem(
+                            seasonNumber = seasonNumber,
+                            episodeNumber = epNum,
+                            name = name,
+                            overview = overview,
+                            airDate = airDate,
+                            stillPath = stillPath,
+                            voteAverage = voteAvg,
+                            released = released
+                        )
+                    )
+                }
+                list
+            }
+        } catch (e: Exception) {
+            android.util.Log.e("TmdbApiClient", "Error fetching season episodes: ${e.message}")
+            emptyList()
         }
     }
 
@@ -472,6 +558,36 @@ class TmdbApiClient(
                 val body = response.body?.string() ?: return@withContext null
                 val item = json.decodeFromString<TmdbItem>(body)
                 item.copy(mediaType = if (isSeries) "tv" else "movie")
+            }
+        } catch (_: Exception) {
+            null
+        }
+    }
+
+    suspend fun fetchTitleLogo(type: String, tmdbId: Int): String? = withContext(Dispatchers.IO) {
+        if (tmdbId <= 0 || apiKey.isBlank()) return@withContext null
+        try {
+            val endpoint = if (type.lowercase() == "tv" || type.lowercase() == "series") "tv" else "movie"
+            val url = "https://api.themoviedb.org/3/$endpoint/$tmdbId/images?api_key=$apiKey"
+            val request = Request.Builder().url(url).build()
+            httpClient.newCall(request).execute().use { response ->
+                if (!response.isSuccessful) return@withContext null
+                val body = response.body?.string() ?: return@withContext null
+                val root = org.json.JSONObject(body)
+                val logos = root.optJSONArray("logos") ?: return@withContext null
+                var bestLogo: String? = null
+                for (i in 0 until logos.length()) {
+                    val lObj = logos.optJSONObject(i) ?: continue
+                    val lang = lObj.optString("iso_639_1")
+                    val path = lObj.optString("file_path")
+                    if (path.isNotBlank()) {
+                        if (lang.equals("en", ignoreCase = true) || bestLogo == null) {
+                            bestLogo = path
+                            if (lang.equals("en", ignoreCase = true)) break
+                        }
+                    }
+                }
+                bestLogo
             }
         } catch (_: Exception) {
             null

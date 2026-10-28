@@ -27,6 +27,8 @@ class VideoPlayerActivity : ComponentActivity() {
         const val EXTRA_VIDEO_TITLE = "EXTRA_VIDEO_TITLE"
         const val EXTRA_TORRENT_HASH = "EXTRA_TORRENT_HASH"
         const val EXTRA_POSTER_URL = "EXTRA_POSTER_URL"
+        const val EXTRA_BACKDROP_URL = "EXTRA_BACKDROP_URL"
+        const val EXTRA_LOGO_URL = "EXTRA_LOGO_URL"
         const val EXTRA_IS_STREAMING = "EXTRA_IS_STREAMING"
         var onUserLeaveHintListener: (() -> Unit)? = null
     }
@@ -37,6 +39,8 @@ class VideoPlayerActivity : ComponentActivity() {
     private var isStreaming by mutableStateOf(false)
     private var streamTitle by mutableStateOf("")
     private var streamPosterUrl by mutableStateOf("")
+    private var streamBackdropUrl by mutableStateOf("")
+    private var streamLogoUrl by mutableStateOf("")
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -51,6 +55,8 @@ class VideoPlayerActivity : ComponentActivity() {
         isStreaming = savedInstanceState?.getBoolean(EXTRA_IS_STREAMING) ?: intent.getBooleanExtra(EXTRA_IS_STREAMING, false)
         streamTitle = savedInstanceState?.getString(EXTRA_VIDEO_TITLE) ?: intent.getStringExtra(EXTRA_VIDEO_TITLE) ?: ""
         streamPosterUrl = savedInstanceState?.getString(EXTRA_POSTER_URL) ?: intent.getStringExtra(EXTRA_POSTER_URL) ?: ""
+        streamBackdropUrl = savedInstanceState?.getString(EXTRA_BACKDROP_URL) ?: intent.getStringExtra(EXTRA_BACKDROP_URL) ?: ""
+        streamLogoUrl = savedInstanceState?.getString(EXTRA_LOGO_URL) ?: intent.getStringExtra(EXTRA_LOGO_URL) ?: ""
 
         val prefs = com.example.ymediaplayer.data.AppPreferences(this)
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
@@ -76,6 +82,8 @@ class VideoPlayerActivity : ComponentActivity() {
                                 streamTorrentHash = if (isStreaming) streamTorrentHash else null,
                                 streamTitle = streamTitle,
                                 streamPosterUrl = streamPosterUrl,
+                                streamBackdropUrl = streamBackdropUrl,
+                                streamLogoUrl = streamLogoUrl,
                                 onBack = { finish() },
                                 onOpenSettings = {
                                     val intent = Intent(this@VideoPlayerActivity, MainActivity::class.java).apply {
@@ -117,6 +125,8 @@ class VideoPlayerActivity : ComponentActivity() {
             isStreaming = true
             streamTitle = intent.getStringExtra(EXTRA_VIDEO_TITLE) ?: ""
             streamPosterUrl = intent.getStringExtra(EXTRA_POSTER_URL) ?: ""
+            streamBackdropUrl = intent.getStringExtra(EXTRA_BACKDROP_URL) ?: ""
+            streamLogoUrl = intent.getStringExtra(EXTRA_LOGO_URL) ?: ""
             currentUrl = newUrl ?: ""
             requestSequence++
         } else {
@@ -124,6 +134,8 @@ class VideoPlayerActivity : ComponentActivity() {
             streamTorrentHash = null
             streamTitle = intent.getStringExtra(EXTRA_VIDEO_TITLE) ?: ""
             streamPosterUrl = intent.getStringExtra(EXTRA_POSTER_URL) ?: ""
+            streamBackdropUrl = ""
+            streamLogoUrl = ""
             val manager = com.example.ymediaplayer.player.VideoPlaybackManager
             if (!newUrl.isNullOrEmpty()) {
                 manager.player?.let { player ->

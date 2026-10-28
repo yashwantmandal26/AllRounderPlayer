@@ -21,8 +21,8 @@ android {
         applicationId = "com.example.ymediaplayer"
         minSdk = 24
         targetSdk = 37
-        versionCode = 35
-        versionName = "2.3"
+        versionCode = 39
+        versionName = "2.7"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         ndk {
             abiFilters += listOf("arm64-v8a")
@@ -82,6 +82,7 @@ dependencies {
   implementation(libs.androidx.core.ktx)
   implementation(libs.androidx.lifecycle.runtime.ktx)
   implementation(libs.androidx.activity.compose)
+  implementation(libs.androidx.browser)
 
   // Arch Components
   implementation(libs.androidx.lifecycle.runtime.compose)

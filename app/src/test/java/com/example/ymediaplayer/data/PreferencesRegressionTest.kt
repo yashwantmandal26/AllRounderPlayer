@@ -18,8 +18,8 @@ class PreferencesRegressionTest {
         assertTrue("Reset All should restore subtitle background=true", prefs.isSubtitleBackgroundEnabled())
     }
     @Test fun resetRestoresCallPlaybackDefault() {
-        prefs.setPlayDuringCallsEnabled(true); prefs.resetAllSettingsToDefaults()
-        assertFalse("Reset All should restore play during calls=false", prefs.isPlayDuringCallsEnabled())
+        prefs.setPlayDuringCallsEnabled(false); prefs.resetAllSettingsToDefaults()
+        assertTrue("Reset All should restore play during calls=true", prefs.isPlayDuringCallsEnabled())
     }
     @Test fun resetRestoresArtworkDefault() {
         prefs.setMusicArtworkStyle("CARD"); prefs.resetAllSettingsToDefaults()

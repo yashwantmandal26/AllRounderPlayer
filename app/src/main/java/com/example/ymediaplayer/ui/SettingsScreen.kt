@@ -66,6 +66,7 @@ enum class SettingsCategory(val displayName: String, val icon: ImageVector) {
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SettingsScreen(
+    initialCategory: String? = null,
     onBack: () -> Unit
 ) {
     val context = LocalContext.current
@@ -130,10 +131,28 @@ fun SettingsScreen(
     var pauseHeadsetDisconnect by remember { mutableStateOf(appPreferences.isPauseOnHeadsetDisconnect()) }
 
     // ─── Search & Category Navigation States ──────────────────────────────────
+    val initialSettingsCat = remember(initialCategory) {
+        when (initialCategory?.lowercase()) {
+            "music" -> SettingsCategory.MUSIC
+            "playback" -> SettingsCategory.PLAYBACK
+            "gestures" -> SettingsCategory.GESTURES
+            "subtitles" -> SettingsCategory.SUBTITLES
+            "appearance" -> SettingsCategory.APPEARANCE
+            "library" -> SettingsCategory.LIBRARY
+            "storage" -> SettingsCategory.STORAGE
+            else -> SettingsCategory.ALL
+        }
+    }
     var searchQuery by remember { mutableStateOf("") }
-    var selectedCategory by remember { mutableStateOf(SettingsCategory.ALL) }
-    val pagerState = rememberPagerState(initialPage = selectedCategory.ordinal) { SettingsCategory.entries.size }
+    var selectedCategory by remember { mutableStateOf(initialSettingsCat) }
+    val pagerState = rememberPagerState(initialPage = initialSettingsCat.ordinal) { SettingsCategory.entries.size }
     val categoryRowState = rememberLazyListState()
+
+    LaunchedEffect(initialSettingsCat) {
+        if (initialSettingsCat != SettingsCategory.ALL) {
+            categoryRowState.scrollToItem(initialSettingsCat.ordinal)
+        }
+    }
 
     LaunchedEffect(pagerState.settledPage) {
         val settledCat = SettingsCategory.entries.getOrNull(pagerState.settledPage) ?: return@LaunchedEffect
@@ -171,6 +190,8 @@ fun SettingsScreen(
 
     // ─── Music States ─────────────────────────────────────────────────────────
     var musicArtworkStyle by remember { mutableStateOf(appPreferences.getMusicArtworkStyle()) }
+    var includeAudioRecordings by remember { mutableStateOf(appPreferences.isIncludeAudioRecordingsEnabled()) }
+    var includeRingtones by remember { mutableStateOf(appPreferences.isIncludeRingtonesEnabled()) }
     var gaplessPlayback by remember { mutableStateOf(appPreferences.isGaplessPlaybackEnabled()) }
     var resumeOnHeadsetConnect by remember { mutableStateOf(appPreferences.isResumeOnHeadsetConnect()) }
     var crossfadeSeconds by remember { mutableIntStateOf(appPreferences.getCrossfadeDurationSeconds()) }
@@ -485,6 +506,8 @@ fun SettingsScreen(
                     (q.isNotBlank() && (
                         "Music Player".contains(q, ignoreCase = true) ||
                         itemMatches("Now Playing Screen Style", "Vinyl Card Sonic Reactor Cassette Cyber Orb Wave") ||
+                        itemMatches("Show Call Recordings & Voice Notes", "recordings voice whatsapp audio memos") ||
+                        itemMatches("Show Ringtones & Short Audio", "ringtones notifications alerts short audio") ||
                         itemMatches("Gapless Playback", "silence songs zero preload") ||
                         itemMatches("Pause on Headset / Bluetooth Disconnect", "headphones Bluetooth disconnect pause unplug") ||
                         itemMatches("Resume on Headset Connect", "headphones Bluetooth reconnect auto play") ||
@@ -526,10 +549,9 @@ fun SettingsScreen(
                     }
                 }
 
-                // ─── 0. Top Check For Updates Banner ──────────────────────────────
-                if ((q.isBlank() && (currentCat == SettingsCategory.ALL || currentCat == SettingsCategory.STORAGE)) ||
-                    (q.isNotBlank() && itemMatches("Check for Updates", "update version release latest github"))
-                ) {
+                // ─── 0. Top Update Available Banner (Shown only when a new release is detected) ───
+                val detectedUpdate = UpdateManager.availableUpdate.value
+                if (detectedUpdate != null && currentCat != SettingsCategory.STORAGE) {
                 item {
                     val isCheckingUpdates = UpdateManager.isChecking.value
                     Box(
@@ -1530,6 +1552,32 @@ fun SettingsScreen(
                     SettingsDivider()
 
                     SettingsItemToggle(
+                        title = "Show Call Recordings & Voice Notes",
+                        subtitle = "Include phone call recordings, WhatsApp audio, and voice memos in library",
+                        icon = Icons.Rounded.RecordVoiceOver,
+                        checked = includeAudioRecordings,
+                        onCheckedChange = {
+                            includeAudioRecordings = it
+                            appPreferences.setIncludeAudioRecordingsEnabled(it)
+                        }
+                    )
+
+                    SettingsDivider()
+
+                    SettingsItemToggle(
+                        title = "Show Ringtones & Short Audio (< 45s)",
+                        subtitle = "Include notification sounds, system ringtones, and brief audio clips",
+                        icon = Icons.Rounded.Notifications,
+                        checked = includeRingtones,
+                        onCheckedChange = {
+                            includeRingtones = it
+                            appPreferences.setIncludeRingtonesEnabled(it)
+                        }
+                    )
+
+                    SettingsDivider()
+
+                    SettingsItemToggle(
                         title = "Gapless Playback",
                         subtitle = "Preload upcoming track for zero silence between songs",
                         icon = Icons.Rounded.GraphicEq,
@@ -2337,6 +2385,8 @@ fun SettingsScreen(
                         excludeHiddenFolders = true
                         confirmDelete = true
                         musicArtworkStyle = "VINYL"
+                        includeAudioRecordings = false
+                        includeRingtones = false
                         gaplessPlayback = true
                         showResetAllConfirm = false
                         Toast.makeText(context, "All settings restored to defaults", Toast.LENGTH_SHORT).show()

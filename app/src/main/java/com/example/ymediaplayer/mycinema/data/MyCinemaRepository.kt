@@ -56,6 +56,8 @@ class MyCinemaRepository(
 
     suspend fun search(query: String): List<TmdbItem> = tmdbClient.searchMulti(query)
 
+    suspend fun fetchTitleLogo(type: String, tmdbId: Int): String? = tmdbClient.fetchTitleLogo(type, tmdbId)
+
     suspend fun getRecentlyReleased(forceRefresh: Boolean = false): List<TmdbItem> {
         val now = System.currentTimeMillis()
         if (!forceRefresh && cachedRecentlyReleased?.let { now - it.first < CACHE_TTL_MS } == true) {
@@ -135,17 +137,22 @@ class MyCinemaRepository(
     suspend fun getUpcomingMovies(filter: String = "ALL", forceRefresh: Boolean = false): List<TmdbItem> {
         val now = System.currentTimeMillis()
         val key = filter.uppercase()
+        val today = currentCinemaDateIso()
+        fun removePastReleases(items: List<TmdbItem>) = items.filter { item ->
+            val releaseDate = (item.releaseDate ?: item.firstAirDate).orEmpty().take(10)
+            releaseDate.isBlank() || releaseDate >= today
+        }
         val cached = cachedUpcomingByFilter[key]
         if (!forceRefresh && cached?.let { now - it.first < CACHE_TTL_MS } == true) {
-            return cached.second
+            return removePastReleases(cached.second)
         }
         if (!forceRefresh) {
             getDiskCache("upcoming_$key")?.let { diskItems ->
                 cachedUpcomingByFilter[key] = Pair(now, diskItems)
-                return diskItems
+                return removePastReleases(diskItems)
             }
         }
-        val items = tmdbClient.fetchUpcomingMovies(filter)
+        val items = removePastReleases(tmdbClient.fetchUpcomingMovies(filter))
         if (items.isNotEmpty()) {
             cachedUpcomingByFilter[key] = Pair(now, items)
             saveDiskCache("upcoming_$key", items)
@@ -197,6 +204,18 @@ class MyCinemaRepository(
         val info = tmdbClient.fetchCinemaExtendedInfo(item.isSeries, item.id, item.releaseDate)
         extendedInfoCache[cacheKey] = info
         return info
+    }
+
+    private val seasonEpisodesCache = ConcurrentHashMap<String, List<TmdbEpisodeItem>>()
+
+    suspend fun getSeasonEpisodes(tvId: Int, seasonNumber: Int): List<TmdbEpisodeItem> {
+        val cacheKey = "${tvId}_season_$seasonNumber"
+        seasonEpisodesCache[cacheKey]?.let { return it }
+        val episodes = tmdbClient.fetchSeasonEpisodes(tvId, seasonNumber)
+        if (episodes.isNotEmpty()) {
+            seasonEpisodesCache[cacheKey] = episodes
+        }
+        return episodes
     }
 
     suspend fun getTrailerYoutubeKey(isSeries: Boolean, tmdbId: Int): String? =

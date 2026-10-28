@@ -96,6 +96,7 @@ import com.example.ymediaplayer.player.LrclibLyricsManager
 import com.example.ymediaplayer.player.SongLyrics
 import com.example.ymediaplayer.player.LyricLine
 import com.example.ymediaplayer.theme.LocalAppColors
+import com.example.ymediaplayer.util.OfflineArtistAvatarCache
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
@@ -119,6 +120,91 @@ val defaultEqPresets = listOf(
     MusicEqPreset("Classical", listOf(4f, 3f, -1f, 2f, 3f)),
     MusicEqPreset("Hip Hop", listOf(6f, 5f, 0f, 2f, 3f))
 )
+
+private data class MusicSortOption(val id: String, val label: String, val icon: ImageVector)
+
+private val allMusicSortOptions = listOf(
+    MusicSortOption("TITLE", "Title (A to Z)", Icons.Rounded.SortByAlpha),
+    MusicSortOption("TITLE_DESC", "Title (Z to A)", Icons.Rounded.SortByAlpha),
+    MusicSortOption("ARTIST", "Artist (A to Z)", Icons.Rounded.Person),
+    MusicSortOption("ARTIST_DESC", "Artist (Z to A)", Icons.Rounded.Person),
+    MusicSortOption("DATE", "Date Added (Newest)", Icons.Rounded.Schedule),
+    MusicSortOption("DATE_ASC", "Date Added (Oldest)", Icons.Rounded.Schedule),
+    MusicSortOption("DURATION", "Duration (Longest)", Icons.Rounded.Schedule),
+    MusicSortOption("DURATION_ASC", "Duration (Shortest)", Icons.Rounded.Schedule),
+    MusicSortOption("SIZE", "Size (Largest)", Icons.Rounded.Storage),
+    MusicSortOption("SIZE_ASC", "Size (Smallest)", Icons.Rounded.Storage)
+)
+
+private fun sortMusicItems(items: List<MusicItem>, order: String): List<MusicItem> = when (order) {
+    "TITLE" -> items.sortedBy { it.title.lowercase(Locale.getDefault()) }
+    "TITLE_DESC" -> items.sortedByDescending { it.title.lowercase(Locale.getDefault()) }
+    "ARTIST" -> items.sortedBy { it.artist.lowercase(Locale.getDefault()) }
+    "ARTIST_DESC" -> items.sortedByDescending { it.artist.lowercase(Locale.getDefault()) }
+    "DATE" -> items.sortedByDescending { it.id }
+    "DATE_ASC" -> items.sortedBy { it.id }
+    "DURATION" -> items.sortedByDescending { it.duration }
+    "DURATION_ASC" -> items.sortedBy { it.duration }
+    "SIZE" -> items.sortedByDescending { it.size }
+    "SIZE_ASC" -> items.sortedBy { it.size }
+    else -> items
+}
+
+@Composable
+private fun AllMusicSortMenuButton(sortOrder: String, onSort: (String) -> Unit) {
+    val c = LocalAppColors.current
+    var expanded by remember { mutableStateOf(false) }
+    Box {
+        IconButton(onClick = { expanded = true }, modifier = Modifier.size(38.dp)) {
+            Icon(Icons.AutoMirrored.Rounded.Sort, contentDescription = "Sort device music", tint = c.accentBlue)
+        }
+        DropdownMenu(
+            expanded = expanded,
+            onDismissRequest = { expanded = false },
+            containerColor = c.dropdownBg,
+            modifier = Modifier
+                .border(1.dp, c.glassBorder, RoundedCornerShape(14.dp))
+                .shadow(if (c.isMatte && c.isDark) 0.dp else 12.dp, RoundedCornerShape(14.dp))
+        ) {
+            Text(
+                "SORT DEVICE MUSIC",
+                fontSize = 11.sp,
+                fontWeight = FontWeight.Bold,
+                color = c.textSecondary,
+                modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
+            )
+            HorizontalDivider(color = c.glassBorder)
+            allMusicSortOptions.forEach { option ->
+                val selected = sortOrder == option.id
+                DropdownMenuItem(
+                    leadingIcon = {
+                        Icon(
+                            option.icon,
+                            contentDescription = null,
+                            tint = if (selected) c.accentBlue else c.textSecondary,
+                            modifier = Modifier.size(18.dp)
+                        )
+                    },
+                    text = {
+                        Text(
+                            option.label,
+                            color = if (selected) c.accentBlue else c.textPrimary,
+                            fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal,
+                            fontSize = 14.sp
+                        )
+                    },
+                    trailingIcon = {
+                        if (selected) Icon(Icons.Rounded.Check, contentDescription = null, tint = c.accentBlue)
+                    },
+                    onClick = {
+                        onSort(option.id)
+                        expanded = false
+                    }
+                )
+            }
+        }
+    }
+}
 
 // ─── Music Sound Profiles / Modes (Acoustically Tuned) ───────────────────────
 enum class MusicSoundMode(
@@ -238,6 +324,22 @@ fun MusicScreen(
     var allSongs by remember { mutableStateOf<List<MusicItem>>(MusicRepository.getCachedMusic() ?: emptyList()) }
     var isLoading by remember { mutableStateOf(MusicRepository.getCachedMusic() == null) }
 
+    val includeRecordings = remember(appPreferences.lastProgressUpdate.longValue) {
+        appPreferences.isIncludeAudioRecordingsEnabled()
+    }
+    val includeRingtones = remember(appPreferences.lastProgressUpdate.longValue) {
+        appPreferences.isIncludeRingtonesEnabled()
+    }
+    val displayableSongs = remember(allSongs, includeRecordings, includeRingtones) {
+        allSongs.filter { item ->
+            when (item.audioCategory) {
+                com.example.ymediaplayer.data.AudioCategory.RECORDING -> includeRecordings
+                com.example.ymediaplayer.data.AudioCategory.RINGTONE -> includeRingtones
+                com.example.ymediaplayer.data.AudioCategory.SONG -> true
+            }
+        }
+    }
+
     // Player State
     var mediaController by remember { mutableStateOf<MediaController?>(null) }
     var currentlyPlaying by remember { mutableStateOf<MusicItem?>(MusicService.currentMusicItem.value) }
@@ -308,6 +410,8 @@ fun MusicScreen(
     var mostPlayedSongs by remember { mutableStateOf<List<MusicItem>>(emptyList()) }
     var sortOrder by remember { mutableStateOf("TITLE") } // "TITLE", "ARTIST", "DURATION"
     var showSortMenu by remember { mutableStateOf(false) }
+    var allMusicFilter by remember { mutableStateOf("ALL") }
+    var showAllMusicSortMenu by remember { mutableStateOf(false) }
 
     // Handle back button when searching or viewing an artist, album, or playlist drilldown
     BackHandler(enabled = isSearching || searchQuery.isNotEmpty() || selectedArtist != null || selectedAlbum != null || selectedPlaylist != null) {
@@ -414,7 +518,7 @@ fun MusicScreen(
         }
     }
 
-    fun playSongForce(song: MusicItem, queue: List<MusicItem> = allSongs) {
+    fun playSongForce(song: MusicItem, queue: List<MusicItem> = displayableSongs) {
         MusicService.isMiniPlayerDismissed.value = false
         MusicService.currentPlaylist = queue.ifEmpty { listOf(song) }
         MusicService.currentSongIndex = MusicService.currentPlaylist.indexOfFirst { it.uri == song.uri }
@@ -424,9 +528,9 @@ fun MusicScreen(
     }
 
     // Keep most played songs shelf updated
-    LaunchedEffect(allSongs, currentlyPlaying) {
+    LaunchedEffect(displayableSongs, currentlyPlaying) {
         val topUris = appPreferences.getTopPlayedUris(10)
-        mostPlayedSongs = topUris.mapNotNull { uriStr -> allSongs.find { it.uri.toString() == uriStr } }
+        mostPlayedSongs = topUris.mapNotNull { uriStr -> displayableSongs.find { it.uri.toString() == uriStr } }
     }
 
     val playNext: () -> Unit = { MusicService.playNext() }
@@ -584,8 +688,8 @@ fun MusicScreen(
     }
 
     // ─── Smart Category Partitioning: Pure Music vs Call Recordings vs Ringtones ──
-    val pureSongs = remember(allSongs) {
-        allSongs.filter { it.audioCategory == com.example.ymediaplayer.data.AudioCategory.SONG }
+    val pureSongs = remember(displayableSongs) {
+        displayableSongs.filter { it.audioCategory == com.example.ymediaplayer.data.AudioCategory.SONG }
     }
     val recordingSongs = remember(allSongs) {
         allSongs.filter { it.audioCategory == com.example.ymediaplayer.data.AudioCategory.RECORDING }
@@ -595,31 +699,39 @@ fun MusicScreen(
     }
 
     // ─── Online Streaming Data Groupings ──────────────────────────────────────────
-    val artistsMap = remember(pureSongs, allSongs) {
-        val pool = if (pureSongs.isNotEmpty()) pureSongs else allSongs
-        pool.groupBy { it.artist.ifBlank { "Unknown Artist" } }
+    val effectiveSongs = remember(pureSongs, displayableSongs) {
+        if (pureSongs.isNotEmpty()) pureSongs else displayableSongs
     }
-    val albumsMap = remember(pureSongs, allSongs) {
-        val pool = if (pureSongs.isNotEmpty()) pureSongs else allSongs
-        pool.groupBy { it.albumId }
+    val artistsMap = remember(effectiveSongs) {
+        effectiveSongs.groupBy { it.artist.ifBlank { "Unknown Artist" } }
     }
-    val quickPicks = remember(pureSongs, allSongs) {
-        val pool = if (pureSongs.isNotEmpty()) pureSongs else allSongs
-        if (pool.size > 9) pool.shuffled().take(9) else pool
+    val albumsMap = remember(effectiveSongs) {
+        effectiveSongs.groupBy { it.albumId }
+    }
+    val quickPicks = remember(effectiveSongs) {
+        if (effectiveSongs.size > 9) effectiveSongs.shuffled().take(9) else effectiveSongs
     }
     val topArtists = remember(artistsMap) {
         artistsMap.toList().sortedByDescending { it.second.size }
     }
+    var cachedArtistAvatars by remember { mutableStateOf<Map<String, Uri>>(emptyMap()) }
+    LaunchedEffect(topArtists) {
+        val artistsToShow = topArtists.take(8)
+        cachedArtistAvatars = OfflineArtistAvatarCache.cacheArtists(context, artistsToShow)
+        val onlineAvatars = OfflineArtistAvatarCache.fetchOnlineArtistAvatars(context, artistsToShow)
+        if (onlineAvatars.isNotEmpty()) {
+            cachedArtistAvatars = cachedArtistAvatars + onlineAvatars
+        }
+    }
     val featuredAlbums = remember(albumsMap) {
         albumsMap.toList()
     }
-    val recentlyAddedSongs = remember(pureSongs, allSongs) {
-        val pool = if (pureSongs.isNotEmpty()) pureSongs else allSongs
-        pool.sortedByDescending { it.id }.take(10)
+    val recentlyAddedSongs = remember(effectiveSongs) {
+        effectiveSongs.sortedByDescending { it.id }.take(10)
     }
 
-    val totalMusicSize = remember(allSongs) { allSongs.sumOf { it.size } }
-    val totalMusicCount = remember(allSongs) { allSongs.size }
+    val totalMusicSize = remember(displayableSongs) { displayableSongs.sumOf { it.size } }
+    val totalMusicCount = remember(displayableSongs) { displayableSongs.size }
 
     LaunchedEffect(totalMusicCount, totalMusicSize) {
         MusicService.totalTracksCount.intValue = totalMusicCount
@@ -630,8 +742,8 @@ fun MusicScreen(
     var wasTabSelected by remember { mutableStateOf(false) }
 
     // Always refresh Featured Pick when switching from Video or MYCinema to Music tab
-    LaunchedEffect(isTabSelected, pureSongs, allSongs) {
-        val pool = if (pureSongs.isNotEmpty()) pureSongs else allSongs
+    LaunchedEffect(isTabSelected, effectiveSongs) {
+        val pool = effectiveSongs
         if (isTabSelected && !wasTabSelected) {
             if (pool.isNotEmpty()) {
                 val candidateList = if (randomFeaturedSong != null && pool.size > 1) {
@@ -645,26 +757,36 @@ fun MusicScreen(
         wasTabSelected = isTabSelected
     }
 
-    val recentlyPlayedUris = remember(allSongs, appPreferences.lastProgressUpdate.longValue) {
+    val recentlyPlayedUris = remember(displayableSongs, appPreferences.lastProgressUpdate.longValue) {
         appPreferences.getRecentlyPlayedMusicUris()
     }
-    val recentlyPlayedSongs = remember(allSongs, recentlyPlayedUris) {
+    val recentlyPlayedSongs = remember(displayableSongs, recentlyPlayedUris) {
         if (recentlyPlayedUris.isEmpty()) emptyList()
         else {
-            val map = allSongs.associateBy { it.uri.toString() }
+            val map = displayableSongs.associateBy { it.uri.toString() }
             recentlyPlayedUris.mapNotNull { map[it] }
         }
     }
 
+    // Auto-fallback if active category gets toggled off in settings
+    LaunchedEffect(includeRecordings, includeRingtones) {
+        if (!includeRecordings && selectedCategory == "Recordings") {
+            selectedCategory = "Tracks"
+        }
+        if (!includeRingtones && selectedCategory == "Ringtones") {
+            selectedCategory = "Tracks"
+        }
+    }
+
     // Filter and sort songs for Tracks & Favorites views
-    val filteredSongs = remember(allSongs, pureSongs, recordingSongs, ringtoneSongs, searchQuery, selectedCategory, sortOrder, favorites, recentlyPlayedSongs) {
+    val filteredSongs = remember(displayableSongs, pureSongs, recordingSongs, ringtoneSongs, searchQuery, selectedCategory, sortOrder, favorites, recentlyPlayedSongs) {
         var list = when (selectedCategory) {
-            "Favorites" -> allSongs.filter { favorites.contains(it.uri.toString()) }
+            "Favorites" -> displayableSongs.filter { favorites.contains(it.uri.toString()) }
             "Recent" -> recentlyPlayedSongs
             "Tracks" -> pureSongs
             "Recordings" -> recordingSongs
             "Ringtones" -> ringtoneSongs
-            else -> allSongs
+            else -> displayableSongs
         }
         if (searchQuery.isNotBlank()) {
             list = list.filter {
@@ -673,24 +795,38 @@ fun MusicScreen(
                 it.album.contains(searchQuery, ignoreCase = true)
             }
         }
-        when (sortOrder) {
-            "TITLE" -> list.sortedBy { it.title.lowercase(Locale.getDefault()) }
-            "TITLE_DESC" -> list.sortedByDescending { it.title.lowercase(Locale.getDefault()) }
-            "ARTIST" -> list.sortedBy { it.artist.lowercase(Locale.getDefault()) }
-            "ARTIST_DESC" -> list.sortedByDescending { it.artist.lowercase(Locale.getDefault()) }
-            "DATE" -> list.sortedByDescending { it.id }
-            "DATE_ASC" -> list.sortedBy { it.id }
-            "DURATION" -> list.sortedByDescending { it.duration }
-            "DURATION_ASC" -> list.sortedBy { it.duration }
-            "SIZE" -> list.sortedByDescending { it.size }
-            "SIZE_ASC" -> list.sortedBy { it.size }
-            else -> list
-        }
+        sortMusicItems(list, sortOrder)
     }
 
-    val searchMatchingSongs = remember(allSongs, searchQuery) {
+    val allMusicFilterOptions = buildList {
+        add("ALL" to "All")
+        add("SONGS" to "Songs")
+        if (includeRecordings) add("RECORDINGS" to "Recordings")
+        if (includeRingtones) add("RINGTONES" to "Ringtones")
+        add("FAVORITES" to "Favorites")
+    }
+    val allMusicDeviceSongs = remember(
+        displayableSongs, pureSongs, recordingSongs, ringtoneSongs, favorites,
+        allMusicFilter, searchQuery, sortOrder
+    ) {
+        val source = when (allMusicFilter) {
+            "SONGS" -> pureSongs
+            "RECORDINGS" -> recordingSongs
+            "RINGTONES" -> ringtoneSongs
+            "FAVORITES" -> displayableSongs.filter { favorites.contains(it.uri.toString()) }
+            else -> displayableSongs
+        }
+        val searched = if (searchQuery.isBlank()) source else source.filter {
+            it.title.contains(searchQuery, ignoreCase = true) ||
+                it.artist.contains(searchQuery, ignoreCase = true) ||
+                it.album.contains(searchQuery, ignoreCase = true)
+        }
+        sortMusicItems(searched, sortOrder)
+    }
+
+    val searchMatchingSongs = remember(displayableSongs, searchQuery) {
         if (searchQuery.isBlank()) emptyList()
-        else allSongs.filter {
+        else displayableSongs.filter {
             it.title.contains(searchQuery, ignoreCase = true) ||
             it.artist.contains(searchQuery, ignoreCase = true) ||
             it.album.contains(searchQuery, ignoreCase = true)
@@ -849,17 +985,23 @@ fun MusicScreen(
 
                 // ─── Modern Online Category Pills ───────────────────────────
                 if (!isSearching && searchQuery.isEmpty()) {
-                    val categories = listOf(
-                        "Explore" to Icons.Rounded.AutoAwesome,
-                        "Recent" to Icons.Rounded.History,
-                        "Tracks" to Icons.Rounded.MusicNote,
-                        "Recordings" to Icons.Rounded.Mic,
-                        "Ringtones" to Icons.Rounded.NotificationsActive,
-                        "Artists" to Icons.Rounded.Person,
-                        "Albums" to Icons.Rounded.Album,
-                        "Playlists" to Icons.AutoMirrored.Rounded.PlaylistPlay,
-                        "Favorites" to Icons.Rounded.Favorite
-                    )
+                    val categories = remember(includeRecordings, includeRingtones) {
+                        buildList {
+                            add("Explore" to Icons.Rounded.AutoAwesome)
+                            add("Recent" to Icons.Rounded.History)
+                            add("Tracks" to Icons.Rounded.MusicNote)
+                            if (includeRecordings) {
+                                add("Recordings" to Icons.Rounded.Mic)
+                            }
+                            if (includeRingtones) {
+                                add("Ringtones" to Icons.Rounded.NotificationsActive)
+                            }
+                            add("Artists" to Icons.Rounded.Person)
+                            add("Albums" to Icons.Rounded.Album)
+                            add("Playlists" to Icons.AutoMirrored.Rounded.PlaylistPlay)
+                            add("Favorites" to Icons.Rounded.Favorite)
+                        }
+                    }
                     LazyRow(
                         contentPadding = PaddingValues(horizontal = 16.dp, vertical = 6.dp),
                         horizontalArrangement = Arrangement.spacedBy(10.dp)
@@ -1405,7 +1547,7 @@ fun MusicScreen(
                     ) {
                         // Hero "FEATURED PICK" Auto-Selected Music Card
                         item {
-                            val featured = randomFeaturedSong ?: allSongs.firstOrNull()
+                            val featured = randomFeaturedSong ?: effectiveSongs.firstOrNull()
                             if (featured != null) {
                                 FeaturedPickHeroCard(
                                     song = featured,
@@ -1419,7 +1561,7 @@ fun MusicScreen(
                                         }
                                     },
                                     onReroll = {
-                                        val candidates = allSongs.filter { it.id != featured.id }
+                                        val candidates = effectiveSongs.filter { it.id != featured.id }
                                         if (candidates.isNotEmpty()) {
                                             randomFeaturedSong = candidates.random()
                                         }
@@ -1432,11 +1574,11 @@ fun MusicScreen(
                                         }
                                     },
                                     onShuffleAll = {
-                                        if (allSongs.isNotEmpty()) {
-                                            playSongForce(allSongs.random())
+                                        if (effectiveSongs.isNotEmpty()) {
+                                            playSongForce(effectiveSongs.random())
                                         }
                                     },
-                                    totalCount = allSongs.size
+                                    totalCount = effectiveSongs.size
                                 )
                             }
                         }
@@ -1489,6 +1631,129 @@ fun MusicScreen(
                             item { Spacer(Modifier.height(14.dp)) }
                         }
 
+                        // Shelf: POPULAR ARTISTS immediately follows Recently Played.
+                        if (topArtists.isNotEmpty()) {
+                            item {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.SpaceBetween
+                                ) {
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        Icon(Icons.Rounded.Person, contentDescription = null, tint = c.accentBlue, modifier = Modifier.size(16.dp))
+                                        Spacer(Modifier.width(6.dp))
+                                        Text("POPULAR ARTISTS", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = c.textSecondary, letterSpacing = 1.sp)
+                                    }
+                                    Text(
+                                        "See all",
+                                        color = c.accentBlue,
+                                        fontSize = 12.sp,
+                                        modifier = Modifier.clickable { selectedCategory = "Artists" }.padding(4.dp)
+                                    )
+                                }
+                            }
+                            item {
+                                LazyRow(
+                                    contentPadding = PaddingValues(horizontal = 16.dp),
+                                    horizontalArrangement = Arrangement.spacedBy(14.dp)
+                                ) {
+                                    items(topArtists.take(8), key = { "popular_artist_${it.first}" }) { (name, songs) ->
+                                        OnlineArtistCard(
+                                            name = name,
+                                            songs = songs,
+                                            offlineAvatar = cachedArtistAvatars[name],
+                                            onClick = { selectedArtist = name }
+                                        )
+                                    }
+                                }
+                                Spacer(Modifier.height(14.dp))
+                            }
+                        }
+
+                        // Full on-device library with independent filters and sorting.
+                        item {
+                            Row(
+                                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.SpaceBetween
+                            ) {
+                                Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.weight(1f)) {
+                                    Icon(Icons.Rounded.LibraryMusic, contentDescription = null, tint = c.accentBlue, modifier = Modifier.size(18.dp))
+                                    Spacer(Modifier.width(8.dp))
+                                    Column {
+                                        Text("ALL MUSIC ON DEVICE", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = c.textSecondary, letterSpacing = 0.8.sp)
+                                        Text("${allMusicDeviceSongs.size} tracks", fontSize = 11.sp, color = c.textSecondary)
+                                    }
+                                }
+                                IconButton(
+                                    onClick = { allMusicDeviceSongs.randomOrNull()?.let { playSongForce(it, allMusicDeviceSongs) } },
+                                    enabled = allMusicDeviceSongs.isNotEmpty(),
+                                    modifier = Modifier.size(38.dp)
+                                ) {
+                                    Icon(Icons.Rounded.Shuffle, contentDescription = "Shuffle device music", tint = c.accentBlue)
+                                }
+                                AllMusicSortMenuButton(sortOrder = sortOrder, onSort = { sortOrder = it })
+                            }
+                        }
+                        item {
+                            LazyRow(
+                                contentPadding = PaddingValues(horizontal = 16.dp, vertical = 4.dp),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                items(allMusicFilterOptions, key = { it.first }) { (filter, label) ->
+                                    val selected = allMusicFilter == filter
+                                    val shape = RoundedCornerShape(16.dp)
+                                    Row(
+                                        modifier = Modifier
+                                            .clip(shape)
+                                            .background(if (selected) c.accentBlue else c.cardBg)
+                                            .border(1.dp, if (selected) c.accentBlue else c.glassBorder, shape)
+                                            .clickable { allMusicFilter = filter }
+                                            .padding(horizontal = 13.dp, vertical = 7.dp),
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Text(
+                                            label,
+                                            color = if (selected) c.onAccent else c.textPrimary,
+                                            fontSize = 12.sp,
+                                            fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                        if (allMusicDeviceSongs.isEmpty()) {
+                            item {
+                                Text(
+                                    "No tracks in this filter",
+                                    color = c.textSecondary,
+                                    fontSize = 13.sp,
+                                    modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 16.dp)
+                                )
+                            }
+                        } else {
+                            items(allMusicDeviceSongs, key = { "device_music_${it.id}" }) { song ->
+                                val isCurrent = currentlyPlaying?.id == song.id
+                                MusicListItem(
+                                    song = song,
+                                    isCurrentlyPlaying = isCurrent,
+                                    isPlaying = isPlaying && isCurrent,
+                                    isFavorite = favorites.contains(song.uri.toString()),
+                                    onFavoriteToggle = {
+                                        appPreferences.toggleMusicFavorite(song.uri.toString())
+                                        favorites = appPreferences.getMusicFavorites()
+                                    },
+                                    onLongClick = { songForContextMenu = song },
+                                    onMoreClick = { songForContextMenu = song },
+                                    onClick = {
+                                        if (!isCurrent) playSongForce(song, allMusicDeviceSongs)
+                                        else if (isPlaying) mediaController?.pause() else mediaController?.play()
+                                    }
+                                )
+                            }
+                        }
+                        item { Spacer(Modifier.height(14.dp)) }
+
                         // Shelf: QUICK PICKS (3 songs stacked in horizontal pages)
                         if (quickPicks.isNotEmpty()) {
                             item {
@@ -1534,40 +1799,6 @@ fun MusicScreen(
                                                 )
                                             }
                                         }
-                                    }
-                                }
-                                Spacer(Modifier.height(14.dp))
-                            }
-                        }
-
-                        // Shelf: TOP ARTISTS (Circular horizontal avatars)
-                        if (topArtists.isNotEmpty()) {
-                            item {
-                                Row(
-                                    modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp),
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.SpaceBetween
-                                ) {
-                                    Row(verticalAlignment = Alignment.CenterVertically) {
-                                        Icon(Icons.Rounded.Person, contentDescription = null, tint = c.accentBlue, modifier = Modifier.size(16.dp))
-                                        Spacer(Modifier.width(6.dp))
-                                        Text("POPULAR ARTISTS", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = c.textSecondary, letterSpacing = 1.sp)
-                                    }
-                                    Text(
-                                        "See all",
-                                        color = c.accentBlue,
-                                        fontSize = 12.sp,
-                                        modifier = Modifier.clickable { selectedCategory = "Artists" }.padding(4.dp)
-                                    )
-                                }
-                            }
-                            item {
-                                LazyRow(
-                                    contentPadding = PaddingValues(horizontal = 16.dp),
-                                    horizontalArrangement = Arrangement.spacedBy(14.dp)
-                                ) {
-                                    items(topArtists.take(8)) { (name, songs) ->
-                                        OnlineArtistCard(name = name, songs = songs, onClick = { selectedArtist = name })
                                     }
                                 }
                                 Spacer(Modifier.height(14.dp))
@@ -3172,11 +3403,13 @@ private fun QuickPickItem(
 private fun OnlineArtistCard(
     name: String,
     songs: List<MusicItem>,
+    offlineAvatar: Uri?,
     onClick: () -> Unit
 ) {
     val c = LocalAppColors.current
-    val firstArt = songs.firstOrNull()?.albumArtUri
+    val firstArt = offlineAvatar ?: songs.firstOrNull()?.albumArtUri
     val (colors, _) = remember(name) { getProceduralPalette(name) }
+    var imageLoadFailed by remember(firstArt) { mutableStateOf(false) }
     Column(
         horizontalAlignment = Alignment.CenterHorizontally,
         modifier = Modifier
@@ -3193,13 +3426,16 @@ private fun OnlineArtistCard(
                 .border(1.4.dp, Brush.verticalGradient(listOf(Color.White.copy(alpha = 0.35f), c.glassBorder, Color.White.copy(alpha = 0.08f))), CircleShape),
             contentAlignment = Alignment.Center
         ) {
-            AsyncImage(
-                model = firstArt,
-                contentDescription = null,
-                contentScale = ContentScale.Crop,
-                modifier = Modifier.fillMaxSize()
-            )
-            if (firstArt == null) {
+            if (firstArt != null && !imageLoadFailed) {
+                AsyncImage(
+                    model = firstArt,
+                    contentDescription = "$name artwork",
+                    contentScale = ContentScale.Crop,
+                    onError = { imageLoadFailed = true },
+                    modifier = Modifier.fillMaxSize()
+                )
+            }
+            if (firstArt == null || imageLoadFailed) {
                 Text(
                     text = name.take(1).uppercase(),
                     color = Color.White,
@@ -6538,15 +6774,32 @@ private fun MusicSeekBar(
     var isDragging by remember { mutableStateOf(false) }
     var scrubPosition by remember { mutableFloatStateOf(currentPosition.toFloat()) }
     var smoothPosition by remember { mutableFloatStateOf(currentPosition.toFloat()) }
+    var pendingSeekPosition by remember { mutableStateOf<Long?>(null) }
 
     var lastSyncPos by remember { mutableFloatStateOf(currentPosition.toFloat()) }
     var lastSyncTime by remember { mutableLongStateOf(android.os.SystemClock.elapsedRealtime()) }
 
-    LaunchedEffect(currentPosition, isPlaying) {
-        lastSyncPos = currentPosition.toFloat()
-        lastSyncTime = android.os.SystemClock.elapsedRealtime()
+    LaunchedEffect(currentPosition, isPlaying, pendingSeekPosition) {
+        val seekTarget = pendingSeekPosition
+        if (seekTarget != null && kotlin.math.abs(currentPosition - seekTarget) > 1_000L) {
+            // Player polling can briefly report its pre-seek position. Keep the
+            // user's target on screen until the player catches up with the seek.
+            return@LaunchedEffect
+        }
+        if (seekTarget != null) pendingSeekPosition = null
         if (!isDragging) {
+            lastSyncPos = currentPosition.toFloat()
+            lastSyncTime = android.os.SystemClock.elapsedRealtime()
             smoothPosition = currentPosition.toFloat()
+        }
+    }
+
+    LaunchedEffect(pendingSeekPosition) {
+        val seekTarget = pendingSeekPosition ?: return@LaunchedEffect
+        delay(4_000L)
+        if (pendingSeekPosition == seekTarget) {
+            // A non-seekable or failed source must not leave the progress frozen.
+            pendingSeekPosition = null
         }
     }
 
@@ -6555,7 +6808,7 @@ private fun MusicSeekBar(
         if (!isPlaying || duration <= 0) return@LaunchedEffect
         while (isActive) {
             withFrameMillis { _ ->
-                if (!isDragging) {
+                if (!isDragging && pendingSeekPosition == null) {
                     val elapsed = (android.os.SystemClock.elapsedRealtime() - lastSyncTime).coerceAtLeast(0L)
                     val interpolated = (lastSyncPos + elapsed).coerceIn(0f, duration.toFloat().coerceAtLeast(1f))
                     smoothPosition = interpolated
@@ -6566,18 +6819,11 @@ private fun MusicSeekBar(
 
     val c = LocalAppColors.current
 
-    val thumbSize by animateDpAsState(
-        targetValue = if (isDragging) 18.dp else 13.dp,
-        animationSpec = spring(stiffness = Spring.StiffnessMediumLow, dampingRatio = Spring.DampingRatioMediumBouncy),
-        label = "thumbSize"
-    )
-    val currentTrackHeight by animateDpAsState(
-        targetValue = if (isDragging) 4.5.dp else 3.dp,
-        animationSpec = spring(stiffness = Spring.StiffnessMediumLow),
-        label = "trackHeight"
-    )
-
-    val currentDisplayValue = if (isDragging) scrubPosition else smoothPosition.coerceIn(0f, duration.toFloat().coerceAtLeast(1f))
+    val currentDisplayValue = when {
+        isDragging -> scrubPosition
+        pendingSeekPosition != null -> pendingSeekPosition!!.toFloat()
+        else -> smoothPosition.coerceIn(0f, duration.toFloat().coerceAtLeast(1f))
+    }
 
     val view = androidx.compose.ui.platform.LocalView.current
 
@@ -6590,10 +6836,12 @@ private fun MusicSeekBar(
             },
             onValueChangeFinished = {
                 isDragging = false
-                smoothPosition = scrubPosition
-                lastSyncPos = scrubPosition
+                val targetPosition = scrubPosition.toLong()
+                pendingSeekPosition = targetPosition
+                smoothPosition = targetPosition.toFloat()
+                lastSyncPos = targetPosition.toFloat()
                 lastSyncTime = android.os.SystemClock.elapsedRealtime()
-                onSeek(scrubPosition.toLong())
+                onSeek(targetPosition)
                 view.performHaptic(HapticType.LIGHT)
             },
             valueRange = 0f..duration.toFloat().coerceAtLeast(1f),
@@ -6603,7 +6851,7 @@ private fun MusicSeekBar(
             thumb = {
                 Box(
                     modifier = Modifier
-                        .size(thumbSize)
+                        .size(13.dp)
                         .shadow(if (isDragging) 6.dp else 3.dp, CircleShape, ambientColor = Color.White, spotColor = c.accentBlue)
                         .clip(CircleShape)
                         .background(Color.White)
@@ -6614,8 +6862,8 @@ private fun MusicSeekBar(
                 SliderDefaults.Track(
                     sliderState = sliderState,
                     modifier = Modifier
-                        .height(currentTrackHeight)
-                        .clip(RoundedCornerShape(currentTrackHeight / 2)),
+                        .height(3.dp)
+                        .clip(RoundedCornerShape(1.5.dp)),
                     colors = SliderDefaults.colors(
                         activeTrackColor = c.accentBlue,
                         inactiveTrackColor = Color.White.copy(alpha = 0.22f)

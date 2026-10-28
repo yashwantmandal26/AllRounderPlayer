@@ -48,6 +48,7 @@ import com.example.ymediaplayer.data.AppPreferences
 import com.example.ymediaplayer.mycinema.data.MyCinemaRepository
 import com.example.ymediaplayer.mycinema.data.TmdbItem
 import com.example.ymediaplayer.mycinema.data.TorrentSource
+import com.example.ymediaplayer.mycinema.data.currentCinemaDateIso
 import com.example.ymediaplayer.theme.LocalAppColors
 import com.example.ymediaplayer.ui.buildVideoThumbnailRequest
 import kotlinx.coroutines.async
@@ -119,6 +120,16 @@ fun MyCinemaScreen(
     var isLoadingUpcoming by remember { mutableStateOf(false) }
 
     var isLoadingFeed by remember { mutableStateOf(true) }
+    var currentDateKey by remember { mutableStateOf(currentCinemaDateIso()) }
+    var lastFeedDateKey by remember { mutableStateOf(currentDateKey) }
+
+    LaunchedEffect(Unit) {
+        while (true) {
+            delay(60_000)
+            val latestDate = currentCinemaDateIso()
+            if (latestDate != currentDateKey) currentDateKey = latestDate
+        }
+    }
 
     // Selected item for detail modal & source bottom sheet
     var activeDetailItem by remember { mutableStateOf<TmdbItem?>(null) }
@@ -239,9 +250,10 @@ fun MyCinemaScreen(
     }
 
     // Load initial feed concurrently with structured concurrency
-    LaunchedEffect(refreshTrigger) {
+    LaunchedEffect(refreshTrigger, currentDateKey) {
         isLoadingFeed = true
-        val force = refreshTrigger > 0
+        val force = refreshTrigger > 0 || currentDateKey != lastFeedDateKey
+        lastFeedDateKey = currentDateKey
         try {
             coroutineScope {
                 val d1 = async { runCatching { repository.getRecentlyReleased(forceRefresh = force) }.getOrDefault(emptyList()) }

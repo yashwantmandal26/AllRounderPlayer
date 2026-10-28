@@ -207,18 +207,18 @@ class PreferencesAndResumeTest {
 
     @Test
     fun playbackSpeed_rememberSpeedAndReset() {
-        assertFalse(appPreferences.isRememberPlaybackSpeed())
+        assertTrue(appPreferences.isRememberPlaybackSpeed())
         assertEquals(1.0f, appPreferences.getLastPlaybackSpeed(), 0.001f)
 
-        appPreferences.setRememberPlaybackSpeed(true)
+        appPreferences.setRememberPlaybackSpeed(false)
         appPreferences.setLastPlaybackSpeed(1.75f)
 
-        assertTrue(appPreferences.isRememberPlaybackSpeed())
+        assertFalse(appPreferences.isRememberPlaybackSpeed())
         assertEquals(1.75f, appPreferences.getLastPlaybackSpeed(), 0.001f)
 
         appPreferences.resetAllSettingsToDefaults()
 
-        assertFalse(appPreferences.isRememberPlaybackSpeed())
+        assertTrue(appPreferences.isRememberPlaybackSpeed())
         assertEquals(1.0f, appPreferences.getLastPlaybackSpeed(), 0.001f)
     }
 
@@ -252,6 +252,40 @@ class PreferencesAndResumeTest {
 
         appPreferences.setMusicSoundMode("SPATIAL_3D")
         assertEquals("SPATIAL_3D", appPreferences.getMusicSoundMode())
+    }
+
+    @Test
+    fun episodeProgressAndCompletion_tracksWatchedStatusAndManualToggle() {
+        val showId = 12345
+        val season = 1
+        val episode = 3
+
+        // Initially unwatched with 0 progress
+        assertFalse(appPreferences.isEpisodeCompleted(showId, season, episode))
+        val initialProgress = appPreferences.getEpisodeProgress(showId, season, episode)
+        assertEquals(0L, initialProgress.first)
+        assertEquals(0L, initialProgress.second)
+
+        // Halfway watched (50%) -> should record progress, but not marked completed (< 90%)
+        appPreferences.saveEpisodeProgress(showId, season, episode, 50_000L, 100_000L)
+        assertFalse(appPreferences.isEpisodeCompleted(showId, season, episode))
+        val midProgress = appPreferences.getEpisodeProgress(showId, season, episode)
+        assertEquals(50_000L, midProgress.first)
+        assertEquals(100_000L, midProgress.second)
+
+        // 92% watched -> auto-marks as completed
+        appPreferences.saveEpisodeProgress(showId, season, episode, 92_000L, 100_000L)
+        assertTrue(appPreferences.isEpisodeCompleted(showId, season, episode))
+
+        // Manual toggle flips status back to false
+        val toggledOff = appPreferences.toggleEpisodeCompleted(showId, season, episode)
+        assertFalse(toggledOff)
+        assertFalse(appPreferences.isEpisodeCompleted(showId, season, episode))
+
+        // Manual toggle flips status to true
+        val toggledOn = appPreferences.toggleEpisodeCompleted(showId, season, episode)
+        assertTrue(toggledOn)
+        assertTrue(appPreferences.isEpisodeCompleted(showId, season, episode))
     }
 
 }

@@ -305,7 +305,7 @@ fun MainApp(
 
     LaunchedEffect(MainActivity.openSettingsTrigger.value) {
         if (MainActivity.openSettingsTrigger.value) {
-            backStack.add(com.example.ymediaplayer.Settings)
+            backStack.add(com.example.ymediaplayer.Settings())
             MainActivity.openSettingsTrigger.value = false
         }
     }
@@ -378,8 +378,8 @@ fun MainApp(
                                 }
                                 context.startActivity(intent)
                             },
-                            onOpenSettings = {
-                                backStack.add(com.example.ymediaplayer.Settings)
+                            onOpenSettings = { cat ->
+                                backStack.add(com.example.ymediaplayer.Settings(initialCategory = cat))
                             }
                         )
                     }
@@ -429,11 +429,11 @@ fun MainApp(
                         VideoPlayerScreen(
                             videoUrl = decodedUri,
                             onBack = { if (backStack.size > 1) backStack.removeLastOrNull() },
-                            onOpenSettings = { backStack.add(com.example.ymediaplayer.Settings) }
+                            onOpenSettings = { backStack.add(com.example.ymediaplayer.Settings()) }
                         )
                     }
                 }
-                entry<com.example.ymediaplayer.Settings> {
+                entry<com.example.ymediaplayer.Settings> { navKey ->
                     LaunchedEffect(Unit) {
                         insetsController?.show(WindowInsetsCompat.Type.systemBars())
                         MainActivity.onUserLeaveHintListener = null
@@ -453,6 +453,7 @@ fun MainApp(
                         color = appColors.baseBackground
                     ) {
                         SettingsScreen(
+                            initialCategory = navKey.initialCategory,
                             onBack = { if (backStack.size > 1) backStack.removeLastOrNull() }
                         )
                     }

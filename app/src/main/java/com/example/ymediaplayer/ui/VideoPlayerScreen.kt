@@ -67,6 +67,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawWithContent
+import androidx.compose.ui.graphics.drawscope.clipRect
 import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Brush
@@ -637,6 +639,8 @@ fun VideoPlayerScreen(
     streamTorrentHash: String? = null,
     streamTitle: String = "",
     streamPosterUrl: String = "",
+    streamBackdropUrl: String = "",
+    streamLogoUrl: String = "",
     onBack: () -> Unit,
     onOpenSettings: (() -> Unit)? = null
 ) {
@@ -671,7 +675,7 @@ fun VideoPlayerScreen(
         )
     }
 
-    var isStreamReady by remember {
+    var isStreamReady by remember(streamTorrentHash) {
         mutableStateOf(
             streamTorrentHash == null || (videoUrl.isNotBlank() && com.example.ymediaplayer.mycinema.service.TorrentEngine.isStreamBufferReady(context, streamTorrentHash))
         )
@@ -760,6 +764,37 @@ fun VideoPlayerScreen(
             subtitlesEnabled = subtitlesEnabled
         )
     }
+
+    var hasRenderedFirstFrame by remember(streamTorrentHash) {
+        mutableStateOf(streamTorrentHash == null)
+    }
+
+    DisposableEffect(exoPlayer, streamTorrentHash) {
+        if (streamTorrentHash == null) {
+            hasRenderedFirstFrame = true
+            return@DisposableEffect onDispose {}
+        }
+        val listener = object : Player.Listener {
+            override fun onRenderedFirstFrame() {
+                hasRenderedFirstFrame = true
+            }
+            override fun onPlaybackStateChanged(state: Int) {
+                if (state == Player.STATE_READY && (exoPlayer.playWhenReady || exoPlayer.isPlaying)) {
+                    hasRenderedFirstFrame = true
+                }
+            }
+            override fun onIsPlayingChanged(isPlaying: Boolean) {
+                if (isPlaying) {
+                    hasRenderedFirstFrame = true
+                }
+            }
+        }
+        exoPlayer.addListener(listener)
+        onDispose {
+            exoPlayer.removeListener(listener)
+        }
+    }
+
     val safePlaybackMode by VideoPlaybackManager.safeModeActive
     val playbackRecoveryMessage by VideoPlaybackManager.recoveryMessage
     val compatibilityFallback by VideoPlaybackManager.compatibilityFallbackRequest
@@ -2849,7 +2884,7 @@ fun VideoPlayerScreen(
 
     BackHandler(enabled = true) {
         when {
-            streamTorrentHash != null && !isStreamReady -> handleExit()
+            streamTorrentHash != null && (!isStreamReady || !hasRenderedFirstFrame) -> handleExit()
             isLocked -> isLocked = false
             showDeleteConfirmDialog -> showDeleteConfirmDialog = false
             showQuickControlsBar -> showQuickControlsBar = false
@@ -5492,11 +5527,18 @@ fun VideoPlayerScreen(
         }
 
         // ─── Pre-Roll Torrent Stream Buffering Overlay ────────────────────────
-        if (streamTorrentHash != null && !isStreamReady && !isInPiP) {
+        val showStreamOverlay = streamTorrentHash != null && (!isStreamReady || !hasRenderedFirstFrame) && !isInPiP
+        androidx.compose.animation.AnimatedVisibility(
+            visible = showStreamOverlay,
+            enter = androidx.compose.animation.fadeIn(animationSpec = androidx.compose.animation.core.tween(300)),
+            exit = androidx.compose.animation.fadeOut(animationSpec = androidx.compose.animation.core.tween(700))
+        ) {
             StreamPreRollBufferingOverlay(
                 title = if (streamTitle.isNotBlank()) streamTitle else videoTitle,
                 posterUrl = streamPosterUrl,
-                streamHash = streamTorrentHash,
+                backdropUrl = streamBackdropUrl,
+                logoUrl = streamLogoUrl,
+                streamHash = streamTorrentHash ?: "",
                 onCancel = { handleExit() }
             )
         }
@@ -5504,18 +5546,20 @@ fun VideoPlayerScreen(
     }
 }
 
-// ─── PRE-ROLL TORRENT STREAM BUFFERING OVERLAY ──────────────────────────────
+// ─── CINEMATIC PRE-ROLL TORRENT STREAM BUFFERING OVERLAY (HOPE-STYLE) ───────
 @Composable
 private fun StreamPreRollBufferingOverlay(
     title: String,
     posterUrl: String,
+    backdropUrl: String,
+    logoUrl: String,
     streamHash: String,
     onCancel: () -> Unit
 ) {
     val allDownloads by TorrentEngine.downloads.collectAsState()
     val state = allDownloads[streamHash]
     val dlBytes = state?.downloadedBytes ?: 0L
-    val targetBufferBytes = com.example.ymediaplayer.mycinema.service.TorrentEngine.DEFAULT_STREAM_BUFFER_BYTES // ~8MB initial playback buffer
+    val targetBufferBytes = TorrentEngine.DEFAULT_STREAM_BUFFER_BYTES // ~8MB initial playback buffer
     val progressFraction = (dlBytes.toFloat() / targetBufferBytes.toFloat()).coerceIn(0f, 1f)
     val animatedProgress by animateFloatAsState(
         targetValue = progressFraction,
@@ -5523,76 +5567,116 @@ private fun StreamPreRollBufferingOverlay(
         label = "streamBufferingProgress"
     )
 
-    val infiniteTransition = rememberInfiniteTransition(label = "cinemaGlow")
+    // Elapsed timer for stalled swarm detection
+    var secondsWaiting by remember(streamHash) { mutableIntStateOf(0) }
+    LaunchedEffect(streamHash) {
+        secondsWaiting = 0
+        while (true) {
+            kotlinx.coroutines.delay(1000)
+            secondsWaiting++
+        }
+    }
+
+    val isSwarmStalled = secondsWaiting >= 15 && (state?.downloadedBytes ?: 0L) < 200_000L && (state?.downloadSpeed ?: 0L) == 0L && (state?.seeds ?: 0) == 0
+
+    val infiniteTransition = rememberInfiniteTransition(label = "hopeScreenTransition")
+    val breathScale by infiniteTransition.animateFloat(
+        initialValue = 0.982f,
+        targetValue = 1.018f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(2800, easing = FastOutSlowInEasing),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "hopeLogoBreath"
+    )
     val glowAlpha by infiniteTransition.animateFloat(
-        initialValue = 0.25f,
-        targetValue = 0.55f,
+        initialValue = 0.22f,
+        targetValue = 0.52f,
         animationSpec = infiniteRepeatable(
-            animation = tween(2200, easing = FastOutSlowInEasing),
+            animation = tween(2400, easing = FastOutSlowInEasing),
             repeatMode = RepeatMode.Reverse
         ),
-        label = "cinemaGlowAlpha"
+        label = "hopeGlowAlpha"
     )
-    val pulseScale by infiniteTransition.animateFloat(
-        initialValue = 0.985f,
-        targetValue = 1.015f,
+    val pulseAlpha by infiniteTransition.animateFloat(
+        initialValue = 0.6f,
+        targetValue = 1.0f,
         animationSpec = infiniteRepeatable(
-            animation = tween(2500, easing = FastOutSlowInEasing),
+            animation = tween(1200, easing = LinearEasing),
             repeatMode = RepeatMode.Reverse
         ),
-        label = "cinemaPosterPulse"
+        label = "stalledWarningPulse"
     )
+
+    val chromaticBrush = remember {
+        Brush.horizontalGradient(
+            colors = listOf(
+                Color(0xFF00E5FF),
+                Color(0xFF7C4DFF),
+                Color(0xFFFF4081),
+                Color(0xFFFFD54F),
+                Color(0xFF00E5FF)
+            )
+        )
+    }
+
+    val bgImage = remember(backdropUrl, posterUrl) {
+        if (backdropUrl.isNotBlank()) backdropUrl else posterUrl
+    }
 
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .background(Color(0xFF080910))
-            .clickable(interactionSource = remember { androidx.compose.foundation.interaction.MutableInteractionSource() }, indication = null) {}
+            .background(Color(0xFF080D16))
+            .clickable(
+                interactionSource = remember { androidx.compose.foundation.interaction.MutableInteractionSource() },
+                indication = null
+            ) {}
     ) {
-        // High quality blurred backdrop
-        if (posterUrl.isNotBlank()) {
+        // 1. High-definition Blurred Backdrop (28dp blur, 32% alpha)
+        if (bgImage.isNotBlank()) {
             AsyncImage(
-                model = posterUrl,
+                model = bgImage,
                 contentDescription = null,
                 contentScale = ContentScale.Crop,
                 modifier = Modifier
                     .fillMaxSize()
-                    .alpha(0.35f)
-                    .blur(48.dp)
+                    .alpha(0.32f)
+                    .blur(28.dp)
             )
         }
 
-        // Ambient radial glow behind center poster
+        // 2. Cinematic Vignette Gradient Overlay
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(
+                    Brush.verticalGradient(
+                        0.0f to Color.Black.copy(alpha = 0.85f),
+                        0.30f to Color.Black.copy(alpha = 0.35f),
+                        0.70f to Color.Black.copy(alpha = 0.45f),
+                        1.0f to Color.Black.copy(alpha = 0.95f)
+                    )
+                )
+        )
+
+        // 3. Ambient Center Radial Glow
         Box(
             modifier = Modifier
                 .align(Alignment.Center)
-                .size(340.dp)
+                .size(380.dp)
                 .background(
                     Brush.radialGradient(
                         colors = listOf(
-                            Color(0xFF00E5FF).copy(alpha = glowAlpha * 0.35f),
-                            Color(0xFF2979FF).copy(alpha = glowAlpha * 0.15f),
+                            Color(0xFF00E5FF).copy(alpha = glowAlpha * 0.22f),
+                            Color(0xFF7C4DFF).copy(alpha = glowAlpha * 0.14f),
                             Color.Transparent
                         )
                     )
                 )
         )
 
-        // Vignette gradients (top & bottom darkness)
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .background(
-                    Brush.verticalGradient(
-                        0.0f to Color.Black.copy(alpha = 0.75f),
-                        0.35f to Color.Transparent,
-                        0.7f to Color.Black.copy(alpha = 0.65f),
-                        1.0f to Color.Black.copy(alpha = 0.92f)
-                    )
-                )
-        )
-
-        // Top bar with Glass Back button & Pill badge
+        // 4. Top Glass Navigation Bar
         Row(
             modifier = Modifier
                 .fillMaxWidth()
@@ -5617,135 +5701,153 @@ private fun StreamPreRollBufferingOverlay(
                 )
             }
 
-            // Streaming Cinema Badge
-            Row(
+            Column(
+                horizontalAlignment = Alignment.CenterHorizontally,
                 modifier = Modifier
-                    .clip(RoundedCornerShape(20.dp))
-                    .background(Color(0xFF141624).copy(alpha = 0.85f))
-                    .border(1.dp, Color(0xFF00E5FF).copy(alpha = 0.35f), RoundedCornerShape(20.dp))
-                    .padding(horizontal = 14.dp, vertical = 7.dp),
-                verticalAlignment = Alignment.CenterVertically
+                    .weight(1f)
+                    .padding(horizontal = 12.dp)
             ) {
-                Box(
-                    modifier = Modifier
-                        .size(8.dp)
-                        .clip(CircleShape)
-                        .background(Color(0xFF00E5FF))
-                )
-                Spacer(Modifier.width(8.dp))
                 Text(
-                    text = "STREAMING CINEMA",
+                    text = title,
                     color = Color.White,
-                    fontSize = 12.sp,
+                    fontSize = 15.sp,
                     fontWeight = FontWeight.Bold,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+                Text(
+                    text = "CINEMA STREAMING",
+                    color = Color(0xFF00E5FF),
+                    fontSize = 10.5.sp,
+                    fontWeight = FontWeight.SemiBold,
                     letterSpacing = 1.2.sp
                 )
             }
 
-            // Balanced spacing spacer
-            Spacer(Modifier.size(42.dp))
+            // Audio & Subtitles badge
+            Row(
+                modifier = Modifier
+                    .clip(RoundedCornerShape(16.dp))
+                    .background(Color.White.copy(alpha = 0.08f))
+                    .border(1.dp, Color.White.copy(alpha = 0.15f), RoundedCornerShape(16.dp))
+                    .padding(horizontal = 10.dp, vertical = 6.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Icon(
+                    Icons.Rounded.Subtitles,
+                    contentDescription = null,
+                    tint = Color.White.copy(alpha = 0.85f),
+                    modifier = Modifier.size(14.dp)
+                )
+                Spacer(Modifier.width(6.dp))
+                Text(
+                    text = "Subtitles",
+                    color = Color.White.copy(alpha = 0.85f),
+                    fontSize = 11.sp,
+                    fontWeight = FontWeight.Medium
+                )
+            }
         }
 
-        // Center card with loading indicators
+        // 5. Center Cinematic Reveal Content
         Column(
             modifier = Modifier
                 .align(Alignment.Center)
                 .fillMaxWidth()
-                .padding(horizontal = 28.dp)
-                .verticalScroll(rememberScrollState()),
+                .padding(horizontal = 24.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.Center
         ) {
-            Spacer(Modifier.height(56.dp))
-
-            // Movie Poster - Much larger, cinematic aspect ratio, with soft pulse & ambient glow
-            if (posterUrl.isNotBlank()) {
-                Box(
-                    modifier = Modifier
-                        .size(width = 195.dp, height = 285.dp)
-                        .graphicsLayer {
-                            scaleX = pulseScale
-                            scaleY = pulseScale
-                        }
-                        .shadow(elevation = 24.dp, shape = RoundedCornerShape(22.dp), spotColor = Color(0xFF00E5FF).copy(alpha = 0.45f))
-                        .clip(RoundedCornerShape(22.dp))
-                        .background(Color(0xFF161826))
-                        .border(
-                            1.5.dp,
-                            Brush.verticalGradient(
-                                listOf(
-                                    Color.White.copy(alpha = 0.45f),
-                                    Color(0xFF00E5FF).copy(alpha = 0.35f),
-                                    Color.White.copy(alpha = 0.1f)
-                                )
-                            ),
-                            RoundedCornerShape(22.dp)
-                        )
-                ) {
-                    AsyncImage(
-                        model = posterUrl,
-                        contentDescription = title,
-                        contentScale = ContentScale.Crop,
-                        modifier = Modifier.fillMaxSize()
-                    )
-                }
-                Spacer(Modifier.height(20.dp))
-            }
-
-            // Movie Title
-            Text(
-                text = title,
-                color = Color.White,
-                fontSize = 21.sp,
-                fontWeight = FontWeight.ExtraBold,
-                textAlign = TextAlign.Center,
-                maxLines = 2,
-                overflow = TextOverflow.Ellipsis
-            )
-
-            Spacer(Modifier.height(10.dp))
-
-            // Status message
-            val statusText = when {
-                state?.status == com.example.ymediaplayer.mycinema.service.TorrentDownloadState.Status.ERROR ->
-                    "Connection error: " + (state.error ?: "Failed to connect")
-                state == null || state.seeds == 0 -> "Finding seeders & swarm..."
-                dlBytes < 1024 * 1024 -> "Connecting to high-speed peers..."
-                else -> "Buffering cinema stream chunks..."
-            }
-
-            // Animated Status Pill
-            Row(
-                modifier = Modifier
-                    .clip(RoundedCornerShape(16.dp))
-                    .background(Color(0xFF141624).copy(alpha = 0.85f))
-                    .border(1.dp, Color(0xFF00E5FF).copy(alpha = 0.3f), RoundedCornerShape(16.dp))
-                    .padding(horizontal = 14.dp, vertical = 6.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                CircularProgressIndicator(
-                    strokeWidth = 2.dp,
-                    color = Color(0xFF00E5FF),
-                    modifier = Modifier.size(13.dp)
-                )
-                Spacer(Modifier.width(8.dp))
-                Text(
-                    text = statusText,
-                    color = Color(0xFF80D8FF),
-                    fontSize = 12.5.sp,
-                    fontWeight = FontWeight.SemiBold
-                )
-            }
-
-            Spacer(Modifier.height(20.dp))
-
-            // Smooth linear progress bar
+            // Breathing Logo / Spaced Title Box
             Box(
                 modifier = Modifier
-                    .fillMaxWidth(0.85f)
-                    .height(8.dp)
-                    .clip(RoundedCornerShape(4.dp))
-                    .background(Color.White.copy(alpha = 0.14f))
+                    .graphicsLayer {
+                        scaleX = breathScale
+                        scaleY = breathScale
+                    }
+                    .padding(vertical = 16.dp),
+                contentAlignment = Alignment.Center
+            ) {
+                if (logoUrl.isNotBlank()) {
+                    // TMDB Official Title Logo PNG
+                    // Layer 1: Base Faded / Desaturated Layer (22% opacity)
+                    AsyncImage(
+                        model = logoUrl,
+                        contentDescription = title,
+                        contentScale = ContentScale.Fit,
+                        modifier = Modifier
+                            .widthIn(max = 300.dp)
+                            .heightIn(max = 130.dp)
+                            .alpha(0.22f)
+                    )
+                    // Layer 2: Full Color Reveal Layer (Horizontal clip 0% -> 100%)
+                    AsyncImage(
+                        model = logoUrl,
+                        contentDescription = null,
+                        contentScale = ContentScale.Fit,
+                        modifier = Modifier
+                            .widthIn(max = 300.dp)
+                            .heightIn(max = 130.dp)
+                            .drawWithContent {
+                                clipRect(
+                                    left = 0f,
+                                    top = 0f,
+                                    right = size.width * animatedProgress,
+                                    bottom = size.height
+                                ) {
+                                    this@drawWithContent.drawContent()
+                                }
+                            }
+                    )
+                } else {
+                    // Styled Spaced Typography Title (e.g. H  O  P  E)
+                    val spacedTitle = title.trim().uppercase().map { "$it " }.joinToString("").trim()
+                    // Layer 1: Base Faded Translucent Lettering
+                    Text(
+                        text = spacedTitle,
+                        color = Color.White.copy(alpha = 0.20f),
+                        fontSize = 36.sp,
+                        fontWeight = FontWeight.Black,
+                        letterSpacing = 6.sp,
+                        textAlign = TextAlign.Center,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                    // Layer 2: Prismatic Chromatic Reveal (Horizontal clip 0% -> 100%)
+                    Text(
+                        text = spacedTitle,
+                        style = TextStyle(
+                            brush = chromaticBrush,
+                            fontSize = 36.sp,
+                            fontWeight = FontWeight.Black,
+                            letterSpacing = 6.sp,
+                            textAlign = TextAlign.Center
+                        ),
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.drawWithContent {
+                            clipRect(
+                                left = 0f,
+                                top = 0f,
+                                right = size.width * animatedProgress,
+                                bottom = size.height
+                            ) {
+                                this@drawWithContent.drawContent()
+                            }
+                        }
+                    )
+                }
+            }
+
+            Spacer(Modifier.height(28.dp))
+
+            // Linear Progress Bar (Matching friend's thin horizontal line)
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth(0.72f)
+                    .height(4.dp)
+                    .clip(RoundedCornerShape(2.dp))
+                    .background(Color.White.copy(alpha = 0.12f))
             ) {
                 Box(
                     modifier = Modifier
@@ -5753,155 +5855,174 @@ private fun StreamPreRollBufferingOverlay(
                         .fillMaxWidth(animatedProgress)
                         .background(
                             Brush.horizontalGradient(
-                                listOf(Color(0xFF00E5FF), Color(0xFF2979FF), Color(0xFF7C4DFF))
+                                listOf(Color(0xFF00E5FF), Color(0xFF7C4DFF), Color(0xFFFF4081))
                             )
                         )
                 )
             }
 
-            Spacer(Modifier.height(8.dp))
+            Spacer(Modifier.height(14.dp))
 
-            // Buffer metric row: Cached vs Target + %
-            val mbBuffered = String.format(java.util.Locale.US, "%.1f MB", dlBytes / (1024.0 * 1024.0))
+            // Telemetry Metric Row (Speed, Seeds, MB Ready, %)
+            val mbBuffered = String.format(java.util.Locale.US, "%.1f", dlBytes / (1024.0 * 1024.0))
+            val targetMb = String.format(java.util.Locale.US, "%.1f", targetBufferBytes / (1024.0 * 1024.0))
             Row(
-                modifier = Modifier.fillMaxWidth(0.85f),
+                modifier = Modifier.fillMaxWidth(0.72f),
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
+                // Speed & Seeds
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(
+                        Icons.Rounded.Speed,
+                        contentDescription = null,
+                        tint = if ((state?.downloadSpeed ?: 0L) > 0) Color(0xFF00E676) else Color.White.copy(alpha = 0.5f),
+                        modifier = Modifier.size(13.dp)
+                    )
+                    Spacer(Modifier.width(4.dp))
+                    Text(
+                        text = state?.speedFormatted ?: "0 KB/s",
+                        color = Color.White.copy(alpha = 0.9f),
+                        fontSize = 11.5.sp,
+                        fontWeight = FontWeight.SemiBold
+                    )
+                    Spacer(Modifier.width(8.dp))
+                    Text(
+                        text = "•",
+                        color = Color.White.copy(alpha = 0.4f),
+                        fontSize = 11.sp
+                    )
+                    Spacer(Modifier.width(8.dp))
+                    Icon(
+                        Icons.Rounded.CloudDownload,
+                        contentDescription = null,
+                        tint = if ((state?.seeds ?: 0) > 0) Color(0xFF00E5FF) else Color(0xFFFF5252),
+                        modifier = Modifier.size(13.dp)
+                    )
+                    Spacer(Modifier.width(4.dp))
+                    Text(
+                        text = "${state?.seeds ?: 0} Seeds",
+                        color = if ((state?.seeds ?: 0) > 0) Color.White.copy(alpha = 0.9f) else Color(0xFFFF5252),
+                        fontSize = 11.5.sp,
+                        fontWeight = FontWeight.SemiBold
+                    )
+                }
+
+                // Buffer Progress & %
                 Text(
-                    text = "$mbBuffered / ~8 MB ready",
-                    color = Color.White.copy(alpha = 0.7f),
-                    fontSize = 12.sp,
-                    fontWeight = FontWeight.Medium
-                )
-                Text(
-                    text = "${(animatedProgress * 100).toInt()}% READY",
-                    color = Color(0xFF00E5FF),
-                    fontSize = 12.sp,
+                    text = "$mbBuffered / $targetMb MB (${(animatedProgress * 100).toInt()}%)",
+                    color = Color(0xFF80D8FF),
+                    fontSize = 11.5.sp,
                     fontWeight = FontWeight.Bold
                 )
             }
 
-            Spacer(Modifier.height(20.dp))
+            Spacer(Modifier.height(18.dp))
 
-            // Telemetry Dashboard: Speed & Seeders Cards
-            Row(
-                modifier = Modifier.fillMaxWidth(0.9f),
-                horizontalArrangement = Arrangement.spacedBy(12.dp)
-            ) {
-                // Speed Card
-                Row(
-                    modifier = Modifier
-                        .weight(1f)
-                        .height(58.dp)
-                        .clip(RoundedCornerShape(16.dp))
-                        .background(Color(0xFF151726).copy(alpha = 0.8f))
-                        .border(1.dp, Color.White.copy(alpha = 0.12f), RoundedCornerShape(16.dp))
-                        .padding(horizontal = 12.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Box(
-                        modifier = Modifier
-                            .size(32.dp)
-                            .clip(CircleShape)
-                            .background(Color(0xFF00E676).copy(alpha = 0.15f)),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Icon(
-                            Icons.Rounded.Speed,
-                            contentDescription = null,
-                            tint = Color(0xFF00E676),
-                            modifier = Modifier.size(17.dp)
-                        )
-                    }
-                    Spacer(Modifier.width(10.dp))
-                    Column {
-                        Text(
-                            text = "SPEED",
-                            fontSize = 9.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = Color.White.copy(alpha = 0.5f),
-                            letterSpacing = 0.5.sp
-                        )
-                        Text(
-                            text = state?.speedFormatted ?: "0 KB/s",
-                            color = Color.White,
-                            fontSize = 13.5.sp,
-                            fontWeight = FontWeight.ExtraBold,
-                            maxLines = 1
-                        )
-                    }
-                }
+            // Swarm Status Text
+            val statusText = when {
+                state?.status == TorrentDownloadState.Status.ERROR ->
+                    "Connection error: " + (state.error ?: "Stream error")
+                isSwarmStalled ->
+                    "Swarm inactive (0 seeds). Torrent may be stalled."
+                (state?.downloadSpeed ?: 0L) > 0L ->
+                    "Buffering cinema stream chunks..."
+                dlBytes > 0L ->
+                    "Buffering cinema stream chunks..."
+                state == null || state.seeds == 0 ->
+                    "Connecting to swarm & finding peers..."
+                else ->
+                    "Connecting to high-speed seeders..."
+            }
 
-                // Seeders Card
-                Row(
+            Text(
+                text = statusText.uppercase(),
+                color = if (isSwarmStalled) Color(0xFFFFAB40).copy(alpha = pulseAlpha) else Color.White.copy(alpha = 0.6f),
+                fontSize = 10.5.sp,
+                fontWeight = FontWeight.Bold,
+                letterSpacing = 1.1.sp,
+                textAlign = TextAlign.Center
+            )
+
+            // Stalled Swarm Warning Card & Choose Another Source Action
+            if (isSwarmStalled) {
+                Spacer(Modifier.height(16.dp))
+                Column(
                     modifier = Modifier
-                        .weight(1f)
-                        .height(58.dp)
-                        .clip(RoundedCornerShape(16.dp))
-                        .background(Color(0xFF151726).copy(alpha = 0.8f))
-                        .border(1.dp, Color.White.copy(alpha = 0.12f), RoundedCornerShape(16.dp))
-                        .padding(horizontal = 12.dp),
-                    verticalAlignment = Alignment.CenterVertically
+                        .fillMaxWidth(0.85f)
+                        .clip(RoundedCornerShape(14.dp))
+                        .background(Color(0xFF2E1717).copy(alpha = 0.85f))
+                        .border(1.dp, Color(0xFFFF5252).copy(alpha = 0.45f), RoundedCornerShape(14.dp))
+                        .padding(horizontal = 16.dp, vertical = 12.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally
                 ) {
-                    Box(
-                        modifier = Modifier
-                            .size(32.dp)
-                            .clip(CircleShape)
-                            .background(Color(0xFF00E5FF).copy(alpha = 0.15f)),
-                        contentAlignment = Alignment.Center
-                    ) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
                         Icon(
-                            Icons.Rounded.CloudDownload,
+                            Icons.Rounded.WarningAmber,
                             contentDescription = null,
-                            tint = Color(0xFF00E5FF),
-                            modifier = Modifier.size(17.dp)
+                            tint = Color(0xFFFF5252),
+                            modifier = Modifier.size(18.dp)
+                        )
+                        Spacer(Modifier.width(8.dp))
+                        Text(
+                            text = "No Seeders Delivering Data",
+                            color = Color(0xFFFF8A80),
+                            fontSize = 12.5.sp,
+                            fontWeight = FontWeight.Bold
                         )
                     }
-                    Spacer(Modifier.width(10.dp))
-                    Column {
-                        Text(
-                            text = "SWARM",
-                            fontSize = 9.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = Color.White.copy(alpha = 0.5f),
-                            letterSpacing = 0.5.sp
-                        )
-                        Text(
-                            text = "${state?.seeds ?: 0} seeds",
-                            color = Color.White,
-                            fontSize = 13.5.sp,
-                            fontWeight = FontWeight.ExtraBold,
-                            maxLines = 1
-                        )
+                    Spacer(Modifier.height(6.dp))
+                    Text(
+                        text = "This torrent has no active peers online. Tap below to cancel and pick a different source.",
+                        color = Color.White.copy(alpha = 0.75f),
+                        fontSize = 11.sp,
+                        textAlign = TextAlign.Center
+                    )
+                    Spacer(Modifier.height(10.dp))
+                    Button(
+                        onClick = onCancel,
+                        shape = RoundedCornerShape(18.dp),
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = Color(0xFFFF5252),
+                            contentColor = Color.White
+                        ),
+                        contentPadding = PaddingValues(horizontal = 20.dp, vertical = 6.dp),
+                        modifier = Modifier.height(34.dp)
+                    ) {
+                        Text("Choose Another Source", fontSize = 11.5.sp, fontWeight = FontWeight.Bold)
                     }
                 }
             }
+        }
 
-            Spacer(Modifier.height(28.dp))
-
-            // Cancel Button
-            OutlinedButton(
-                onClick = onCancel,
-                shape = RoundedCornerShape(24.dp),
-                border = BorderStroke(1.2.dp, Color.White.copy(alpha = 0.22f)),
-                colors = ButtonDefaults.outlinedButtonColors(
-                    containerColor = Color(0xFF1E202E).copy(alpha = 0.6f),
-                    contentColor = Color.White.copy(alpha = 0.9f)
-                ),
-                contentPadding = PaddingValues(horizontal = 28.dp, vertical = 10.dp)
+        // 6. Bottom Cancel Stream Button (if not showing stalled card)
+        if (!isSwarmStalled) {
+            Box(
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .navigationBarsPadding()
+                    .padding(bottom = 28.dp)
             ) {
-                Icon(
-                    Icons.Rounded.Close,
-                    contentDescription = null,
-                    tint = Color.White.copy(alpha = 0.85f),
-                    modifier = Modifier.size(16.dp)
-                )
-                Spacer(Modifier.width(8.dp))
-                Text("Cancel Streaming", fontSize = 13.5.sp, fontWeight = FontWeight.SemiBold)
+                OutlinedButton(
+                    onClick = onCancel,
+                    shape = RoundedCornerShape(24.dp),
+                    border = BorderStroke(1.dp, Color.White.copy(alpha = 0.2f)),
+                    colors = ButtonDefaults.outlinedButtonColors(
+                        containerColor = Color.White.copy(alpha = 0.08f),
+                        contentColor = Color.White.copy(alpha = 0.85f)
+                    ),
+                    contentPadding = PaddingValues(horizontal = 24.dp, vertical = 8.dp)
+                ) {
+                    Icon(
+                        Icons.Rounded.Close,
+                        contentDescription = null,
+                        tint = Color.White.copy(alpha = 0.75f),
+                        modifier = Modifier.size(15.dp)
+                    )
+                    Spacer(Modifier.width(6.dp))
+                    Text("Cancel Streaming", fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+                }
             }
-
-            Spacer(Modifier.height(48.dp))
         }
     }
 }
