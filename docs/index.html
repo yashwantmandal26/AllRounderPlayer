@@ -2,32 +2,35 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>AllRounder Media Player — Next-Gen Android Media Player</title>
-  <meta name="description" content="AllRounder Media Player: High-performance Android video & music player with Live DJ Vinyl Scratching, Slim Single-Bar gesture controls, 4K HDR playback, and multi-shade luxury white UI. Developed by Yashwant Mandal.">
-  <meta name="theme-color" content="#F4F6FA">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <title>AllRounder Media Player — Smart Video & Music Player for Android</title>
+  <meta name="description" content="AllRounder Media Player: The ultimate video and music player for Android with Live DJ Vinyl scratching, swipe volume/brightness controls, and a luxury white design. Created by Yashwant Mandal.">
+  <meta name="theme-color" content="#FFFFFF">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;600;700&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet">
   <style>
     /* ─── 3 Shades of Luxury White Palette ───────────────────────────── */
     :root {
-      --white-1: #FFFFFF;        /* Shade 1: Pure Snow White (Radiant Cards & Highlights) */
-      --white-2: #F8FAFC;        /* Shade 2: Frosted Pearl White (Elevated Surfaces & Stage) */
-      --white-3: #F1F5F9;        /* Shade 3: Porcelain Platinum White (Badges & Subtle Containers) */
-      --canvas-bg: #F4F6FA;      /* Ambient Base Platinum Canvas */
-      --border-light: rgba(226, 232, 240, 0.85);
-      --border-specular: rgba(255, 255, 255, 0.95);
-      --accent: #007AFF;         /* Iconic Apple / iOS Blue */
-      --accent-glow: rgba(0, 122, 255, 0.35);
-      --accent-cyan: #00F5D4;    /* Energy Cyan Highlight */
-      --text-primary: #0F172A;   /* Deep Slate Charcoal */
-      --text-secondary: #475569; /* Balanced Slate */
-      --text-muted: #64748B;     /* Muted Grey */
-      --shadow-sm: 0 4px 12px rgba(15, 23, 42, 0.04), 0 1px 2px rgba(15, 23, 42, 0.02);
-      --shadow-md: 0 12px 28px -6px rgba(15, 23, 42, 0.06), 0 4px 10px -2px rgba(15, 23, 42, 0.03);
-      --shadow-3d: 0 24px 48px -12px rgba(15, 23, 42, 0.08), 0 8px 16px -4px rgba(15, 23, 42, 0.04);
-      --shadow-glow: 0 20px 40px -10px rgba(0, 122, 255, 0.38);
+      --white-1: #FFFFFF;        /* Shade 1: Pure Snow White (Cards & Highlights) */
+      --white-2: #F8FAFC;        /* Shade 2: Frosted Pearl White (Surfaces & Elevated Blocks) */
+      --white-3: #F1F5F9;        /* Shade 3: Porcelain Platinum (Badges, Trackers & Borders) */
+      --canvas-bg: #F8FAFC;      /* Soft ambient base */
+      --border-subtle: #E2E8F0;
+      --border-card: rgba(226, 232, 240, 0.9);
+      --accent: #007AFF;         /* Modern iOS / Accent Blue */
+      --accent-hover: #0066DF;
+      --accent-glow: rgba(0, 122, 255, 0.28);
+      --accent-cyan: #00D2B4;
+      --text-main: #0F172A;      /* High-contrast deep slate */
+      --text-muted: #475569;     /* Balanced readable grey */
+      --text-soft: #64748B;      /* Gentle subtle caption */
+      --shadow-soft: 0 4px 16px rgba(15, 23, 42, 0.04), 0 1px 3px rgba(15, 23, 42, 0.02);
+      --shadow-card: 0 12px 28px -6px rgba(15, 23, 42, 0.06), 0 4px 12px -2px rgba(15, 23, 42, 0.03);
+      --shadow-btn: 0 14px 30px -4px rgba(0, 122, 255, 0.35);
+      --radius-sm: 12px;
+      --radius-md: 20px;
+      --radius-lg: 28px;
     }
 
     * {
@@ -36,18 +39,21 @@
       padding: 0;
       -webkit-font-smoothing: antialiased;
       -moz-osx-font-smoothing: grayscale;
+      -webkit-tap-highlight-color: transparent;
     }
 
     body {
       font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
       background: var(--canvas-bg);
-      color: var(--text-primary);
+      color: var(--text-main);
       min-height: 100vh;
       overflow-x: hidden;
+      line-height: 1.5;
       position: relative;
+      padding-bottom: 90px; /* Space for mobile floating download pill */
     }
 
-    /* Ambient Pastel Background Gradient Mesh */
+    /* Ambient Pastel Gradient Canvas */
     .bg-mesh {
       position: fixed;
       top: 0;
@@ -57,130 +63,117 @@
       z-index: -1;
       pointer-events: none;
       background: 
-        radial-gradient(at 5% 10%, rgba(0, 122, 255, 0.07) 0px, transparent 45%),
-        radial-gradient(at 95% 15%, rgba(0, 245, 212, 0.06) 0px, transparent 40%),
-        radial-gradient(at 50% 50%, rgba(255, 255, 255, 0.95) 0px, transparent 65%),
-        radial-gradient(at 85% 85%, rgba(0, 122, 255, 0.05) 0px, transparent 50%),
-        radial-gradient(at 10% 90%, rgba(241, 245, 249, 0.9) 0px, transparent 50%),
-        linear-gradient(180deg, #F8FAFC 0%, #FFFFFF 50%, #F1F5F9 100%);
+        radial-gradient(at 10% 10%, rgba(0, 122, 255, 0.06) 0px, transparent 50%),
+        radial-gradient(at 90% 15%, rgba(0, 210, 180, 0.05) 0px, transparent 45%),
+        radial-gradient(at 50% 50%, #FFFFFF 0px, transparent 65%),
+        radial-gradient(at 80% 90%, rgba(0, 122, 255, 0.05) 0px, transparent 50%),
+        linear-gradient(180deg, #FFFFFF 0%, #F8FAFC 50%, #F1F5F9 100%);
     }
 
     .container {
-      max-width: 1180px;
+      max-width: 1040px;
       margin: 0 auto;
-      padding: 0 24px;
+      padding: 0 20px;
     }
 
-    /* ─── Top Navigation Bar ────────────────────────────────────────── */
+    /* ─── Top Header Navigation ─────────────────────────────────────── */
     header {
       position: sticky;
-      top: 16px;
+      top: 12px;
       z-index: 100;
-      margin-bottom: 32px;
+      margin-bottom: 24px;
     }
 
     .nav-pill {
       display: flex;
       align-items: center;
       justify-content: space-between;
-      background: rgba(255, 255, 255, 0.85);
+      background: rgba(255, 255, 255, 0.92);
       backdrop-filter: blur(20px);
       -webkit-backdrop-filter: blur(20px);
-      border: 1px solid var(--border-light);
-      box-shadow: var(--shadow-sm);
-      padding: 10px 22px;
+      border: 1px solid var(--border-card);
+      box-shadow: var(--shadow-soft);
+      padding: 8px 18px;
       border-radius: 9999px;
-      transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
-    }
-
-    .nav-pill:hover {
-      box-shadow: var(--shadow-md);
-      border-color: rgba(0, 122, 255, 0.3);
+      transition: all 0.25s ease;
     }
 
     .logo-group {
       display: flex;
       align-items: center;
-      gap: 12px;
+      gap: 10px;
       text-decoration: none;
-      color: var(--text-primary);
+      color: var(--text-main);
     }
 
     .logo-icon {
-      width: 36px;
-      height: 36px;
+      width: 34px;
+      height: 34px;
       border-radius: 10px;
-      background: linear-gradient(135deg, #007AFF 0%, #00F5D4 100%);
+      background: linear-gradient(135deg, #007AFF 0%, #00D2B4 100%);
       display: flex;
       align-items: center;
       justify-content: center;
       color: #fff;
-      font-size: 18px;
-      box-shadow: 0 6px 14px -3px var(--accent-glow);
+      font-size: 15px;
+      font-weight: 800;
+      box-shadow: 0 4px 12px -2px var(--accent-glow);
     }
 
     .logo-text {
       font-weight: 800;
-      font-size: 1.05rem;
+      font-size: 1rem;
       letter-spacing: -0.02em;
     }
 
     .logo-tag {
-      font-size: 0.72rem;
+      font-size: 0.7rem;
       background: var(--white-3);
       color: var(--accent);
-      padding: 3px 8px;
+      padding: 2px 7px;
       border-radius: 6px;
       font-weight: 700;
       font-family: 'JetBrains Mono', monospace;
-      border: 1px solid var(--border-light);
+      border: 1px solid var(--border-subtle);
     }
 
-    .nav-links {
+    .nav-actions {
       display: flex;
       align-items: center;
-      gap: 16px;
+      gap: 10px;
     }
 
     .nav-btn {
       display: inline-flex;
       align-items: center;
-      gap: 8px;
+      gap: 6px;
       background: var(--white-1);
-      color: var(--text-primary);
+      color: var(--text-main);
       text-decoration: none;
-      font-size: 0.88rem;
+      font-size: 0.85rem;
       font-weight: 600;
-      padding: 8px 16px;
+      padding: 7px 14px;
       border-radius: 9999px;
-      border: 1px solid var(--border-light);
-      box-shadow: var(--shadow-sm);
-      transition: all 0.25s ease;
-    }
-
-    .nav-btn:hover {
-      background: var(--white-2);
-      border-color: rgba(0, 122, 255, 0.4);
-      transform: translateY(-1px);
+      border: 1px solid var(--border-subtle);
+      box-shadow: 0 1px 3px rgba(0,0,0,0.03);
+      transition: all 0.2s ease;
     }
 
     .nav-btn.primary {
       background: var(--accent);
       color: #fff;
-      border: 1px solid transparent;
-      box-shadow: 0 6px 18px -4px var(--accent-glow);
+      border-color: transparent;
+      box-shadow: 0 4px 14px -2px var(--accent-glow);
     }
 
     .nav-btn.primary:hover {
-      background: #0066E0;
-      box-shadow: 0 8px 22px -3px var(--accent-glow);
+      background: var(--accent-hover);
     }
 
     /* ─── Hero Section ──────────────────────────────────────────────── */
     .hero {
       text-align: center;
-      padding: 40px 0 60px;
-      position: relative;
+      padding: 20px 0 36px;
     }
 
     .badge-capsule {
@@ -188,484 +181,599 @@
       align-items: center;
       gap: 8px;
       background: var(--white-1);
-      border: 1px solid var(--border-light);
-      box-shadow: var(--shadow-sm);
-      padding: 6px 16px;
+      border: 1px solid var(--border-subtle);
+      padding: 5px 14px;
       border-radius: 9999px;
-      font-size: 0.82rem;
+      font-size: 0.78rem;
       font-weight: 700;
       color: var(--accent);
-      margin-bottom: 24px;
-      animation: floatBadge 4s ease-in-out infinite;
-    }
-
-    @keyframes floatBadge {
-      0%, 100% { transform: translateY(0); }
-      50% { transform: translateY(-3px); }
+      box-shadow: var(--shadow-soft);
+      margin-bottom: 18px;
     }
 
     .badge-dot {
-      width: 8px;
-      height: 8px;
+      width: 7px;
+      height: 7px;
       border-radius: 50%;
       background: #10B981;
-      box-shadow: 0 0 8px #10B981;
+      box-shadow: 0 0 0 3px rgba(16, 185, 129, 0.2);
     }
 
     .hero-title {
-      font-size: 3.6rem;
+      font-size: clamp(2.2rem, 6.5vw, 3.6rem);
       font-weight: 800;
-      line-height: 1.1;
-      letter-spacing: -0.04em;
-      margin-bottom: 18px;
-      background: linear-gradient(180deg, #0F172A 20%, #334155 100%);
+      letter-spacing: -0.03em;
+      line-height: 1.15;
+      color: var(--text-main);
+      margin-bottom: 14px;
+    }
+
+    .hero-title span {
+      background: linear-gradient(135deg, #007AFF 0%, #00A699 100%);
       -webkit-background-clip: text;
       -webkit-text-fill-color: transparent;
     }
 
     .hero-subtitle {
-      font-size: 1.25rem;
-      color: var(--text-secondary);
-      max-width: 720px;
-      margin: 0 auto 32px;
-      line-height: 1.6;
-      font-weight: 450;
+      font-size: clamp(1rem, 2.8vw, 1.2rem);
+      color: var(--text-muted);
+      max-width: 640px;
+      margin: 0 auto 28px;
+      line-height: 1.55;
     }
 
-    /* ─── Quote Card Component ──────────────────────────────────────── */
-    .quote-card {
-      max-width: 680px;
-      margin: 0 auto 40px;
-      background: var(--white-2);
-      border: 1px solid var(--border-light);
-      border-radius: 20px;
-      padding: 20px 28px;
-      box-shadow: var(--shadow-sm);
+    /* ─── Inspirational Quote Card ──────────────────────────────────── */
+    .quote-box {
+      background: var(--white-1);
+      border: 1px solid var(--border-card);
+      border-radius: var(--radius-md);
+      padding: 18px 22px;
+      max-width: 620px;
+      margin: 0 auto 30px;
+      box-shadow: var(--shadow-soft);
       position: relative;
-      overflow: hidden;
-    }
-
-    .quote-card::before {
-      content: "";
-      position: absolute;
-      left: 0;
-      top: 0;
-      bottom: 0;
-      width: 4px;
-      background: linear-gradient(180deg, var(--accent) 0%, var(--accent-cyan) 100%);
+      text-align: center;
     }
 
     .quote-text {
+      font-size: 0.98rem;
       font-style: italic;
-      font-size: 1.05rem;
-      color: var(--text-primary);
-      line-height: 1.5;
+      color: var(--text-main);
       font-weight: 500;
-      margin-bottom: 8px;
+      margin-bottom: 10px;
+      line-height: 1.45;
     }
 
     .quote-author {
-      font-size: 0.88rem;
-      color: var(--text-muted);
-      font-weight: 600;
       display: flex;
       align-items: center;
-      justify-content: flex-end;
-      gap: 6px;
+      justify-content: center;
+      gap: 8px;
+      font-size: 0.82rem;
+      color: var(--text-soft);
+      flex-wrap: wrap;
     }
 
-    .dev-badge {
-      display: inline-flex;
-      align-items: center;
-      gap: 6px;
-      background: var(--white-1);
-      border: 1px solid var(--border-light);
+    .dev-pill {
+      background: var(--white-3);
+      color: var(--text-main);
+      font-weight: 700;
       padding: 3px 10px;
       border-radius: 9999px;
-      font-weight: 700;
-      color: var(--text-primary);
+      border: 1px solid var(--border-subtle);
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
     }
 
-    /* ─── Hero Download Action (Big One-Click Button) ────────────────── */
+    /* ─── Big One-Click Download CTA ────────────────────────────────── */
     .download-wrapper {
       display: flex;
       flex-direction: column;
       align-items: center;
-      gap: 14px;
-      margin-bottom: 60px;
+      gap: 12px;
+      margin-bottom: 44px;
     }
 
     .big-download-btn {
       display: inline-flex;
       align-items: center;
-      gap: 18px;
-      background: linear-gradient(135deg, #007AFF 0%, #0056D2 100%);
+      justify-content: center;
+      gap: 14px;
+      background: linear-gradient(135deg, #007AFF 0%, #0066E0 100%);
       color: #FFFFFF;
       text-decoration: none;
-      padding: 20px 42px;
-      border-radius: 24px;
-      font-weight: 800;
-      font-size: 1.25rem;
-      box-shadow: var(--shadow-glow);
-      transition: all 0.35s cubic-bezier(0.16, 1, 0.3, 1);
-      position: relative;
-      overflow: hidden;
-      border: 1px solid rgba(255, 255, 255, 0.25);
-    }
-
-    .big-download-btn::after {
-      content: "";
-      position: absolute;
-      top: 0;
-      left: -100%;
+      padding: 16px 34px;
+      border-radius: 9999px;
+      font-weight: 700;
+      box-shadow: var(--shadow-btn);
+      border: 2px solid rgba(255, 255, 255, 0.4);
       width: 100%;
-      height: 100%;
-      background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.25), transparent);
-      transition: left 0.75s ease;
+      max-width: 420px;
+      transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
     }
 
-    .big-download-btn:hover::after {
-      left: 100%;
+    .big-download-btn:active {
+      transform: scale(0.97);
     }
 
     .big-download-btn:hover {
-      transform: translateY(-4px) scale(1.02);
-      box-shadow: 0 24px 50px -10px rgba(0, 122, 255, 0.55);
-      background: linear-gradient(135deg, #0A84FF 0%, #0062E6 100%);
+      box-shadow: 0 18px 36px -4px rgba(0, 122, 255, 0.45);
+      transform: translateY(-2px);
     }
 
-    .btn-icon-box {
-      width: 48px;
-      height: 48px;
-      border-radius: 14px;
-      background: rgba(255, 255, 255, 0.2);
+    .btn-icon-circle {
+      width: 36px;
+      height: 36px;
+      background: rgba(255, 255, 255, 0.25);
+      border-radius: 50%;
       display: flex;
       align-items: center;
       justify-content: center;
-      font-size: 24px;
-      backdrop-filter: blur(8px);
+      font-size: 18px;
+      flex-shrink: 0;
     }
 
-    .btn-text-col {
+    .btn-col {
       display: flex;
       flex-direction: column;
       text-align: left;
     }
 
-    .btn-main-text {
-      font-size: 1.22rem;
+    .btn-main-label {
+      font-size: 1.12rem;
       font-weight: 800;
       letter-spacing: -0.01em;
       line-height: 1.2;
     }
 
-    .btn-sub-text {
-      font-size: 0.78rem;
-      font-weight: 600;
+    .btn-sub-label {
+      font-size: 0.74rem;
       opacity: 0.9;
-      font-family: 'JetBrains Mono', monospace;
-      letter-spacing: 0.02em;
-    }
-
-    .download-meta {
-      font-size: 0.85rem;
-      color: var(--text-muted);
-      display: flex;
-      align-items: center;
-      gap: 12px;
       font-weight: 500;
     }
 
-    .download-meta span {
-      display: flex;
-      align-items: center;
-      gap: 4px;
-    }
-
-    /* ─── 3D Interactive Cards Grid ─────────────────────────────────── */
-    .section-header {
-      text-align: center;
-      margin-bottom: 40px;
-    }
-
-    .section-title {
-      font-size: 2.2rem;
-      font-weight: 800;
-      letter-spacing: -0.03em;
-      margin-bottom: 10px;
-    }
-
-    .section-subtitle {
-      font-size: 1.05rem;
-      color: var(--text-secondary);
-      max-width: 600px;
-      margin: 0 auto;
-    }
-
-    .cards-grid {
-      display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
-      gap: 28px;
-      perspective: 1200px;
-      margin-bottom: 70px;
-    }
-
-    /* 3D Card Architecture */
-    .card-3d-wrap {
-      perspective: 1200px;
-      transform-style: preserve-3d;
-    }
-
-    .card-3d {
-      background: var(--white-1);
-      border: 1px solid var(--border-light);
-      border-radius: 28px;
-      padding: 34px 28px;
-      box-shadow: var(--shadow-3d);
-      transition: transform 0.35s cubic-bezier(0.16, 1, 0.3, 1), box-shadow 0.35s ease, border-color 0.35s ease;
-      position: relative;
-      overflow: hidden;
-      display: flex;
-      flex-direction: column;
-      justify-content: space-between;
-      height: 100%;
-    }
-
-    .card-3d:hover {
-      border-color: rgba(0, 122, 255, 0.4);
-      box-shadow: 0 30px 60px -15px rgba(15, 23, 42, 0.12), 0 0 0 1px rgba(0, 122, 255, 0.2);
-    }
-
-    .card-inner-top {
-      position: relative;
-      z-index: 2;
-    }
-
-    .card-icon-pill {
-      width: 54px;
-      height: 54px;
-      border-radius: 16px;
-      background: var(--white-2);
-      border: 1px solid var(--border-light);
+    .download-badges {
       display: flex;
       align-items: center;
       justify-content: center;
-      font-size: 26px;
-      margin-bottom: 22px;
-      box-shadow: var(--shadow-sm);
+      gap: 10px;
+      font-size: 0.8rem;
+      color: var(--text-soft);
+      font-weight: 600;
+      flex-wrap: wrap;
+    }
+
+    .dot-sep {
+      opacity: 0.4;
+    }
+
+    /* ─── Highlights & Features Section ────────────────────────────── */
+    .section-title-wrap {
+      text-align: center;
+      margin-bottom: 28px;
+    }
+
+    .section-title {
+      font-size: clamp(1.5rem, 4vw, 2.1rem);
+      font-weight: 800;
+      letter-spacing: -0.02em;
+      color: var(--text-main);
+      margin-bottom: 6px;
+    }
+
+    .section-subtitle {
+      font-size: 0.95rem;
+      color: var(--text-muted);
+      max-width: 520px;
+      margin: 0 auto;
+    }
+
+    .features-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(290px, 1fr));
+      gap: 20px;
+      margin-bottom: 48px;
+    }
+
+    .feature-card {
+      background: var(--white-1);
+      border: 1px solid var(--border-card);
+      border-radius: var(--radius-md);
+      padding: 24px;
+      box-shadow: var(--shadow-soft);
+      transition: all 0.25s ease;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      position: relative;
+      overflow: hidden;
+    }
+
+    .feature-card:hover {
+      box-shadow: var(--shadow-card);
+      border-color: rgba(0, 122, 255, 0.3);
+      transform: translateY(-2px);
+    }
+
+    .card-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 14px;
+    }
+
+    .card-icon {
+      width: 44px;
+      height: 44px;
+      border-radius: 12px;
+      background: var(--white-2);
+      border: 1px solid var(--border-subtle);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 22px;
+      box-shadow: 0 2px 6px rgba(0,0,0,0.02);
     }
 
     .card-tag {
       font-size: 0.72rem;
       font-weight: 700;
-      text-transform: uppercase;
-      letter-spacing: 0.08em;
       color: var(--accent);
-      margin-bottom: 8px;
+      background: var(--white-3);
+      padding: 3px 9px;
+      border-radius: 9999px;
+      border: 1px solid var(--border-subtle);
     }
 
     .card-title {
-      font-size: 1.4rem;
+      font-size: 1.15rem;
       font-weight: 800;
-      letter-spacing: -0.02em;
-      margin-bottom: 12px;
-      color: var(--text-primary);
+      color: var(--text-main);
+      letter-spacing: -0.01em;
+      margin-bottom: 8px;
     }
 
-    .card-desc {
-      font-size: 0.95rem;
-      color: var(--text-secondary);
-      line-height: 1.6;
-      margin-bottom: 24px;
+    .card-body-text {
+      font-size: 0.92rem;
+      color: var(--text-muted);
+      line-height: 1.5;
+      margin-bottom: 16px;
     }
 
-    /* Interactive 3D Vinyl Widget on Card 1 */
-    .vinyl-widget {
-      position: relative;
-      width: 170px;
-      height: 170px;
-      margin: 10px auto 16px;
-      border-radius: 50%;
-      background: radial-gradient(circle, #1a1a1d 0%, #0d0d0f 70%, #050506 100%);
-      box-shadow: 0 14px 28px rgba(0, 0, 0, 0.22), inset 0 0 0 2px rgba(255, 255, 255, 0.1);
+    /* Interactive DJ Vinyl Widget (Touch Optimized) */
+    .vinyl-box {
+      background: var(--white-2);
+      border-radius: 16px;
+      padding: 16px;
       display: flex;
+      flex-direction: column;
       align-items: center;
-      justify-content: center;
-      cursor: grab;
-      user-select: none;
-      transition: transform 0.2s ease;
-      animation: spinVinyl 12s linear infinite;
+      gap: 10px;
+      border: 1px solid var(--border-subtle);
     }
 
-    .vinyl-widget:active {
+    .vinyl-disc {
+      width: 140px;
+      height: 140px;
+      border-radius: 50%;
+      background: radial-gradient(circle, #252528 20%, #111113 45%, #2a2a2f 48%, #111113 75%, #050505 100%);
+      box-shadow: 0 10px 24px -4px rgba(0, 0, 0, 0.3), inset 0 0 0 2px rgba(255, 255, 255, 0.1);
+      position: relative;
+      cursor: grab;
+      touch-action: none;
+      user-select: none;
+      -webkit-user-select: none;
+      transition: transform 0.05s ease-out;
+      animation: spinPlatter 14s linear infinite;
+    }
+
+    .vinyl-disc:active {
       cursor: grabbing;
+    }
+
+    .vinyl-disc.paused {
       animation-play-state: paused;
     }
 
-    @keyframes spinVinyl {
+    @keyframes spinPlatter {
       from { transform: rotate(0deg); }
       to { transform: rotate(360deg); }
     }
 
-    .groove-ring {
+    .vinyl-ring {
       position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
       border-radius: 50%;
-      border: 1px solid rgba(255, 255, 255, 0.06);
+      border: 1px solid rgba(255, 255, 255, 0.07);
+      pointer-events: none;
     }
 
-    .vinyl-center-art {
-      width: 72px;
-      height: 72px;
+    .vinyl-center {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      width: 48px;
+      height: 48px;
       border-radius: 50%;
-      background: linear-gradient(135deg, #007AFF 0%, #00F5D4 100%);
-      border: 2px solid rgba(255, 255, 255, 0.85);
-      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.35);
+      background: linear-gradient(135deg, #007AFF 0%, #00D2B4 100%);
       display: flex;
       align-items: center;
       justify-content: center;
       color: #fff;
-      font-size: 20px;
+      font-size: 16px;
+      box-shadow: 0 2px 6px rgba(0,0,0,0.3);
+      pointer-events: none;
     }
 
     .vinyl-spindle {
       position: absolute;
-      width: 16px;
-      height: 16px;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      width: 12px;
+      height: 12px;
       border-radius: 50%;
-      background: #111;
-      border: 2px solid #C0C0C8;
+      background: #FFFFFF;
+      border: 2px solid #000;
+      pointer-events: none;
     }
 
-    /* Slider Showcase Widget on Card 2 */
-    .slider-showcase {
+    .vinyl-hint {
+      font-size: 0.76rem;
+      font-weight: 700;
+      color: var(--accent);
+      text-align: center;
+    }
+
+    /* Swipe Sliders Demo Visual */
+    .slider-box {
+      background: var(--white-2);
+      border-radius: 16px;
+      padding: 16px;
       display: flex;
       align-items: center;
-      justify-content: center;
-      gap: 32px;
-      padding: 16px 0;
-      background: var(--white-2);
-      border-radius: 18px;
-      border: 1px solid var(--border-light);
+      justify-content: space-around;
+      border: 1px solid var(--border-subtle);
     }
 
-    .single-bar-demo {
+    .slider-demo-item {
       display: flex;
       flex-direction: column;
       align-items: center;
       gap: 8px;
     }
 
-    .bar-ring-cap {
+    .slim-bar {
+      width: 6px;
+      height: 90px;
+      background: #E2E8F0;
+      border-radius: 9999px;
+      position: relative;
+      overflow: visible;
+    }
+
+    .slim-fill {
+      position: absolute;
+      bottom: 0;
+      left: 0;
+      width: 100%;
+      background: var(--accent);
+      border-radius: 9999px;
+    }
+
+    .slim-thumb {
+      position: absolute;
+      left: 50%;
+      transform: translate(-50%, 50%);
       width: 14px;
       height: 14px;
       border-radius: 50%;
-      border: 1.5px solid var(--accent);
-      background: var(--white-1);
+      background: #FFFFFF;
+      border: 2.5px solid var(--accent);
+      box-shadow: 0 2px 6px rgba(0, 122, 255, 0.4);
     }
 
-    .bar-track {
-      width: 4px;
-      height: 96px;
-      background: rgba(0, 0, 0, 0.08);
-      border-radius: 2px;
-      position: relative;
+    .slider-label {
+      font-size: 0.75rem;
+      font-weight: 700;
+      color: var(--text-soft);
     }
 
-    .bar-fill {
-      position: absolute;
-      bottom: 0;
-      width: 100%;
-      height: 65%;
-      background: var(--accent);
-      border-radius: 2px;
+    /* ─── White Palette Showcase ────────────────────────────────────── */
+    .palette-box {
+      background: var(--white-2);
+      border-radius: 16px;
+      padding: 14px;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      border: 1px solid var(--border-subtle);
     }
 
-    .bar-thumb {
-      position: absolute;
-      bottom: 60%;
-      left: 50%;
-      transform: translateX(-50%);
-      width: 13px;
-      height: 13px;
-      border-radius: 50%;
-      background: #fff;
-      border: 2px solid var(--accent);
-      box-shadow: 0 2px 8px var(--accent-glow);
-    }
-
-    .bar-badge {
-      width: 26px;
-      height: 26px;
-      border-radius: 50%;
-      background: rgba(0, 122, 255, 0.12);
-      border: 1px solid rgba(0, 122, 255, 0.35);
+    .palette-item {
       display: flex;
       align-items: center;
-      justify-content: center;
-      color: var(--accent);
-      font-size: 13px;
+      justify-content: space-between;
+      padding: 8px 12px;
+      background: var(--white-1);
+      border-radius: 10px;
+      border: 1px solid var(--border-subtle);
     }
 
-    /* ─── Tech Specs Breakdown Card ─────────────────────────────────── */
+    .palette-name {
+      font-size: 0.82rem;
+      font-weight: 700;
+      color: var(--text-main);
+    }
+
+    .palette-code {
+      font-size: 0.75rem;
+      font-family: 'JetBrains Mono', monospace;
+      font-weight: 600;
+      color: var(--accent);
+    }
+
+    /* ─── Summary & Specs Card ──────────────────────────────────────── */
     .specs-card {
       background: var(--white-1);
-      border: 1px solid var(--border-light);
-      border-radius: 28px;
-      padding: 38px;
-      box-shadow: var(--shadow-3d);
-      margin-bottom: 70px;
+      border: 1px solid var(--border-card);
+      border-radius: var(--radius-md);
+      padding: 24px;
+      box-shadow: var(--shadow-soft);
+      margin-bottom: 40px;
+    }
+
+    .specs-head {
+      margin-bottom: 18px;
+    }
+
+    .specs-head h3 {
+      font-size: 1.25rem;
+      font-weight: 800;
+      color: var(--text-main);
+      margin-bottom: 4px;
+    }
+
+    .specs-head p {
+      font-size: 0.88rem;
+      color: var(--text-muted);
     }
 
     .specs-grid {
       display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-      gap: 20px;
-      margin-top: 24px;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 12px;
     }
 
-    .spec-item {
+    @media (min-width: 640px) {
+      .specs-grid {
+        grid-template-columns: repeat(3, 1fr);
+      }
+    }
+
+    .spec-cell {
       background: var(--white-2);
-      border: 1px solid var(--border-light);
-      border-radius: 16px;
-      padding: 16px 20px;
+      border: 1px solid var(--border-subtle);
+      border-radius: 12px;
+      padding: 12px;
     }
 
-    .spec-label {
-      font-size: 0.75rem;
-      font-weight: 700;
+    .spec-key {
+      font-size: 0.72rem;
       text-transform: uppercase;
-      letter-spacing: 0.06em;
-      color: var(--text-muted);
-      margin-bottom: 4px;
+      letter-spacing: 0.04em;
+      color: var(--text-soft);
+      font-weight: 700;
+      margin-bottom: 3px;
     }
 
-    .spec-value {
-      font-size: 1.05rem;
-      font-weight: 700;
-      color: var(--text-primary);
-      font-family: 'JetBrains Mono', monospace;
+    .spec-val {
+      font-size: 0.95rem;
+      font-weight: 800;
+      color: var(--text-main);
+    }
+
+    /* ─── Bottom Floating Download Pill (Mobile Friendly) ──────────── */
+    .floating-bar {
+      position: fixed;
+      bottom: 14px;
+      left: 50%;
+      transform: translateX(-50%);
+      width: calc(100% - 32px);
+      max-width: 460px;
+      background: rgba(255, 255, 255, 0.95);
+      backdrop-filter: blur(24px);
+      -webkit-backdrop-filter: blur(24px);
+      border: 1px solid var(--border-card);
+      box-shadow: 0 16px 36px -6px rgba(15, 23, 42, 0.16);
+      border-radius: 9999px;
+      padding: 8px 12px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      z-index: 999;
+      transition: all 0.3s ease;
+    }
+
+    .floating-info {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding-left: 6px;
+    }
+
+    .floating-icon {
+      width: 32px;
+      height: 32px;
+      border-radius: 8px;
+      background: linear-gradient(135deg, #007AFF 0%, #00D2B4 100%);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: #fff;
+      font-size: 14px;
+      font-weight: 800;
+      flex-shrink: 0;
+    }
+
+    .floating-title {
+      font-size: 0.88rem;
+      font-weight: 800;
+      color: var(--text-main);
+      line-height: 1.1;
+    }
+
+    .floating-sub {
+      font-size: 0.7rem;
+      color: var(--text-soft);
+      font-weight: 600;
+    }
+
+    .floating-action {
+      background: var(--accent);
+      color: #FFFFFF;
+      text-decoration: none;
+      padding: 9px 18px;
+      border-radius: 9999px;
+      font-size: 0.82rem;
+      font-weight: 800;
+      box-shadow: 0 4px 12px -2px var(--accent-glow);
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      flex-shrink: 0;
+      transition: all 0.2s ease;
+    }
+
+    .floating-action:active {
+      transform: scale(0.96);
     }
 
     /* ─── Footer ────────────────────────────────────────────────────── */
     footer {
-      border-top: 1px solid var(--border-light);
-      background: var(--white-2);
-      padding: 40px 0 60px;
+      border-top: 1px solid var(--border-subtle);
+      background: var(--white-1);
+      padding: 28px 0 36px;
       text-align: center;
-      font-size: 0.92rem;
-      color: var(--text-secondary);
+      font-size: 0.85rem;
+      color: var(--text-muted);
     }
 
     .footer-author {
       font-weight: 700;
-      color: var(--text-primary);
+      color: var(--text-main);
     }
 
     .footer-links {
       display: flex;
       justify-content: center;
-      gap: 20px;
-      margin-top: 14px;
+      gap: 16px;
+      margin-top: 10px;
+      font-size: 0.82rem;
     }
 
     .footer-links a {
@@ -678,46 +786,46 @@
       text-decoration: underline;
     }
 
-    /* ─── Responsive Queries ────────────────────────────────────────── */
-    @media (max-width: 768px) {
-      .hero-title {
-        font-size: 2.5rem;
+    /* ─── Mobile Tweaks ─────────────────────────────────────────────── */
+    @media (max-width: 480px) {
+      .container {
+        padding: 0 16px;
       }
-      .hero-subtitle {
-        font-size: 1.05rem;
+      .nav-btn.secondary {
+        display: none;
+      }
+      .hero {
+        padding: 12px 0 24px;
+      }
+      .quote-box {
+        padding: 14px 16px;
       }
       .big-download-btn {
-        width: 100%;
-        justify-content: center;
-        padding: 18px 24px;
+        padding: 14px 20px;
       }
-      .cards-grid {
+      .features-grid {
         grid-template-columns: 1fr;
-      }
-      .nav-links .nav-btn:not(.primary) {
-        display: none;
       }
     }
   </style>
 </head>
 <body>
 
-  <!-- Ambient Luxury White Pastel Mesh Background -->
+  <!-- Soft Ambient Luxury White Canvas Background -->
   <div class="bg-mesh"></div>
 
   <div class="container">
 
-    <!-- Top Navigation Bar -->
+    <!-- Top Navigation Header -->
     <header>
       <nav class="nav-pill">
         <a href="#" class="logo-group">
           <div class="logo-icon">▶</div>
-          <span class="logo-text">AllRounderPlayer</span>
+          <span class="logo-text">AllRounder</span>
           <span class="logo-tag">v2.8</span>
         </a>
-        <div class="nav-links">
-          <a href="https://github.com/yashwantmandal26/AllRounderPlayer" target="_blank" class="nav-btn">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M12 0c-6.626 0-12 5.373-12 12 0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23.957-.266 1.983-.399 3.003-.404 1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576 4.765-1.589 8.199-6.086 8.199-11.386 0-6.627-5.373-12-12-12z"/></svg>
+        <div class="nav-actions">
+          <a href="https://github.com/yashwantmandal26/AllRounderPlayer" target="_blank" class="nav-btn secondary">
             GitHub
           </a>
           <a href="https://github.com/yashwantmandal26/AllRounderPlayer/releases/download/v2.8/app-release.apk" class="nav-btn primary">
@@ -731,255 +839,322 @@
     <section class="hero">
       <div class="badge-capsule">
         <span class="badge-dot"></span>
-        Latest Version 2.8 • Universal Signed Release
+        Latest Version 2.8 • Universal Android Release
       </div>
 
-      <h1 class="hero-title">AllRounder Media Player</h1>
+      <h1 class="hero-title">
+        AllRounder<br><span>Media Player</span>
+      </h1>
+
       <p class="hero-subtitle">
-        The ultimate cinematic video and high-fidelity audio engine for Android. Built with 100% Jetpack Compose and Media3 ExoPlayer, featuring authentic Live DJ Vinyl Scratching with real-song audio modulation, precision single-bar gestures, and a multi-shade luxury white UI.
+        The smartest, all-in-one video and music player for Android. Enjoy crystal-clear movies, scratch music like a real DJ, and control volume with intuitive swipe gestures — completely free and without ads.
       </p>
 
       <!-- Music/Media Quote Card -->
-      <div class="quote-card">
+      <div class="quote-box">
         <p class="quote-text">
           "Where words fail, music speaks. Where sound meets precision, art is born."
         </p>
         <div class="quote-author">
           <span>Crafted with passion by</span>
-          <span class="dev-badge">👨‍💻 Yashwant Mandal</span>
+          <span class="dev-pill">👨‍💻 Yashwant Mandal</span>
         </div>
       </div>
 
       <!-- Big One-Click Direct Download Button -->
       <div class="download-wrapper">
-        <a href="https://github.com/yashwantmandal26/AllRounderPlayer/releases/download/v2.8/app-release.apk" download="app-release.apk" class="big-download-btn" id="oneClickDownload">
-          <div class="btn-icon-box">⬇</div>
-          <div class="btn-text-col">
-            <span class="btn-main-text">Download Now (v2.8)</span>
-            <span class="btn-sub-text">Direct APK Download • One Click</span>
+        <a href="https://github.com/yashwantmandal26/AllRounderPlayer/releases/download/v2.8/app-release.apk" download="app-release.apk" class="big-download-btn" id="mainDownload">
+          <div class="btn-icon-circle">⬇</div>
+          <div class="btn-col">
+            <span class="btn-main-label">Download Now (v2.8)</span>
+            <span class="btn-sub-label">Direct APK Download • One Click</span>
           </div>
         </a>
-        <div class="download-meta">
-          <span>📦 77.3 MB</span>
-          <span>•</span>
-          <span>🤖 Android 8.0 to 15+</span>
-          <span>•</span>
+        <div class="download-badges">
           <span>⚡ Universal APK</span>
+          <span class="dot-sep">•</span>
+          <span>📦 77.3 MB</span>
+          <span class="dot-sep">•</span>
+          <span>🤖 Android 8.0 to 15+</span>
+          <span class="dot-sep">•</span>
+          <span>🛡️ 100% Safe & Ad-Free</span>
         </div>
       </div>
     </section>
 
-    <!-- 3D Feature Cards Showcase -->
+    <!-- Key Highlights / Features Section -->
     <section>
-      <div class="section-header">
-        <h2 class="section-title">Engineered for Perfection</h2>
-        <p class="section-subtitle">Experience fluid audio-visual dynamics designed with modern 3D depth and pure luxury ergonomics.</p>
+      <div class="section-title-wrap">
+        <h2 class="section-title">Why You'll Love It</h2>
+        <p class="section-subtitle">Everything you need for pure entertainment, crafted into one super smooth app.</p>
       </div>
 
-      <div class="cards-grid">
-        <!-- 3D Card 1: Live DJ Vinyl Scratching -->
-        <div class="card-3d-wrap">
-          <div class="card-3d" data-tilt>
-            <div class="card-inner-top">
-              <div class="card-icon-pill">🎛️</div>
-              <div class="card-tag">Interactive Turntable</div>
-              <h3 class="card-title">Live DJ Vinyl Scratching</h3>
-              <p class="card-desc">
-                Manipulates the <strong>real playing song audio</strong> in real time without audio drops. Clockwise rotation accelerates speed and pitch, while manual counter-clockwise rotation plays backward slices directly from the current timeline without auto-jumps.
-              </p>
+      <div class="features-grid">
+
+        <!-- Feature 1: Real DJ Vinyl Disc -->
+        <div class="feature-card">
+          <div>
+            <div class="card-head">
+              <div class="card-icon">🎛️</div>
+              <span class="card-tag">Interactive</span>
             </div>
-            <!-- Interactive 3D Vinyl Demo -->
-            <div class="vinyl-widget" title="Touch & Spin the Vinyl!">
-              <div class="groove-ring" style="width: 150px; height: 150px;"></div>
-              <div class="groove-ring" style="width: 125px; height: 125px;"></div>
-              <div class="groove-ring" style="width: 100px; height: 100px;"></div>
-              <div class="vinyl-center-art">🎵</div>
+            <h3 class="card-title">Live DJ Vinyl Disc</h3>
+            <p class="card-body-text">
+              Hold and spin the album disc just like a real turntable! Drag forward to speed up the song, or spin backward to scratch your music live in real-time.
+            </p>
+          </div>
+          <!-- Touch/Drag Vinyl Demo -->
+          <div class="vinyl-box">
+            <div class="vinyl-disc" id="interactiveDisc" title="Touch & spin me!">
+              <div class="vinyl-ring" style="width: 120px; height: 120px;"></div>
+              <div class="vinyl-ring" style="width: 95px; height: 95px;"></div>
+              <div class="vinyl-ring" style="width: 70px; height: 70px;"></div>
+              <div class="vinyl-center">🎵</div>
               <div class="vinyl-spindle"></div>
             </div>
+            <span class="vinyl-hint">👆 Touch & Spin the Disc</span>
           </div>
         </div>
 
-        <!-- 3D Card 2: Slim Single-Bar Precision Gestures -->
-        <div class="card-3d-wrap">
-          <div class="card-3d" data-tilt>
-            <div class="card-inner-top">
-              <div class="card-icon-pill">📏</div>
-              <div class="card-tag">Minimalist UI</div>
-              <h3 class="card-title">Slim Single-Bar Sliders</h3>
-              <p class="card-desc">
-                Refined vertical single-bar controls in high-contrast accent color for independent volume and brightness. Zero text clutter, featuring circular white thumb styling, smooth 1:1 scrub tracking, and tactile milestone haptics.
-              </p>
+        <!-- Feature 2: Effortless Swipe Controls -->
+        <div class="feature-card">
+          <div>
+            <div class="card-head">
+              <div class="card-icon">👆</div>
+              <span class="card-tag">Gesture Controls</span>
             </div>
-            <!-- Showcase Demo -->
-            <div class="slider-showcase">
-              <div class="single-bar-demo">
-                <div class="bar-ring-cap"></div>
-                <div class="bar-track">
-                  <div class="bar-fill" style="height: 65%;"></div>
-                  <div class="bar-thumb" style="bottom: 60%;"></div>
-                </div>
-                <div class="bar-badge">☀️</div>
-              </div>
-              <div class="single-bar-demo">
-                <div class="bar-ring-cap"></div>
-                <div class="bar-track">
-                  <div class="bar-fill" style="height: 80%;"></div>
-                  <div class="bar-thumb" style="bottom: 75%;"></div>
-                </div>
-                <div class="bar-badge">🔊</div>
-              </div>
-            </div>
+            <h3 class="card-title">Quick Swipe Sliders</h3>
+            <p class="card-body-text">
+              Swipe up or down on the left to change brightness, and on the right to change volume. Slim single bars appear when you need them and fade out cleanly.
+            </p>
           </div>
-        </div>
-
-        <!-- 3D Card 3: 3 Shades of Luxury White Theme -->
-        <div class="card-3d-wrap">
-          <div class="card-3d" data-tilt>
-            <div class="card-inner-top">
-              <div class="card-icon-pill">🤍</div>
-              <div class="card-tag">Aesthetic Design</div>
-              <h3 class="card-title">Multi-Shade White Theme</h3>
-              <p class="card-desc">
-                Multi-tier porcelain, frosted pearl, and snow white layers bathed in ambient watercolor album wash. Status bar icons automatically transition to dark slate, paired with high-contrast typography for effortless reading.
-              </p>
+          <!-- Slider Demo -->
+          <div class="slider-box">
+            <div class="slider-demo-item">
+              <div class="slim-bar">
+                <div class="slim-fill" style="height: 60%;"></div>
+                <div class="slim-thumb" style="bottom: 60%;"></div>
+              </div>
+              <span class="slider-label">☀️ Brightness</span>
             </div>
-            <div style="background: var(--white-2); padding: 18px; border-radius: 18px; border: 1px solid var(--border-light); display: flex; flex-direction: column; gap: 10px;">
-              <div style="display: flex; align-items: center; justify-content: space-between;">
-                <span style="font-weight: 700; font-size: 0.88rem;">Shade 1: Snow White</span>
-                <span style="font-family: 'JetBrains Mono', monospace; font-size: 0.78rem; color: var(--accent);">#FFFFFF</span>
+            <div class="slider-demo-item">
+              <div class="slim-bar">
+                <div class="slim-fill" style="height: 80%;"></div>
+                <div class="slim-thumb" style="bottom: 80%;"></div>
               </div>
-              <div style="display: flex; align-items: center; justify-content: space-between;">
-                <span style="font-weight: 700; font-size: 0.88rem;">Shade 2: Frosted Pearl</span>
-                <span style="font-family: 'JetBrains Mono', monospace; font-size: 0.78rem; color: var(--accent);">#F8FAFC</span>
-              </div>
-              <div style="display: flex; align-items: center; justify-content: space-between;">
-                <span style="font-weight: 700; font-size: 0.88rem;">Shade 3: Platinum White</span>
-                <span style="font-family: 'JetBrains Mono', monospace; font-size: 0.78rem; color: var(--accent);">#F1F5F9</span>
-              </div>
+              <span class="slider-label">🔊 Volume</span>
             </div>
           </div>
         </div>
 
-        <!-- 3D Card 4: 4K HDR Video Engine -->
-        <div class="card-3d-wrap">
-          <div class="card-3d" data-tilt>
-            <div class="card-inner-top">
-              <div class="card-icon-pill">🎬</div>
-              <div class="card-tag">Media3 ExoPlayer</div>
-              <h3 class="card-title">4K HDR Cinephile Engine</h3>
-              <p class="card-desc">
-                Intelligent auto-orientation for vertical shorts vs. widescreen cinema, zero-lag LRU fast seek frame caching, multi-track audio switching, styled subtitles, and smooth Picture-in-Picture playback.
-              </p>
+        <!-- Feature 3: Crystal Clear Videos -->
+        <div class="feature-card">
+          <div>
+            <div class="card-head">
+              <div class="card-icon">🎬</div>
+              <span class="card-tag">4K & Full HD</span>
             </div>
-            <div style="background: var(--white-2); padding: 14px 18px; border-radius: 16px; border: 1px solid var(--border-light); display: flex; align-items: center; justify-content: space-between;">
-              <span style="font-weight: 700; font-size: 0.85rem;">Hardware Decoding</span>
-              <span style="font-size: 0.82rem; font-weight: 700; color: #10B981;">4K 60fps HDR10+</span>
+            <h3 class="card-title">Plays Any Video</h3>
+            <p class="card-body-text">
+              Movies, reels, and video clips play smoothly with vivid colors. Double-tap to skip 10 seconds, auto-rotate for widescreen, and pop out into Picture-in-Picture.
+            </p>
+          </div>
+          <div style="background: var(--white-2); border-radius: 14px; padding: 14px; border: 1px solid var(--border-subtle); display: flex; align-items: center; justify-content: space-between;">
+            <span style="font-size: 0.85rem; font-weight: 700;">Supported Formats</span>
+            <span style="font-size: 0.78rem; font-weight: 700; color: #10B981; background: #ECFDF5; padding: 4px 8px; border-radius: 6px;">MP4, MKV, 4K HDR, AVI</span>
+          </div>
+        </div>
+
+        <!-- Feature 4: Background Music & Equalizer -->
+        <div class="feature-card">
+          <div>
+            <div class="card-head">
+              <div class="card-icon">🎧</div>
+              <span class="card-tag">Audio Engine</span>
+            </div>
+            <h3 class="card-title">Non-Stop Music</h3>
+            <p class="card-body-text">
+              Keep listening even when your screen is turned off or while chatting in other apps. Includes a powerful built-in equalizer with Bass Boost for deep, rich audio.
+            </p>
+          </div>
+          <div style="background: var(--white-2); border-radius: 14px; padding: 14px; border: 1px solid var(--border-subtle); display: flex; align-items: center; justify-content: space-between;">
+            <span style="font-size: 0.85rem; font-weight: 700;">Background Mode</span>
+            <span style="font-size: 0.78rem; font-weight: 700; color: var(--accent); background: #EFF6FF; padding: 4px 8px; border-radius: 6px;">Lock Screen & PiP</span>
+          </div>
+        </div>
+
+        <!-- Feature 5: 3 Shades of Luxury White -->
+        <div class="feature-card">
+          <div>
+            <div class="card-head">
+              <div class="card-icon">🤍</div>
+              <span class="card-tag">Luxury Look</span>
+            </div>
+            <h3 class="card-title">Clean White Theme</h3>
+            <p class="card-body-text">
+              Built with a beautiful 3-tier white color palette that looks elegant, clean, and feels light. Dark high-contrast text makes reading songs and playlists effortless.
+            </p>
+          </div>
+          <div class="palette-box">
+            <div class="palette-item">
+              <span class="palette-name">Pure Snow White</span>
+              <span class="palette-code">#FFFFFF</span>
+            </div>
+            <div class="palette-item">
+              <span class="palette-name">Frosted Pearl</span>
+              <span class="palette-code">#F8FAFC</span>
+            </div>
+            <div class="palette-item">
+              <span class="palette-name">Porcelain Platinum</span>
+              <span class="palette-code">#F1F5F9</span>
             </div>
           </div>
         </div>
+
+        <!-- Feature 6: Completely Free & Private -->
+        <div class="feature-card">
+          <div>
+            <div class="card-head">
+              <div class="card-icon">🛡️</div>
+              <span class="card-tag">Zero Ads</span>
+            </div>
+            <h3 class="card-title">100% Free & Offline</h3>
+            <p class="card-body-text">
+              No advertisements, no subscriptions, and no login required. All your videos and songs remain private and play directly from your phone without needing the internet.
+            </p>
+          </div>
+          <div style="background: var(--white-2); border-radius: 14px; padding: 14px; border: 1px solid var(--border-subtle); display: flex; align-items: center; justify-content: space-between;">
+            <span style="font-size: 0.85rem; font-weight: 700;">Privacy Guarantee</span>
+            <span style="font-size: 0.78rem; font-weight: 700; color: #10B981; background: #ECFDF5; padding: 4px 8px; border-radius: 6px;">100% Offline & Private</span>
+          </div>
+        </div>
+
       </div>
     </section>
 
-    <!-- Technical Specs Card -->
+    <!-- App Details / Specifications -->
     <section class="specs-card">
-      <h3 style="font-size: 1.6rem; font-weight: 800; letter-spacing: -0.02em;">Build & Release Specifications</h3>
-      <p style="color: var(--text-secondary); font-size: 0.95rem; margin-top: 4px;">Universal signed release bundle configured for seamless updates over existing installations.</p>
+      <div class="specs-head">
+        <h3>App Overview</h3>
+        <p>Official release package details for Android devices.</p>
+      </div>
 
       <div class="specs-grid">
-        <div class="spec-item">
-          <div class="spec-label">Package ID</div>
-          <div class="spec-value" style="font-size: 0.88rem;">com.example.ymediaplayer</div>
+        <div class="spec-cell">
+          <div class="spec-key">Developer</div>
+          <div class="spec-val">Yashwant Mandal</div>
         </div>
-        <div class="spec-item">
-          <div class="spec-label">Version Name</div>
-          <div class="spec-value">v2.8</div>
+        <div class="spec-cell">
+          <div class="spec-key">Current Version</div>
+          <div class="spec-val">v2.8</div>
         </div>
-        <div class="spec-item">
-          <div class="spec-label">Version Code</div>
-          <div class="spec-value">40</div>
+        <div class="spec-cell">
+          <div class="spec-key">Download Size</div>
+          <div class="spec-val">77.3 MB</div>
         </div>
-        <div class="spec-item">
-          <div class="spec-label">Architecture</div>
-          <div class="spec-value">Universal (arm64)</div>
+        <div class="spec-cell">
+          <div class="spec-key">Requirements</div>
+          <div class="spec-val">Android 8.0+</div>
         </div>
-        <div class="spec-item">
-          <div class="spec-label">Target OS</div>
-          <div class="spec-value">Android 8.0 - 15+</div>
+        <div class="spec-cell">
+          <div class="spec-key">License</div>
+          <div class="spec-val">Free & Open Source</div>
         </div>
-        <div class="spec-item">
-          <div class="spec-label">Lead Developer</div>
-          <div class="spec-value">Yashwant Mandal</div>
+        <div class="spec-cell">
+          <div class="spec-key">Updates</div>
+          <div class="spec-val">In-App Auto Update</div>
         </div>
       </div>
     </section>
 
   </div>
 
+  <!-- Bottom Floating Download Bar (Shows on Mobile & Desktop) -->
+  <aside class="floating-bar">
+    <div class="floating-info">
+      <div class="floating-icon">▶</div>
+      <div>
+        <div class="floating-title">AllRounder Player</div>
+        <div class="floating-sub">Version 2.8 • Free</div>
+      </div>
+    </div>
+    <a href="https://github.com/yashwantmandal26/AllRounderPlayer/releases/download/v2.8/app-release.apk" download="app-release.apk" class="floating-action">
+      <span>⬇ Download</span>
+    </a>
+  </aside>
+
   <!-- Footer -->
   <footer>
     <div class="container">
-      <p>AllRounder Media Player • Crafted & Maintained by <span class="footer-author">Yashwant Mandal</span></p>
+      <p>AllRounder Media Player • Crafted with ❤️ by <span class="footer-author">Yashwant Mandal</span></p>
       <div class="footer-links">
         <a href="https://github.com/yashwantmandal26/AllRounderPlayer" target="_blank">GitHub Repository</a>
         <span>•</span>
-        <a href="https://github.com/yashwantmandal26/AllRounderPlayer/releases" target="_blank">Release Archive</a>
+        <a href="https://github.com/yashwantmandal26/AllRounderPlayer/releases/tag/v2.8" target="_blank">Release Notes</a>
         <span>•</span>
         <a href="https://github.com/yashwantmandal26/AllRounderPlayer/blob/main/LICENSE" target="_blank">MIT License</a>
       </div>
     </div>
   </footer>
 
-  <!-- 3D Card Tilt Script -->
+  <!-- Interactive Turntable & Touch Scripts -->
   <script>
-    document.querySelectorAll('.card-3d').forEach(card => {
-      card.addEventListener('mousemove', e => {
-        const rect = card.getBoundingClientRect();
-        const x = e.clientX - rect.left;
-        const y = e.clientY - rect.top;
-        const centerX = rect.width / 2;
-        const centerY = rect.height / 2;
-        const rotateX = ((y - centerY) / centerY) * -10;
-        const rotateY = ((x - centerX) / centerX) * 10;
-        card.style.transform = `perspective(1200px) rotateX(${rotateX}deg) rotateY(${rotateY}deg) translateY(-6px)`;
-      });
-
-      card.addEventListener('mouseleave', () => {
-        card.style.transform = 'perspective(1200px) rotateX(0deg) rotateY(0deg) translateY(0px)';
-      });
-    });
-
-    // Interactive Vinyl Drag & Spin Effect
-    const vinyl = document.querySelector('.vinyl-widget');
-    if (vinyl) {
-      let isDragging = false;
+    const disc = document.getElementById('interactiveDisc');
+    if (disc) {
+      let isInteracting = false;
       let startAngle = 0;
       let currentRotation = 0;
 
-      vinyl.addEventListener('mousedown', e => {
-        isDragging = true;
-        vinyl.style.animationPlayState = 'paused';
-        const rect = vinyl.getBoundingClientRect();
+      function getAngle(clientX, clientY) {
+        const rect = disc.getBoundingClientRect();
         const centerX = rect.left + rect.width / 2;
         const centerY = rect.top + rect.height / 2;
-        startAngle = Math.atan2(e.clientY - centerY, e.clientX - centerX) * (180 / Math.PI) - currentRotation;
-      });
+        return Math.atan2(clientY - centerY, clientX - centerX) * (180 / Math.PI);
+      }
 
-      window.addEventListener('mousemove', e => {
-        if (!isDragging) return;
-        const rect = vinyl.getBoundingClientRect();
-        const centerX = rect.left + rect.width / 2;
-        const centerY = rect.top + rect.height / 2;
-        const angle = Math.atan2(e.clientY - centerY, e.clientX - centerX) * (180 / Math.PI);
+      function handleStart(clientX, clientY) {
+        isInteracting = true;
+        disc.classList.add('paused');
+        startAngle = getAngle(clientX, clientY) - currentRotation;
+      }
+
+      function handleMove(clientX, clientY) {
+        if (!isInteracting) return;
+        const angle = getAngle(clientX, clientY);
         currentRotation = angle - startAngle;
-        vinyl.style.transform = `rotate(${currentRotation}deg)`;
-      });
+        disc.style.transform = `rotate(${currentRotation}deg)`;
+      }
 
-      window.addEventListener('mouseup', () => {
-        if (isDragging) {
-          isDragging = false;
-          vinyl.style.animationPlayState = 'running';
+      function handleEnd() {
+        if (isInteracting) {
+          isInteracting = false;
+          disc.classList.remove('paused');
         }
+      }
+
+      // Mouse events
+      disc.addEventListener('mousedown', e => {
+        handleStart(e.clientX, e.clientY);
+        e.preventDefault();
       });
+      window.addEventListener('mousemove', e => handleMove(e.clientX, e.clientY));
+      window.addEventListener('mouseup', handleEnd);
+
+      // Touch events (Mobile optimized)
+      disc.addEventListener('touchstart', e => {
+        if (e.touches.length > 0) {
+          handleStart(e.touches[0].clientX, e.touches[0].clientY);
+        }
+      }, { passive: true });
+
+      window.addEventListener('touchmove', e => {
+        if (isInteracting && e.touches.length > 0) {
+          handleMove(e.touches[0].clientX, e.touches[0].clientY);
+        }
+      }, { passive: true });
+
+      window.addEventListener('touchend', handleEnd);
+      window.addEventListener('touchcancel', handleEnd);
     }
   </script>
 </body>
