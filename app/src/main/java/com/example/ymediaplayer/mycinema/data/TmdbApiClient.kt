@@ -124,6 +124,61 @@ class TmdbApiClient(
         }
     }
 
+    suspend fun discoverByGenre(movieGenreId: Int?, tvGenreId: Int?, page: Int = 1): List<TmdbItem> = withContext(Dispatchers.IO) {
+        if (apiKey.isBlank()) return@withContext emptyList()
+        try {
+            coroutineScope {
+                val movieDeferred = async {
+                    if (movieGenreId == null) emptyList()
+                    else {
+                        try {
+                            val url = "https://api.themoviedb.org/3/discover/movie?api_key=$apiKey&with_genres=$movieGenreId&sort_by=popularity.desc&vote_count.gte=10&page=$page"
+                            val req = Request.Builder().url(url).build()
+                            httpClient.newCall(req).execute().use { resp ->
+                                if (resp.isSuccessful) {
+                                    resp.body?.string()?.let {
+                                        json.decodeFromString<TmdbSearchResponse>(it).results.map { item -> item.copy(mediaType = "movie") }
+                                    } ?: emptyList()
+                                } else emptyList()
+                            }
+                        } catch (_: Exception) { emptyList() }
+                    }
+                }
+
+                val tvDeferred = async {
+                    if (tvGenreId == null) emptyList()
+                    else {
+                        try {
+                            val url = "https://api.themoviedb.org/3/discover/tv?api_key=$apiKey&with_genres=$tvGenreId&sort_by=popularity.desc&vote_count.gte=10&page=$page"
+                            val req = Request.Builder().url(url).build()
+                            httpClient.newCall(req).execute().use { resp ->
+                                if (resp.isSuccessful) {
+                                    resp.body?.string()?.let {
+                                        json.decodeFromString<TmdbSearchResponse>(it).results.map { item -> item.copy(mediaType = "tv") }
+                                    } ?: emptyList()
+                                } else emptyList()
+                            }
+                        } catch (_: Exception) { emptyList() }
+                    }
+                }
+
+                val mList = movieDeferred.await()
+                val tvList = tvDeferred.await()
+
+                val combined = mutableListOf<TmdbItem>()
+                val maxLen = maxOf(mList.size, tvList.size)
+                for (i in 0 until maxLen) {
+                    if (i < mList.size) combined.add(mList[i])
+                    if (i < tvList.size) combined.add(tvList[i])
+                }
+                combined
+            }
+        } catch (e: Exception) {
+            android.util.Log.e("TmdbApiClient", "Error discovering by genre: ${e.message}")
+            emptyList()
+        }
+    }
+
     suspend fun fetchUpcomingMovies(filter: String = "ALL"): List<TmdbItem> = withContext(Dispatchers.IO) {
         if (apiKey.isBlank()) return@withContext emptyList()
         val todayStr = java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.US).format(java.util.Date())
@@ -230,7 +285,7 @@ class TmdbApiClient(
         if (id <= 0 || apiKey.isBlank()) return@withContext CinemaExtendedInfo()
         try {
             val endpoint = if (isSeries) "tv" else "movie"
-            val url = "https://api.themoviedb.org/3/$endpoint/$id?api_key=$apiKey&append_to_response=watch/providers,credits,images"
+            val url = "https://api.themoviedb.org/3/$endpoint/$id?api_key=$apiKey&append_to_response=watch/providers,credits,images,external_ids"
             val request = Request.Builder().url(url).build()
             httpClient.newCall(request).execute().use { response ->
                 if (!response.isSuccessful) return@withContext CinemaExtendedInfo()
@@ -240,6 +295,41 @@ class TmdbApiClient(
                 val budget = root.optLong("budget", 0L)
                 val revenue = root.optLong("revenue", 0L)
                 val status = root.optString("status").takeIf { it.isNotBlank() }
+
+                // Parse Genres
+                val parsedGenres = mutableListOf<String>()
+                val genresArr = root.optJSONArray("genres")
+                if (genresArr != null) {
+                    for (i in 0 until genresArr.length()) {
+                        val g = genresArr.optJSONObject(i) ?: continue
+                        val gName = g.optString("name")
+                        if (gName.isNotBlank()) {
+                            parsedGenres.add(gName)
+                        }
+                    }
+                }
+
+                // Parse Runtime (minutes)
+                var runtimeMinutes = root.optInt("runtime", 0)
+                if (runtimeMinutes <= 0 && isSeries) {
+                    val epRunTimeArr = root.optJSONArray("episode_run_time")
+                    if (epRunTimeArr != null && epRunTimeArr.length() > 0) {
+                        runtimeMinutes = epRunTimeArr.optInt(0, 0)
+                    }
+                }
+
+                // Parse IMDb ID and fetch Cinemeta IMDb Rating
+                val externalIds = root.optJSONObject("external_ids")
+                var imdbId = externalIds?.optString("imdb_id")?.trim() ?: ""
+                if (imdbId.isBlank()) {
+                    imdbId = root.optString("imdb_id").trim()
+                }
+                if (imdbId.startsWith("tt", ignoreCase = true)) {
+                    imdbIdCache["$isSeries:$id"] = imdbId
+                }
+                val imdbRating = if (imdbId.startsWith("tt", ignoreCase = true)) {
+                    fetchCinemetaImdbRating(isSeries, imdbId)
+                } else null
 
                 // Parse Watch Providers
                 val wpObj = root.optJSONObject("watch/providers")?.optJSONObject("results")
@@ -443,7 +533,10 @@ class TmdbApiClient(
                     releaseDate = releaseDate ?: root.optString("release_date"),
                     tmdbWatchLink = tmdbWatchLink,
                     seasons = seasonsList,
-                    logoPath = titleLogoPath
+                    logoPath = titleLogoPath,
+                    genres = parsedGenres,
+                    runtimeMinutes = runtimeMinutes,
+                    imdbRating = imdbRating
                 )
             }
         } catch (e: Exception) {
@@ -517,6 +610,35 @@ class TmdbApiClient(
             android.util.Log.e("TmdbApiClient", "Error getting IMDB id: ${e.message}")
         }
         ""
+    }
+
+    private val cinemetaRatingCache = java.util.concurrent.ConcurrentHashMap<String, String>()
+
+    suspend fun fetchCinemetaImdbRating(isSeries: Boolean, imdbId: String): String? = withContext(Dispatchers.IO) {
+        if (imdbId.isBlank() || !imdbId.startsWith("tt", ignoreCase = true)) return@withContext null
+        cinemetaRatingCache[imdbId]?.let { return@withContext it }
+        try {
+            val type = if (isSeries) "series" else "movie"
+            val url = "https://v3-cinemeta.strem.io/meta/$type/$imdbId.json"
+            val request = Request.Builder()
+                .url(url)
+                .header("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64)")
+                .build()
+            httpClient.newCall(request).execute().use { response ->
+                if (!response.isSuccessful) return@withContext null
+                val body = response.body?.string() ?: return@withContext null
+                val root = org.json.JSONObject(body)
+                val meta = root.optJSONObject("meta") ?: return@withContext null
+                val ratingStr = meta.optString("imdbRating").takeIf { it.isNotBlank() && it != "null" && it != "0" }
+                if (ratingStr != null) {
+                    cinemetaRatingCache[imdbId] = ratingStr
+                    return@withContext ratingStr
+                }
+            }
+        } catch (e: Exception) {
+            android.util.Log.w("TmdbApiClient", "Error fetching Cinemeta rating for $imdbId: ${e.message}")
+        }
+        null
     }
 
     suspend fun fetchTrailerYoutubeKey(isSeries: Boolean, tmdbId: Int): String? = withContext(Dispatchers.IO) {

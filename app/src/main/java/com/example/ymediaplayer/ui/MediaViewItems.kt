@@ -71,14 +71,16 @@ fun VideoDetailedListItem(
             .fillMaxWidth()
             .padding(horizontal = 14.dp, vertical = 2.dp)
             .then(if (c.isMatte) Modifier else Modifier.shadow(
-                elevation = if (isSelected) 8.dp else 4.dp,
+                elevation = if (!c.isDark) 2.dp else if (isSelected) 8.dp else 4.dp,
                 shape = RoundedCornerShape(cornerRadius),
                 ambientColor = if (isSelected) c.accentBlue.copy(0.35f) else c.cardShadowColor,
                 spotColor = if (isSelected) c.accentBlue.copy(0.45f) else c.cardShadowColor
             ))
             .clip(RoundedCornerShape(cornerRadius))
             .background(
-                if (c.isMatte) {
+                if (!c.isDark) {
+                    if (isSelected) SolidColor(c.accentBlue.copy(alpha = 0.08f)) else SolidColor(Color.White)
+                } else if (c.isMatte) {
                     SolidColor(if (isSelected) c.accentBlue.copy(alpha = 0.15f) else c.cardBg)
                 } else {
                     if (isSelected) Brush.verticalGradient(listOf(c.accentBlue.copy(0.28f), c.cardBg))
@@ -86,8 +88,10 @@ fun VideoDetailedListItem(
                 }
             )
             .border(
-                width = if (isSelected) 1.6.dp else 1.dp,
-                brush = if (c.isMatte) {
+                width = if (isSelected) 1.5.dp else 0.8.dp,
+                brush = if (!c.isDark) {
+                    SolidColor(if (isSelected) Color(0xFF007AFF) else Color(0xFFE2E8F0))
+                } else if (c.isMatte) {
                     androidx.compose.ui.graphics.SolidColor(if (isSelected) c.accentBlue else c.glassBorder)
                 } else {
                     if (isSelected) Brush.verticalGradient(listOf(Color.White.copy(0.65f), c.accentBlue))
@@ -366,14 +370,16 @@ fun VideoGridItem2(
             .fillMaxWidth()
             .padding(horizontal = 14.dp, vertical = 4.dp)
             .then(if (c.isMatte) Modifier else Modifier.shadow(
-                elevation = if (isSelected) 8.dp else 5.dp,
+                elevation = if (!c.isDark) 2.dp else if (isSelected) 8.dp else 5.dp,
                 shape = RoundedCornerShape(16.dp),
                 ambientColor = if (isSelected) c.accentBlue.copy(0.35f) else c.cardShadowColor,
                 spotColor = if (isSelected) c.accentBlue.copy(0.45f) else c.cardShadowColor
             ))
             .clip(RoundedCornerShape(16.dp))
             .background(
-                if (c.isMatte) {
+                if (!c.isDark) {
+                    if (isSelected) SolidColor(c.accentBlue.copy(alpha = 0.08f)) else SolidColor(Color.White)
+                } else if (c.isMatte) {
                     SolidColor(if (isSelected) c.accentBlue.copy(alpha = 0.15f) else c.cardBg)
                 } else {
                     if (isSelected) Brush.verticalGradient(listOf(c.accentBlue.copy(0.24f), c.cardBg))
@@ -381,8 +387,10 @@ fun VideoGridItem2(
                 }
             )
             .border(
-                width = if (isSelected) 1.6.dp else 1.2.dp,
-                brush = if (c.isMatte) {
+                width = if (isSelected) 1.5.dp else 0.8.dp,
+                brush = if (!c.isDark) {
+                    SolidColor(if (isSelected) Color(0xFF007AFF) else Color(0xFFE2E8F0))
+                } else if (c.isMatte) {
                     androidx.compose.ui.graphics.SolidColor(if (isSelected) c.accentBlue else c.glassBorder)
                 } else {
                     if (isSelected) Brush.verticalGradient(listOf(Color.White.copy(0.6f), c.accentBlue))
@@ -517,14 +525,16 @@ fun VideoGridItem3(
         modifier = modifier
             .fillMaxWidth()
             .then(if (c.isMatte) Modifier else Modifier.shadow(
-                elevation = if (isSelected) 6.dp else 3.dp,
+                elevation = if (!c.isDark) 2.dp else if (isSelected) 6.dp else 3.dp,
                 shape = RoundedCornerShape(12.dp),
                 ambientColor = if (isSelected) c.accentBlue.copy(0.35f) else c.cardShadowColor,
                 spotColor = if (isSelected) c.accentBlue.copy(0.45f) else c.cardShadowColor
             ))
             .clip(RoundedCornerShape(12.dp))
             .background(
-                if (c.isMatte) {
+                if (!c.isDark) {
+                    if (isSelected) SolidColor(c.accentBlue.copy(alpha = 0.08f)) else SolidColor(Color.White)
+                } else if (c.isMatte) {
                     SolidColor(if (isSelected) c.accentBlue.copy(alpha = 0.15f) else c.cardBg)
                 } else {
                     if (isSelected) Brush.verticalGradient(listOf(c.accentBlue.copy(0.25f), c.cardBg))
@@ -532,8 +542,10 @@ fun VideoGridItem3(
                 }
             )
             .border(
-                width = if (isSelected) 1.5.dp else 1.dp,
-                brush = if (c.isMatte) {
+                width = if (isSelected) 1.5.dp else 0.8.dp,
+                brush = if (!c.isDark) {
+                    SolidColor(if (isSelected) Color(0xFF007AFF) else Color(0xFFE2E8F0))
+                } else if (c.isMatte) {
                     androidx.compose.ui.graphics.SolidColor(if (isSelected) c.accentBlue else c.glassBorder)
                 } else {
                     if (isSelected) Brush.verticalGradient(listOf(Color.White.copy(0.6f), c.accentBlue))
@@ -890,7 +902,7 @@ fun MediaViewSwitcherMenu(
         Icon(
             getIconForMediaViewType(currentViewType),
             contentDescription = "Switch View: ${currentViewType.displayName}",
-            tint = c.accentBlue,
+            tint = if (!c.isDark) c.textPrimary else c.accentBlue,
             modifier = Modifier.size(19.dp)
         )
     }

@@ -91,19 +91,53 @@ internal fun formatSize(bytes: Long): String {
  */
 internal val sharedVideoFrameDecoderFactory = VideoFrameDecoder.Factory()
 
-internal fun buildVideoThumbnailRequest(context: Context, uri: Uri, durationMs: Long = 0L): ImageRequest {
-    val frameMicros = com.example.ymediaplayer.util.VideoThumbnailFrame.timeMicros(durationMs)
+internal fun buildVideoThumbnailRequest(
+    context: Context,
+    uri: Uri,
+    durationMs: Long = 0L,
+    positionMs: Long = -1L
+): ImageRequest {
+    val frameMicros = if (positionMs > 0L) {
+        positionMs * 1000L
+    } else {
+        com.example.ymediaplayer.util.VideoThumbnailFrame.timeMicros(durationMs)
+    }
+    val cacheKey = if (positionMs > 0L) {
+        "video-thumb-cw:$uri:${positionMs / 2000L}"
+    } else {
+        "video-thumb-v4:$uri"
+    }
     return ImageRequest.Builder(context)
         .data(uri)
         .videoFrameMicros(frameMicros)
-        .videoFrameOption(android.media.MediaMetadataRetriever.OPTION_CLOSEST_SYNC)
-        .memoryCacheKey("video-thumb-v4:$uri")
-        .diskCacheKey("video-thumb-v4:$uri")
+        .videoFrameOption(
+            if (positionMs > 0L) android.media.MediaMetadataRetriever.OPTION_CLOSEST
+            else android.media.MediaMetadataRetriever.OPTION_CLOSEST_SYNC
+        )
+        .memoryCacheKey(cacheKey)
+        .diskCacheKey(cacheKey)
         .size(360, 240)
         .precision(coil3.size.Precision.INEXACT)
         .memoryCachePolicy(coil3.request.CachePolicy.ENABLED)
         .diskCachePolicy(coil3.request.CachePolicy.ENABLED)
         .build()
+}
+
+internal fun saveFrameThumbnail(context: Context, uriString: String, positionMs: Long, bitmap: android.graphics.Bitmap?) {
+    if (bitmap == null || positionMs <= 0L) return
+    try {
+        val dir = java.io.File(context.cacheDir, "cw_thumbs").apply { mkdirs() }
+        val file = java.io.File(dir, "${uriString.hashCode()}.jpg")
+        java.io.FileOutputStream(file).use { out ->
+            bitmap.compress(android.graphics.Bitmap.CompressFormat.JPEG, 85, out)
+            out.flush()
+        }
+    } catch (_: Throwable) {}
+}
+
+internal fun getCachedFrameThumbnail(context: Context, uriString: String): java.io.File? {
+    val file = java.io.File(context.cacheDir, "cw_thumbs/${uriString.hashCode()}.jpg")
+    return if (file.exists() && file.length() > 0) file else null
 }
 
 fun Modifier.bounceClick(
@@ -243,18 +277,18 @@ enum class PlayerTheme(
     WHITE(
         id = "WHITE",
         displayName = "Pure White",
-        description = "Luminous Diamond & Platinum White",
-        primaryAccent = Color(0xFFF8FAFC),
-        secondaryAccent = Color(0xFFCBD5E1),
+        description = "iOS Frosted Glass & Platinum White",
+        primaryAccent = Color(0xFFFFFFFF),
+        secondaryAccent = Color(0xFFF1F5F9),
         highlightColor = Color(0xFFFFFFFF),
         orbBrush = Brush.radialGradient(
-            listOf(Color(0xFFFFFFFF), Color(0xFFE2E8F0), Color(0xFF94A3B8))
+            listOf(Color(0xFFFFFFFF), Color(0xFFF8FAFC), Color(0xFFE2E8F0))
         ),
         gestureBrush = Brush.verticalGradient(
-            listOf(Color(0xFFFFFFFF), Color(0xFFCBD5E1), Color(0xFF64748B))
+            listOf(Color(0xFFFFFFFF), Color(0xFFF1F5F9), Color(0xFFE2E8F0))
         ),
-        glowColor = Color(0xFFF8FAFC),
-        previewGradient = listOf(Color(0xFFFFFFFF), Color(0xFFCBD5E1))
+        glowColor = Color(0xFFFFFFFF),
+        previewGradient = listOf(Color(0xFFFFFFFF), Color(0xFFF1F5F9))
     ),
     VIOLET(
         id = "VIOLET",

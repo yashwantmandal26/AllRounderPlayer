@@ -8,6 +8,7 @@ import coil3.disk.DiskCache
 import coil3.memory.MemoryCache
 import coil3.video.VideoFrameDecoder
 import com.example.ymediaplayer.util.MediaStoreVideoFetcher
+import kotlinx.coroutines.launch
 import okio.Path.Companion.toPath
 
 class YMediaApplication : Application(), SingletonImageLoader.Factory {
@@ -20,6 +21,18 @@ class YMediaApplication : Application(), SingletonImageLoader.Factory {
     override fun onCreate() {
         super.onCreate()
         instance = this
+
+        // Warm up video thumbnails in background immediately on app start
+        kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.IO).launch {
+            try {
+                val repo = com.example.ymediaplayer.data.VideoRepository(this@YMediaApplication)
+                val cached = repo.getCachedFoldersSync()
+                if (cached != null) {
+                    val uris = cached.flatMap { it.videos }.map { it.uri }
+                    com.example.ymediaplayer.util.MediaStoreVideoFetcher.warmUpThumbnails(this@YMediaApplication, uris)
+                }
+            } catch (_: Throwable) {}
+        }
     }
 
     override fun newImageLoader(context: PlatformContext): ImageLoader {
@@ -36,7 +49,7 @@ class YMediaApplication : Application(), SingletonImageLoader.Factory {
             }
             .diskCache {
                 DiskCache.Builder()
-                    .directory(context.cacheDir.resolve("video_thumbnails").absolutePath.toPath())
+                    .directory(context.filesDir.resolve("coil_disk_cache").absolutePath.toPath())
                     .maxSizeBytes(250L * 1024 * 1024)
                     .build()
             }

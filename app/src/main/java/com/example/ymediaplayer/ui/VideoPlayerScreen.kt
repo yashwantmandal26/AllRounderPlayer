@@ -658,10 +658,18 @@ fun VideoPlayerScreen(
 
     // ─── Dynamic Player Theme ─────────────────────────────────────────────────
     val activeTheme = themeController.colorTheme
+    val isWhiteTheme = activeTheme == PlayerTheme.WHITE
     val primaryAccent = activeTheme.primaryAccent
     val secondaryAccent = activeTheme.secondaryAccent
     val gestureBrush = activeTheme.gestureBrush
     val glowColor = activeTheme.glowColor
+
+    // iOS 2-Shade White Theme palette & dark text tokens
+    val whiteShade1 = Color(0xFFFFFFFF)        // Shade 1: Crisp Snow White
+    val whiteShade2 = Color(0xFFF1F5F9)        // Shade 2: Soft Frosted Pearl White
+    val darkTextPrimary = Color(0xFF0F172A)    // Deep Slate / Charcoal
+    val darkTextSecondary = Color(0xFF475569)  // Muted Slate
+    val darkTextHint = Color(0xFF94A3B8)       // Subtle Silver Slate
 
     // ─── Playlist & Current Video State ───────────────────────────────────────
     var currentUrl by remember { mutableStateOf(videoUrl) }
@@ -1288,6 +1296,36 @@ fun VideoPlayerScreen(
         appPreferences.saveSubtitleDesign(subtitleDesign)
     }
 
+    val captureAndPersistResumeThumbnail: (Long) -> Unit = { curPos ->
+        if (curPos > 1000L && currentUrl.isNotBlank()) {
+            val sv = playerView.videoSurfaceView
+            val bmp = if (sv is android.view.TextureView) {
+                try { sv.getBitmap(360, 240) } catch (_: Throwable) { null }
+            } else null
+            val targetUrl = currentUrl
+            val ctx = context.applicationContext
+            coroutineScope.launch(Dispatchers.IO) {
+                if (bmp != null) {
+                    saveFrameThumbnail(ctx, targetUrl, curPos, bmp)
+                } else {
+                    try {
+                        val mmr = android.media.MediaMetadataRetriever()
+                        if (targetUrl.startsWith("http://") || targetUrl.startsWith("https://")) {
+                            mmr.setDataSource(targetUrl, emptyMap())
+                        } else {
+                            mmr.setDataSource(ctx, targetUrl.toUri())
+                        }
+                        val frame = mmr.getFrameAtTime(curPos * 1000L, android.media.MediaMetadataRetriever.OPTION_CLOSEST_SYNC)
+                        if (frame != null) {
+                            saveFrameThumbnail(ctx, targetUrl, curPos, frame)
+                        }
+                        mmr.release()
+                    } catch (_: Throwable) {}
+                }
+            }
+        }
+    }
+
     // Sleep Timer
     var sleepTimerMinutes by remember { mutableIntStateOf(0) }
 
@@ -1606,6 +1644,11 @@ fun VideoPlayerScreen(
     val togglePlayPause: () -> Unit = {
         val actuallyPlaying = isPlaying || exoPlayer.isPlaying || exoPlayer.playWhenReady
         if (actuallyPlaying) {
+            val curPos = exoPlayer.currentPosition
+            if (curPos > 1000L) {
+                appPreferences.saveVideoProgress(currentUrl, curPos, exoPlayer.duration.coerceAtLeast(0L))
+                captureAndPersistResumeThumbnail(curPos)
+            }
             exoPlayer.pause()
             exoPlayer.playWhenReady = false
             isPlaying = false
@@ -2417,7 +2460,6 @@ fun VideoPlayerScreen(
     val isAnySheetOrMenuOpen = showSubtitleTools || showAmbientSettings || modePicker != null || showPlaylistSheet ||
             showSettingsOverlay ||
             showMoreMenuSheet ||
-            isMoreExpanded ||
             showDeleteConfirmDialog ||
             showSpeedSheet ||
             showSleepTimerSheet ||
@@ -2432,6 +2474,24 @@ fun VideoPlayerScreen(
             isAnySheetOrMenuOpen
 
     val autoHideTimeoutMs = remember { appPreferences.getControlsAutoHideTimeoutMs() }
+
+    val windowFocusEvent by VideoPlaybackManager.windowFocusEvent
+    LaunchedEffect(windowFocusEvent) {
+        if (windowFocusEvent > 0L) {
+            isDraggingSeek = false
+            centerSeekText = null
+            centerSeekIcon = null
+            isSpeedHolding = false
+            showBrightnessBar = false
+            showVolumeBar = false
+            activeGestureMode = PlayerGestureMode.NONE
+            controlsInteractionTimestamp = System.currentTimeMillis()
+            if (isLandscape || isVerticalVideo) {
+                insetsController?.systemBarsBehavior = WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+                insetsController?.hide(WindowInsetsCompat.Type.systemBars())
+            }
+        }
+    }
 
     LaunchedEffect(
         showControls,
@@ -2622,6 +2682,7 @@ fun VideoPlayerScreen(
                     val pos = exoPlayer.currentPosition
                     if (pos > 1000L) {
                         appPreferences.saveVideoProgress(currentUrl, pos, exoPlayer.duration.coerceAtLeast(0L))
+                        captureAndPersistResumeThumbnail(pos)
                     }
                 }
                 Lifecycle.Event.ON_STOP -> {
@@ -2635,6 +2696,7 @@ fun VideoPlayerScreen(
                     val pos = exoPlayer.currentPosition
                     if (pos > 1000L) {
                         appPreferences.saveVideoProgress(currentUrl, pos, exoPlayer.duration.coerceAtLeast(0L))
+                        captureAndPersistResumeThumbnail(pos)
                     }
                     val isActivityInPip = activity?.isInPictureInPictureMode == true || isInPiP
                     val allowBg = isBackgroundAudio || appPreferences.isBackgroundPlayEnabled() || appPreferences.isPlayDuringCallsEnabled()
@@ -2673,6 +2735,7 @@ fun VideoPlayerScreen(
             val pos = exoPlayer.currentPosition
             if (pos > 1000L) {
                 appPreferences.saveVideoProgress(currentUrl, pos, exoPlayer.duration.coerceAtLeast(0L))
+                captureAndPersistResumeThumbnail(pos)
             }
             if (activity?.isFinishing == true && !VideoPlaybackManager.isMiniPlayerActive.value) {
                 VideoPlaybackManager.releasePlayer()
@@ -2714,6 +2777,7 @@ fun VideoPlayerScreen(
             val pos = exoPlayer.currentPosition
             if (!isCurrentVideoDeleted && pos > 1000L) {
                 appPreferences.saveVideoProgress(currentUrl, pos, exoPlayer.duration.coerceAtLeast(0L))
+                captureAndPersistResumeThumbnail(pos)
             }
             if (!VideoPlaybackManager.isMiniPlayerActive.value) {
                 VideoPlaybackManager.releasePlayer()
@@ -2808,6 +2872,71 @@ fun VideoPlayerScreen(
             Toast.makeText(context, errorMsg, Toast.LENGTH_SHORT).show()
         }
     )
+
+    val executeShareCurrentVideo: () -> Unit = {
+        coroutineScope.launch {
+            try {
+                val normCurrent = currentUrl.removePrefix("file://")
+                val videoItem = playlistVideos.firstOrNull {
+                    it.uri.toString().removePrefix("file://") == normCurrent ||
+                    it.uri.toString() == currentUrl
+                } ?: if (currentVideoIndex in playlistVideos.indices) playlistVideos[currentVideoIndex] else null
+
+                var targetUri: Uri? = videoItem?.uri
+
+                if (targetUri == null || (targetUri.scheme != "content" && targetUri.authority != "media")) {
+                    targetUri = try {
+                        if (currentUrl.startsWith("content://")) {
+                            val parsed = Uri.parse(currentUrl)
+                            if (parsed.authority == "com.android.providers.media.documents") {
+                                val docId = android.provider.DocumentsContract.getDocumentId(parsed)
+                                val id = docId.split(":").getOrNull(1)?.toLongOrNull()
+                                if (id != null) {
+                                    ContentUris.withAppendedId(MediaStore.Video.Media.EXTERNAL_CONTENT_URI, id)
+                                } else parsed
+                            } else parsed
+                        } else {
+                            val cleanPath = Uri.decode(currentUrl.removePrefix("file://"))
+                            val file = java.io.File(cleanPath)
+                            val proj = arrayOf(MediaStore.Video.Media._ID)
+                            val sel = "${MediaStore.Video.Media.DATA} = ?"
+                            val args = arrayOf(file.absolutePath)
+                            var foundUri: Uri? = null
+                            context.contentResolver.query(
+                                MediaStore.Video.Media.EXTERNAL_CONTENT_URI,
+                                proj, sel, args, null
+                            )?.use { cur ->
+                                if (cur.moveToFirst()) {
+                                    val id = cur.getLong(cur.getColumnIndexOrThrow(MediaStore.Video.Media._ID))
+                                    foundUri = ContentUris.withAppendedId(
+                                        MediaStore.Video.Media.EXTERNAL_CONTENT_URI, id
+                                    )
+                                }
+                            }
+                            foundUri ?: if (file.exists()) {
+                                androidx.core.content.FileProvider.getUriForFile(
+                                    context,
+                                    "${context.packageName}.provider",
+                                    file
+                                )
+                            } else Uri.parse(currentUrl)
+                        }
+                    } catch (_: Exception) {
+                        Uri.parse(currentUrl)
+                    }
+                }
+
+                if (targetUri != null) {
+                    val shareIntent = fileManager.buildShareIntent(targetUri)
+                    context.startActivity(Intent.createChooser(shareIntent, "Share video"))
+                } else {
+                    Toast.makeText(context, "Could not resolve video to share", Toast.LENGTH_SHORT).show()
+                }
+            } catch (e: Exception) {
+                Toast.makeText(context, "Could not share video: ${e.message}", Toast.LENGTH_SHORT).show()
+            }
+        }
+    }
 
     val executeDeleteCurrentVideo: () -> Unit = {
         coroutineScope.launch {
@@ -3043,13 +3172,14 @@ fun VideoPlayerScreen(
                         exoPlayer.setPlaybackSpeed(preHoldSpeed)
                         didActivateSpeedHold = false
                     }
-                    if (gestureMode == PlayerGestureMode.SEEK) {
-                        isDraggingSeek = false
-                        centerSeekText = null
-                        centerSeekIcon = null
-                    }
+                    isDraggingSeek = false
+                    centerSeekText = null
+                    centerSeekIcon = null
+                    showBrightnessBar = false
+                    showVolumeBar = false
                     gestureMode = PlayerGestureMode.IGNORED_DRAG
                     activeGestureMode = PlayerGestureMode.NONE
+                    controlsInteractionTimestamp = System.currentTimeMillis()
                     // Do NOT consume pointers so system gestures (e.g. 3-finger screenshot) pass through cleanly!
                     continue
                 }
@@ -3359,14 +3489,12 @@ fun VideoPlayerScreen(
                                 }
                             }
                         } else {
-                            if (!showControls || !wasConsumed) {
-                                preTapShowControls = showControls
-                                lastTapTime = downTime
-                                lastTapX = startX
-                                lastTapY = startY
-                                showControls = !showControls
-                                controlsInteractionTimestamp = System.currentTimeMillis()
-                            }
+                            preTapShowControls = showControls
+                            lastTapTime = downTime
+                            lastTapX = startX
+                            lastTapY = startY
+                            showControls = !showControls
+                            controlsInteractionTimestamp = System.currentTimeMillis()
                         }
                     }
                 }
@@ -3380,11 +3508,9 @@ fun VideoPlayerScreen(
                 exoPlayer.setPlaybackSpeed(restoreSpeed)
                 didActivateSpeedHold = false
             }
-            if (isDraggingSeek) {
-                isDraggingSeek = false
-                centerSeekText = null
-                centerSeekIcon = null
-            }
+            isDraggingSeek = false
+            centerSeekText = null
+            centerSeekIcon = null
             activeGestureMode = PlayerGestureMode.NONE
         }
     }
@@ -3800,12 +3926,17 @@ fun VideoPlayerScreen(
                                         .shadow(6.dp, CircleShape, ambientColor = Color.Black.copy(0.7f))
                                         .clip(CircleShape)
                                         .background(Brush.verticalGradient(listOf(Color(0xFF252636), Color(0xFF11121C))))
-                                        .border(1.2.dp, Brush.verticalGradient(listOf(Color.White.copy(0.40f), Color.White.copy(0.15f), Color.Black.copy(0.5f))), CircleShape)
+                                        .border(
+                                            1.2.dp,
+                                            if (isWhiteTheme) BorderStroke(1.2.dp, Color.White.copy(alpha = 0.45f)).brush
+                                            else Brush.verticalGradient(listOf(primaryAccent.copy(0.6f), primaryAccent.copy(0.2f))),
+                                            CircleShape
+                                        )
                                 ) {
                                     Icon(
                                         Icons.AutoMirrored.Rounded.ArrowBack,
                                         contentDescription = "Back",
-                                        tint = Color.White,
+                                        tint = if (isWhiteTheme) Color.White else primaryAccent,
                                         modifier = Modifier.size(if (isLandscape) 22.dp else 18.dp)
                                     )
                                 }
@@ -3877,12 +4008,17 @@ fun VideoPlayerScreen(
                                         .shadow(6.dp, CircleShape, ambientColor = Color.Black.copy(0.7f))
                                         .clip(CircleShape)
                                         .background(Brush.verticalGradient(listOf(Color(0xFF252636), Color(0xFF11121C))))
-                                        .border(1.2.dp, Brush.verticalGradient(listOf(Color.White.copy(0.40f), Color.White.copy(0.15f), Color.Black.copy(0.5f))), CircleShape)
+                                        .border(
+                                            1.2.dp,
+                                            if (isWhiteTheme) BorderStroke(1.2.dp, Color.White.copy(alpha = 0.45f)).brush
+                                            else Brush.verticalGradient(listOf(primaryAccent.copy(0.6f), primaryAccent.copy(0.2f))),
+                                            CircleShape
+                                        )
                                 ) {
                                     Icon(
                                         Icons.AutoMirrored.Rounded.QueueMusic,
                                         contentDescription = "Playlist",
-                                        tint = Color.White,
+                                        tint = if (isWhiteTheme) Color.White else primaryAccent,
                                         modifier = Modifier.size(topIconSize)
                                     )
                                 }
@@ -3895,13 +4031,23 @@ fun VideoPlayerScreen(
                                         .shadow(6.dp, CircleShape, ambientColor = Color.Black.copy(0.7f))
                                         .clip(CircleShape)
                                         .background(
-                                            if (isCustomSpeed) Brush.radialGradient(listOf(primaryAccent.copy(alpha = 0.35f), Color(0xFF11121C)))
-                                            else Brush.verticalGradient(listOf(Color(0xFF252636), Color(0xFF11121C)))
+                                            if (isCustomSpeed) {
+                                                if (isWhiteTheme) Brush.verticalGradient(listOf(whiteShade1, whiteShade2))
+                                                else Brush.radialGradient(listOf(primaryAccent.copy(alpha = 0.35f), Color(0xFF11121C)))
+                                            } else {
+                                                if (isWhiteTheme) Brush.verticalGradient(listOf(Color.White.copy(alpha = 0.20f), Color.White.copy(alpha = 0.08f)))
+                                                else Brush.verticalGradient(listOf(Color(0xFF252636), Color(0xFF11121C)))
+                                            }
                                         )
                                         .border(
                                             1.2.dp,
-                                            if (isCustomSpeed) BorderStroke(1.2.dp, primaryAccent).brush
-                                            else Brush.verticalGradient(listOf(Color.White.copy(0.40f), Color.White.copy(0.15f), Color.Black.copy(0.5f))),
+                                            if (isCustomSpeed) {
+                                                if (isWhiteTheme) BorderStroke(1.2.dp, Color(0xFFCBD5E1)).brush
+                                                else BorderStroke(1.2.dp, primaryAccent).brush
+                                            } else {
+                                                if (isWhiteTheme) BorderStroke(1.2.dp, Color.White.copy(alpha = 0.45f)).brush
+                                                else Brush.verticalGradient(listOf(primaryAccent.copy(0.6f), primaryAccent.copy(0.2f)))
+                                            },
                                             CircleShape
                                         )
                                         .pointerInput(playbackSpeed) {
@@ -3924,14 +4070,14 @@ fun VideoPlayerScreen(
                                     Icon(
                                         Icons.Rounded.Speed,
                                         contentDescription = "Playback speed",
-                                        tint = if (isCustomSpeed) primaryAccent else Color.White,
+                                        tint = if (isCustomSpeed) (if (isWhiteTheme) darkTextPrimary else primaryAccent) else (if (isWhiteTheme) Color.White else primaryAccent),
                                         modifier = Modifier.size(topIconSize)
                                     )
                                     if (isCustomSpeed) {
                                         Spacer(Modifier.width(3.dp))
                                         Text(
                                             text = "${playbackSpeed}x",
-                                            color = primaryAccent,
+                                            color = if (isWhiteTheme) darkTextPrimary else primaryAccent,
                                             fontSize = 11.sp,
                                             fontWeight = FontWeight.Bold,
                                             maxLines = 1,
@@ -3951,12 +4097,17 @@ fun VideoPlayerScreen(
                                         .shadow(6.dp, CircleShape, ambientColor = Color.Black.copy(0.7f))
                                         .clip(CircleShape)
                                         .background(Brush.verticalGradient(listOf(Color(0xFF252636), Color(0xFF11121C))))
-                                        .border(1.2.dp, Brush.verticalGradient(listOf(Color.White.copy(0.40f), Color.White.copy(0.15f), Color.Black.copy(0.5f))), CircleShape)
+                                        .border(
+                                            1.2.dp,
+                                            if (isWhiteTheme) BorderStroke(1.2.dp, Color.White.copy(alpha = 0.45f)).brush
+                                            else Brush.verticalGradient(listOf(primaryAccent.copy(0.6f), primaryAccent.copy(0.2f))),
+                                            CircleShape
+                                        )
                                 ) {
                                     Icon(
                                         Icons.Rounded.MusicNote,
                                         contentDescription = "Audio track",
-                                        tint = Color.White,
+                                        tint = if (isWhiteTheme) Color.White else primaryAccent,
                                         modifier = Modifier.size(topIconSize)
                                     )
                                 }
@@ -3972,12 +4123,17 @@ fun VideoPlayerScreen(
                                         .shadow(6.dp, CircleShape, ambientColor = Color.Black.copy(0.7f))
                                         .clip(CircleShape)
                                         .background(Brush.verticalGradient(listOf(Color(0xFF252636), Color(0xFF11121C))))
-                                        .border(1.2.dp, Brush.verticalGradient(listOf(Color.White.copy(0.40f), Color.White.copy(0.15f), Color.Black.copy(0.5f))), CircleShape)
+                                        .border(
+                                            1.2.dp,
+                                            if (isWhiteTheme) BorderStroke(1.2.dp, Color.White.copy(alpha = 0.45f)).brush
+                                            else Brush.verticalGradient(listOf(primaryAccent.copy(0.6f), primaryAccent.copy(0.2f))),
+                                            CircleShape
+                                        )
                                 ) {
                                     Icon(
                                         Icons.Rounded.Subtitles,
                                         contentDescription = "Subtitles",
-                                        tint = Color.White,
+                                        tint = if (isWhiteTheme) Color.White else primaryAccent,
                                         modifier = Modifier.size(topIconSize)
                                     )
                                 }
@@ -3996,20 +4152,30 @@ fun VideoPlayerScreen(
                                         .shadow(6.dp, CircleShape, ambientColor = Color.Black.copy(0.7f))
                                         .clip(CircleShape)
                                         .background(
-                                            if (isMoreExpanded) Brush.radialGradient(listOf(primaryAccent.copy(alpha = 0.35f), Color(0xFF11121C)))
-                                            else Brush.verticalGradient(listOf(Color(0xFF252636), Color(0xFF11121C)))
+                                            if (isMoreExpanded) {
+                                                if (isWhiteTheme) Brush.verticalGradient(listOf(whiteShade1, whiteShade2))
+                                                else Brush.radialGradient(listOf(primaryAccent.copy(alpha = 0.35f), Color(0xFF11121C)))
+                                            } else {
+                                                if (isWhiteTheme) Brush.verticalGradient(listOf(Color.White.copy(alpha = 0.20f), Color.White.copy(alpha = 0.08f)))
+                                                else Brush.verticalGradient(listOf(Color(0xFF252636), Color(0xFF11121C)))
+                                            }
                                         )
                                         .border(
                                             1.2.dp,
-                                            if (isMoreExpanded) BorderStroke(1.2.dp, primaryAccent).brush
-                                            else Brush.verticalGradient(listOf(Color.White.copy(0.40f), Color.White.copy(0.15f), Color.Black.copy(0.5f))),
+                                            if (isMoreExpanded) {
+                                                if (isWhiteTheme) BorderStroke(1.2.dp, Color(0xFFCBD5E1)).brush
+                                                else BorderStroke(1.2.dp, primaryAccent).brush
+                                            } else {
+                                                if (isWhiteTheme) BorderStroke(1.2.dp, Color.White.copy(alpha = 0.45f)).brush
+                                                else Brush.verticalGradient(listOf(primaryAccent.copy(0.6f), primaryAccent.copy(0.2f)))
+                                            },
                                             CircleShape
                                         )
                                 ) {
                                     Icon(
                                         Icons.Default.MoreVert,
                                         contentDescription = "More",
-                                        tint = if (isMoreExpanded) primaryAccent else Color.White,
+                                        tint = if (isMoreExpanded) (if (isWhiteTheme) darkTextPrimary else primaryAccent) else (if (isWhiteTheme) Color.White else primaryAccent),
                                         modifier = Modifier.size(topIconSize)
                                     )
                                 }
@@ -4100,7 +4266,19 @@ fun VideoPlayerScreen(
                                     onClick = { showVideoInfoSheet = true }
                                 )
 
-                                // 7. Delete Video Chip
+                                // 7. Share Video Chip
+                                ExpandedOptionChip(
+                                    icon = Icons.Rounded.Share,
+                                    label = "Share",
+                                    isActive = false,
+                                    accentColor = primaryAccent,
+                                    onClick = {
+                                        view.performHaptic(HapticType.LIGHT)
+                                        executeShareCurrentVideo()
+                                    }
+                                )
+
+                                // 8. Delete Video Chip
                                 ExpandedOptionChip(
                                     icon = Icons.Rounded.Delete,
                                     label = "Delete",
@@ -4136,35 +4314,23 @@ fun VideoPlayerScreen(
                                 enabled = playlistVideos.size > 1,
                                 modifier = Modifier
                                     .size(48.dp)
-                                    .shadow(4.dp, CircleShape, ambientColor = Color.Black.copy(0.4f), spotColor = Color.Black.copy(0.4f))
                                     .clip(CircleShape)
-                                    .background(Color.Black.copy(alpha = 0.45f))
-                                    .border(1.2.dp, Brush.verticalGradient(listOf(Color.White.copy(alpha = 0.40f), primaryAccent.copy(alpha = 0.35f))), CircleShape)
+                                    .background(Color.Black.copy(alpha = 0.28f))
                             ) {
                                 Icon(
                                     Icons.Rounded.SkipPrevious,
                                     contentDescription = "Previous video",
-                                    tint = if (playlistVideos.size > 1) Color.White else Color.White.copy(alpha = 0.35f),
+                                    tint = if (playlistVideos.size > 1) (if (isWhiteTheme) Color.White else primaryAccent) else (if (isWhiteTheme) Color.White.copy(alpha = 0.35f) else primaryAccent.copy(alpha = 0.35f)),
                                     modifier = Modifier.size(28.dp)
                                 )
                             }
 
-                            // Play/Pause (66dp Radiant Translucent Button)
+                            // Play/Pause (Clean Translucent Minimalist Button)
                             Box(
                                 modifier = Modifier
                                     .size(66.dp)
-                                    .shadow(8.dp, CircleShape, ambientColor = primaryAccent.copy(0.35f), spotColor = Color.Black.copy(0.35f))
                                     .clip(CircleShape)
-                                    .background(
-                                        Brush.radialGradient(
-                                            listOf(
-                                                primaryAccent.copy(alpha = 0.65f),
-                                                primaryAccent.copy(alpha = 0.40f),
-                                                Color.Black.copy(alpha = 0.45f)
-                                            )
-                                        )
-                                    )
-                                    .border(1.8.dp, Color.White.copy(alpha = 0.85f), CircleShape)
+                                    .background(Color.Black.copy(alpha = 0.35f))
                                     .pointerInput(isPlaying) {
                                         detectTapGestures(
                                             onTap = {
@@ -4186,7 +4352,7 @@ fun VideoPlayerScreen(
                                 Icon(
                                     imageVector = if (isPlaying) Icons.Rounded.Pause else if (isEnded) Icons.Rounded.Replay else Icons.Rounded.PlayArrow,
                                     contentDescription = "Play/Pause",
-                                    tint = Color.White,
+                                    tint = if (isWhiteTheme) Color.White else primaryAccent,
                                     modifier = Modifier.size(40.dp)
                                 )
                             }
@@ -4200,15 +4366,13 @@ fun VideoPlayerScreen(
                                 enabled = playlistVideos.size > 1,
                                 modifier = Modifier
                                     .size(48.dp)
-                                    .shadow(4.dp, CircleShape, ambientColor = Color.Black.copy(0.4f), spotColor = Color.Black.copy(0.4f))
                                     .clip(CircleShape)
-                                    .background(Color.Black.copy(alpha = 0.45f))
-                                    .border(1.2.dp, Brush.verticalGradient(listOf(Color.White.copy(alpha = 0.40f), primaryAccent.copy(alpha = 0.35f))), CircleShape)
+                                    .background(Color.Black.copy(alpha = 0.28f))
                             ) {
                                 Icon(
                                     Icons.Rounded.SkipNext,
                                     contentDescription = "Next video",
-                                    tint = if (playlistVideos.size > 1) Color.White else Color.White.copy(alpha = 0.35f),
+                                    tint = if (playlistVideos.size > 1) (if (isWhiteTheme) Color.White else primaryAccent) else (if (isWhiteTheme) Color.White.copy(alpha = 0.35f) else primaryAccent.copy(alpha = 0.35f)),
                                     modifier = Modifier.size(28.dp)
                                 )
                             }
@@ -4377,7 +4541,7 @@ fun VideoPlayerScreen(
                                                 // Draw active played track in primaryAccent
                                                 if (trackFraction > 0f) {
                                                     drawRect(
-                                                        color = primaryAccent,
+                                                        color = if (isWhiteTheme) whiteShade1 else primaryAccent,
                                                         topLeft = Offset.Zero,
                                                         size = Size(size.width * trackFraction, size.height)
                                                     )
@@ -4389,9 +4553,14 @@ fun VideoPlayerScreen(
                                     Box(
                                         modifier = Modifier
                                             .size(if (isDraggingSeek) 18.dp else 14.dp)
+                                            .shadow(4.dp, CircleShape, ambientColor = Color.Black.copy(0.4f))
                                             .clip(CircleShape)
-                                            .background(primaryAccent)
-                                            .border(2.dp, Color.White, CircleShape)
+                                            .background(if (isWhiteTheme) whiteShade1 else primaryAccent)
+                                            .border(
+                                                2.dp,
+                                                if (isWhiteTheme) darkTextPrimary else Color.White,
+                                                CircleShape
+                                            )
                                     )
                                 },
                                 colors = SliderDefaults.colors(
@@ -4427,13 +4596,21 @@ fun VideoPlayerScreen(
                                 modifier = Modifier
                                     .size(42.dp)
                                     .clip(CircleShape)
-                                    .background(Brush.verticalGradient(listOf(Color(0xFF252636), Color(0xFF11121C))))
-                                    .border(1.2.dp, Brush.verticalGradient(listOf(primaryAccent.copy(0.6f), primaryAccent.copy(0.2f))), CircleShape)
+                                    .background(
+                                        if (isWhiteTheme) Brush.verticalGradient(listOf(Color.White.copy(alpha = 0.20f), Color.White.copy(alpha = 0.08f)))
+                                        else Brush.verticalGradient(listOf(Color(0xFF252636), Color(0xFF11121C)))
+                                    )
+                                    .border(
+                                        1.2.dp,
+                                        if (isWhiteTheme) BorderStroke(1.2.dp, Color.White.copy(alpha = 0.45f)).brush
+                                        else Brush.verticalGradient(listOf(primaryAccent.copy(0.6f), primaryAccent.copy(0.2f))),
+                                        CircleShape
+                                    )
                             ) {
                                 Icon(
                                     Icons.Rounded.LockOpen,
                                     contentDescription = "Lock controls",
-                                    tint = primaryAccent,
+                                    tint = if (isWhiteTheme) Color.White else primaryAccent,
                                     modifier = Modifier.size(22.dp)
                                 )
                             }
@@ -4534,7 +4711,7 @@ fun VideoPlayerScreen(
                         Icon(
                             Icons.Rounded.Lock,
                             contentDescription = "Unlock",
-                            tint = Color.White,
+                            tint = if (isWhiteTheme) Color.White else primaryAccent,
                             modifier = Modifier.size(26.dp)
                         )
                     }
@@ -4608,7 +4785,7 @@ fun VideoPlayerScreen(
         }
     }
 
-        // ─── Right-Side Playlist Drawer ─────────────────────────────────────────
+        // ─── Adaptive Playlist Sheet (Bottom Sheet in Portrait, Right Panel in Landscape) ───
         AnimatedVisibility(
             visible = showPlaylistSheet,
             enter = fadeIn(tween(180)),
@@ -4624,395 +4801,593 @@ fun VideoPlayerScreen(
             ) {
                 var playlistSheetTab by remember { mutableIntStateOf(0) }
 
-                AnimatedVisibility(
-                    visible = showPlaylistSheet,
-                    enter = slideInHorizontally(
+                val panelEnter = if (isLandscape) {
+                    slideInHorizontally(
                         initialOffsetX = { it },
                         animationSpec = tween(280, easing = FastOutSlowInEasing)
-                    ),
-                    exit = slideOutHorizontally(
+                    )
+                } else {
+                    slideInVertically(
+                        initialOffsetY = { it },
+                        animationSpec = tween(280, easing = FastOutSlowInEasing)
+                    )
+                }
+
+                val panelExit = if (isLandscape) {
+                    slideOutHorizontally(
                         targetOffsetX = { it },
                         animationSpec = tween(220)
-                    ),
-                    modifier = Modifier.align(Alignment.CenterEnd)
+                    )
+                } else {
+                    slideOutVertically(
+                        targetOffsetY = { it },
+                        animationSpec = tween(220)
+                    )
+                }
+
+                val panelShape = if (isLandscape) {
+                    RoundedCornerShape(topStart = 20.dp, bottomStart = 20.dp, topEnd = 0.dp, bottomEnd = 0.dp)
+                } else {
+                    RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp, bottomStart = 0.dp, bottomEnd = 0.dp)
+                }
+
+                val panelModifier = if (isLandscape) {
+                    Modifier
+                        .align(Alignment.CenterEnd)
+                        .fillMaxHeight()
+                        .widthIn(min = 340.dp, max = 460.dp)
+                        .fillMaxWidth(0.46f)
+                        .systemBarsPadding()
+                } else {
+                    Modifier
+                        .align(Alignment.BottomCenter)
+                        .fillMaxWidth()
+                        .widthIn(max = 540.dp)
+                        .fillMaxHeight(0.72f)
+                        .navigationBarsPadding()
+                }
+
+                val effectivePlaylistAppColors = if (isWhiteTheme) {
+                    c.copy(
+                        textPrimary = darkTextPrimary,
+                        textSecondary = darkTextSecondary,
+                        textHint = darkTextHint,
+                        cardBgElevated = whiteShade2,
+                        glassBgNested = Color(0xFFE2E8F0).copy(alpha = 0.75f),
+                        glassBorder = Color(0xFFCBD5E1),
+                        dropdownBg = Color(0xFFFFFFFF),
+                        onAccent = darkTextPrimary
+                    )
+                } else c
+
+                val playlistPanelBg = if (isWhiteTheme) {
+                    Brush.linearGradient(
+                        listOf(
+                            Color(0xFFFFFFFF).copy(alpha = 0.96f),
+                            Color(0xFFF8FAFC).copy(alpha = 0.97f),
+                            Color(0xFFF1F5F9).copy(alpha = 0.98f)
+                        )
+                    )
+                } else {
+                    Brush.linearGradient(
+                        listOf(
+                            Color(0xFF161824),
+                            Color(0xFF10111A),
+                            primaryAccent.copy(alpha = 0.14f)
+                        )
+                    )
+                }
+
+                val playlistPanelBorder = if (isWhiteTheme) {
+                    Brush.verticalGradient(
+                        listOf(
+                            Color(0xFFFFFFFF),
+                            Color(0xFFE2E8F0).copy(alpha = 0.85f),
+                            Color(0xFFCBD5E1).copy(alpha = 0.5f)
+                        )
+                    )
+                } else {
+                    Brush.verticalGradient(
+                        listOf(
+                            primaryAccent.copy(alpha = 0.6f),
+                            Color.White.copy(alpha = 0.18f),
+                            Color.Transparent
+                        )
+                    )
+                }
+
+                AnimatedVisibility(
+                    visible = showPlaylistSheet,
+                    enter = panelEnter,
+                    exit = panelExit,
+                    modifier = if (isLandscape) Modifier.align(Alignment.CenterEnd) else Modifier.align(Alignment.BottomCenter)
                 ) {
-                    Column(
-                        modifier = Modifier
-                            .fillMaxHeight()
-                            .fillMaxWidth(0.52f)
-                            .background(
-                                Brush.linearGradient(
-                                    listOf(
-                                        Color(0xFF161824),
-                                        Color(0xFF10111A),
-                                        primaryAccent.copy(alpha = 0.14f)
-                                    )
-                                )
-                            )
-                            .border(
-                                width = 1.2.dp,
-                                brush = Brush.verticalGradient(
-                                    listOf(
-                                        primaryAccent.copy(alpha = 0.6f),
-                                        Color.White.copy(alpha = 0.18f),
-                                        Color.Transparent
-                                    )
-                                ),
-                                shape = RoundedCornerShape(topStart = 20.dp, bottomStart = 20.dp, topEnd = 0.dp, bottomEnd = 0.dp)
-                            )
-                            .clip(RoundedCornerShape(topStart = 20.dp, bottomStart = 20.dp, topEnd = 0.dp, bottomEnd = 0.dp))
+                    Box(
+                        modifier = panelModifier
+                            .background(playlistPanelBg, shape = panelShape)
+                            .border(width = 1.2.dp, brush = playlistPanelBorder, shape = panelShape)
+                            .clip(panelShape)
                             .pointerInput(Unit) {
                                 detectTapGestures { /* consume taps inside drawer */ }
                             }
-                            .systemBarsPadding()
                             .padding(horizontal = 16.dp, vertical = 14.dp)
                     ) {
-                        // Header
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Column {
-                                Text(
-                                    text = if (playlistSheetTab == 0) "Playlist" else "Bookmarks",
-                                    color = c.textPrimary,
-                                    fontSize = 18.sp,
-                                    fontWeight = FontWeight.Bold
-                                )
-                                Text(
-                                    text = if (playlistSheetTab == 0) "${playlistVideos.size} videos" else "${bookmarksList.size} bookmarks",
-                                    color = c.textSecondary,
-                                    fontSize = 11.5.sp
-                                )
-                            }
-                            IconButton(
-                                onClick = { showPlaylistSheet = false },
-                                modifier = Modifier
-                                    .size(34.dp)
-                                    .clip(CircleShape)
-                                    .background(c.glassBgNested)
-                            ) {
-                                Icon(Icons.Rounded.Close, contentDescription = "Close", tint = c.textPrimary, modifier = Modifier.size(18.dp))
-                            }
-                        }
-
-                        Spacer(Modifier.height(10.dp))
-
-                        var playlistSortOrder by remember { mutableStateOf(SortOrder.DATE) }
-                        var showPlaylistSortMenu by remember { mutableStateOf(false) }
-                        val sortedPlaylistVideos = remember(playlistVideos, playlistSortOrder) {
-                            playlistVideos.sortVideosWithOrder(playlistSortOrder)
-                        }
-
-                        // Tab selector & Sort button
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                Box(
-                                    modifier = Modifier
-                                        .clip(RoundedCornerShape(10.dp))
-                                        .background(if (playlistSheetTab == 0) primaryAccent else c.glassBgNested)
-                                        .clickable { playlistSheetTab = 0 }
-                                        .padding(horizontal = 14.dp, vertical = 6.dp)
-                                ) {
-                                    Text(
-                                        text = "Videos (${playlistVideos.size})",
-                                        color = if (playlistSheetTab == 0) Color.White else c.textSecondary,
-                                        fontSize = 12.sp,
-                                        fontWeight = FontWeight.Bold
-                                    )
-                                }
-                                Box(
-                                    modifier = Modifier
-                                        .clip(RoundedCornerShape(10.dp))
-                                        .background(if (playlistSheetTab == 1) primaryAccent else c.glassBgNested)
-                                        .clickable { playlistSheetTab = 1 }
-                                        .padding(horizontal = 14.dp, vertical = 6.dp)
-                                ) {
-                                    Text(
-                                        text = "Bookmarks (${bookmarksList.size})",
-                                        color = if (playlistSheetTab == 1) Color.White else c.textSecondary,
-                                        fontSize = 12.sp,
-                                        fontWeight = FontWeight.Bold
-                                    )
-                                }
-                            }
-
-                            if (playlistSheetTab == 0) {
-                                Box {
-                                    IconButton(
-                                        onClick = { showPlaylistSortMenu = true },
+                        CompositionLocalProvider(LocalAppColors provides effectivePlaylistAppColors) {
+                            Column(modifier = Modifier.fillMaxSize()) {
+                                if (!isLandscape) {
+                                    Box(
                                         modifier = Modifier
-                                            .size(32.dp)
-                                            .clip(RoundedCornerShape(8.dp))
-                                            .background(c.glassBgNested)
+                                            .align(Alignment.CenterHorizontally)
+                                            .padding(bottom = 10.dp)
+                                            .width(36.dp)
+                                            .height(4.dp)
+                                            .clip(CircleShape)
+                                            .background(if (isWhiteTheme) Color(0xFFCBD5E1) else Color.White.copy(alpha = 0.32f))
+                                    )
+                                }
+                                // Header
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Column {
+                                        Text(
+                                            text = if (playlistSheetTab == 0) "Playlist" else "Bookmarks",
+                                            color = if (isWhiteTheme) darkTextPrimary else c.textPrimary,
+                                            fontSize = 18.sp,
+                                            fontWeight = FontWeight.Bold
+                                        )
+                                        Text(
+                                            text = if (playlistSheetTab == 0) "${playlistVideos.size} videos" else "${bookmarksList.size} bookmarks",
+                                            color = if (isWhiteTheme) darkTextSecondary else c.textSecondary,
+                                            fontSize = 11.5.sp
+                                        )
+                                    }
+                                    IconButton(
+                                        onClick = { showPlaylistSheet = false },
+                                        modifier = Modifier
+                                            .size(34.dp)
+                                            .clip(CircleShape)
+                                            .background(if (isWhiteTheme) Color(0xFFE2E8F0).copy(alpha = 0.75f) else c.glassBgNested)
                                     ) {
                                         Icon(
-                                            Icons.AutoMirrored.Rounded.Sort,
-                                            contentDescription = "Sort",
-                                            tint = primaryAccent,
-                                            modifier = Modifier.size(16.dp)
+                                            Icons.Rounded.Close,
+                                            contentDescription = "Close",
+                                            tint = if (isWhiteTheme) darkTextPrimary else c.textPrimary,
+                                            modifier = Modifier.size(18.dp)
                                         )
-                                    }
-
-                                    DropdownMenu(
-                                        expanded = showPlaylistSortMenu,
-                                        onDismissRequest = { showPlaylistSortMenu = false },
-                                        containerColor = c.dropdownBg,
-                                        modifier = Modifier.border(1.dp, c.glassBorder, RoundedCornerShape(12.dp))
-                                    ) {
-                                        Text(
-                                            "SORT PLAYLIST",
-                                            fontSize = 11.sp,
-                                            fontWeight = FontWeight.Bold,
-                                            color = c.textHint,
-                                            modifier = Modifier.padding(horizontal = 14.dp, vertical = 6.dp)
-                                        )
-                                        HorizontalDivider(color = c.glassBorder.copy(alpha = 0.5f))
-                                        listOf(
-                                            SortOrder.DATE to ("Date Added (Newest)" to Icons.Rounded.Schedule),
-                                            SortOrder.DATE_ASC to ("Date Added (Oldest)" to Icons.Rounded.Schedule),
-                                            SortOrder.NAME to ("Name (A to Z)" to Icons.Rounded.SortByAlpha),
-                                            SortOrder.NAME_DESC to ("Name (Z to A)" to Icons.Rounded.SortByAlpha),
-                                            SortOrder.SIZE to ("Size (Largest)" to Icons.Rounded.Storage),
-                                            SortOrder.SIZE_ASC to ("Size (Smallest)" to Icons.Rounded.Storage),
-                                            SortOrder.DURATION to ("Duration (Longest)" to Icons.Rounded.Schedule),
-                                            SortOrder.DURATION_ASC to ("Duration (Shortest)" to Icons.Rounded.Schedule)
-                                        ).forEach { (order, pair) ->
-                                            val (label, icon) = pair
-                                            val isSelected = playlistSortOrder == order
-                                            DropdownMenuItem(
-                                                leadingIcon = {
-                                                    Icon(icon, contentDescription = null, tint = if (isSelected) primaryAccent else c.textSecondary, modifier = Modifier.size(16.dp))
-                                                },
-                                                text = {
-                                                    Text(label, color = if (isSelected) primaryAccent else c.textPrimary, fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal, fontSize = 13.sp)
-                                                },
-                                                trailingIcon = {
-                                                    if (isSelected) {
-                                                        Icon(Icons.Rounded.Check, contentDescription = null, tint = primaryAccent, modifier = Modifier.size(16.dp))
-                                                    }
-                                                },
-                                                onClick = {
-                                                    playlistSortOrder = order
-                                                    showPlaylistSortMenu = false
-                                                }
-                                            )
-                                        }
                                     }
                                 }
-                            }
-                        }
 
-                        Spacer(Modifier.height(12.dp))
+                                Spacer(Modifier.height(10.dp))
 
-                        if (playlistSheetTab == 0) {
-                            LazyColumn(
-                                modifier = Modifier.fillMaxSize(),
-                                verticalArrangement = Arrangement.spacedBy(8.dp)
-                            ) {
-                                itemsIndexed(sortedPlaylistVideos, key = { _, item -> item.uri.toString() }) { index, item ->
-                                    val isCurrent = item.uri.toString() == currentUrl
-                                    Row(
-                                        modifier = Modifier
-                                            .fillMaxWidth()
-                                            .clip(RoundedCornerShape(12.dp))
-                                            .background(
-                                                if (isCurrent) primaryAccent.copy(alpha = 0.22f)
-                                                else c.cardBgElevated
-                                            )
-                                            .border(
-                                                width = if (isCurrent) 1.5.dp else 1.dp,
-                                                color = if (isCurrent) primaryAccent
-                                                else c.glassBorder,
-                                                shape = RoundedCornerShape(12.dp)
-                                            )
-                                            .clickable {
-                                                playVideoItem(item)
-                                                showPlaylistSheet = false
-                                            }
-                                            .padding(8.dp),
-                                        verticalAlignment = Alignment.CenterVertically
-                                    ) {
-                                        // 0. Track Number
-                                        Box(
-                                            modifier = Modifier.width(26.dp),
-                                            contentAlignment = Alignment.Center
-                                        ) {
-                                            Text(
-                                                text = "${index + 1}",
-                                                color = if (isCurrent) primaryAccent else c.textSecondary,
-                                                fontSize = 12.sp,
-                                                fontWeight = if (isCurrent) FontWeight.Bold else FontWeight.Medium,
-                                                fontFamily = FontFamily.Monospace
-                                            )
-                                        }
+                                var playlistSortOrder by remember { mutableStateOf(SortOrder.DATE) }
+                                var showPlaylistSortMenu by remember { mutableStateOf(false) }
+                                val sortedPlaylistVideos = remember(playlistVideos, playlistSortOrder) {
+                                    playlistVideos.sortVideosWithOrder(playlistSortOrder)
+                                }
 
-                                        Spacer(Modifier.width(4.dp))
-
-                                        // 1. Video Thumbnail
+                                // Tab selector & Sort button
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                                         Box(
                                             modifier = Modifier
-                                                .size(width = 76.dp, height = 48.dp)
-                                                .clip(RoundedCornerShape(8.dp))
-                                                .background(Color.Black.copy(alpha = 0.5f)),
-                                            contentAlignment = Alignment.Center
+                                                .clip(RoundedCornerShape(10.dp))
+                                                .background(
+                                                    if (playlistSheetTab == 0) {
+                                                        if (isWhiteTheme) whiteShade1 else primaryAccent
+                                                    } else {
+                                                        if (isWhiteTheme) whiteShade2 else c.glassBgNested
+                                                    }
+                                                )
+                                                .then(
+                                                    if (isWhiteTheme) {
+                                                        Modifier
+                                                            .border(
+                                                                1.dp,
+                                                                if (playlistSheetTab == 0) Color(0xFFCBD5E1) else Color(0xFFE2E8F0),
+                                                                RoundedCornerShape(10.dp)
+                                                            )
+                                                            .shadow(if (playlistSheetTab == 0) 3.dp else 0.dp, RoundedCornerShape(10.dp), ambientColor = Color.Black.copy(0.08f))
+                                                    } else Modifier
+                                                )
+                                                .clickable { playlistSheetTab = 0 }
+                                                .padding(horizontal = 14.dp, vertical = 6.dp)
                                         ) {
-                                            AsyncImage(
-                                                model = remember(item.uri) {
-                                                    buildVideoThumbnailRequest(context, item.uri, item.duration)
-                                                },
-                                                contentDescription = item.title,
-                                                contentScale = ContentScale.Crop,
-                                                modifier = Modifier.fillMaxSize()
-                                            )
-                                            if (isCurrent) {
-                                                Box(
-                                                    modifier = Modifier
-                                                        .fillMaxSize()
-                                                        .background(Color.Black.copy(alpha = 0.45f)),
-                                                    contentAlignment = Alignment.Center
-                                                ) {
-                                                    Icon(
-                                                        Icons.Rounded.PlayArrow,
-                                                        contentDescription = "Playing",
-                                                        tint = primaryAccent,
-                                                        modifier = Modifier.size(24.dp)
-                                                    )
-                                                }
-                                            }
-                                        }
-
-                                        Spacer(Modifier.width(10.dp))
-
-                                        // 2. Metadata: Name, Size, and Duration
-                                        Column(modifier = Modifier.weight(1f)) {
                                             Text(
-                                                text = item.title,
-                                                color = if (isCurrent) primaryAccent else c.textPrimary,
-                                                fontSize = 13.5.sp,
-                                                fontWeight = if (isCurrent) FontWeight.Bold else FontWeight.Medium,
+                                                text = "Videos (${playlistVideos.size})",
+                                                color = if (playlistSheetTab == 0) {
+                                                    if (isWhiteTheme) darkTextPrimary else Color.White
+                                                } else {
+                                                    if (isWhiteTheme) darkTextSecondary else c.textSecondary
+                                                },
+                                                fontSize = 12.sp,
+                                                fontWeight = FontWeight.Bold,
                                                 maxLines = 1,
-                                                overflow = TextOverflow.Ellipsis
+                                                softWrap = false
                                             )
-                                            Spacer(Modifier.height(3.dp))
-                                            Row(
-                                                verticalAlignment = Alignment.CenterVertically,
-                                                horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                        }
+                                        Box(
+                                            modifier = Modifier
+                                                .clip(RoundedCornerShape(10.dp))
+                                                .background(
+                                                    if (playlistSheetTab == 1) {
+                                                        if (isWhiteTheme) whiteShade1 else primaryAccent
+                                                    } else {
+                                                        if (isWhiteTheme) whiteShade2 else c.glassBgNested
+                                                    }
+                                                )
+                                                .then(
+                                                    if (isWhiteTheme) {
+                                                        Modifier
+                                                            .border(
+                                                                1.dp,
+                                                                if (playlistSheetTab == 1) Color(0xFFCBD5E1) else Color(0xFFE2E8F0),
+                                                                RoundedCornerShape(10.dp)
+                                                            )
+                                                            .shadow(if (playlistSheetTab == 1) 3.dp else 0.dp, RoundedCornerShape(10.dp), ambientColor = Color.Black.copy(0.08f))
+                                                    } else Modifier
+                                                )
+                                                .clickable { playlistSheetTab = 1 }
+                                                .padding(horizontal = 14.dp, vertical = 6.dp)
+                                        ) {
+                                            Text(
+                                                text = "Bookmarks (${bookmarksList.size})",
+                                                color = if (playlistSheetTab == 1) {
+                                                    if (isWhiteTheme) darkTextPrimary else Color.White
+                                                } else {
+                                                    if (isWhiteTheme) darkTextSecondary else c.textSecondary
+                                                },
+                                                fontSize = 12.sp,
+                                                fontWeight = FontWeight.Bold,
+                                                maxLines = 1,
+                                                softWrap = false
+                                            )
+                                        }
+                                    }
+
+                                    if (playlistSheetTab == 0) {
+                                        Box {
+                                            IconButton(
+                                                onClick = { showPlaylistSortMenu = true },
+                                                modifier = Modifier
+                                                    .size(32.dp)
+                                                    .clip(RoundedCornerShape(8.dp))
+                                                    .background(if (isWhiteTheme) whiteShade2 else c.glassBgNested)
+                                                    .border(1.dp, if (isWhiteTheme) Color(0xFFE2E8F0) else Color.Transparent, RoundedCornerShape(8.dp))
+                                            ) {
+                                                Icon(
+                                                    Icons.AutoMirrored.Rounded.Sort,
+                                                    contentDescription = "Sort",
+                                                    tint = if (isWhiteTheme) darkTextPrimary else primaryAccent,
+                                                    modifier = Modifier.size(16.dp)
+                                                )
+                                            }
+
+                                            DropdownMenu(
+                                                expanded = showPlaylistSortMenu,
+                                                onDismissRequest = { showPlaylistSortMenu = false },
+                                                containerColor = if (isWhiteTheme) Color(0xFFFFFFFF) else c.dropdownBg,
+                                                modifier = Modifier.border(1.dp, if (isWhiteTheme) Color(0xFFE2E8F0) else c.glassBorder, RoundedCornerShape(12.dp))
                                             ) {
                                                 Text(
-                                                    text = formatSize(item.size),
-                                                    color = c.textSecondary,
-                                                    fontSize = 11.5.sp
+                                                    "SORT PLAYLIST",
+                                                    fontSize = 11.sp,
+                                                    fontWeight = FontWeight.Bold,
+                                                    color = if (isWhiteTheme) darkTextHint else c.textHint,
+                                                    modifier = Modifier.padding(horizontal = 14.dp, vertical = 6.dp)
                                                 )
-                                                Text(
-                                                    text = "•",
-                                                    color = c.textHint,
-                                                    fontSize = 11.5.sp
-                                                )
-                                                Text(
-                                                    text = formatTime(item.duration),
-                                                    color = c.textSecondary,
-                                                    fontSize = 11.5.sp
-                                                )
-                                            }
-
-                                            if (isCurrent && duration > 0) {
-                                                Spacer(Modifier.height(4.dp))
-                                                val prog = (currentPosition.toFloat() / duration).coerceIn(0f, 1f)
-                                                Box(
-                                                    modifier = Modifier
-                                                        .fillMaxWidth()
-                                                        .height(2.5.dp)
-                                                        .clip(RoundedCornerShape(1.2.dp))
-                                                        .background(c.glassBorder)
-                                                ) {
-                                                    Box(
-                                                        modifier = Modifier
-                                                            .fillMaxWidth(prog)
-                                                            .fillMaxHeight()
-                                                            .background(primaryAccent)
+                                                HorizontalDivider(color = if (isWhiteTheme) Color(0xFFE2E8F0) else c.glassBorder.copy(alpha = 0.5f))
+                                                listOf(
+                                                    SortOrder.DATE to ("Date Added (Newest)" to Icons.Rounded.Schedule),
+                                                    SortOrder.DATE_ASC to ("Date Added (Oldest)" to Icons.Rounded.Schedule),
+                                                    SortOrder.NAME to ("Name (A to Z)" to Icons.Rounded.SortByAlpha),
+                                                    SortOrder.NAME_DESC to ("Name (Z to A)" to Icons.Rounded.SortByAlpha),
+                                                    SortOrder.SIZE to ("Size (Largest)" to Icons.Rounded.Storage),
+                                                    SortOrder.SIZE_ASC to ("Size (Smallest)" to Icons.Rounded.Storage),
+                                                    SortOrder.DURATION to ("Duration (Longest)" to Icons.Rounded.Schedule),
+                                                    SortOrder.DURATION_ASC to ("Duration (Shortest)" to Icons.Rounded.Schedule)
+                                                ).forEach { (order, pair) ->
+                                                    val (label, icon) = pair
+                                                    val isSelected = playlistSortOrder == order
+                                                    val itemAccent = if (isWhiteTheme) darkTextPrimary else primaryAccent
+                                                    DropdownMenuItem(
+                                                        leadingIcon = {
+                                                            Icon(icon, contentDescription = null, tint = if (isSelected) itemAccent else if (isWhiteTheme) darkTextSecondary else c.textSecondary, modifier = Modifier.size(16.dp))
+                                                        },
+                                                        text = {
+                                                            Text(label, color = if (isSelected) itemAccent else if (isWhiteTheme) darkTextPrimary else c.textPrimary, fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal, fontSize = 13.sp)
+                                                        },
+                                                        trailingIcon = {
+                                                            if (isSelected) {
+                                                                Icon(Icons.Rounded.Check, contentDescription = null, tint = itemAccent, modifier = Modifier.size(16.dp))
+                                                            }
+                                                        },
+                                                        onClick = {
+                                                            playlistSortOrder = order
+                                                            showPlaylistSortMenu = false
+                                                        }
                                                     )
                                                 }
                                             }
                                         }
                                     }
                                 }
-                            }
-                        } else {
-                            // Bookmarks list
-                            LazyColumn(
-                                modifier = Modifier.fillMaxSize(),
-                                verticalArrangement = Arrangement.spacedBy(8.dp)
-                            ) {
-                                item {
-                                    Button(
-                                        onClick = {
-                                            appPreferences.saveBookmark(currentUrl, currentPosition, "")
-                                            bookmarksList = appPreferences.getBookmarks(currentUrl)
-                                            Toast.makeText(context, "Bookmark added at ${formatTime(currentPosition)}", Toast.LENGTH_SHORT).show()
-                                        },
-                                        colors = ButtonDefaults.buttonColors(containerColor = primaryAccent, contentColor = Color.White),
-                                        shape = RoundedCornerShape(10.dp),
-                                        modifier = Modifier.fillMaxWidth()
+
+                                Spacer(Modifier.height(12.dp))
+
+                                if (playlistSheetTab == 0) {
+                                    LazyColumn(
+                                        modifier = Modifier.fillMaxSize(),
+                                        verticalArrangement = Arrangement.spacedBy(8.dp)
                                     ) {
-                                        Icon(Icons.Rounded.BookmarkAdd, contentDescription = null, modifier = Modifier.size(18.dp))
-                                        Spacer(Modifier.width(8.dp))
-                                        Text("+ Add Bookmark at ${formatTime(currentPosition)}", fontSize = 13.sp, fontWeight = FontWeight.Bold)
-                                    }
-                                }
-                                if (bookmarksList.isEmpty()) {
-                                    item {
-                                        Box(
-                                            modifier = Modifier.fillMaxWidth().padding(vertical = 32.dp),
-                                            contentAlignment = Alignment.Center
-                                        ) {
-                                            Text("No bookmarks saved yet", color = c.textHint, fontSize = 13.sp)
+                                        itemsIndexed(sortedPlaylistVideos, key = { _, item -> item.uri.toString() }) { index, item ->
+                                            val isCurrent = item.uri.toString() == currentUrl
+                                            Row(
+                                                modifier = Modifier
+                                                    .fillMaxWidth()
+                                                    .clip(RoundedCornerShape(12.dp))
+                                                    .background(
+                                                        if (isWhiteTheme) {
+                                                            if (isCurrent) whiteShade1 else whiteShade2.copy(alpha = 0.75f)
+                                                        } else {
+                                                            if (isCurrent) primaryAccent.copy(alpha = 0.22f) else c.cardBgElevated
+                                                        }
+                                                    )
+                                                    .border(
+                                                        width = if (isCurrent) 1.5.dp else 1.dp,
+                                                        color = if (isWhiteTheme) {
+                                                            if (isCurrent) Color(0xFF0F172A).copy(alpha = 0.20f) else Color(0xFFE2E8F0)
+                                                        } else {
+                                                            if (isCurrent) primaryAccent else c.glassBorder
+                                                        },
+                                                        shape = RoundedCornerShape(12.dp)
+                                                    )
+                                                    .then(
+                                                        if (isWhiteTheme && isCurrent) {
+                                                            Modifier.shadow(4.dp, RoundedCornerShape(12.dp), ambientColor = Color.Black.copy(0.08f))
+                                                        } else Modifier
+                                                    )
+                                                    .clickable {
+                                                        playVideoItem(item)
+                                                        showPlaylistSheet = false
+                                                    }
+                                                    .padding(8.dp),
+                                                verticalAlignment = Alignment.CenterVertically
+                                            ) {
+                                                // 0. Track Number
+                                                Box(
+                                                    modifier = Modifier.width(26.dp),
+                                                    contentAlignment = Alignment.Center
+                                                ) {
+                                                    Text(
+                                                        text = "${index + 1}",
+                                                        color = if (isWhiteTheme) {
+                                                            if (isCurrent) darkTextPrimary else darkTextSecondary
+                                                        } else {
+                                                            if (isCurrent) primaryAccent else c.textSecondary
+                                                        },
+                                                        fontSize = 12.sp,
+                                                        fontWeight = if (isCurrent) FontWeight.Bold else FontWeight.Medium,
+                                                        fontFamily = FontFamily.Monospace
+                                                    )
+                                                }
+
+                                                Spacer(Modifier.width(4.dp))
+
+                                                // 1. Video Thumbnail
+                                                Box(
+                                                    modifier = Modifier
+                                                        .size(width = 76.dp, height = 48.dp)
+                                                        .clip(RoundedCornerShape(8.dp))
+                                                        .background(Color.Black.copy(alpha = 0.5f)),
+                                                    contentAlignment = Alignment.Center
+                                                ) {
+                                                    AsyncImage(
+                                                        model = remember(item.uri) {
+                                                            buildVideoThumbnailRequest(context, item.uri, item.duration)
+                                                        },
+                                                        contentDescription = item.title,
+                                                        contentScale = ContentScale.Crop,
+                                                        modifier = Modifier.fillMaxSize()
+                                                    )
+                                                    if (isCurrent) {
+                                                        Box(
+                                                            modifier = Modifier
+                                                                .fillMaxSize()
+                                                                .background(Color.Black.copy(alpha = 0.45f)),
+                                                            contentAlignment = Alignment.Center
+                                                        ) {
+                                                            Icon(
+                                                                Icons.Rounded.PlayArrow,
+                                                                contentDescription = "Playing",
+                                                                tint = if (isWhiteTheme) whiteShade1 else primaryAccent,
+                                                                modifier = Modifier.size(24.dp)
+                                                            )
+                                                        }
+                                                    }
+                                                }
+
+                                                Spacer(Modifier.width(10.dp))
+
+                                                // 2. Metadata: Name, Size, and Duration
+                                                Column(modifier = Modifier.weight(1f)) {
+                                                    Text(
+                                                        text = item.title,
+                                                        color = if (isWhiteTheme) {
+                                                            if (isCurrent) darkTextPrimary else darkTextPrimary.copy(alpha = 0.88f)
+                                                        } else {
+                                                            if (isCurrent) primaryAccent else c.textPrimary
+                                                        },
+                                                        fontSize = 13.5.sp,
+                                                        fontWeight = if (isCurrent) FontWeight.Bold else FontWeight.Medium,
+                                                        maxLines = 1,
+                                                        overflow = TextOverflow.Ellipsis
+                                                    )
+                                                    Spacer(Modifier.height(3.dp))
+                                                    Row(
+                                                        verticalAlignment = Alignment.CenterVertically,
+                                                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                                    ) {
+                                                        Text(
+                                                            text = formatSize(item.size),
+                                                            color = if (isWhiteTheme) darkTextSecondary else c.textSecondary,
+                                                            fontSize = 11.5.sp,
+                                                            maxLines = 1,
+                                                            softWrap = false
+                                                        )
+                                                        Text(
+                                                            text = "•",
+                                                            color = if (isWhiteTheme) darkTextHint else c.textHint,
+                                                            fontSize = 11.5.sp
+                                                        )
+                                                        Text(
+                                                            text = formatTime(item.duration),
+                                                            color = if (isWhiteTheme) darkTextSecondary else c.textSecondary,
+                                                            fontSize = 11.5.sp,
+                                                            maxLines = 1,
+                                                            softWrap = false
+                                                        )
+                                                    }
+
+                                                    if (isCurrent && duration > 0) {
+                                                        Spacer(Modifier.height(4.dp))
+                                                        val prog = (currentPosition.toFloat() / duration).coerceIn(0f, 1f)
+                                                        Box(
+                                                            modifier = Modifier
+                                                                .fillMaxWidth()
+                                                                .height(2.5.dp)
+                                                                .clip(RoundedCornerShape(1.2.dp))
+                                                                .background(if (isWhiteTheme) Color(0xFFE2E8F0) else c.glassBorder)
+                                                        ) {
+                                                            Box(
+                                                                modifier = Modifier
+                                                                    .fillMaxWidth(prog)
+                                                                    .fillMaxHeight()
+                                                                    .background(if (isWhiteTheme) darkTextPrimary else primaryAccent)
+                                                            )
+                                                        }
+                                                    }
+                                                }
+                                            }
                                         }
                                     }
                                 } else {
-                                    items(bookmarksList) { bookmark ->
-                                        Row(
-                                            modifier = Modifier
-                                                .fillMaxWidth()
-                                                .clip(RoundedCornerShape(12.dp))
-                                                .background(c.cardBgElevated)
-                                                .border(1.dp, c.glassBorder, RoundedCornerShape(12.dp))
-                                                .clickable {
-                                                    safeSeek(bookmark.first)
-                                                    showPlaylistSheet = false
-                                                }
-                                                .padding(horizontal = 14.dp, vertical = 10.dp),
-                                            verticalAlignment = Alignment.CenterVertically
-                                        ) {
-                                            Icon(Icons.Rounded.Bookmark, contentDescription = null, tint = primaryAccent, modifier = Modifier.size(20.dp))
-                                            Spacer(Modifier.width(10.dp))
-                                            Column(modifier = Modifier.weight(1f)) {
-                                                Text(
-                                                    text = bookmark.second.ifBlank { "Bookmark" },
-                                                    color = c.textPrimary,
-                                                    fontSize = 13.sp,
-                                                    fontWeight = FontWeight.SemiBold
+                                    // Bookmarks list
+                                    LazyColumn(
+                                        modifier = Modifier.fillMaxSize(),
+                                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                                    ) {
+                                        item {
+                                            Button(
+                                                onClick = {
+                                                    appPreferences.saveBookmark(currentUrl, currentPosition, "")
+                                                    bookmarksList = appPreferences.getBookmarks(currentUrl)
+                                                    Toast.makeText(context, "Bookmark added at ${formatTime(currentPosition)}", Toast.LENGTH_SHORT).show()
+                                                },
+                                                colors = ButtonDefaults.buttonColors(
+                                                    containerColor = if (isWhiteTheme) whiteShade1 else primaryAccent,
+                                                    contentColor = if (isWhiteTheme) darkTextPrimary else Color.White
+                                                ),
+                                                shape = RoundedCornerShape(10.dp),
+                                                modifier = Modifier
+                                                    .fillMaxWidth()
+                                                    .then(
+                                                        if (isWhiteTheme) {
+                                                            Modifier
+                                                                .border(1.dp, Color(0xFFCBD5E1), RoundedCornerShape(10.dp))
+                                                                .shadow(3.dp, RoundedCornerShape(10.dp), ambientColor = Color.Black.copy(0.08f))
+                                                        } else Modifier
+                                                    )
+                                            ) {
+                                                Icon(
+                                                    Icons.Rounded.BookmarkAdd,
+                                                    contentDescription = null,
+                                                    tint = if (isWhiteTheme) darkTextPrimary else Color.White,
+                                                    modifier = Modifier.size(18.dp)
                                                 )
+                                                Spacer(Modifier.width(8.dp))
                                                 Text(
-                                                    text = formatTime(bookmark.first),
-                                                    color = primaryAccent,
-                                                    fontSize = 12.sp,
-                                                    fontFamily = FontFamily.Monospace
+                                                    "+ Add Bookmark at ${formatTime(currentPosition)}",
+                                                    fontSize = 13.sp,
+                                                    fontWeight = FontWeight.Bold,
+                                                    color = if (isWhiteTheme) darkTextPrimary else Color.White
                                                 )
                                             }
-                                            IconButton(
-                                                onClick = {
-                                                    appPreferences.deleteBookmark(currentUrl, bookmark.first)
-                                                    bookmarksList = appPreferences.getBookmarks(currentUrl)
-                                                },
-                                                modifier = Modifier.size(30.dp)
-                                            ) {
-                                                Icon(Icons.Rounded.DeleteOutline, contentDescription = "Delete", tint = c.textSecondary, modifier = Modifier.size(18.dp))
+                                        }
+                                        if (bookmarksList.isEmpty()) {
+                                            item {
+                                                Box(
+                                                    modifier = Modifier.fillMaxWidth().padding(vertical = 32.dp),
+                                                    contentAlignment = Alignment.Center
+                                                ) {
+                                                    Text("No bookmarks saved yet", color = if (isWhiteTheme) darkTextHint else c.textHint, fontSize = 13.sp)
+                                                }
+                                            }
+                                        } else {
+                                            items(bookmarksList) { bookmark ->
+                                                Row(
+                                                    modifier = Modifier
+                                                        .fillMaxWidth()
+                                                        .clip(RoundedCornerShape(12.dp))
+                                                        .background(if (isWhiteTheme) whiteShade1 else c.cardBgElevated)
+                                                        .border(1.dp, if (isWhiteTheme) Color(0xFFE2E8F0) else c.glassBorder, RoundedCornerShape(12.dp))
+                                                        .then(
+                                                            if (isWhiteTheme) Modifier.shadow(2.dp, RoundedCornerShape(12.dp), ambientColor = Color.Black.copy(0.05f))
+                                                            else Modifier
+                                                        )
+                                                        .clickable {
+                                                            safeSeek(bookmark.first)
+                                                            showPlaylistSheet = false
+                                                        }
+                                                        .padding(horizontal = 14.dp, vertical = 10.dp),
+                                                    verticalAlignment = Alignment.CenterVertically
+                                                ) {
+                                                    Icon(
+                                                        Icons.Rounded.Bookmark,
+                                                        contentDescription = null,
+                                                        tint = if (isWhiteTheme) darkTextPrimary else primaryAccent,
+                                                        modifier = Modifier.size(20.dp)
+                                                    )
+                                                    Spacer(Modifier.width(10.dp))
+                                                    Column(modifier = Modifier.weight(1f)) {
+                                                        Text(
+                                                            text = bookmark.second.ifBlank { "Bookmark" },
+                                                            color = if (isWhiteTheme) darkTextPrimary else c.textPrimary,
+                                                            fontSize = 13.sp,
+                                                            fontWeight = FontWeight.SemiBold,
+                                                            maxLines = 1,
+                                                            overflow = TextOverflow.Ellipsis
+                                                        )
+                                                        Text(
+                                                            text = formatTime(bookmark.first),
+                                                            color = if (isWhiteTheme) darkTextPrimary else primaryAccent,
+                                                            fontSize = 12.sp,
+                                                            fontFamily = FontFamily.Monospace,
+                                                            maxLines = 1,
+                                                            softWrap = false
+                                                        )
+                                                    }
+                                                    IconButton(
+                                                        onClick = {
+                                                            appPreferences.deleteBookmark(currentUrl, bookmark.first)
+                                                            bookmarksList = appPreferences.getBookmarks(currentUrl)
+                                                        },
+                                                        modifier = Modifier.size(30.dp)
+                                                    ) {
+                                                        Icon(
+                                                            Icons.Rounded.DeleteOutline,
+                                                            contentDescription = "Delete",
+                                                            tint = if (isWhiteTheme) Color(0xFFEF5350) else c.textSecondary,
+                                                            modifier = Modifier.size(18.dp)
+                                                        )
+                                                    }
+                                                }
                                             }
                                         }
                                     }
@@ -5073,12 +5448,27 @@ fun VideoPlayerScreen(
                 ) {
                     PlayerTheme.entries.forEach { theme ->
                         val isSelected = activeTheme == theme
+                        val isWhiteOption = theme == PlayerTheme.WHITE
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .clip(RoundedCornerShape(14.dp))
-                                .background(if (isSelected) theme.primaryAccent.copy(alpha = 0.18f) else c.glassBgNested)
-                                .border(1.5.dp, if (isSelected) theme.primaryAccent else c.glassBorder, RoundedCornerShape(14.dp))
+                                .background(
+                                    if (isSelected) {
+                                        if (isWhiteTheme) whiteShade1 else theme.primaryAccent.copy(alpha = 0.18f)
+                                    } else c.glassBgNested
+                                )
+                                .border(
+                                    1.5.dp,
+                                    if (isSelected) {
+                                        if (isWhiteTheme) Color(0xFFCBD5E1) else theme.primaryAccent
+                                    } else c.glassBorder,
+                                    RoundedCornerShape(14.dp)
+                                )
+                                .then(
+                                    if (isSelected && isWhiteTheme) Modifier.shadow(3.dp, RoundedCornerShape(14.dp), ambientColor = Color.Black.copy(0.08f))
+                                    else Modifier
+                                )
                                 .clickable {
                                     themeController.updateColorTheme(theme)
                                     showThemePickerSheet = false
@@ -5091,14 +5481,31 @@ fun VideoPlayerScreen(
                                     .size(34.dp)
                                     .clip(CircleShape)
                                     .background(Brush.linearGradient(listOf(theme.primaryAccent, theme.secondaryAccent)))
+                                    .border(
+                                        1.dp,
+                                        if (isWhiteOption) Color(0xFFCBD5E1) else Color.Transparent,
+                                        CircleShape
+                                    )
                             )
                             Spacer(Modifier.width(12.dp))
                             Column(modifier = Modifier.weight(1f)) {
-                                Text(theme.displayName, color = if (isSelected) theme.primaryAccent else c.textPrimary, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
+                                Text(
+                                    theme.displayName,
+                                    color = if (isSelected) {
+                                        if (isWhiteTheme) darkTextPrimary else theme.primaryAccent
+                                    } else c.textPrimary,
+                                    fontSize = 14.sp,
+                                    fontWeight = FontWeight.SemiBold
+                                )
                                 Text(theme.description, color = c.textSecondary, fontSize = 11.5.sp)
                             }
                             if (isSelected) {
-                                Icon(Icons.Rounded.CheckCircle, contentDescription = null, tint = theme.primaryAccent, modifier = Modifier.size(22.dp))
+                                Icon(
+                                    Icons.Rounded.CheckCircle,
+                                    contentDescription = null,
+                                    tint = if (isWhiteTheme) darkTextPrimary else theme.primaryAccent,
+                                    modifier = Modifier.size(22.dp)
+                                )
                             }
                         }
                     }
@@ -7226,23 +7633,43 @@ private fun ExpandedOptionChip(
     onLongClick: (() -> Unit)? = null,
     onClick: () -> Unit
 ) {
+    val isWhite = accentColor == Color.White || accentColor == Color(0xFFFFFFFF) || accentColor == Color(0xFFF8FAFC)
     val effectiveColor = if (isDestructive) Color(0xFFEF5350) else accentColor
+
+    val chipBg = when {
+        isDestructive -> Brush.linearGradient(listOf(Color(0xFFEF5350).copy(alpha = 0.22f), Color(0xFF161824)))
+        isActive && isWhite -> Brush.verticalGradient(listOf(Color(0xFFFFFFFF), Color(0xFFF1F5F9)))
+        isActive -> Brush.linearGradient(listOf(effectiveColor.copy(alpha = 0.38f), Color(0xFF161824)))
+        isWhite -> Brush.verticalGradient(listOf(Color.White.copy(alpha = 0.20f), Color.White.copy(alpha = 0.08f)))
+        else -> Brush.verticalGradient(listOf(Color(0xFF252636), Color(0xFF11121C)))
+    }
+
+    val chipBorder = when {
+        isDestructive -> BorderStroke(1.dp, Color(0xFFEF5350).copy(alpha = 0.55f)).brush
+        isActive && isWhite -> BorderStroke(1.2.dp, Color(0xFFCBD5E1)).brush
+        isActive -> BorderStroke(1.2.dp, effectiveColor).brush
+        isWhite -> Brush.verticalGradient(listOf(Color.White.copy(alpha = 0.45f), Color.White.copy(alpha = 0.18f)))
+        else -> Brush.verticalGradient(listOf(effectiveColor.copy(alpha = 0.60f), effectiveColor.copy(alpha = 0.20f)))
+    }
+
+    val contentTint = when {
+        isDestructive -> Color(0xFFEF5350)
+        isActive && isWhite -> Color(0xFF0F172A)
+        isActive -> effectiveColor
+        isWhite -> Color.White
+        else -> effectiveColor
+    }
+
     Row(
         modifier = Modifier
             .height(34.dp)
+            .then(
+                if (isActive && isWhite) Modifier.shadow(4.dp, RoundedCornerShape(10.dp), ambientColor = Color.Black.copy(0.12f))
+                else Modifier
+            )
             .clip(RoundedCornerShape(10.dp))
-            .background(
-                if (isDestructive) Brush.linearGradient(listOf(Color(0xFFEF5350).copy(alpha = 0.22f), Color(0xFF161824)))
-                else if (isActive) Brush.linearGradient(listOf(effectiveColor.copy(alpha = 0.38f), Color(0xFF161824)))
-                else Brush.verticalGradient(listOf(Color(0xFF252636), Color(0xFF11121C)))
-            )
-            .border(
-                1.dp,
-                if (isDestructive) BorderStroke(1.dp, Color(0xFFEF5350).copy(alpha = 0.55f)).brush
-                else if (isActive) BorderStroke(1.dp, effectiveColor).brush
-                else Brush.verticalGradient(listOf(Color.White.copy(alpha = 0.28f), Color.White.copy(alpha = 0.10f))),
-                RoundedCornerShape(10.dp)
-            )
+            .background(chipBg)
+            .border(1.dp, chipBorder, RoundedCornerShape(10.dp))
             .combinedClickable(
                 onClick = onClick,
                 onLongClick = onLongClick
@@ -7254,14 +7681,14 @@ private fun ExpandedOptionChip(
         Icon(
             icon,
             contentDescription = label,
-            tint = if (isDestructive) Color(0xFFEF5350) else if (isActive) effectiveColor else Color.White,
+            tint = contentTint,
             modifier = Modifier.size(16.dp)
         )
         Text(
             text = label,
-            color = if (isDestructive) Color(0xFFEF5350) else if (isActive) effectiveColor else Color.White,
+            color = contentTint,
             fontSize = 12.sp,
-            fontWeight = if (isDestructive || isActive) FontWeight.Bold else FontWeight.Medium
+            fontWeight = if (isDestructive || isActive) FontWeight.Bold else FontWeight.SemiBold
         )
     }
 }
@@ -7280,6 +7707,20 @@ private fun RightSidePanelDialog(
     val c = LocalAppColors.current
     val configuration = LocalConfiguration.current
     val isLandscape = configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
+    val isWhiteTheme = accentColor == Color.White || accentColor == Color(0xFFFFFFFF) || accentColor == Color(0xFFF8FAFC)
+
+    val effectiveAppColors = if (isWhiteTheme) {
+        c.copy(
+            textPrimary = Color(0xFF0F172A),
+            textSecondary = Color(0xFF475569),
+            textHint = Color(0xFF94A3B8),
+            cardBgElevated = Color(0xFFF1F5F9),
+            glassBgNested = Color(0xFFE2E8F0).copy(alpha = 0.75f),
+            glassBorder = Color(0xFFCBD5E1),
+            dropdownBg = Color(0xFFFFFFFF),
+            onAccent = Color(0xFF0F172A)
+        )
+    } else c
 
     Dialog(
         onDismissRequest = onDismiss,
@@ -7314,94 +7755,132 @@ private fun RightSidePanelDialog(
                     .navigationBarsPadding()
             }
 
+            val panelBg = if (isWhiteTheme) {
+                Brush.linearGradient(
+                    listOf(
+                        Color(0xFFFFFFFF).copy(alpha = 0.96f),
+                        Color(0xFFF8FAFC).copy(alpha = 0.97f),
+                        Color(0xFFF1F5F9).copy(alpha = 0.98f)
+                    )
+                )
+            } else {
+                Brush.linearGradient(
+                    listOf(
+                        Color(0xFF161824),
+                        Color(0xFF10111A),
+                        accentColor.copy(alpha = 0.14f)
+                    )
+                )
+            }
+
+            val panelBorder = if (isWhiteTheme) {
+                Brush.verticalGradient(
+                    listOf(
+                        Color(0xFFFFFFFF),
+                        Color(0xFFE2E8F0).copy(alpha = 0.85f),
+                        Color(0xFFCBD5E1).copy(alpha = 0.5f)
+                    )
+                )
+            } else {
+                Brush.verticalGradient(
+                    listOf(
+                        accentColor.copy(alpha = 0.65f),
+                        Color.White.copy(alpha = 0.18f),
+                        Color.Transparent
+                    )
+                )
+            }
+
             Box(
                 modifier = panelModifier
-                    .background(
-                        Brush.linearGradient(
-                            listOf(
-                                Color(0xFF161824),
-                                Color(0xFF10111A),
-                                accentColor.copy(alpha = 0.14f)
-                            )
-                        ),
-                        shape = panelShape
-                    )
-                    .border(
-                        width = 1.2.dp,
-                        brush = Brush.verticalGradient(
-                            listOf(
-                                accentColor.copy(alpha = 0.65f),
-                                Color.White.copy(alpha = 0.18f),
-                                Color.Transparent
-                            )
-                        ),
-                        shape = panelShape
-                    )
+                    .background(panelBg, shape = panelShape)
+                    .border(1.2.dp, panelBorder, shape = panelShape)
                     .clip(panelShape)
                     .pointerInput(Unit) { detectTapGestures { /* consume inside */ } }
                     .padding(horizontal = 18.dp, vertical = if (isLandscape) 16.dp else 12.dp)
             ) {
-                Column(
-                    modifier = if (isLandscape) Modifier.fillMaxSize() else Modifier.fillMaxWidth().wrapContentHeight()
-                ) {
-                    // Top drag handle indicator in portrait
-                    if (!isLandscape) {
-                        Box(
-                            modifier = Modifier
-                                .align(Alignment.CenterHorizontally)
-                                .padding(bottom = 10.dp)
-                                .width(36.dp)
-                                .height(4.dp)
-                                .clip(CircleShape)
-                                .background(Color.White.copy(alpha = 0.32f))
-                        )
-                    }
-
-                    // Header
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(bottom = 10.dp),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
+                CompositionLocalProvider(LocalAppColors provides effectiveAppColors) {
+                    Column(
+                        modifier = if (isLandscape) Modifier.fillMaxSize() else Modifier.fillMaxWidth().wrapContentHeight()
                     ) {
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(10.dp)
-                        ) {
+                        // Top drag handle indicator in portrait
+                        if (!isLandscape) {
                             Box(
                                 modifier = Modifier
-                                    .size(34.dp)
+                                    .align(Alignment.CenterHorizontally)
+                                    .padding(bottom = 10.dp)
+                                    .width(36.dp)
+                                    .height(4.dp)
                                     .clip(CircleShape)
-                                    .background(accentColor.copy(alpha = 0.22f))
-                                    .border(1.dp, accentColor.copy(alpha = 0.45f), CircleShape),
-                                contentAlignment = Alignment.Center
-                            ) {
-                                Icon(icon, contentDescription = null, tint = accentColor, modifier = Modifier.size(18.dp))
-                            }
-                            Text(title, color = c.textPrimary, fontSize = 17.sp, fontWeight = FontWeight.Bold)
+                                    .background(if (isWhiteTheme) Color(0xFFCBD5E1) else Color.White.copy(alpha = 0.32f))
+                            )
                         }
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(8.dp)
-                        ) {
-                            if (headerAction != null) {
-                                headerAction()
-                            }
-                            IconButton(
-                                onClick = onDismiss,
-                                modifier = Modifier
-                                    .size(32.dp)
-                                    .clip(CircleShape)
-                                    .background(c.glassBgNested)
-                            ) {
-                                Icon(Icons.Rounded.Close, contentDescription = "Close", tint = c.textSecondary, modifier = Modifier.size(18.dp))
-                            }
-                        }
-                    }
-                    HorizontalDivider(color = c.glassBorder.copy(alpha = 0.6f), modifier = Modifier.padding(bottom = 12.dp))
 
-                    content()
+                        // Header
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(bottom = 10.dp),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(10.dp)
+                            ) {
+                                Box(
+                                    modifier = Modifier
+                                        .size(34.dp)
+                                        .clip(CircleShape)
+                                        .background(if (isWhiteTheme) Color(0xFFF1F5F9) else accentColor.copy(alpha = 0.22f))
+                                        .border(1.dp, if (isWhiteTheme) Color(0xFFCBD5E1) else accentColor.copy(alpha = 0.45f), CircleShape),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Icon(
+                                        icon,
+                                        contentDescription = null,
+                                        tint = if (isWhiteTheme) Color(0xFF0F172A) else accentColor,
+                                        modifier = Modifier.size(18.dp)
+                                    )
+                                }
+                                Text(
+                                    title,
+                                    color = if (isWhiteTheme) Color(0xFF0F172A) else c.textPrimary,
+                                    fontSize = 17.sp,
+                                    fontWeight = FontWeight.Bold
+                                )
+                            }
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                if (headerAction != null) {
+                                    headerAction()
+                                }
+                                IconButton(
+                                    onClick = onDismiss,
+                                    modifier = Modifier
+                                        .size(32.dp)
+                                        .clip(CircleShape)
+                                        .background(if (isWhiteTheme) Color(0xFFE2E8F0).copy(alpha = 0.75f) else c.glassBgNested)
+                                ) {
+                                    Icon(
+                                        Icons.Rounded.Close,
+                                        contentDescription = "Close",
+                                        tint = if (isWhiteTheme) Color(0xFF0F172A) else c.textSecondary,
+                                        modifier = Modifier.size(18.dp)
+                                    )
+                                }
+                            }
+                        }
+
+                        HorizontalDivider(
+                            color = if (isWhiteTheme) Color(0xFFE2E8F0) else c.glassBorder.copy(alpha = 0.6f),
+                            modifier = Modifier.padding(bottom = 12.dp)
+                        )
+
+                        content()
+                    }
                 }
             }
         }
@@ -8208,6 +8687,7 @@ private fun MiniSpeedDialog(
 ) {
     val c = LocalAppColors.current
     val view = LocalView.current
+    val isWhite = accentColor == Color.White || accentColor == Color(0xFFFFFFFF) || accentColor == Color(0xFFF8FAFC)
 
     RightSidePanelDialog(
         onDismiss = onDismiss,
@@ -8223,7 +8703,7 @@ private fun MiniSpeedDialog(
                     },
                     contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp)
                 ) {
-                    Text("Reset 1.0x", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = accentColor)
+                    Text("Reset 1.0x", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = if (isWhite) Color(0xFF0F172A) else accentColor)
                 }
             }
         }
@@ -8266,7 +8746,7 @@ private fun MiniSpeedDialog(
                     Column(horizontalAlignment = Alignment.CenterHorizontally) {
                         Text(
                             text = String.format(LocalConfiguration.current.locales[0], "%.2fx", currentSpeed),
-                            color = accentColor,
+                            color = if (isWhite) Color(0xFF0F172A) else accentColor,
                             fontSize = 30.sp,
                             fontWeight = FontWeight.ExtraBold,
                             fontFamily = FontFamily.Monospace
@@ -8314,7 +8794,7 @@ private fun MiniSpeedDialog(
                     }
                 },
                 valueRange = 0.25f..3.0f,
-                accentColor = accentColor,
+                accentColor = if (isWhite) Color(0xFF0F172A) else accentColor,
                 trackHeight = 5.dp,
                 thumbSize = 16.dp,
                 modifier = Modifier
@@ -8329,7 +8809,7 @@ private fun MiniSpeedDialog(
                 horizontalArrangement = Arrangement.SpaceBetween
             ) {
                 Text("0.25x", fontSize = 10.sp, color = c.textSecondary)
-                Text("1.0x", fontSize = 10.sp, color = if (abs(currentSpeed - 1.0f) < 0.05f) accentColor else c.textSecondary, fontWeight = FontWeight.Bold)
+                Text("1.0x", fontSize = 10.sp, color = if (abs(currentSpeed - 1.0f) < 0.05f) (if (isWhite) Color(0xFF0F172A) else accentColor) else c.textSecondary, fontWeight = FontWeight.Bold)
                 Text("2.0x", fontSize = 10.sp, color = c.textSecondary)
                 Text("3.0x", fontSize = 10.sp, color = c.textSecondary)
             }
@@ -8362,8 +8842,22 @@ private fun MiniSpeedDialog(
                         modifier = Modifier
                             .weight(1f)
                             .clip(RoundedCornerShape(10.dp))
-                            .background(if (isSelected) accentColor else c.cardBgElevated)
-                            .border(1.dp, if (isSelected) accentColor else c.glassBorder, RoundedCornerShape(10.dp))
+                            .background(
+                                if (isSelected) {
+                                    if (isWhite) Color.White else accentColor
+                                } else c.cardBgElevated
+                            )
+                            .border(
+                                1.dp,
+                                if (isSelected) {
+                                    if (isWhite) Color(0xFFCBD5E1) else accentColor
+                                } else c.glassBorder,
+                                RoundedCornerShape(10.dp)
+                            )
+                            .then(
+                                if (isSelected && isWhite) Modifier.shadow(3.dp, RoundedCornerShape(10.dp), ambientColor = Color.Black.copy(0.08f))
+                                else Modifier
+                            )
                             .clickable {
                                 view.performHaptic(HapticType.LIGHT)
                                 onSpeedChange(preset)
@@ -8373,7 +8867,7 @@ private fun MiniSpeedDialog(
                     ) {
                         Text(
                             text = "${preset}x",
-                            color = if (isSelected) Color.White else c.textPrimary,
+                            color = if (isSelected) (if (isWhite) Color(0xFF0F172A) else Color.White) else c.textPrimary,
                             fontSize = 11.5.sp,
                             fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium
                         )
@@ -8393,6 +8887,7 @@ private fun MiniSleepTimerDialog(
     onDismiss: () -> Unit
 ) {
     val c = LocalAppColors.current
+    val isWhite = accentColor == Color.White || accentColor == Color(0xFFFFFFFF) || accentColor == Color(0xFFF8FAFC)
     val options = listOf(
         0 to "Turn Off Timer",
         15 to "15 Minutes",
@@ -8413,15 +8908,15 @@ private fun MiniSleepTimerDialog(
                 modifier = Modifier
                     .fillMaxWidth()
                     .clip(RoundedCornerShape(10.dp))
-                    .background(accentColor.copy(alpha = 0.18f))
-                    .border(1.dp, accentColor, RoundedCornerShape(10.dp))
+                    .background(if (isWhite) Color(0xFFF1F5F9) else accentColor.copy(alpha = 0.18f))
+                    .border(1.dp, if (isWhite) Color(0xFFCBD5E1) else accentColor, RoundedCornerShape(10.dp))
                     .padding(horizontal = 12.dp, vertical = 8.dp)
             ) {
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                    Box(modifier = Modifier.size(8.dp).clip(CircleShape).background(accentColor))
+                    Box(modifier = Modifier.size(8.dp).clip(CircleShape).background(if (isWhite) Color(0xFF0F172A) else accentColor))
                     Text(
                         text = "Active: $currentMinutes min remaining",
-                        color = accentColor,
+                        color = if (isWhite) Color(0xFF0F172A) else accentColor,
                         fontSize = 12.sp,
                         fontWeight = FontWeight.SemiBold
                     )
@@ -8442,8 +8937,22 @@ private fun MiniSleepTimerDialog(
                     modifier = Modifier
                         .fillMaxWidth()
                         .clip(RoundedCornerShape(10.dp))
-                        .background(if (isSelected) accentColor.copy(alpha = 0.22f) else c.cardBgElevated)
-                        .border(1.dp, if (isSelected) accentColor else c.glassBorder, RoundedCornerShape(10.dp))
+                        .background(
+                            if (isSelected) {
+                                if (isWhite) Color.White else accentColor.copy(alpha = 0.22f)
+                            } else c.cardBgElevated
+                        )
+                        .border(
+                            1.dp,
+                            if (isSelected) {
+                                if (isWhite) Color(0xFFCBD5E1) else accentColor
+                            } else c.glassBorder,
+                            RoundedCornerShape(10.dp)
+                        )
+                        .then(
+                            if (isSelected && isWhite) Modifier.shadow(3.dp, RoundedCornerShape(10.dp), ambientColor = Color.Black.copy(0.06f))
+                            else Modifier
+                        )
                         .clickable { onSelectTimer(mins) }
                         .padding(horizontal = 14.dp, vertical = 11.dp),
                     horizontalArrangement = Arrangement.SpaceBetween,
@@ -8451,12 +8960,17 @@ private fun MiniSleepTimerDialog(
                 ) {
                     Text(
                         text = label,
-                        color = if (isSelected) accentColor else c.textPrimary,
+                        color = if (isSelected) (if (isWhite) Color(0xFF0F172A) else accentColor) else c.textPrimary,
                         fontSize = 13.5.sp,
                         fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium
                     )
                     if (isSelected) {
-                        Icon(Icons.Rounded.Check, contentDescription = null, tint = accentColor, modifier = Modifier.size(18.dp))
+                        Icon(
+                            Icons.Rounded.Check,
+                            contentDescription = null,
+                            tint = if (isWhite) Color(0xFF0F172A) else accentColor,
+                            modifier = Modifier.size(18.dp)
+                        )
                     }
                 }
             }

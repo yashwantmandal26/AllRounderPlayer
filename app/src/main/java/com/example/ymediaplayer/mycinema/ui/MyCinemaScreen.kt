@@ -93,6 +93,7 @@ fun MyCinemaScreen(
     val context = androidx.compose.ui.platform.LocalContext.current
     val coroutineScope = rememberCoroutineScope()
     val focusManager = LocalFocusManager.current
+    val haptic = LocalHapticFeedback.current
     val appPreferences = remember { AppPreferences(context) }
 
     val configuration = androidx.compose.ui.platform.LocalConfiguration.current
@@ -110,16 +111,36 @@ fun MyCinemaScreen(
     var offlineMovies by remember { mutableStateOf<List<OfflineCinemaMovie>>(emptyList()) }
     val cinemaDownloadsMap by com.example.ymediaplayer.mycinema.service.TorrentEngine.downloads.collectAsState()
 
-    var recentlyReleased by remember { mutableStateOf<List<TmdbItem>>(emptyList()) }
-    var trendingMovies by remember { mutableStateOf<List<TmdbItem>>(emptyList()) }
-    var trendingSeries by remember { mutableStateOf<List<TmdbItem>>(emptyList()) }
-    var trendingIndia by remember { mutableStateOf<List<TmdbItem>>(emptyList()) }
+    var recentlyReleased by remember { mutableStateOf(repository.getCachedRecentlyReleasedSync()) }
+    var trendingMovies by remember { mutableStateOf(repository.getCachedTrendingMoviesSync()) }
+    var trendingSeries by remember { mutableStateOf(repository.getCachedTrendingSeriesSync()) }
+    var trendingIndia by remember { mutableStateOf(repository.getCachedTrendingIndiaSync()) }
 
     var upcomingFilter by remember { mutableStateOf("ALL") } // "ALL", "THEATRICAL", "OTT"
     var upcomingMovies by remember { mutableStateOf<List<TmdbItem>>(emptyList()) }
     var isLoadingUpcoming by remember { mutableStateOf(false) }
 
-    var isLoadingFeed by remember { mutableStateOf(true) }
+    var selectedGenreFilter by rememberSaveable { mutableStateOf<String?>(null) }
+    var genreSortFilter by rememberSaveable { mutableStateOf("POPULAR") } // "POPULAR", "NEWEST", "RATING"
+    var genreTypeFilter by rememberSaveable { mutableStateOf("ALL") } // "ALL", "MOVIE", "TV"
+    var genreRecommendations by remember { mutableStateOf<List<TmdbItem>>(emptyList()) }
+    var isLoadingGenreRecommendations by remember { mutableStateOf(false) }
+
+    LaunchedEffect(selectedGenreFilter) {
+        val g = selectedGenreFilter
+        genreSortFilter = "POPULAR"
+        genreTypeFilter = "ALL"
+        if (g.isNullOrBlank()) {
+            genreRecommendations = emptyList()
+            isLoadingGenreRecommendations = false
+        } else {
+            isLoadingGenreRecommendations = true
+            genreRecommendations = repository.getMediaByGenre(g)
+            isLoadingGenreRecommendations = false
+        }
+    }
+
+    var isLoadingFeed by remember { mutableStateOf(recentlyReleased.isEmpty() && trendingMovies.isEmpty()) }
     var currentDateKey by remember { mutableStateOf(currentCinemaDateIso()) }
     var lastFeedDateKey by remember { mutableStateOf(currentDateKey) }
 
@@ -393,6 +414,119 @@ fun MyCinemaScreen(
                 }
             }
 
+            // Genre Selector (Single row below search bar)
+            val cinemaGenres = remember {
+                listOf("All", "Comedy", "Action", "Romance", "Thrill", "Sci-Fi", "Horror", "Drama", "Animation", "Crime", "Adventure", "Fantasy", "Mystery", "Family")
+            }
+            val genreListState = androidx.compose.foundation.lazy.rememberLazyListState()
+
+            LaunchedEffect(selectedGenreFilter) {
+                val g = selectedGenreFilter
+                if (!g.isNullOrBlank()) {
+                    val idx = cinemaGenres.indexOfFirst { it.equals(g, ignoreCase = true) }
+                    if (idx >= 0) {
+                        genreListState.animateScrollToItem(idx)
+                    }
+                }
+            }
+
+            LazyRow(
+                state = genreListState,
+                contentPadding = PaddingValues(horizontal = 16.dp, vertical = 2.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                items(cinemaGenres) { genreName ->
+                    val isAll = genreName.equals("All", ignoreCase = true)
+                    val isSelected = if (isAll) {
+                        selectedGenreFilter.isNullOrBlank()
+                    } else {
+                        selectedGenreFilter.equals(genreName, ignoreCase = true)
+                    }
+
+                    CinemaPillChip(
+                        label = genreName,
+                        isSelected = isSelected,
+                        onClick = {
+                            haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                            if (isAll) {
+                                selectedGenreFilter = null
+                            } else {
+                                if (selectedGenreFilter.equals(genreName, ignoreCase = true)) {
+                                    selectedGenreFilter = null
+                                } else {
+                                    selectedGenreFilter = genreName
+                                }
+                            }
+                        }
+                    )
+                }
+            }
+
+            // Secondary Filters Row (Active when a genre is selected)
+            AnimatedVisibility(
+                visible = !selectedGenreFilter.isNullOrBlank() && searchQuery.isBlank(),
+                enter = expandVertically() + fadeIn(),
+                exit = shrinkVertically() + fadeOut()
+            ) {
+                LazyRow(
+                    contentPadding = PaddingValues(horizontal = 16.dp, vertical = 6.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    item {
+                        CinemaFilterOptionChip(
+                            label = "🔥 Popular",
+                            isSelected = genreSortFilter == "POPULAR",
+                            onClick = {
+                                haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                genreSortFilter = "POPULAR"
+                            }
+                        )
+                    }
+                    item {
+                        CinemaFilterOptionChip(
+                            label = "📅 New to Old",
+                            isSelected = genreSortFilter == "NEWEST",
+                            onClick = {
+                                haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                genreSortFilter = "NEWEST"
+                            }
+                        )
+                    }
+                    item {
+                        CinemaFilterOptionChip(
+                            label = "⭐ Top Rated",
+                            isSelected = genreSortFilter == "RATING",
+                            onClick = {
+                                haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                genreSortFilter = "RATING"
+                            }
+                        )
+                    }
+                    item {
+                        CinemaFilterOptionChip(
+                            label = "🎬 Movies",
+                            isSelected = genreTypeFilter == "MOVIE",
+                            onClick = {
+                                haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                genreTypeFilter = if (genreTypeFilter == "MOVIE") "ALL" else "MOVIE"
+                            }
+                        )
+                    }
+                    item {
+                        CinemaFilterOptionChip(
+                            label = "📺 Series",
+                            isSelected = genreTypeFilter == "TV",
+                            onClick = {
+                                haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                genreTypeFilter = if (genreTypeFilter == "TV") "ALL" else "TV"
+                            }
+                        )
+                    }
+                }
+            }
+
             // Main Content Area
             if (searchQuery.isNotBlank()) {
                 // Search Results Grid
@@ -435,6 +569,121 @@ fun MyCinemaScreen(
                         }
                     }
                 }
+            } else if (!selectedGenreFilter.isNullOrBlank()) {
+                // Genre-specific Media Grid with active filters
+                val currentGenre = selectedGenreFilter!!
+                val displayedGenreItems = remember(genreRecommendations, genreSortFilter, genreTypeFilter) {
+                    var items = genreRecommendations
+                    if (genreTypeFilter == "MOVIE") {
+                        items = items.filter { it.mediaType.equals("movie", ignoreCase = true) }
+                    } else if (genreTypeFilter == "TV") {
+                        items = items.filter { it.mediaType.equals("tv", ignoreCase = true) }
+                    }
+                    when (genreSortFilter) {
+                        "NEWEST" -> items.sortedByDescending { it.releaseDate ?: it.firstAirDate ?: "" }
+                        "RATING" -> items.sortedByDescending { it.voteAverage }
+                        else -> items
+                    }
+                }
+
+                if (isLoadingGenreRecommendations) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .weight(1f),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        CircularProgressIndicator(
+                            color = c.accentBlue,
+                            strokeWidth = 3.dp,
+                            modifier = Modifier.size(36.dp)
+                        )
+                    }
+                } else if (displayedGenreItems.isEmpty()) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .weight(1f),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Column(
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            verticalArrangement = Arrangement.spacedBy(10.dp)
+                        ) {
+                            Text(
+                                text = "No titles found in $currentGenre",
+                                color = c.textSecondary,
+                                fontSize = 14.sp
+                            )
+                            if (genreTypeFilter != "ALL" || genreSortFilter != "POPULAR") {
+                                Surface(
+                                    onClick = {
+                                        genreTypeFilter = "ALL"
+                                        genreSortFilter = "POPULAR"
+                                    },
+                                    shape = RoundedCornerShape(12.dp),
+                                    color = c.accentBlue.copy(alpha = 0.15f),
+                                    border = androidx.compose.foundation.BorderStroke(1.dp, c.accentBlue)
+                                ) {
+                                    Text(
+                                        text = "Reset Filters",
+                                        color = c.accentBlue,
+                                        fontSize = 12.5.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        modifier = Modifier.padding(horizontal = 14.dp, vertical = 7.dp)
+                                    )
+                                }
+                            }
+                        }
+                    }
+                } else {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .weight(1f)
+                    ) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 16.dp, vertical = 4.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Text(
+                                text = "${displayedGenreItems.size} ${currentGenre.uppercase()} TITLES",
+                                color = c.textSecondary,
+                                fontSize = 11.5.sp,
+                                fontWeight = FontWeight.SemiBold,
+                                letterSpacing = 0.5.sp
+                            )
+                            Text(
+                                text = "Show All Feed",
+                                color = c.accentBlue,
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.Bold,
+                                modifier = Modifier
+                                    .clip(RoundedCornerShape(6.dp))
+                                    .clickable {
+                                        haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                        selectedGenreFilter = null
+                                    }
+                                    .padding(horizontal = 6.dp, vertical = 4.dp)
+                            )
+                        }
+
+                        LazyVerticalGrid(
+                            columns = GridCells.Fixed(3),
+                            contentPadding = PaddingValues(start = 12.dp, end = 12.dp, top = 6.dp, bottom = 96.dp),
+                            horizontalArrangement = Arrangement.spacedBy(10.dp),
+                            verticalArrangement = Arrangement.spacedBy(12.dp),
+                            modifier = Modifier.fillMaxSize()
+                        ) {
+                            items(displayedGenreItems, key = { "genre_grid_${it.mediaType}_${it.id}" }) { item ->
+                                MyCinemaCard(item = item, onClick = { onMovieCardClick(item) })
+                            }
+                        }
+                    }
+                }
             } else {
                 // Default Feed (Ordered: Downloaded & Offline -> Recently Released -> Trending -> Upcoming)
                 LazyColumn(
@@ -468,7 +717,7 @@ fun MyCinemaScreen(
                     // 1. Recently Released (Movies & Web Series)
                     if (recentlyReleased.isNotEmpty()) {
                         item {
-                            SectionHeader(title = "🆕 RECENTLY RELEASED (MOVIES & SERIES)")
+                            SectionHeader(title = "🆕 RECENTLY RELEASED")
                             LazyRow(
                                 contentPadding = PaddingValues(horizontal = 16.dp),
                                 horizontalArrangement = Arrangement.spacedBy(12.dp)
@@ -528,34 +777,10 @@ fun MyCinemaScreen(
                         }
                     }
 
-                    // 5. Upcoming Movies (with Release Date & OTT / Theatrical Filters)
+                    // 5. Upcoming Movies
                     item {
                         Spacer(Modifier.height(18.dp))
-                        Column(modifier = Modifier.padding(bottom = 10.dp)) {
-                            SectionHeader(title = "📅 UPCOMING MOVIES")
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(horizontal = 16.dp),
-                                horizontalArrangement = Arrangement.spacedBy(8.dp)
-                            ) {
-                                UpcomingFilterChip(
-                                    label = "All",
-                                    isSelected = upcomingFilter == "ALL",
-                                    onClick = { upcomingFilter = "ALL" }
-                                )
-                                UpcomingFilterChip(
-                                    label = "🎬 Theatrical",
-                                    isSelected = upcomingFilter == "THEATRICAL",
-                                    onClick = { upcomingFilter = "THEATRICAL" }
-                                )
-                                UpcomingFilterChip(
-                                    label = "📺 OTT / Digital",
-                                    isSelected = upcomingFilter == "OTT",
-                                    onClick = { upcomingFilter = "OTT" }
-                                )
-                            }
-                        }
+                        SectionHeader(title = "📅 UPCOMING MOVIES")
 
                         if (isLoadingUpcoming) {
                             Box(
@@ -574,7 +799,7 @@ fun MyCinemaScreen(
                                 contentAlignment = Alignment.CenterStart
                             ) {
                                 Text(
-                                    text = "No upcoming ${if (upcomingFilter == "OTT") "OTT" else if (upcomingFilter == "THEATRICAL") "theatrical" else ""} movies found after today",
+                                    text = "No upcoming movies found after today",
                                     color = c.textSecondary,
                                     fontSize = 12.5.sp
                                 )
@@ -637,6 +862,10 @@ fun MyCinemaScreen(
                     },
                     onOpenMovie = { prevMovie ->
                         activeDetailItem = prevMovie
+                    },
+                    onGenreClick = { clickedGenre ->
+                        selectedGenreFilter = clickedGenre
+                        activeDetailItem = null
                     }
                 )
             }
@@ -1058,7 +1287,7 @@ private fun OfflineMovieCinemaCard(
 }
 
 @Composable
-private fun UpcomingFilterChip(
+private fun CinemaPillChip(
     label: String,
     isSelected: Boolean,
     onClick: () -> Unit
@@ -1066,16 +1295,48 @@ private fun UpcomingFilterChip(
     val c = LocalAppColors.current
     Surface(
         onClick = onClick,
-        shape = CircleShape,
-        color = if (isSelected) c.accentBlue.copy(alpha = 0.22f) else c.cardBgElevated,
-        border = if (isSelected) androidx.compose.foundation.BorderStroke(1.dp, c.accentBlue) else androidx.compose.foundation.BorderStroke(1.dp, c.glassBorder)
+        shape = RoundedCornerShape(20.dp),
+        color = if (isSelected) c.accentBlue.copy(alpha = if (c.isDark) 0.25f else 0.16f) else if (c.isDark) c.cardBgElevated else Color.White.copy(alpha = 0.9f),
+        border = if (isSelected) {
+            androidx.compose.foundation.BorderStroke(1.3.dp, c.accentBlue)
+        } else {
+            androidx.compose.foundation.BorderStroke(1.dp, c.glassBorder)
+        },
+        shadowElevation = if (isSelected) 3.dp else 1.dp
+    ) {
+        Text(
+            text = label,
+            color = if (isSelected) c.accentBlue else c.textSecondary,
+            fontSize = 12.5.sp,
+            fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
+            modifier = Modifier.padding(horizontal = 14.dp, vertical = 6.dp)
+        )
+    }
+}
+
+@Composable
+private fun CinemaFilterOptionChip(
+    label: String,
+    isSelected: Boolean,
+    onClick: () -> Unit
+) {
+    val c = LocalAppColors.current
+    Surface(
+        onClick = onClick,
+        shape = RoundedCornerShape(16.dp),
+        color = if (isSelected) c.accentBlue.copy(alpha = if (c.isDark) 0.28f else 0.18f) else if (c.isDark) c.cardBgElevated.copy(alpha = 0.65f) else Color.White.copy(alpha = 0.75f),
+        border = if (isSelected) {
+            androidx.compose.foundation.BorderStroke(1.2.dp, c.accentBlue)
+        } else {
+            androidx.compose.foundation.BorderStroke(1.dp, c.glassBorder.copy(alpha = 0.6f))
+        }
     ) {
         Text(
             text = label,
             color = if (isSelected) c.accentBlue else c.textSecondary,
             fontSize = 11.5.sp,
             fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
-            modifier = Modifier.padding(horizontal = 12.dp, vertical = 5.dp)
+            modifier = Modifier.padding(horizontal = 11.dp, vertical = 5.dp)
         )
     }
 }

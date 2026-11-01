@@ -19,6 +19,9 @@ import androidx.compose.animation.core.*
 import androidx.compose.foundation.*
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.foundation.layout.*
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
@@ -120,10 +123,18 @@ fun FolderListScreen(
     val libraryFeedback = remember { SnackbarHostState() }
     val haptic = LocalHapticFeedback.current
 
-    // Data state
-    var allFolders by remember { mutableStateOf<List<VideoFolder>>(emptyList()) }
-    var isLoading by remember { mutableStateOf(true) }
+    // Data state (Instant cold-start: initialize synchronously from persistent disk cache)
+    val cachedInitialFolders = remember { repository.getCachedFoldersSync() ?: emptyList() }
+    var allFolders by remember { mutableStateOf(cachedInitialFolders) }
+    var isLoading by remember { mutableStateOf(allFolders.isEmpty()) }
     var refreshTrigger by remember { mutableIntStateOf(0) }
+
+    LaunchedEffect(cachedInitialFolders) {
+        if (cachedInitialFolders.isNotEmpty()) {
+            val allUris = cachedInitialFolders.flatMap { it.videos }.map { it.uri }
+            com.example.ymediaplayer.util.MediaStoreVideoFetcher.warmUpThumbnails(context, allUris)
+        }
+    }
 
     // Navigation state
     val mainTabs = remember { listOf("MYCinema", "Video", "Music") }
@@ -145,6 +156,14 @@ fun FolderListScreen(
     var showSortMenu by remember { mutableStateOf(false) }
     var showMoreMenu by remember { mutableStateOf(false) }
     var showThemeDialog by remember { mutableStateOf(false) }
+    var paletteHudTheme by remember { mutableStateOf<com.example.ymediaplayer.ui.PlayerTheme?>(null) }
+    var paletteHudDismissTrigger by remember { mutableLongStateOf(0L) }
+    LaunchedEffect(paletteHudDismissTrigger) {
+        if (paletteHudDismissTrigger > 0L) {
+            kotlinx.coroutines.delay(750L)
+            paletteHudTheme = null
+        }
+    }
     var activeChip by rememberSaveable { mutableStateOf<String?>(null) }
     var isGridView by rememberSaveable { mutableStateOf(false) }
     var currentMediaViewType by remember { mutableStateOf(appPreferences.getMediaViewType()) }
@@ -271,8 +290,15 @@ fun FolderListScreen(
         if (allFolders.isEmpty()) {
             isLoading = true
         }
-        allFolders = repository.getFoldersWithVideos()
+        val latest = repository.getFoldersWithVideos()
+        if (allFolders.isEmpty() || latest != allFolders) {
+            allFolders = latest
+        }
         isLoading = false
+
+        // Warm up thumbnails for all current videos
+        val allUris = latest.flatMap { it.videos }.map { it.uri }
+        com.example.ymediaplayer.util.MediaStoreVideoFetcher.warmUpThumbnails(context, allUris)
 
         // Background preload music library into memory cache for instant, zero-jitter Music tab switching
         kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.IO).launch {
@@ -302,7 +328,22 @@ fun FolderListScreen(
     }
 
     // Computed display folders (processed in Dispatchers.Default to prevent main-thread jank)
-    var displayFolders by remember { mutableStateOf<List<VideoFolder>>(emptyList()) }
+    var displayFolders by remember {
+        mutableStateOf(
+            if (cachedInitialFolders.isNotEmpty()) {
+                val allVideosList = cachedInitialFolders.flatMap { it.videos }.distinctBy { it.id }.sortVideosWithOrder(sortOrder)
+                val allVideosFolder = if (allVideosList.isNotEmpty()) listOf(VideoFolder(id = "all_videos", name = "All Videos", videos = allVideosList)) else emptyList()
+                val pinnedIds = appPreferences.getPinnedFolders()
+                val base = allVideosFolder + cachedInitialFolders.sortFoldersWithOrder(sortOrder)
+                if (pinnedIds.isNotEmpty()) {
+                    val allF = base.filter { it.id == "all_videos" }
+                    val pinned = base.filter { it.id != "all_videos" && pinnedIds.contains(it.id) }
+                    val unpinned = base.filter { it.id != "all_videos" && !pinnedIds.contains(it.id) }
+                    allF + pinned + unpinned
+                } else base
+            } else emptyList()
+        )
+    }
     var allUniqueVideos by remember { mutableStateOf<List<VideoItem>>(emptyList()) }
 
     LaunchedEffect(allFolders, searchQuery, sortOrder, activeChip, favorites) {
@@ -628,11 +669,13 @@ fun FolderListScreen(
                                                 .combinedClickable(
                                                     onClick = {
                                                         view.performHaptic(HapticType.LIGHT)
-                                                        themeController.cycleColorTheme()
+                                                        val next = themeController.cycleColorTheme()
+                                                        paletteHudTheme = next
+                                                        paletteHudDismissTrigger = System.currentTimeMillis()
                                                     },
                                                     onLongClick = {
                                                         haptic.performHapticFeedback(androidx.compose.ui.hapticfeedback.HapticFeedbackType.LongPress)
-                                                        Toast.makeText(context, "Color Theme Palette", Toast.LENGTH_SHORT).show()
+                                                        showThemeDialog = true
                                                     }
                                                 ),
                                             contentAlignment = Alignment.Center
@@ -1081,7 +1124,7 @@ fun FolderListScreen(
 
                     LazyColumn(
                         modifier = Modifier.fillMaxSize(),
-                        contentPadding = PaddingValues(bottom = 160.dp)
+                        contentPadding = PaddingValues(bottom = 190.dp)
                     ) {
                         if (searchQuery.isNotBlank() || isSearching) {
                         if (searchQuery.isBlank()) {
@@ -1142,7 +1185,7 @@ fun FolderListScreen(
                                         modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
                                         verticalAlignment = Alignment.CenterVertically
                                     ) {
-                                        Icon(Icons.Rounded.FolderOpen, contentDescription = null, tint = c.accentBlue, modifier = Modifier.size(16.dp))
+                                        Icon(Icons.Rounded.FolderOpen, contentDescription = null, tint = if (!c.isDark) Color(0xFF64748B) else c.accentBlue, modifier = Modifier.size(15.dp))
                                         Spacer(Modifier.width(6.dp))
                                         Text("FOLDERS (${searchMatchingFolders.size})", color = c.textSecondary, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
                                     }
@@ -1404,11 +1447,11 @@ fun FolderListScreen(
                                     horizontalArrangement = Arrangement.SpaceBetween
                                 ) {
                                     Row(verticalAlignment = Alignment.CenterVertically) {
-                                        Icon(Icons.Rounded.Schedule, contentDescription = null, tint = c.accentBlue, modifier = Modifier.size(16.dp))
+                                        Icon(Icons.Rounded.Schedule, contentDescription = null, tint = if (!c.isDark) Color(0xFF64748B) else c.accentBlue, modifier = Modifier.size(15.dp))
                                         Spacer(Modifier.width(6.dp))
-                                        Text("RECENTLY ADDED", color = c.textSecondary, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+                                        Text("RECENTLY ADDED", color = c.textSecondary, fontSize = 11.5.sp, fontWeight = FontWeight.Bold, letterSpacing = 0.5.sp)
                                     }
-                                    Text("See all", color = c.accentBlue, fontSize = 12.sp,
+                                    Text("See all", color = if (!c.isDark) Color(0xFF007AFF) else c.accentBlue, fontSize = 12.sp, fontWeight = FontWeight.SemiBold,
                                         modifier = Modifier.clickable { activeChip = "All Videos" }.padding(4.dp))
                                 }
                             }
@@ -1452,9 +1495,9 @@ fun FolderListScreen(
                                         horizontalArrangement = Arrangement.SpaceBetween
                                     ) {
                                         Row(verticalAlignment = Alignment.CenterVertically) {
-                                            Icon(Icons.Rounded.PlayCircle, contentDescription = null, tint = c.accentBlue, modifier = Modifier.size(16.dp))
+                                            Icon(Icons.Rounded.PlayCircle, contentDescription = null, tint = if (!c.isDark) Color(0xFF64748B) else c.accentBlue, modifier = Modifier.size(15.dp))
                                             Spacer(Modifier.width(6.dp))
-                                            Text("CONTINUE WATCHING", color = c.textSecondary, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+                                            Text("CONTINUE WATCHING", color = c.textSecondary, fontSize = 11.5.sp, fontWeight = FontWeight.Bold, letterSpacing = 0.5.sp)
                                         }
                                         Text("${continueWatchingVideos.size}", fontSize = 12.sp, color = c.textSecondary)
                                     }
@@ -1502,16 +1545,16 @@ fun FolderListScreen(
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
                                 Row(verticalAlignment = Alignment.CenterVertically) {
-                                    Icon(Icons.Rounded.FolderOpen, contentDescription = null, tint = c.accentBlue, modifier = Modifier.size(16.dp))
+                                    Icon(Icons.Rounded.FolderOpen, contentDescription = null, tint = if (!c.isDark) Color(0xFF64748B) else c.accentBlue, modifier = Modifier.size(15.dp))
                                     Spacer(Modifier.width(6.dp))
-                                    Text("${displayFolders.size} FOLDERS", fontSize = 12.sp, fontWeight = FontWeight.SemiBold, color = c.textSecondary)
+                                    Text("${displayFolders.size} FOLDERS", fontSize = 11.5.sp, fontWeight = FontWeight.Bold, letterSpacing = 0.5.sp, color = c.textSecondary)
                                 }
                                 Row(
                                     modifier = Modifier
-                                        .then(if (c.isMatte) Modifier else Modifier.shadow(elevation = 6.dp, shape = CircleShape, ambientColor = c.cardShadowColor, spotColor = c.cardShadowColor))
+                                        .then(if (c.isMatte) Modifier else Modifier.shadow(elevation = if (!c.isDark) 2.dp else 6.dp, shape = CircleShape, ambientColor = c.cardShadowColor, spotColor = c.cardShadowColor))
                                         .clip(CircleShape)
-                                        .background(if (c.isMatte) SolidColor(c.cardBgElevated) else Brush.verticalGradient(listOf(c.cardBgElevated, c.cardBg)))
-                                        .border(1.2.dp, if (c.isMatte) SolidColor(c.glassBorder) else Brush.verticalGradient(listOf(c.cardBorderHighlight, c.glassBorder, c.cardBorderShadow)), CircleShape)
+                                        .background(if (!c.isDark) SolidColor(Color.White) else if (c.isMatte) SolidColor(c.cardBgElevated) else Brush.verticalGradient(listOf(c.cardBgElevated, c.cardBg)))
+                                        .border(0.8.dp, if (!c.isDark) SolidColor(Color(0xFFE2E8F0)) else if (c.isMatte) SolidColor(c.glassBorder) else Brush.verticalGradient(listOf(c.cardBorderHighlight, c.glassBorder, c.cardBorderShadow)), CircleShape)
                                         .padding(horizontal = 6.dp, vertical = 2.dp),
                                     verticalAlignment = Alignment.CenterVertically
                                 ) {
@@ -1525,7 +1568,7 @@ fun FolderListScreen(
                                         Icon(
                                             if (isGridView) Icons.AutoMirrored.Rounded.ViewList else Icons.Rounded.GridView,
                                             contentDescription = "Toggle Layout",
-                                            tint = if (isGridView) c.accentBlue else c.textSecondary,
+                                            tint = if (isGridView) (if (!c.isDark) Color(0xFF007AFF) else c.accentBlue) else c.textSecondary,
                                             modifier = Modifier.size(17.dp)
                                         )
                                     }
@@ -1548,19 +1591,21 @@ fun FolderListScreen(
                                         DropdownMenu(
                                             expanded = showSortMenu,
                                             onDismissRequest = { showSortMenu = false },
-                                            containerColor = c.dropdownBg,
+                                            containerColor = if (!c.isDark) Color.White else c.dropdownBg,
                                             modifier = Modifier
-                                                .border(1.dp, c.glassBorder, RoundedCornerShape(14.dp))
-                                                .shadow(12.dp, RoundedCornerShape(14.dp))
+                                                .border(0.8.dp, if (!c.isDark) Color(0xFFE2E8F0) else c.glassBorder, RoundedCornerShape(18.dp))
+                                                .shadow(16.dp, RoundedCornerShape(18.dp), ambientColor = c.cardShadowColor, spotColor = c.cardShadowColor)
+                                                .clip(RoundedCornerShape(18.dp))
                                         ) {
                                             Text(
                                                 "SORT ORDER",
                                                 fontSize = 11.sp,
                                                 fontWeight = FontWeight.Bold,
+                                                letterSpacing = 0.5.sp,
                                                 color = c.textSecondary,
-                                                modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
+                                                modifier = Modifier.padding(horizontal = 16.dp, vertical = 10.dp)
                                             )
-                                            HorizontalDivider(color = c.glassBorder)
+                                            HorizontalDivider(color = if (!c.isDark) Color(0xFFF1F5F9) else c.glassBorder)
                                             listOf(
                                                 SortOrder.DATE to ("Date Added (Newest)" to Icons.Rounded.Schedule),
                                                 SortOrder.DATE_ASC to ("Date Added (Oldest)" to Icons.Rounded.Schedule),
@@ -1573,28 +1618,33 @@ fun FolderListScreen(
                                             ).forEach { (order, pair) ->
                                                 val (label, icon) = pair
                                                 val isSelected = sortOrder == order
+                                                val activeSortColor = if (!c.isDark) Color(0xFF007AFF) else c.accentBlue
                                                 DropdownMenuItem(
                                                     leadingIcon = {
                                                         Icon(
                                                             icon,
                                                             contentDescription = null,
-                                                            tint = if (isSelected) c.accentBlue else c.textSecondary,
+                                                            tint = if (isSelected) activeSortColor else c.textSecondary,
                                                             modifier = Modifier.size(18.dp)
                                                         )
                                                     },
                                                     text = {
                                                         Text(
                                                             label,
-                                                            color = if (isSelected) c.accentBlue else c.textPrimary,
-                                                            fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
-                                                            fontSize = 14.sp
+                                                            color = if (isSelected) activeSortColor else c.textPrimary,
+                                                            fontWeight = if (isSelected) FontWeight.SemiBold else FontWeight.Normal,
+                                                            fontSize = 13.5.sp
                                                         )
                                                     },
                                                     trailingIcon = {
                                                         if (isSelected) {
-                                                            Icon(Icons.Rounded.Check, contentDescription = null, tint = c.accentBlue, modifier = Modifier.size(18.dp))
+                                                            Icon(Icons.Rounded.Check, contentDescription = null, tint = activeSortColor, modifier = Modifier.size(18.dp))
                                                         }
                                                     },
+                                                    modifier = Modifier
+                                                        .padding(horizontal = 6.dp, vertical = 1.dp)
+                                                        .clip(RoundedCornerShape(10.dp))
+                                                        .background(if (isSelected) activeSortColor.copy(alpha = 0.08f) else Color.Transparent),
                                                     onClick = {
                                                         sortOrder = order
                                                         appPreferences.saveSortOrder(order.name)
@@ -1685,7 +1735,7 @@ fun FolderListScreen(
                             if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.S) {
                                 Modifier.graphicsLayer {
                                     renderEffect = android.graphics.RenderEffect.createBlurEffect(
-                                        24f, 24f, android.graphics.Shader.TileMode.CLAMP
+                                        48f, 48f, android.graphics.Shader.TileMode.CLAMP
                                     ).asComposeRenderEffect()
                                 }
                             } else {
@@ -1695,10 +1745,10 @@ fun FolderListScreen(
                         .background(
                             Brush.verticalGradient(
                                 0.0f to Color.Transparent,
-                                0.25f to c.baseBackground.copy(alpha = 0.18f),
-                                0.55f to c.baseBackground.copy(alpha = 0.45f),
-                                0.80f to c.baseBackground.copy(alpha = 0.72f),
-                                1.0f to c.baseBackground.copy(alpha = 0.88f)
+                                0.20f to c.baseBackground.copy(alpha = 0.35f),
+                                0.50f to c.baseBackground.copy(alpha = 0.70f),
+                                0.80f to c.baseBackground.copy(alpha = 0.92f),
+                                1.0f to c.baseBackground.copy(alpha = 0.98f)
                             )
                         )
                 )
@@ -1744,7 +1794,13 @@ fun FolderListScreen(
                     }
                 }
 
-                // Adaptive Theme Nav Pill Container
+                // Adaptive Theme Nav Pill Container with Hold & Slide Gesture
+                var navPillWidthPx by remember { mutableFloatStateOf(0f) }
+                val isBrightAccent = remember(c.accentBlue) {
+                    (0.299f * c.accentBlue.red + 0.587f * c.accentBlue.green + 0.114f * c.accentBlue.blue) > 0.65f ||
+                    c.accentBlue == Color.White || c.accentBlue == Color(0xFFFFFFFF) || c.accentBlue == Color(0xFFF8FAFC)
+                }
+
                 Box(
                     modifier = Modifier
                         .then(
@@ -1759,13 +1815,48 @@ fun FolderListScreen(
                         .clip(CircleShape)
                         .background(
                             if (c.isDark) Color(0xFF161922).copy(alpha = 0.96f)
-                            else c.cardBgElevated
+                            else Color.White.copy(alpha = 0.96f)
                         )
                         .border(
-                            1.2.dp,
-                            if (c.isDark) Color.White.copy(alpha = 0.12f) else c.glassBorder,
+                            0.8.dp,
+                            if (c.isDark) Color.White.copy(alpha = 0.12f) else Color(0xFFE2E8F0),
                             CircleShape
                         )
+                        .onSizeChanged { navPillWidthPx = it.width.toFloat() }
+                        .pointerInput(currentTab) {
+                            awaitEachGesture {
+                                val down = awaitFirstDown(requireUnconsumed = false)
+                                val startX = down.position.x
+                                var isSliding = false
+                                while (true) {
+                                    val event = awaitPointerEvent()
+                                    val change = event.changes.firstOrNull { it.id == down.id }
+                                    if (change == null || !change.pressed) break
+                                    val currentX = change.position.x
+                                    if (!isSliding && kotlin.math.abs(currentX - startX) > 18f) {
+                                        isSliding = true
+                                    }
+                                    if (isSliding && navPillWidthPx > 0f) {
+                                        change.consume()
+                                        val fraction = (currentX / navPillWidthPx).coerceIn(0f, 1f)
+                                        val targetIndex = when {
+                                            fraction < 0.35f -> 0
+                                            fraction < 0.65f -> 1
+                                            else -> 2
+                                        }
+                                        val targetTab = mainTabs.getOrNull(targetIndex) ?: currentTab
+                                        if (targetTab != currentTab) {
+                                            view.performHaptic(HapticType.LIGHT)
+                                            currentTab = targetTab
+                                            coroutineScope.launch {
+                                                pagerState.animateScrollToPage(targetIndex)
+                                            }
+                                            if (targetTab != "Video") selectedVideoIds = emptySet()
+                                        }
+                                    }
+                                }
+                            }
+                        }
                 ) {
                     Row(
                         modifier = Modifier.padding(horizontal = 6.dp, vertical = 5.dp),
@@ -1780,9 +1871,7 @@ fun FolderListScreen(
                         ).forEach { (label, icon) ->
                             val selected = currentTab == label
                             val pillBgColor by animateColorAsState(
-                                targetValue = if (selected) {
-                                    c.accentBlue
-                                } else Color.Transparent,
+                                targetValue = if (selected) c.accentBlue else Color.Transparent,
                                 animationSpec = spring(
                                     dampingRatio = Spring.DampingRatioNoBouncy,
                                     stiffness = Spring.StiffnessMediumLow
@@ -1791,13 +1880,13 @@ fun FolderListScreen(
                             )
                             val pillTextColor by animateColorAsState(
                                 targetValue = if (selected) {
-                                    if (c.isDark) Color.White else c.onAccent
+                                    if (isBrightAccent) Color(0xFF0F172A) else Color.White
                                 } else c.textSecondary.copy(alpha = 0.85f),
                                 animationSpec = tween(200),
                                 label = "pillTextColor"
                             )
                             val pillElevation by animateDpAsState(
-                                targetValue = if (selected && !c.isMatte) 8.dp else 0.dp,
+                                targetValue = if (selected && !c.isMatte) (if (!c.isDark) 4.dp else 8.dp) else 0.dp,
                                 animationSpec = tween(220),
                                 label = "pillElevation"
                             )
@@ -2143,6 +2232,56 @@ fun FolderListScreen(
                 }
             )
         }
+
+        // ─── Instant Color Theme Palette Capsule HUD ────────────────────────
+        AnimatedVisibility(
+            visible = paletteHudTheme != null,
+            enter = fadeIn(tween(90)) + scaleIn(initialScale = 0.88f, animationSpec = spring(stiffness = Spring.StiffnessMedium, dampingRatio = Spring.DampingRatioMediumBouncy)),
+            exit = fadeOut(tween(140)) + scaleOut(targetScale = 0.92f, animationSpec = tween(140)),
+            modifier = Modifier
+                .align(Alignment.TopCenter)
+                .statusBarsPadding()
+                .padding(top = 10.dp)
+        ) {
+            paletteHudTheme?.let { theme ->
+                val hudAccentColor = if (!c.isDark) {
+                    when (theme) {
+                        com.example.ymediaplayer.ui.PlayerTheme.WHITE -> Color(0xFF0F172A)
+                        com.example.ymediaplayer.ui.PlayerTheme.YELLOW -> Color(0xFFD97706)
+                        else -> theme.primaryAccent
+                    }
+                } else theme.primaryAccent
+
+                Surface(
+                    shape = RoundedCornerShape(12.dp),
+                    color = if (!c.isDark) Color.White.copy(alpha = 0.96f) else Color(0xEE141622),
+                    border = BorderStroke(1.dp, if (!c.isDark) Color(0xFFE2E8F0) else hudAccentColor.copy(alpha = 0.65f)),
+                    shadowElevation = 4.dp
+                ) {
+                    Row(
+                        modifier = Modifier.padding(horizontal = 9.dp, vertical = 3.5.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .size(8.dp)
+                                .clip(CircleShape)
+                                .background(Brush.linearGradient(theme.previewGradient))
+                                .border(0.6.dp, if (!c.isDark) Color(0xFFCBD5E1) else Color.White.copy(0.4f), CircleShape)
+                        )
+                        Spacer(Modifier.width(5.dp))
+                        Text(
+                            text = theme.displayName,
+                            color = if (!c.isDark) hudAccentColor else Color.White,
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Bold,
+                            maxLines = 1,
+                            softWrap = false
+                        )
+                    }
+                }
+            }
+        }
     }
 }
 
@@ -2178,66 +2317,38 @@ internal fun CanvasBg(offsetProvider: () -> Float = { 0f }) {
             .background(c.baseBackground)
             .drawBehind {
                 if (!c.isDark) {
-                    // Rich multi-palette ambient pastel canvas for Clean Light mode
-                    // 1. Top-Left / Center: Primary accent sky/cyan pastel
-                    drawRect(
-                        brush = Brush.radialGradient(
-                            colors = listOf(
-                                satBlue.copy(alpha = 0.42f * glowStrength),
-                                satBlue.copy(alpha = 0.20f * glowStrength),
-                                Color.Transparent
-                            ),
-                            center = Offset(size.width * 0.28f, size.height * 0.14f),
-                            radius = size.width * (1.20f * glowSpread).coerceIn(0.5f, 3.8f)
+                    // Pristine iOS Canvas: Rich, vivid dual-tone ambient accent glow just like dark/black theme
+                    if (glowStrength > 0.05f) {
+                        val isPureWhite = c.accentBlue == Color(0xFF0F172A)
+                        val lightPrimaryGlow = if (isPureWhite) Color(0xFFCBD5E1) else satBlue
+                        val lightSecondaryGlow = if (isPureWhite) Color(0xFFE2E8F0) else satGreen
+
+                        // Top-Center Primary Ambient Accent Halo
+                        drawRect(
+                            brush = Brush.radialGradient(
+                                colors = listOf(
+                                    lightPrimaryGlow.copy(alpha = (0.24f * glowStrength).coerceIn(0f, 0.40f)),
+                                    lightPrimaryGlow.copy(alpha = (0.13f * glowStrength).coerceIn(0f, 0.25f)),
+                                    lightPrimaryGlow.copy(alpha = (0.04f * glowStrength).coerceIn(0f, 0.10f)),
+                                    Color.Transparent
+                                ),
+                                center = Offset(size.width * 0.5f, size.height * 0.22f),
+                                radius = size.width * (1.15f * glowSpread).coerceIn(0.5f, 3.8f)
+                            )
                         )
-                    )
-                    // 2. Top-Right: Soft Violet / Lavender pastel glow
-                    drawRect(
-                        brush = Brush.radialGradient(
-                            colors = listOf(
-                                Color(0xFFA78BFA).copy(alpha = 0.36f * glowStrength),
-                                Color(0xFFA78BFA).copy(alpha = 0.14f * glowStrength),
-                                Color.Transparent
-                            ),
-                            center = Offset(size.width * 0.88f, size.height * 0.18f),
-                            radius = size.width * (1.05f * glowSpread).coerceIn(0.4f, 3.4f)
+
+                        // Bottom-Right Secondary Accent Ambient Glow
+                        drawRect(
+                            brush = Brush.radialGradient(
+                                colors = listOf(
+                                    lightSecondaryGlow.copy(alpha = (0.18f * glowStrength).coerceIn(0f, 0.30f)),
+                                    Color.Transparent
+                                ),
+                                center = Offset(size.width * 0.88f, size.height * 0.72f),
+                                radius = size.width * (0.95f * glowSpread).coerceIn(0.4f, 3.2f)
+                            )
                         )
-                    )
-                    // 3. Center-Left: Soft Rose / Coral pastel glow
-                    drawRect(
-                        brush = Brush.radialGradient(
-                            colors = listOf(
-                                Color(0xFFF472B6).copy(alpha = 0.28f * glowStrength),
-                                Color(0xFFF472B6).copy(alpha = 0.10f * glowStrength),
-                                Color.Transparent
-                            ),
-                            center = Offset(size.width * 0.10f, size.height * 0.48f),
-                            radius = size.width * (0.95f * glowSpread).coerceIn(0.4f, 3.0f)
-                        )
-                    )
-                    // 4. Center-Right / Bottom: Secondary accent soft emerald/mint pastel
-                    drawRect(
-                        brush = Brush.radialGradient(
-                            colors = listOf(
-                                satGreen.copy(alpha = 0.32f * glowStrength),
-                                satGreen.copy(alpha = 0.12f * glowStrength),
-                                Color.Transparent
-                            ),
-                            center = Offset(size.width * 0.85f, size.height * 0.68f),
-                            radius = size.width * (1.00f * glowSpread).coerceIn(0.4f, 3.2f)
-                        )
-                    )
-                    // 5. Bottom-Center: Soft warm amber/peach pastel
-                    drawRect(
-                        brush = Brush.radialGradient(
-                            colors = listOf(
-                                Color(0xFFFBBF24).copy(alpha = 0.25f * glowStrength),
-                                Color.Transparent
-                            ),
-                            center = Offset(size.width * 0.42f, size.height * 0.88f),
-                            radius = size.width * (0.90f * glowSpread).coerceIn(0.3f, 2.8f)
-                        )
-                    )
+                    }
                 } else if (coreAlpha > 0.01f) {
                     // Centered circular radial ambient glow based on the theme color, softly fading outwards
                     drawRect(
@@ -2411,8 +2522,8 @@ private fun ContinueWatchingCard(
 
     Box(
         modifier = Modifier
-            .width(150.dp)
-            .height(96.dp)
+            .width(172.dp)
+            .height(110.dp)
             .then(if (c.isMatte) Modifier else Modifier.shadow(
                 elevation = 8.dp,
                 shape = RoundedCornerShape(cornerRadius),
@@ -2428,8 +2539,13 @@ private fun ContinueWatchingCard(
             )
             .bounceClick(onClick = onClick, onLongClick = onLongPress)
     ) {
+        val cachedSnapshot = remember(video.uri, progress) {
+            getCachedFrameThumbnail(context, video.uri.toString())
+        }
         AsyncImage(
-            model = remember(video.uri) { buildVideoThumbnailRequest(context, video.uri, video.duration) },
+            model = remember(video.uri, progress, cachedSnapshot) {
+                cachedSnapshot ?: buildVideoThumbnailRequest(context, video.uri, video.duration, positionMs = progress)
+            },
             contentDescription = null, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize()
         )
         // Top scrim & title (swapped with bottom)
@@ -2547,8 +2663,8 @@ private fun RecentlyAddedVideoCard(
 
     Box(
         modifier = Modifier
-            .width(150.dp)
-            .height(96.dp)
+            .width(172.dp)
+            .height(110.dp)
             .then(if (c.isMatte) Modifier else Modifier.shadow(
                 elevation = 8.dp,
                 shape = RoundedCornerShape(cornerRadius),
@@ -2567,8 +2683,13 @@ private fun RecentlyAddedVideoCard(
             )
             .bounceClick(onClick = onClick, onLongClick = onLongPress)
     ) {
+        val cachedSnapshot = remember(video.uri, progress) {
+            getCachedFrameThumbnail(context, video.uri.toString())
+        }
         AsyncImage(
-            model = remember(video.uri) { buildVideoThumbnailRequest(context, video.uri, video.duration) },
+            model = remember(video.uri, progress, cachedSnapshot) {
+                cachedSnapshot ?: buildVideoThumbnailRequest(context, video.uri, video.duration, positionMs = progress)
+            },
             contentDescription = null, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize()
         )
         // Top scrim & title (swapped with bottom)
@@ -2671,18 +2792,26 @@ fun FolderItem(
 
     val totalFolderSize = remember(folder.videos) { folder.videos.sumOf { it.size } }
     val relativePath = folder.videos.firstOrNull()?.relativePath?.trim('/') ?: ""
-    val pathLabel = if (relativePath.contains('/')) {
-        relativePath.substringBeforeLast('/')
-    } else if (relativePath.isNotEmpty() && !relativePath.equals(folder.name, ignoreCase = true)) {
-        relativePath
-    } else if (!isHistory) {
-        "Internal storage"
-    } else {
-        ""
+    val cleanLocation = remember(relativePath, folder.name) {
+        when {
+            relativePath.contains("WhatsApp", ignoreCase = true) -> "WhatsApp Media"
+            relativePath.contains("Telegram", ignoreCase = true) -> "Telegram"
+            relativePath.contains("DCIM", ignoreCase = true) || relativePath.contains("Camera", ignoreCase = true) -> "Camera"
+            relativePath.contains("Download", ignoreCase = true) -> "Downloads"
+            relativePath.contains("Movies", ignoreCase = true) -> "Movies"
+            relativePath.contains("Pictures", ignoreCase = true) -> "Pictures"
+            relativePath.contains("Screenshots", ignoreCase = true) -> "Screenshots"
+            isHistory -> ""
+            relativePath.isNotBlank() && !relativePath.contains("com.") -> {
+                val parts = relativePath.split('/').filter { it.isNotBlank() && !it.equals(folder.name, ignoreCase = true) }
+                parts.lastOrNull() ?: "Internal storage"
+            }
+            else -> "Internal storage"
+        }
     }
     val subtitleText = buildString {
-        if (pathLabel.isNotEmpty() && !isHistory) {
-            append(pathLabel)
+        if (cleanLocation.isNotEmpty() && !isHistory) {
+            append(cleanLocation)
             append(" · ")
         }
         append(formatSize(totalFolderSize))
@@ -2698,21 +2827,23 @@ fun FolderItem(
     Box(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = 16.dp, vertical = 2.dp)
+            .padding(horizontal = 16.dp, vertical = 2.5.dp)
             .then(if (c.isMatte) Modifier else Modifier.shadow(
-                elevation = 8.dp,
+                elevation = if (!c.isDark) 2.dp else 6.dp,
                 shape = RoundedCornerShape(cornerRadius),
                 ambientColor = c.cardShadowColor,
                 spotColor = c.cardShadowColor
             ))
             .clip(RoundedCornerShape(cornerRadius))
             .background(
-                if (c.isMatte) SolidColor(c.cardBg)
+                if (!c.isDark) SolidColor(Color.White)
+                else if (c.isMatte) SolidColor(c.cardBg)
                 else Brush.verticalGradient(listOf(c.cardBgElevated, c.cardBg))
             )
             .border(
-                width = 1.dp,
-                brush = if (c.isMatte) SolidColor(c.glassBorder)
+                width = 0.8.dp,
+                brush = if (!c.isDark) SolidColor(Color(0xFFE2E8F0))
+                else if (c.isMatte) SolidColor(c.glassBorder)
                 else Brush.verticalGradient(listOf(c.cardBorderHighlight, c.glassBorder)),
                 shape = RoundedCornerShape(cornerRadius)
             )
@@ -2732,12 +2863,12 @@ fun FolderItem(
             Box(
                 modifier = Modifier
                     .size(46.dp)
-                    .clip(RoundedCornerShape(14.dp))
-                    .background(c.cardBgElevated)
+                    .clip(RoundedCornerShape(12.dp))
+                    .background(if (!c.isDark) Color(0xFFF1F5F9) else c.cardBgElevated)
                     .border(
-                        width = 1.dp,
-                        brush = SolidColor(c.glassBorder),
-                        shape = RoundedCornerShape(14.dp)
+                        width = 0.8.dp,
+                        brush = SolidColor(if (!c.isDark) Color(0xFFE2E8F0) else c.glassBorder),
+                        shape = RoundedCornerShape(12.dp)
                     ),
                 contentAlignment = Alignment.Center
             ) {
@@ -2745,7 +2876,7 @@ fun FolderItem(
                     Icon(
                         Icons.Rounded.VideoLibrary,
                         contentDescription = null,
-                        tint = c.accentBlue,
+                        tint = if (!c.isDark) Color(0xFF007AFF) else c.accentBlue,
                         modifier = Modifier.size(24.dp)
                     )
                 } else if (firstVideo != null && !isHistory) {
@@ -2771,16 +2902,16 @@ fun FolderItem(
                 }
             }
             Spacer(Modifier.width(8.dp))
-            // Video count value (clean typography, no border)
+            // Video count value (clean iOS slate typography)
             Text(
                 text = folder.videos.size.toString(),
-                color = c.accentBlue,
+                color = if (!c.isDark) Color(0xFF64748B) else c.textSecondary,
                 fontSize = 13.sp,
-                fontWeight = FontWeight.Bold,
+                fontWeight = FontWeight.Medium,
                 modifier = Modifier.padding(horizontal = 4.dp)
             )
-            Spacer(Modifier.width(4.dp))
-            Icon(Icons.AutoMirrored.Rounded.ArrowForwardIos, contentDescription = null, tint = c.textSecondary, modifier = Modifier.size(14.dp))
+            Spacer(Modifier.width(2.dp))
+            Icon(Icons.AutoMirrored.Rounded.ArrowForwardIos, contentDescription = null, tint = if (!c.isDark) Color(0xFFCBD5E1) else c.textSecondary.copy(alpha = 0.5f), modifier = Modifier.size(13.dp))
         }
 
         if (isPinned) {
@@ -3164,7 +3295,9 @@ private fun ThemeSelectionDialog(
     Dialog(onDismissRequest = onDismiss) {
         Column(
             modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(24.dp))
-                .background(c.dropdownBg).border(1.dp, c.glassBorder, RoundedCornerShape(24.dp)).padding(20.dp)
+                .background(if (!c.isDark) Color.White else c.dropdownBg)
+                .border(1.dp, if (!c.isDark) Color(0xFFE2E8F0) else c.glassBorder, RoundedCornerShape(24.dp))
+                .padding(20.dp)
         ) {
             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
@@ -3177,26 +3310,45 @@ private fun ThemeSelectionDialog(
                 }
             }
             Spacer(Modifier.height(4.dp))
-            Text("Select a color theme for the app:", fontSize = 12.sp, color = c.textSecondary)
+            Text("Select an accent color theme for the app:", fontSize = 12.sp, color = c.textSecondary)
             Spacer(Modifier.height(16.dp))
             Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 com.example.ymediaplayer.ui.PlayerTheme.entries.forEach { theme ->
                     val isSelected = currentTheme == theme
+                    val themeAccentColor = if (!c.isDark) {
+                        when (theme) {
+                            com.example.ymediaplayer.ui.PlayerTheme.WHITE -> Color(0xFF0F172A)
+                            com.example.ymediaplayer.ui.PlayerTheme.YELLOW -> Color(0xFFD97706)
+                            else -> theme.primaryAccent
+                        }
+                    } else theme.primaryAccent
+
                     Row(
                         modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(16.dp))
-                            .background(if (isSelected) c.accentBlue.copy(alpha = 0.15f) else c.glassBgNested)
-                            .border(if (isSelected) 1.5.dp else 0.5.dp, if (isSelected) theme.primaryAccent else c.glassBorder, RoundedCornerShape(16.dp))
+                            .background(if (isSelected) themeAccentColor.copy(alpha = if (!c.isDark) 0.10f else 0.18f) else (if (!c.isDark) Color(0xFFF8FAFC) else c.glassBgNested))
+                            .border(if (isSelected) 1.5.dp else 0.8.dp, if (isSelected) themeAccentColor else (if (!c.isDark) Color(0xFFE2E8F0) else c.glassBorder), RoundedCornerShape(16.dp))
                             .clickable { onSelectTheme(theme); onDismiss() }
                             .padding(horizontal = 14.dp, vertical = 12.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Box(modifier = Modifier.size(36.dp).clip(CircleShape).background(Brush.linearGradient(theme.previewGradient)).border(1.dp, Color.White.copy(0.4f), CircleShape))
+                        Box(
+                            modifier = Modifier
+                                .size(36.dp)
+                                .clip(CircleShape)
+                                .background(Brush.linearGradient(theme.previewGradient))
+                                .border(1.2.dp, if (!c.isDark) Color(0xFFCBD5E1) else Color.White.copy(0.4f), CircleShape)
+                        )
                         Spacer(Modifier.width(14.dp))
                         Column(modifier = Modifier.weight(1f)) {
-                            Text(theme.displayName, fontSize = 15.sp, fontWeight = if (isSelected) FontWeight.Bold else FontWeight.SemiBold, color = if (isSelected) theme.primaryAccent else c.textPrimary)
+                            Text(
+                                theme.displayName,
+                                fontSize = 15.sp,
+                                fontWeight = if (isSelected) FontWeight.Bold else FontWeight.SemiBold,
+                                color = if (isSelected) themeAccentColor else c.textPrimary
+                            )
                             Text(theme.description, fontSize = 11.sp, color = c.textSecondary, maxLines = 1, overflow = TextOverflow.Ellipsis)
                         }
-                        if (isSelected) Icon(Icons.Rounded.CheckCircle, contentDescription = null, tint = theme.primaryAccent, modifier = Modifier.size(20.dp))
+                        if (isSelected) Icon(Icons.Rounded.CheckCircle, contentDescription = null, tint = themeAccentColor, modifier = Modifier.size(20.dp))
                     }
                 }
             }

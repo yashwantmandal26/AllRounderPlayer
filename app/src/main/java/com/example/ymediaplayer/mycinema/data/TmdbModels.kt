@@ -14,6 +14,71 @@ data class TmdbSearchResponse(
     @SerialName("total_pages") val totalPages: Int = 0
 )
 
+val tmdbGenreMap: Map<Int, String> = mapOf(
+    28 to "Action",
+    12 to "Adventure",
+    16 to "Animation",
+    35 to "Comedy",
+    80 to "Crime",
+    99 to "Documentary",
+    18 to "Drama",
+    10751 to "Family",
+    14 to "Fantasy",
+    36 to "History",
+    27 to "Horror",
+    10402 to "Music",
+    9648 to "Mystery",
+    10749 to "Romance",
+    878 to "Sci-Fi",
+    10770 to "TV Movie",
+    53 to "Thriller",
+    10752 to "War",
+    37 to "Western",
+    10759 to "Action & Adventure",
+    10762 to "Kids",
+    10763 to "News",
+    10764 to "Reality",
+    10765 to "Sci-Fi & Fantasy",
+    10766 to "Soap",
+    10767 to "Talk",
+    10768 to "War & Politics"
+)
+
+/**
+ * Resolves a genre name/keyword string to (movieGenreId, tvGenreId).
+ */
+fun resolveTmdbGenreIds(genreName: String): Pair<Int?, Int?> {
+    val clean = genreName.trim().lowercase()
+    return when {
+        clean.contains("action") -> Pair(28, 10759)
+        clean.contains("adventure") -> Pair(12, 10759)
+        clean.contains("animation") || clean.contains("anime") -> Pair(16, 16)
+        clean.contains("comedy") -> Pair(35, 35)
+        clean.contains("crime") -> Pair(80, 80)
+        clean.contains("documentary") -> Pair(99, 99)
+        clean.contains("drama") -> Pair(18, 18)
+        clean.contains("family") || clean.contains("kids") -> Pair(10751, 10762)
+        clean.contains("fantasy") -> Pair(14, 10765)
+        clean.contains("history") -> Pair(36, 10768)
+        clean.contains("horror") -> Pair(27, 9648)
+        clean.contains("music") -> Pair(10402, null)
+        clean.contains("mystery") -> Pair(9648, 9648)
+        clean.contains("romance") -> Pair(10749, 18)
+        clean.contains("sci-fi") || clean.contains("science") -> Pair(878, 10765)
+        clean.contains("thrill") -> Pair(53, 9648)
+        clean.contains("war") -> Pair(10752, 10768)
+        clean.contains("western") -> Pair(37, 37)
+        clean.contains("supernatural") -> Pair(14, 10765)
+        clean.contains("shootout") -> Pair(28, 10759)
+        clean.contains("police") -> Pair(80, 80)
+        clean.contains("hunt") -> Pair(53, 9648)
+        else -> {
+            val match = tmdbGenreMap.entries.firstOrNull { it.value.equals(clean, ignoreCase = true) }
+            if (match != null) Pair(match.key, match.key) else Pair(null, null)
+        }
+    }
+}
+
 @Serializable
 data class TmdbItem(
     val id: Int,
@@ -27,8 +92,12 @@ data class TmdbItem(
     @SerialName("first_air_date") val firstAirDate: String? = null,
     @SerialName("vote_average") val voteAverage: Double = 0.0,
     val ottPlatformHint: String? = null,
-    val logoPath: String? = null
+    val logoPath: String? = null,
+    @SerialName("genre_ids") val genreIds: List<Int> = emptyList()
 ) {
+    val genreNames: List<String>
+        get() = genreIds.mapNotNull { tmdbGenreMap[it] }
+
     val displayName: String
         get() = (title ?: name ?: "Untitled").trim()
 
@@ -245,8 +314,19 @@ data class CinemaExtendedInfo(
     val releaseDate: String? = null,
     val tmdbWatchLink: String? = null,
     val seasons: List<TmdbSeasonInfo> = emptyList(),
-    val logoPath: String? = null
+    val logoPath: String? = null,
+    val genres: List<String> = emptyList(),
+    val runtimeMinutes: Int = 0,
+    val imdbRating: String? = null
 ) {
+    val formattedRuntime: String
+        get() {
+            if (runtimeMinutes <= 0) return ""
+            val h = runtimeMinutes / 60
+            val m = runtimeMinutes % 60
+            return if (h > 0 && m > 0) "${h}H ${m}M" else if (h > 0) "${h}H" else "${m}M"
+        }
+
     val budgetFormatted: String
         get() = formatCurrencyWithInr(budget)
 

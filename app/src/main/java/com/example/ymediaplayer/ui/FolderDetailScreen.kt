@@ -74,8 +74,9 @@ fun FolderDetailScreen(
     val fileManager = remember { FileManager(context) }
     val coroutineScope = rememberCoroutineScope()
 
-    var folder by remember { mutableStateOf<VideoFolder?>(null) }
-    var isLoading by remember { mutableStateOf(true) }
+    val cachedInitialFolder = remember { repository.getCachedFolderByIdSync(folderId) }
+    var folder by remember { mutableStateOf(cachedInitialFolder) }
+    var isLoading by remember { mutableStateOf(folder == null) }
     var refreshTrigger by remember { mutableIntStateOf(0) }
 
     // Media View Type & Sorting
@@ -221,7 +222,7 @@ fun FolderDetailScreen(
                 .fillMaxSize()
                 .background(c.baseBackground)
                 .drawBehind {
-                    if (coreAlpha > 0.01f) {
+                    if (c.isDark && coreAlpha > 0.01f) {
                         drawRect(
                             brush = Brush.radialGradient(
                                 colors = listOf(
@@ -453,19 +454,21 @@ fun FolderDetailScreen(
                                         DropdownMenu(
                                             expanded = showSortMenu,
                                             onDismissRequest = { showSortMenu = false },
-                                            containerColor = c.dropdownBg,
+                                            containerColor = if (!c.isDark) Color.White else c.dropdownBg,
                                             modifier = Modifier
-                                                .border(1.dp, c.glassBorder, RoundedCornerShape(14.dp))
-                                                .shadow(12.dp, RoundedCornerShape(14.dp))
+                                                .border(0.8.dp, if (!c.isDark) Color(0xFFE2E8F0) else c.glassBorder, RoundedCornerShape(18.dp))
+                                                .shadow(16.dp, RoundedCornerShape(18.dp), ambientColor = c.cardShadowColor, spotColor = c.cardShadowColor)
+                                                .clip(RoundedCornerShape(18.dp))
                                         ) {
                                             Text(
                                                 "SORT ORDER",
                                                 fontSize = 11.sp,
                                                 fontWeight = FontWeight.Bold,
+                                                letterSpacing = 0.5.sp,
                                                 color = c.textSecondary,
-                                                modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
+                                                modifier = Modifier.padding(horizontal = 16.dp, vertical = 10.dp)
                                             )
-                                            HorizontalDivider(color = c.glassBorder)
+                                            HorizontalDivider(color = if (!c.isDark) Color(0xFFF1F5F9) else c.glassBorder)
                                             listOf(
                                                 SortOrder.DATE to ("Date Added (Newest)" to Icons.Rounded.Schedule),
                                                 SortOrder.DATE_ASC to ("Date Added (Oldest)" to Icons.Rounded.Schedule),
@@ -478,28 +481,33 @@ fun FolderDetailScreen(
                                             ).forEach { (order, pair) ->
                                                 val (label, icon) = pair
                                                 val isSelected = sortOrder == order
+                                                val activeSortColor = if (!c.isDark) Color(0xFF007AFF) else c.accentBlue
                                                 DropdownMenuItem(
                                                     leadingIcon = {
                                                         Icon(
                                                             icon,
                                                             contentDescription = null,
-                                                            tint = if (isSelected) c.accentBlue else c.textSecondary,
+                                                            tint = if (isSelected) activeSortColor else c.textSecondary,
                                                             modifier = Modifier.size(18.dp)
                                                         )
                                                     },
                                                     text = {
                                                         Text(
                                                             label,
-                                                            color = if (isSelected) c.accentBlue else c.textPrimary,
-                                                            fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
-                                                            fontSize = 14.sp
+                                                            color = if (isSelected) activeSortColor else c.textPrimary,
+                                                            fontWeight = if (isSelected) FontWeight.SemiBold else FontWeight.Normal,
+                                                            fontSize = 13.5.sp
                                                         )
                                                     },
                                                     trailingIcon = {
                                                         if (isSelected) {
-                                                            Icon(Icons.Rounded.Check, contentDescription = null, tint = c.accentBlue, modifier = Modifier.size(18.dp))
+                                                            Icon(Icons.Rounded.Check, contentDescription = null, tint = activeSortColor, modifier = Modifier.size(18.dp))
                                                         }
                                                     },
+                                                    modifier = Modifier
+                                                        .padding(horizontal = 6.dp, vertical = 1.dp)
+                                                        .clip(RoundedCornerShape(10.dp))
+                                                        .background(if (isSelected) activeSortColor.copy(alpha = 0.08f) else Color.Transparent),
                                                     onClick = {
                                                         sortOrder = order
                                                         appPreferences.saveSortOrder(order.name)
@@ -608,13 +616,13 @@ fun FolderDetailScreen(
                                 )
                                 Text(
                                     "View: ${vt.displayName}",
-                                    color = c.accentBlue,
+                                    color = if (!c.isDark) Color(0xFF64748B) else c.accentBlue,
                                     fontSize = 12.sp,
-                                    fontWeight = FontWeight.SemiBold
+                                    fontWeight = FontWeight.Medium
                                 )
                             }
                         },
-                        contentPadding = PaddingValues(bottom = 80.dp)
+                        contentPadding = PaddingValues(bottom = 120.dp)
                     )
                 }
             }

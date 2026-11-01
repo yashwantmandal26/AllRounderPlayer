@@ -58,6 +58,37 @@ class MyCinemaRepository(
 
     suspend fun fetchTitleLogo(type: String, tmdbId: Int): String? = tmdbClient.fetchTitleLogo(type, tmdbId)
 
+    fun getCachedRecentlyReleasedSync(): List<TmdbItem> = getDiskCache("recently_released") ?: emptyList()
+    fun getCachedTrendingMoviesSync(): List<TmdbItem> = getDiskCache("trending_movies") ?: emptyList()
+    fun getCachedTrendingSeriesSync(): List<TmdbItem> = getDiskCache("trending_series") ?: emptyList()
+    fun getCachedTrendingIndiaSync(): List<TmdbItem> = getDiskCache("trending_india") ?: emptyList()
+
+    private val genreCache = java.util.concurrent.ConcurrentHashMap<String, List<TmdbItem>>()
+
+    suspend fun getMediaByGenre(genreName: String): List<TmdbItem> {
+        val clean = genreName.trim()
+        val cacheKey = clean.lowercase()
+        genreCache[cacheKey]?.let { return it }
+
+        val (movieGenreId, tvGenreId) = resolveTmdbGenreIds(clean)
+        val results = if (movieGenreId != null || tvGenreId != null) {
+            tmdbClient.discoverByGenre(movieGenreId, tvGenreId)
+        } else {
+            emptyList()
+        }
+
+        val finalItems = if (results.isNotEmpty()) {
+            results
+        } else {
+            search(clean)
+        }
+
+        if (finalItems.isNotEmpty()) {
+            genreCache[cacheKey] = finalItems
+        }
+        return finalItems
+    }
+
     suspend fun getRecentlyReleased(forceRefresh: Boolean = false): List<TmdbItem> {
         val now = System.currentTimeMillis()
         if (!forceRefresh && cachedRecentlyReleased?.let { now - it.first < CACHE_TTL_MS } == true) {

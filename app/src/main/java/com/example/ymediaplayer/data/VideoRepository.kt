@@ -7,6 +7,32 @@ import android.os.Build
 import android.provider.MediaStore
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import kotlinx.serialization.Serializable
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.encodeToString
+import kotlinx.serialization.decodeFromString
+
+@Serializable
+private data class DiskVideoItem(
+    val id: Long,
+    val uriString: String,
+    val title: String,
+    val duration: Long,
+    val size: Long,
+    val bucketId: String,
+    val bucketName: String,
+    val relativePath: String = "",
+    val dateAdded: Long = 0L,
+    val width: Int = 0,
+    val height: Int = 0
+)
+
+@Serializable
+private data class DiskVideoFolder(
+    val id: String,
+    val name: String,
+    val videos: List<DiskVideoItem>
+)
 
 data class VideoItem(
     val id: Long,
@@ -35,6 +61,12 @@ class VideoRepository(private val context: Context) {
         private var memoryCachedFolders: List<VideoFolder>? = null
         @Volatile
         private var lastCacheTime: Long = 0L
+
+        private val json = Json {
+            ignoreUnknownKeys = true
+            isLenient = true
+            coerceInputValues = true
+        }
 
         val videoDimensionsCache = java.util.concurrent.ConcurrentHashMap<String, Pair<Int, Int>>()
 
@@ -78,8 +110,53 @@ class VideoRepository(private val context: Context) {
         }
     }
 
+    /**
+     * Fast synchronous disk-cache lookup (1-2ms) so UI displays folders instantly on app open without loading spinners.
+     */
+    fun getCachedFoldersSync(): List<VideoFolder>? {
+        memoryCachedFolders?.let { return it }
+        try {
+            val file = java.io.File(context.filesDir, "video_folders_cache.json")
+            if (file.exists() && file.length() > 0) {
+                val raw = file.readText()
+                val diskFolders = json.decodeFromString<List<DiskVideoFolder>>(raw)
+                val mapped = diskFolders.map { f ->
+                    VideoFolder(
+                        id = f.id,
+                        name = f.name,
+                        videos = f.videos.map { v ->
+                            VideoItem(
+                                id = v.id,
+                                uri = Uri.parse(v.uriString),
+                                title = v.title,
+                                duration = v.duration,
+                                size = v.size,
+                                bucketId = v.bucketId,
+                                bucketName = v.bucketName,
+                                relativePath = v.relativePath,
+                                dateAdded = v.dateAdded,
+                                width = v.width,
+                                height = v.height
+                            )
+                        }
+                    )
+                }
+                if (mapped.isNotEmpty()) {
+                    memoryCachedFolders = mapped
+                    lastCacheTime = System.currentTimeMillis()
+                    return mapped
+                }
+            }
+        } catch (_: Exception) {}
+        return null
+    }
+
+    fun getCachedFolderByIdSync(folderId: String): VideoFolder? {
+        return getCachedFoldersSync()?.find { it.id == folderId }
+    }
+
     suspend fun getFoldersWithVideos(forceRefresh: Boolean = false): List<VideoFolder> = withContext(Dispatchers.IO) {
-        val cached = memoryCachedFolders
+        val cached = memoryCachedFolders ?: getCachedFoldersSync()
         val now = System.currentTimeMillis()
         // Serve from memory if fresh within 15 seconds, unless explicitly invalidated
         if (!forceRefresh && cached != null && (now - lastCacheTime < 15_000L)) {
@@ -226,6 +303,35 @@ class VideoRepository(private val context: Context) {
 
         memoryCachedFolders = folders
         lastCacheTime = now
+
+        // Persist to disk cache asynchronously so next app open is 100% instantaneous
+        try {
+            val diskFolders = folders.map { f ->
+                DiskVideoFolder(
+                    id = f.id,
+                    name = f.name,
+                    videos = f.videos.map { v ->
+                        DiskVideoItem(
+                            id = v.id,
+                            uriString = v.uri.toString(),
+                            title = v.title,
+                            duration = v.duration,
+                            size = v.size,
+                            bucketId = v.bucketId,
+                            bucketName = v.bucketName,
+                            relativePath = v.relativePath,
+                            dateAdded = v.dateAdded,
+                            width = v.width,
+                            height = v.height
+                        )
+                    }
+                )
+            }
+            val raw = json.encodeToString(diskFolders)
+            val cacheFile = java.io.File(context.filesDir, "video_folders_cache.json")
+            cacheFile.writeText(raw)
+        } catch (_: Exception) {}
+
         folders
     }
 

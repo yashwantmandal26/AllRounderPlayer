@@ -73,6 +73,7 @@ object VideoPlaybackManager {
     val videoWidth: MutableState<Int> = mutableIntStateOf(0)
     val videoHeight: MutableState<Int> = mutableIntStateOf(0)
     val currentAudioSessionId: MutableState<Int> = mutableIntStateOf(0)
+    val windowFocusEvent: MutableState<Long> = mutableLongStateOf(0L)
     val safeModeActive: MutableState<Boolean> = mutableStateOf(false)
     val recoveryMessage: MutableState<String?> = mutableStateOf(null)
     val compatibilityFallbackRequest: MutableState<CompatibilityFallbackRequest?> = mutableStateOf(null)

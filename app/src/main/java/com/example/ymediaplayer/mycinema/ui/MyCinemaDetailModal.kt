@@ -81,6 +81,7 @@ fun MyCinemaDetailModal(
     onDismiss: () -> Unit,
     onChooseSource: (TmdbItem) -> Unit,
     onOpenMovie: (TmdbItem) -> Unit = {},
+    onGenreClick: ((genreName: String) -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
@@ -241,6 +242,9 @@ fun MyCinemaDetailModal(
 
                 // Badges Row: Rating, Year, Type
                 Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .horizontalScroll(rememberScrollState()),
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
@@ -261,7 +265,49 @@ fun MyCinemaDetailModal(
                                     text = "TMDB ${item.ratingFormatted}",
                                     color = Color.White,
                                     fontSize = 12.sp,
-                                    fontWeight = FontWeight.Bold
+                                    fontWeight = FontWeight.Bold,
+                                    maxLines = 1,
+                                    softWrap = false
+                                )
+                            }
+                        }
+                    }
+
+                    // Authentic IMDb Rating Pill (via Cinemeta)
+                    extendedInfo?.imdbRating?.takeIf { it.isNotBlank() && it != "0" && it != "null" }?.let { imdbScore ->
+                        Surface(
+                            shape = RoundedCornerShape(8.dp),
+                            color = Color(0xFFF5C518).copy(alpha = 0.16f),
+                            border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFF5C518).copy(alpha = 0.40f))
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 5.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Box(
+                                    modifier = Modifier
+                                        .clip(RoundedCornerShape(3.dp))
+                                        .background(Color(0xFFF5C518))
+                                        .padding(horizontal = 4.dp, vertical = 1.dp)
+                                ) {
+                                    Text(
+                                        text = "IMDb",
+                                        color = Color.Black,
+                                        fontWeight = FontWeight.Black,
+                                        fontSize = 9.sp,
+                                        letterSpacing = (-0.2).sp,
+                                        maxLines = 1,
+                                        softWrap = false
+                                    )
+                                }
+                                Spacer(Modifier.width(5.dp))
+                                Text(
+                                    text = imdbScore,
+                                    color = Color.White,
+                                    fontSize = 12.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    maxLines = 1,
+                                    softWrap = false
                                 )
                             }
                         }
@@ -289,7 +335,39 @@ fun MyCinemaDetailModal(
                                     text = item.displayYear,
                                     color = Color.White,
                                     fontSize = 12.sp,
-                                    fontWeight = FontWeight.SemiBold
+                                    fontWeight = FontWeight.SemiBold,
+                                    maxLines = 1,
+                                    softWrap = false
+                                )
+                            }
+                        }
+                    }
+
+                    // Runtime Pill (e.g. 2H 37M)
+                    extendedInfo?.formattedRuntime?.takeIf { it.isNotBlank() }?.let { runtimeText ->
+                        Surface(
+                            shape = RoundedCornerShape(8.dp),
+                            color = Color.White.copy(alpha = 0.12f),
+                            border = androidx.compose.foundation.BorderStroke(1.dp, Color.White.copy(alpha = 0.15f))
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Icon(
+                                    Icons.Rounded.Schedule,
+                                    contentDescription = null,
+                                    tint = Color.White.copy(alpha = 0.8f),
+                                    modifier = Modifier.size(13.dp)
+                                )
+                                Spacer(Modifier.width(4.dp))
+                                Text(
+                                    text = runtimeText,
+                                    color = Color.White,
+                                    fontSize = 12.sp,
+                                    fontWeight = FontWeight.SemiBold,
+                                    maxLines = 1,
+                                    softWrap = false
                                 )
                             }
                         }
@@ -309,6 +387,8 @@ fun MyCinemaDetailModal(
                             color = if (item.isSeries) Color(0xFFE1BEE7) else Color.White,
                             fontSize = 11.5.sp,
                             fontWeight = FontWeight.Bold,
+                            maxLines = 1,
+                            softWrap = false,
                             modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp)
                         )
                     }
@@ -374,6 +454,27 @@ fun MyCinemaDetailModal(
                             fontSize = 12.5.sp,
                             fontWeight = FontWeight.Bold
                         )
+                    }
+                }
+
+                // Genres Row (Just below the Release Date)
+                val displayGenres = remember(extendedInfo?.genres, item.genreNames) {
+                    val fromExt = extendedInfo?.genres?.filter { it.isNotBlank() }
+                    if (!fromExt.isNullOrEmpty()) fromExt else item.genreNames
+                }
+                if (displayGenres.isNotEmpty()) {
+                    Spacer(Modifier.height(12.dp))
+                    FlowRow(
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        displayGenres.forEach { genre ->
+                            CinemaGenrePill(
+                                genre = genre,
+                                onClick = { onGenreClick?.invoke(genre) }
+                            )
+                        }
                     }
                 }
 
@@ -928,13 +1029,13 @@ private fun OfficialAvailabilityCard(
                     extendedInfo.watchProviders.take(8).forEach { provider ->
                         Surface(
                             onClick = {
-                                val browseUrl = getOttProviderBrowseUrl(
+                                launchStreamingPlatform(
+                                    context = context,
                                     providerName = provider.providerName,
                                     title = movieTitle,
                                     year = movieYear,
                                     tmdbWatchLink = extendedInfo.tmdbWatchLink
                                 )
-                                launchBrowserUrl(context, browseUrl)
                             },
                             shape = RoundedCornerShape(8.dp),
                             color = Color.White.copy(alpha = 0.08f),
@@ -975,13 +1076,13 @@ private fun OfficialAvailabilityCard(
                     verticalAlignment = Alignment.CenterVertically,
                     modifier = Modifier.clickable {
                         val platform = extendedInfo.officialPlatformName ?: "OTT"
-                        val browseUrl = getOttProviderBrowseUrl(
+                        launchStreamingPlatform(
+                            context = context,
                             providerName = platform,
                             title = movieTitle,
                             year = movieYear,
                             tmdbWatchLink = extendedInfo.tmdbWatchLink
                         )
-                        launchBrowserUrl(context, browseUrl)
                     }
                 ) {
                     Box(
@@ -1521,6 +1622,216 @@ private fun getOttProviderBrowseUrl(
                 providerName.replace(" ", "+")
             }
             "https://www.google.com/search?q=watch+$encodedTitle+on+$encodedProvider"
+        }
+    }
+}
+
+/**
+ * Opens a streaming service in its native Android application if installed,
+ * passing deep search/view query where supported, or falls back seamlessly to the web browser.
+ */
+private fun launchStreamingPlatform(
+    context: Context,
+    providerName: String,
+    title: String,
+    year: String = "",
+    tmdbWatchLink: String? = null
+) {
+    val cleanTitle = title.trim()
+    val cleanYear = year.trim().takeIf { it.matches(Regex("\\d{4}")) }
+    val searchTitle = if (cleanYear != null) "$cleanTitle ($cleanYear)" else cleanTitle
+    val encodedTitle = try {
+        URLEncoder.encode(searchTitle, "UTF-8")
+    } catch (_: Exception) {
+        searchTitle.replace(" ", "+")
+    }
+    val lower = providerName.lowercase()
+
+    val (candidatePackages, deepUriString, webFallbackUrl) = when {
+        lower.contains("netflix") -> Triple(
+            listOf("com.netflix.mediaclient"),
+            "nflx://www.netflix.com/search?q=$encodedTitle",
+            "https://www.netflix.com/search?q=$encodedTitle"
+        )
+        lower.contains("prime") || lower.contains("amazon") -> Triple(
+            listOf("com.amazon.avod.thirdpartyclient", "com.amazon.amazonvideo.livingroom"),
+            "https://app.primevideo.com/detail?title=$encodedTitle",
+            "https://www.primevideo.com/search/ref=atv_nb_sr?phrase=$encodedTitle"
+        )
+        lower.contains("apple") || lower.contains("itunes") -> Triple(
+            listOf("com.apple.atve.androidtv.app", "com.apple.atve.sony.app"),
+            "https://tv.apple.com/search?term=$encodedTitle",
+            "https://tv.apple.com/search?term=$encodedTitle"
+        )
+        lower.contains("hotstar") || lower.contains("disney") -> Triple(
+            listOf("in.startv.hotstar", "com.disney.disneyplus"),
+            if (!tmdbWatchLink.isNullOrBlank()) tmdbWatchLink else "https://www.hotstar.com/search?q=$encodedTitle",
+            if (!tmdbWatchLink.isNullOrBlank()) tmdbWatchLink else "https://www.hotstar.com/search?q=$encodedTitle"
+        )
+        lower.contains("jiocinema") || lower.contains("jio cinema") -> Triple(
+            listOf("com.jio.media.ondemand"),
+            "https://www.jiocinema.com/search/$encodedTitle",
+            "https://www.jiocinema.com/search/$encodedTitle"
+        )
+        lower.contains("zee5") || lower.contains("zee") -> Triple(
+            listOf("com.graymatrix.did"),
+            "https://www.zee5.com/search?q=$encodedTitle",
+            "https://www.zee5.com/search?q=$encodedTitle"
+        )
+        lower.contains("sonyliv") || lower.contains("sony liv") -> Triple(
+            listOf("com.sonyliv"),
+            "https://www.sonyliv.com/search?q=$encodedTitle",
+            "https://www.sonyliv.com/search?q=$encodedTitle"
+        )
+        lower.contains("youtube") || lower.contains("google play") -> Triple(
+            listOf("com.google.android.youtube", "com.google.android.videos"),
+            "vnd.youtube.search:$encodedTitle",
+            "https://www.youtube.com/results?search_query=$encodedTitle+movie"
+        )
+        lower.contains("max") || lower.contains("hbo") -> Triple(
+            listOf("com.wbd.stream", "com.hbo.hbonow"),
+            "https://play.max.com/search?q=$encodedTitle",
+            "https://play.max.com/search?q=$encodedTitle"
+        )
+        lower.contains("paramount") -> Triple(
+            listOf("com.cbs.app"),
+            "https://www.paramountplus.com/search/?q=$encodedTitle",
+            "https://www.paramountplus.com/search/?q=$encodedTitle"
+        )
+        lower.contains("hulu") -> Triple(
+            listOf("com.hulu.plus"),
+            "https://www.hulu.com/search?q=$encodedTitle",
+            "https://www.hulu.com/search?q=$encodedTitle"
+        )
+        lower.contains("peacock") -> Triple(
+            listOf("com.peacocktv.peacockandroid"),
+            "https://www.peacocktv.com/search?q=$encodedTitle",
+            "https://www.peacocktv.com/search?q=$encodedTitle"
+        )
+        lower.contains("crunchyroll") -> Triple(
+            listOf("com.crunchyroll.crunchyroll"),
+            "https://www.crunchyroll.com/search?q=$encodedTitle",
+            "https://www.crunchyroll.com/search?q=$encodedTitle"
+        )
+        else -> Triple(
+            emptyList(),
+            null,
+            getOttProviderBrowseUrl(providerName, title, year, tmdbWatchLink)
+        )
+    }
+
+    val pm = context.packageManager
+    var appOpened = false
+
+    for (pkg in candidatePackages) {
+        val isInstalled = try {
+            pm.getPackageInfo(pkg, 0)
+            true
+        } catch (_: Exception) {
+            false
+        }
+        if (isInstalled) {
+            if (deepUriString != null) {
+                try {
+                    val deepIntent = Intent(Intent.ACTION_VIEW, Uri.parse(deepUriString)).apply {
+                        setPackage(pkg)
+                        flags = Intent.FLAG_ACTIVITY_NEW_TASK
+                    }
+                    context.startActivity(deepIntent)
+                    appOpened = true
+                    break
+                } catch (_: Exception) {
+                }
+            }
+            val launchIntent = pm.getLaunchIntentForPackage(pkg)
+            if (launchIntent != null) {
+                try {
+                    launchIntent.flags = Intent.FLAG_ACTIVITY_NEW_TASK
+                    context.startActivity(launchIntent)
+                    appOpened = true
+                    break
+                } catch (_: Exception) {
+                }
+            }
+        }
+    }
+
+    if (!appOpened) {
+        val targetUrl = if (!tmdbWatchLink.isNullOrBlank() && (lower.contains("hotstar") || lower.contains("disney"))) {
+            tmdbWatchLink
+        } else {
+            webFallbackUrl
+        }
+        launchBrowserUrl(context, targetUrl)
+    }
+}
+
+/**
+ * Stylish capsule genre pill chip with luminous borders and vibrant gradient/neon tones.
+ */
+@Composable
+private fun CinemaGenrePill(
+    genre: String,
+    onClick: (() -> Unit)? = null
+) {
+    val clean = genre.trim()
+    val lower = clean.lowercase()
+    val (bgColor, borderColor) = when {
+        lower.contains("supernatural") || lower.contains("fantasy") || lower.contains("sci-fi") || lower.contains("science") ->
+            Pair(Color(0xFF512DA8), Color(0xFF7E57C2)) // Vibrant Purple/Violet
+        lower.contains("action") || lower.contains("shootout") || lower.contains("war") ->
+            Pair(Color(0xFF0077D4), Color(0xFF29B6F6)) // Electric Cyan/Blue
+        lower.contains("police") || lower.contains("crime") || lower.contains("mystery") ->
+            Pair(Color(0xFF283593), Color(0xFF5C6BC0)) // Royal Indigo
+        lower.contains("hunt") || lower.contains("horror") || lower.contains("thriller") ->
+            Pair(Color(0xFFD84315), Color(0xFFFF7043)) // Vibrant Amber / Fire Orange
+        lower.contains("comedy") ->
+            Pair(Color(0xFFF57F17), Color(0xFFFFCA28)) // Warm Gold
+        lower.contains("romance") ->
+            Pair(Color(0xFFC2185B), Color(0xFFF06292)) // Pink / Rose
+        lower.contains("animation") || lower.contains("kids") || lower.contains("family") ->
+            Pair(Color(0xFF00897B), Color(0xFF26A69A)) // Teal / Mint
+        lower.contains("adventure") || lower.contains("western") ->
+            Pair(Color(0xFF6A1B9A), Color(0xFFAB47BC)) // Magenta Violet
+        lower.contains("drama") ->
+            Pair(Color(0xFF4527A0), Color(0xFF7E57C2)) // Deep Violet
+        lower.contains("documentary") || lower.contains("history") ->
+            Pair(Color(0xFF2E7D32), Color(0xFF66BB6A)) // Emerald Green
+        lower.contains("music") ->
+            Pair(Color(0xFF0097A7), Color(0xFF00E5FF)) // Electric Cyan
+        else -> {
+            val hash = kotlin.math.abs(clean.hashCode()) % 5
+            when (hash) {
+                0 -> Pair(Color(0xFF512DA8), Color(0xFF7E57C2))
+                1 -> Pair(Color(0xFF0077D4), Color(0xFF29B6F6))
+                2 -> Pair(Color(0xFFD84315), Color(0xFFFF7043))
+                3 -> Pair(Color(0xFF6A1B9A), Color(0xFFAB47BC))
+                else -> Pair(Color(0xFF00897B), Color(0xFF26A69A))
+            }
+        }
+    }
+
+    Surface(
+        onClick = { onClick?.invoke() },
+        enabled = onClick != null,
+        shape = RoundedCornerShape(12.dp),
+        color = bgColor.copy(alpha = 0.65f),
+        border = BorderStroke(1.2.dp, borderColor.copy(alpha = 0.85f)),
+        shadowElevation = 2.dp
+    ) {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp)
+        ) {
+            Text(
+                text = clean.uppercase(),
+                color = Color.White,
+                fontSize = 11.sp,
+                fontWeight = FontWeight.ExtraBold,
+                letterSpacing = 0.6.sp,
+                maxLines = 1,
+                softWrap = false
+            )
         }
     }
 }

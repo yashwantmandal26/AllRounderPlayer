@@ -53,6 +53,7 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
@@ -382,8 +383,11 @@ fun MusicScreen(
     val repeatMode by remember { MusicService.repeatMode } // 0: OFF, 1: ONE, 2: ALL
     var playbackSpeed by remember { mutableFloatStateOf(1.0f) }
 
-    // Customization State
-    var artworkStyle by remember { mutableStateOf(appPreferences.getMusicArtworkStyle()) } // "VINYL", "CARD"
+    // Customization State - Vinyl Disc is the default visual artwork style
+    var artworkStyle by remember {
+        val saved = appPreferences.getMusicArtworkStyle()
+        mutableStateOf(if (saved.isBlank() || saved.equals("CARD", ignoreCase = true)) "VINYL" else saved)
+    }
     var favorites by remember { mutableStateOf(appPreferences.getMusicFavorites()) }
 
     // Library Filtering & Search
@@ -1933,8 +1937,8 @@ fun MusicScreen(
                                 Column {
                                     Icon(Icons.Rounded.History, contentDescription = null, tint = c.accentBlue, modifier = Modifier.size(32.dp))
                                     Spacer(Modifier.height(8.dp))
-                                    Text("Recently Played", color = Color.White, fontSize = 22.sp, fontWeight = FontWeight.Bold)
-                                    Text("${recentlyPlayedSongs.size} tracks played recently", color = Color.White.copy(0.8f), fontSize = 12.sp)
+                                    Text("Recently Played", color = c.textPrimary, fontSize = 22.sp, fontWeight = FontWeight.Bold)
+                                    Text("${recentlyPlayedSongs.size} tracks played recently", color = c.textSecondary, fontSize = 12.sp)
                                     Spacer(Modifier.height(14.dp))
                                     if (recentlyPlayedSongs.isNotEmpty()) {
                                         Button(
@@ -2158,7 +2162,7 @@ fun MusicScreen(
                                 }
                                 Spacer(Modifier.width(14.dp))
                                 Column(modifier = Modifier.weight(1f)) {
-                                    Text(name, color = Color.White, fontSize = 15.sp, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                    Text(name, color = c.textPrimary, fontSize = 15.sp, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
                                     Text("${songs.size} songs", color = c.textSecondary, fontSize = 12.sp)
                                 }
                                 Icon(Icons.Rounded.ChevronRight, contentDescription = null, tint = c.textSecondary, modifier = Modifier.size(20.dp))
@@ -2226,8 +2230,8 @@ fun MusicScreen(
                                 Column {
                                     Icon(Icons.Rounded.Favorite, contentDescription = null, tint = Color(0xFFFF4D6D), modifier = Modifier.size(32.dp))
                                     Spacer(Modifier.height(8.dp))
-                                    Text("Liked Songs", color = Color.White, fontSize = 22.sp, fontWeight = FontWeight.Bold)
-                                    Text("${favSongs.size} favorites saved on device", color = Color.White.copy(0.8f), fontSize = 12.sp)
+                                    Text("Liked Songs", color = c.textPrimary, fontSize = 22.sp, fontWeight = FontWeight.Bold)
+                                    Text("${favSongs.size} favorites saved on device", color = c.textSecondary, fontSize = 12.sp)
                                     Spacer(Modifier.height(14.dp))
                                     if (favSongs.isNotEmpty()) {
                                         Button(
@@ -2295,8 +2299,8 @@ fun MusicScreen(
                                     Column {
                                         Icon(Icons.AutoMirrored.Rounded.PlaylistPlay, contentDescription = null, tint = c.accentBlue, modifier = Modifier.size(32.dp))
                                         Spacer(Modifier.height(8.dp))
-                                        Text("Playlists & Smart Mixes", color = Color.White, fontSize = 22.sp, fontWeight = FontWeight.Bold)
-                                        Text("${playlists.size} custom playlists · 4 smart mixes", color = Color.White.copy(0.8f), fontSize = 12.sp)
+                                        Text("Playlists & Smart Mixes", color = c.textPrimary, fontSize = 22.sp, fontWeight = FontWeight.Bold)
+                                    Text("${playlists.size} custom playlists · 4 smart mixes", color = c.textSecondary, fontSize = 12.sp)
                                         Spacer(Modifier.height(14.dp))
                                         Button(
                                             onClick = { showCreatePlaylistDialog = true },
@@ -2561,6 +2565,11 @@ fun MusicScreen(
                     sleepTimerSecondsRemaining = sleepTimerSecondsRemaining,
                     isFavorite = favorites.contains(song.uri.toString()),
                     onPlayPause = { if (isPlaying) mediaController?.pause() else mediaController?.play() },
+                    onPausePlayback = { mediaController?.pause() },
+                    onResumePlayback = { mediaController?.play() },
+                    onSetPlaybackParameters = { speed, pitch ->
+                        mediaController?.playbackParameters = PlaybackParameters(speed, pitch)
+                    },
                     onNext = playNext,
                     onPrev = playPrev,
                     onSeek = { mediaController?.seekTo(it) },
@@ -3374,7 +3383,7 @@ private fun QuickPickItem(
         Column(modifier = Modifier.weight(1f)) {
             Text(
                 song.title,
-                color = if (isCurrent) c.accentBlue else Color.White,
+                color = if (isCurrent) c.accentBlue else c.textPrimary,
                 fontSize = 13.sp,
                 fontWeight = FontWeight.SemiBold,
                 maxLines = 1,
@@ -3447,7 +3456,7 @@ private fun OnlineArtistCard(
         Spacer(Modifier.height(8.dp))
         Text(
             name,
-            color = Color.White,
+            color = c.textPrimary,
             fontSize = 12.sp,
             fontWeight = FontWeight.SemiBold,
             maxLines = 1,
@@ -3494,7 +3503,7 @@ private fun OnlineAlbumCard(
                 .size(130.dp)
                 .shadow(elevation = if (c.isMatte && c.isDark) 0.dp else 8.dp, shape = cardShape, ambientColor = Color.Black.copy(0.6f), spotColor = c.cardShadowColor)
                 .clip(cardShape)
-                .background(Color(0xFF141520))
+                .background(c.cardBg)
                 .border(1.4.dp, (if (c.isMatte && c.isDark) androidx.compose.ui.graphics.SolidColor(c.glassBorder) else Brush.verticalGradient(listOf(c.cardBorderHighlight, c.glassBorder, c.cardBorderShadow))), cardShape)
         ) {
             MusicAlbumArtImage(
@@ -3517,7 +3526,7 @@ private fun OnlineAlbumCard(
         Spacer(Modifier.height(6.dp))
         Text(
             albumTitle,
-            color = Color.White,
+            color = c.textPrimary,
             fontSize = 13.sp,
             fontWeight = FontWeight.SemiBold,
             maxLines = 1,
@@ -3562,7 +3571,7 @@ private fun RecentlyPlayedMusicCard(
                     spotColor = if (isCurrent) c.accentBlue.copy(0.5f) else c.cardShadowColor
                 )
                 .clip(cardShape)
-                .background(Color(0xFF141520))
+                .background(c.cardBg)
                 .border(
                     1.4.dp,
                     if (isCurrent) Brush.verticalGradient(listOf(c.accentBlue, c.cardBorderHighlight))
@@ -3608,7 +3617,7 @@ private fun RecentlyPlayedMusicCard(
         Spacer(Modifier.height(6.dp))
         Text(
             song.title,
-            color = if (isCurrent) c.accentBlue else Color.White,
+            color = if (isCurrent) c.accentBlue else c.textPrimary,
             fontSize = 13.sp,
             fontWeight = FontWeight.SemiBold,
             maxLines = 1,
@@ -3947,6 +3956,9 @@ fun FullScreenMusicPlayer(
     sleepTimerSecondsRemaining: Int,
     isFavorite: Boolean,
     onPlayPause: () -> Unit,
+    onPausePlayback: () -> Unit = {},
+    onResumePlayback: () -> Unit = {},
+    onSetPlaybackParameters: (Float, Float) -> Unit = { _, _ -> },
     onNext: () -> Unit,
     onPrev: () -> Unit,
     onSeek: (Long) -> Unit,
@@ -3974,13 +3986,13 @@ fun FullScreenMusicPlayer(
     val appPreferences = remember { com.example.ymediaplayer.data.AppPreferences(context) }
     var showLyrics by remember { mutableStateOf(false) }
 
-    // Keep status bar transparent with crisp white icons in full screen player
+    // Dynamic status bar: dark icons on light theme, crisp white icons on dark theme
     if (!view.isInEditMode) {
-        DisposableEffect(Unit) {
+        DisposableEffect(c.isDark) {
             val window = activity?.window
             val insetsController = window?.let { androidx.core.view.WindowCompat.getInsetsController(it, it.decorView) }
             val prevLightStatus = insetsController?.isAppearanceLightStatusBars ?: false
-            insetsController?.isAppearanceLightStatusBars = false
+            insetsController?.isAppearanceLightStatusBars = !c.isDark
             onDispose {
                 insetsController?.isAppearanceLightStatusBars = prevLightStatus
             }
@@ -4028,24 +4040,52 @@ fun FullScreenMusicPlayer(
     var showVolumeBar by remember { mutableStateOf(false) }
     var volumeTouchTrigger by remember { mutableLongStateOf(0L) }
 
+    // ─── Initial Discovery Cue ──────────────────────────────────────────
+    // When user opens this music player screen, display both volume and
+    // brightness sliders for 2.5 seconds, then gracefully fade out.
+    LaunchedEffect(Unit) {
+        showBrightnessBar = true
+        showVolumeBar = true
+        delay(2500L)
+        if (brightnessTouchTrigger == 0L) {
+            showBrightnessBar = false
+        }
+        if (volumeTouchTrigger == 0L) {
+            showVolumeBar = false
+        }
+    }
+
     LaunchedEffect(brightnessTouchTrigger) {
         if (brightnessTouchTrigger > 0L) {
-            delay(1600.milliseconds)
+            delay(1800L)
             showBrightnessBar = false
+            brightnessTouchTrigger = 0L
         }
     }
 
     LaunchedEffect(volumeTouchTrigger) {
         if (volumeTouchTrigger > 0L) {
-            delay(1600.milliseconds)
+            delay(1800L)
             showVolumeBar = false
+            volumeTouchTrigger = 0L
         }
     }
 
+    // ─── DJ Turntable Dynamic Scratch State ──────────────────────────────
+    var isDjScratching by remember { mutableStateOf(false) }
+    var djScrubPosition by remember { mutableStateOf<Long?>(null) }
+    var djScratchDeltaSeconds by remember { mutableFloatStateOf(0f) }
+    var djScratchDirection by remember { mutableIntStateOf(0) }
+    var manualScratchAngle by remember { mutableFloatStateOf(0f) }
+    var lastDiscTapTime by remember { mutableLongStateOf(0L) }
+    val coroutineScope = rememberCoroutineScope()
+
+    val effectivePosition = djScrubPosition ?: currentPosition
+
     // Continuous accumulating rotation without snapping or jump effects
     val spinAngle = remember { Animatable(0f) }
-    LaunchedEffect(isPlaying) {
-        if (isPlaying) {
+    LaunchedEffect(isPlaying, isDjScratching) {
+        if (isPlaying && !isDjScratching) {
             while (true) {
                 spinAngle.animateTo(
                     targetValue = spinAngle.value + 360f,
@@ -4054,7 +4094,7 @@ fun FullScreenMusicPlayer(
             }
         }
     }
-    val rotation = spinAngle.value
+    val rotation = spinAngle.value + manualScratchAngle
 
     // Real-time Song-Reactive Audio Dynamics (smooth, zero jump effect)
     val liveEnergy by com.example.ymediaplayer.service.AudioReactor.energy
@@ -4075,9 +4115,9 @@ fun FullScreenMusicPlayer(
 
     val ambientGlowAlpha = if (isPlaying) (0.35f + reactiveEnergy * 0.45f).coerceIn(0.2f, 0.85f) else 0.12f
 
-    // Turntable Tonearm Angle: 0f (at rest off-platter) -> 26f (sits on record grooves when playing)
+    // Turntable Tonearm Angle: 0f (at rest off-platter) -> 26f (sits on record grooves when playing or DJ scratching)
     val tonearmAngle by animateFloatAsState(
-        targetValue = if (isPlaying) 26f else 0f,
+        targetValue = if (isPlaying || isDjScratching) 26f else 0f,
         animationSpec = tween(500, easing = FastOutSlowInEasing),
         label = "tonearmAngle"
     )
@@ -4085,42 +4125,51 @@ fun FullScreenMusicPlayer(
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .background(Color(0xFF1A1B22))
+            .background(if (c.isDark) Color(0xFF090A10) else Color(0xFFF4F6FA))
             .pointerInput(Unit) {
                 var isVertical = false
                 var isHorizontal = false
                 var isLeft = false
+                var isGestureAllowed = false
 
                 detectDragGestures(
                     onDragStart = { offset ->
                         isVertical = false
                         isHorizontal = false
-                        isLeft = offset.x < size.width * 0.5f
+                        // Strict edge boundaries: Left 22% for brightness, Right 22% for volume.
+                        // Center 56% is strictly reserved for Vinyl DJ scratching and playback controls.
+                        val isLeftZone = offset.x <= size.width * 0.22f
+                        val isRightZone = offset.x >= size.width * 0.78f
+                        isGestureAllowed = isLeftZone || isRightZone
+                        isLeft = isLeftZone
                     },
                     onDragEnd = {
-                        if (isVertical) {
+                        if (isGestureAllowed && isVertical) {
                             if (isLeft) brightnessTouchTrigger = System.currentTimeMillis()
                             else volumeTouchTrigger = System.currentTimeMillis()
                         }
+                        isGestureAllowed = false
                     },
                     onDragCancel = {
-                        if (isVertical) {
+                        if (isGestureAllowed && isVertical) {
                             if (isLeft) brightnessTouchTrigger = System.currentTimeMillis()
                             else volumeTouchTrigger = System.currentTimeMillis()
                         }
+                        isGestureAllowed = false
                     },
                     onDrag = { change, dragAmount ->
+                        if (!isGestureAllowed || isDjScratching) return@detectDragGestures
+
                         if (!isVertical && !isHorizontal) {
-                            if (abs(dragAmount.y) > abs(dragAmount.x) && abs(dragAmount.y) > 4f) {
+                            if (abs(dragAmount.y) > abs(dragAmount.x) && abs(dragAmount.y) > 6f) {
                                 isVertical = true
-                            } else if (abs(dragAmount.x) > abs(dragAmount.y) && abs(dragAmount.x) > 4f) {
+                            } else if (abs(dragAmount.x) > abs(dragAmount.y) && abs(dragAmount.x) > 6f) {
                                 isHorizontal = true
                             }
                         }
                         if (isVertical) {
                             change.consume()
-                            // Calculate 1:1 drag travel distance matching the 136.dp bar
-                            val barTravelPx = with(density) { 136.dp.toPx() }.coerceAtLeast(100f)
+                            val barTravelPx = with(density) { 172.dp.toPx() }.coerceAtLeast(100f)
                             val dragDelta = -dragAmount.y / barTravelPx
                             if (isLeft) {
                                 brightnessPct = (brightnessPct + dragDelta).coerceIn(0.01f, 1f)
@@ -4148,9 +4197,9 @@ fun FullScreenMusicPlayer(
         Box(
             modifier = Modifier
                 .fillMaxSize()
-                .background(Color(0xFF090A10))
+                .background(if (c.isDark) Color(0xFF090A10) else Color(0xFFF4F6FA))
         ) {
-            // Layer 1: Overscaled Album Art with Ultra-Smooth Gaussian Blur
+            // Layer 1: Overscaled Album Art with Ultra-Smooth Gaussian Blur (subtle pastel tint in light mode)
             MusicAlbumArtImage(
                 artUri = song.albumArtUri,
                 iconSize = 72.dp,
@@ -4159,35 +4208,56 @@ fun FullScreenMusicPlayer(
                     .fillMaxSize()
                     .scale(1.25f)
                     .blur(56.dp)
+                    .alpha(if (c.isDark) 1.0f else 0.32f)
             )
 
-            // Layer 2: Radial vignette focusing light toward center-bottom
+            // Layer 2: Radial vignette focusing light toward center (multi-shade white pearlescent glow in light mode)
             Box(
                 modifier = Modifier
                     .fillMaxSize()
                     .background(
-                        Brush.radialGradient(
-                            colors = listOf(
-                                Color.Transparent,
-                                Color(0x6608090F),
-                                Color(0xDD08090F)
+                        if (c.isDark) {
+                            Brush.radialGradient(
+                                colors = listOf(
+                                    Color.Transparent,
+                                    Color(0x6608090F),
+                                    Color(0xDD08090F)
+                                )
                             )
-                        )
+                        } else {
+                            Brush.radialGradient(
+                                colors = listOf(
+                                    Color.White.copy(alpha = 0.40f),
+                                    Color(0x88F0F4F8),
+                                    Color(0xEEEDF2F7)
+                                )
+                            )
+                        }
                     )
             )
 
-            // Layer 3: Vertical gradient for crystal-clear readability of top/bottom controls
+            // Layer 3: Vertical gradient for crystal-clear readability (pure white to frosted pearl in light mode)
             Box(
                 modifier = Modifier
                     .fillMaxSize()
                     .background(
-                        Brush.verticalGradient(
-                            listOf(
-                                Color(0xB308090F),
-                                Color(0x3308090F),
-                                Color(0xCC08090F)
+                        if (c.isDark) {
+                            Brush.verticalGradient(
+                                listOf(
+                                    Color(0xB308090F),
+                                    Color(0x3308090F),
+                                    Color(0xCC08090F)
+                                )
                             )
-                        )
+                        } else {
+                            Brush.verticalGradient(
+                                listOf(
+                                    Color.White.copy(alpha = 0.94f),
+                                    Color(0x77F8FAFC),
+                                    Color.White.copy(alpha = 0.96f)
+                                )
+                            )
+                        }
                     )
             )
         }
@@ -4207,7 +4277,12 @@ fun FullScreenMusicPlayer(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 IconButton(onClick = onClose) {
-                    Icon(Icons.AutoMirrored.Rounded.ArrowBack, contentDescription = "Back", tint = Color.White, modifier = Modifier.size(28.dp))
+                    Icon(
+                        Icons.AutoMirrored.Rounded.ArrowBack,
+                        contentDescription = "Back",
+                        tint = if (c.isDark) Color.White else Color(0xFF0F172A),
+                        modifier = Modifier.size(28.dp)
+                    )
                 }
 
                 // Sleep timer badge if active
@@ -4229,7 +4304,7 @@ fun FullScreenMusicPlayer(
                 } else {
                     Text(
                         text = "Now playing",
-                        color = Color.White.copy(0.65f),
+                        color = if (c.isDark) Color.White.copy(0.65f) else Color(0xFF64748B),
                         fontSize = 12.sp,
                         fontWeight = FontWeight.SemiBold,
                         letterSpacing = 0.5.sp
@@ -4264,24 +4339,25 @@ fun FullScreenMusicPlayer(
                             )
                         }
                     }
-                    // Song Info
+                    // Synced Lyrics
                     IconButton(onClick = {
-                    view.performHaptic(HapticType.LIGHT)
-                    showLyrics = !showLyrics
-                }) {
-                    Icon(
-                        imageVector = Icons.Rounded.Lyrics,
-                        contentDescription = "Toggle Synced Lyrics",
-                        tint = if (showLyrics) c.accentBlue else Color.White.copy(0.85f),
-                        modifier = Modifier.size(24.dp)
-                    )
-                }
-                IconButton(onClick = onOpenSongInfo) {
-                        Icon(Icons.Rounded.Info, contentDescription = "Info", tint = Color.White.copy(0.8f))
+                        view.performHaptic(HapticType.LIGHT)
+                        showLyrics = !showLyrics
+                    }) {
+                        Icon(
+                            imageVector = Icons.Rounded.Lyrics,
+                            contentDescription = "Toggle Synced Lyrics",
+                            tint = if (showLyrics) c.accentBlue else (if (c.isDark) Color.White.copy(0.85f) else Color(0xFF334155)),
+                            modifier = Modifier.size(24.dp)
+                        )
+                    }
+                    // Song Info
+                    IconButton(onClick = onOpenSongInfo) {
+                        Icon(Icons.Rounded.Info, contentDescription = "Info", tint = if (c.isDark) Color.White.copy(0.8f) else Color(0xFF334155))
                     }
                     // More Options (3 Dots)
                     IconButton(onClick = onOpenMoreOptions) {
-                        Icon(Icons.Rounded.MoreVert, contentDescription = "More options", tint = Color.White.copy(0.8f))
+                        Icon(Icons.Rounded.MoreVert, contentDescription = "More options", tint = if (c.isDark) Color.White.copy(0.8f) else Color(0xFF334155))
                     }
                 }
             }
@@ -4305,7 +4381,7 @@ fun FullScreenMusicPlayer(
             if (showLyrics) {
                 KaraokeSyncedLyricsView(
                     song = song,
-                    currentPosition = currentPosition,
+                    currentPosition = effectivePosition,
                     onSeek = onSeek,
                     accentColor = c.accentBlue,
                     modifier = Modifier
@@ -4315,17 +4391,19 @@ fun FullScreenMusicPlayer(
             } else {
                 Box(
                     contentAlignment = Alignment.Center,
-                    modifier = Modifier.pointerInput(Unit) {
-                    detectTapGestures(
-                        onDoubleTap = {
-                            if (!isFavorite) {
-                                onFavoriteToggle()
-                            }
-                            showHeartBurst = true
+                    modifier = Modifier.pointerInput(artworkStyle) {
+                        if (artworkStyle.uppercase() != "VINYL") {
+                            detectTapGestures(
+                                onDoubleTap = {
+                                    if (!isFavorite) {
+                                        onFavoriteToggle()
+                                    }
+                                    showHeartBurst = true
+                                }
+                            )
                         }
-                    )
-                }
-            ) {
+                    }
+                ) {
                 // ─── Real-Time Song-Reactive Ambient Glow & Resonance Rings ───
                 // 1. Reactive Bass Glow Halo (smooth color/alpha pulsing, stable dimensions)
                 Box(
@@ -4370,17 +4448,174 @@ fun FullScreenMusicPlayer(
                 ) { currentTheme ->
                     when (currentTheme) {
                         "VINYL" -> {
-                            // 1. Spinning Vinyl Record with Realistic Turntable Tonearm
+                            // 1. Spinning Vinyl Record with Realistic Turntable Tonearm & Interactive DJ Scratch
                             Box(
                                 modifier = Modifier.size(320.dp, 290.dp),
                                 contentAlignment = Alignment.Center
                             ) {
-                                // Vinyl Disc Platter
+                                // Vinyl Disc Platter with Interactive DJ Scratch & Scrubbing
                                 Box(
                                     modifier = Modifier
                                         .size(280.dp)
-                                        .shadow(if (c.isMatte && c.isDark) 0.dp else 32.dp, CircleShape, ambientColor = Color.Black, spotColor = c.accentBlue.copy(0.45f))
+                                        .shadow(
+                                            if (c.isMatte && c.isDark) 0.dp else 28.dp,
+                                            CircleShape,
+                                            ambientColor = if (c.isDark) Color.Black else Color(0x35000000),
+                                            spotColor = c.accentBlue.copy(0.40f)
+                                        )
                                         .clip(CircleShape)
+                                        .pointerInput(song.uri, duration) {
+                                            awaitEachGesture {
+                                                val down = awaitFirstDown(requireUnconsumed = false)
+                                                val center = Offset(size.width / 2f, size.height / 2f)
+                                                val dist = (down.position - center).getDistance()
+                                                val maxRadius = size.width / 2f
+
+                                                if (dist > maxRadius * 1.12f) return@awaitEachGesture
+                                                down.consume()
+
+                                                var lastTouchAngle = Math.toDegrees(
+                                                    kotlin.math.atan2(
+                                                        (down.position.y - center.y).toDouble(),
+                                                        (down.position.x - center.x).toDouble()
+                                                    )
+                                                ).toFloat()
+
+                                                var hasMovedSignificantly = false
+                                                var accumulatedMovement = 0f
+                                                var lastHapticMilestoneAngle = manualScratchAngle
+                                                val wasPlayingWhenTouched = isPlaying
+                                                var liveAudioPosition = currentPosition
+                                                var startScratchPosition = currentPosition
+                                                var lastSeekDispatchTime = 0L
+                                                var lastMoveTime = System.currentTimeMillis()
+
+                                                while (true) {
+                                                    val event = awaitPointerEvent()
+                                                    val change = event.changes.firstOrNull { it.id == down.id }
+                                                    if (change == null || !change.pressed) break
+
+                                                    val currentPos = change.position
+                                                    val currentDist = (currentPos - center).getDistance()
+
+                                                    if (currentDist > 18f) {
+                                                        val currentTouchAngle = Math.toDegrees(
+                                                            kotlin.math.atan2(
+                                                                (currentPos.y - center.y).toDouble(),
+                                                                (currentPos.x - center.x).toDouble()
+                                                            )
+                                                        ).toFloat()
+
+                                                        var deltaAngle = currentTouchAngle - lastTouchAngle
+                                                        while (deltaAngle > 180f) deltaAngle -= 360f
+                                                        while (deltaAngle < -180f) deltaAngle += 360f
+
+                                                        if (!hasMovedSignificantly) {
+                                                            accumulatedMovement += kotlin.math.abs(deltaAngle)
+                                                            if (accumulatedMovement > 2.0f) {
+                                                                hasMovedSignificantly = true
+                                                                isDjScratching = true
+                                                                view.performHaptic(HapticType.TICK)
+                                                                // Anchor scratch starting point to current live timeline position
+                                                                liveAudioPosition = currentPosition
+                                                                startScratchPosition = currentPosition
+                                                                if (!wasPlayingWhenTouched) {
+                                                                    onResumePlayback()
+                                                                }
+                                                            }
+                                                        }
+
+                                                        if (hasMovedSignificantly) {
+                                                            change.consume()
+                                                            lastTouchAngle = currentTouchAngle
+                                                            manualScratchAngle += deltaAngle
+
+                                                            val now = System.currentTimeMillis()
+                                                            val dt = (now - lastMoveTime).coerceAtLeast(1L)
+                                                            lastMoveTime = now
+
+                                                            val angularSpeed = (kotlin.math.abs(deltaAngle) / dt.toFloat()) * 1000f
+
+                                                            // Tactile needle groove ticks every 14 degrees
+                                                            if (kotlin.math.abs(manualScratchAngle - lastHapticMilestoneAngle) >= 14f) {
+                                                                view.performHaptic(HapticType.TICK)
+                                                                lastHapticMilestoneAngle = manualScratchAngle
+                                                            }
+
+                                                            if (deltaAngle > 0.15f) {
+                                                                // CLOCKWISE (FORWARD SCRATCH):
+                                                                // Speeds up the real song audio with authentic pitch modulation
+                                                                djScratchDirection = 1
+                                                                val forwardSpeedFactor = (angularSpeed / 160f).coerceIn(0.2f, 2.0f)
+                                                                val targetSpeed = (playbackSpeed * (1.0f + forwardSpeedFactor * 0.75f)).coerceIn(1.0f, 3.0f)
+                                                                onSetPlaybackParameters(targetSpeed, targetSpeed.coerceIn(1.0f, 1.5f))
+
+                                                                val deltaMs = (deltaAngle * 7f).toLong()
+                                                                liveAudioPosition = (liveAudioPosition + deltaMs).coerceIn(0L, duration)
+                                                                djScrubPosition = liveAudioPosition
+                                                                djScratchDeltaSeconds = (liveAudioPosition - startScratchPosition) / 1000f
+
+                                                                if (now - lastSeekDispatchTime >= 70L && angularSpeed > 240f) {
+                                                                    lastSeekDispatchTime = now
+                                                                    onSeek(liveAudioPosition)
+                                                                }
+                                                            } else if (deltaAngle < -0.15f) {
+                                                                // ANTICLOCKWISE (MANUAL REVERSE PLAYBACK):
+                                                                // Steps backwards smoothly from current playhead without auto-jumping
+                                                                djScratchDirection = -1
+                                                                val deltaMs = (deltaAngle * 7f).toLong() // negative deltaMs
+                                                                liveAudioPosition = (liveAudioPosition + deltaMs).coerceIn(0L, duration)
+                                                                djScrubPosition = liveAudioPosition
+                                                                djScratchDeltaSeconds = (liveAudioPosition - startScratchPosition) / 1000f
+
+                                                                onSetPlaybackParameters(playbackSpeed, 1.0f)
+
+                                                                // Dispatches backward seeks throttled every 48ms so ExoPlayer plays continuous backward snippets of real song
+                                                                if (now - lastSeekDispatchTime >= 48L) {
+                                                                    lastSeekDispatchTime = now
+                                                                    onSeek(liveAudioPosition)
+                                                                }
+                                                            } else {
+                                                                onSetPlaybackParameters(playbackSpeed, 1.0f)
+                                                            }
+                                                        }
+                                                    }
+                                                }
+
+                                                if (hasMovedSignificantly) {
+                                                    onSeek(liveAudioPosition)
+                                                    onSetPlaybackParameters(playbackSpeed, 1.0f)
+                                                    view.performHaptic(HapticType.LIGHT)
+
+                                                    coroutineScope.launch {
+                                                        val currentAngle = rotation
+                                                        spinAngle.snapTo((currentAngle % 360f + 360f) % 360f)
+                                                        manualScratchAngle = 0f
+                                                    }
+
+                                                    // Smooth handoff: hold djScrubPosition for 120ms to prevent seekbar bounce
+                                                    coroutineScope.launch {
+                                                        delay(120L)
+                                                        isDjScratching = false
+                                                        djScrubPosition = null
+                                                        djScratchDeltaSeconds = 0f
+                                                        djScratchDirection = 0
+                                                    }
+                                                } else {
+                                                    val now = System.currentTimeMillis()
+                                                    if (now - lastDiscTapTime < 320L) {
+                                                        if (!isFavorite) {
+                                                            onFavoriteToggle()
+                                                        }
+                                                        showHeartBurst = true
+                                                        view.performHaptic(HapticType.MEDIUM)
+                                                        lastDiscTapTime = 0L
+                                                    } else {
+                                                        lastDiscTapTime = now
+                                                    }
+                                                }
+                                            }
+                                        }
                                         .background(
                                             Brush.radialGradient(
                                                 listOf(
@@ -4468,14 +4703,14 @@ fun FullScreenMusicPlayer(
                                     }
                                 }
 
-                                // Turntable Tonearm Assembly (Pivots smoothly from rest onto vinyl grooves)
+                                // Turntable Tonearm Assembly (Pivots smoothly from rest onto vinyl grooves with needle friction)
                                 Box(
                                     modifier = Modifier
                                         .align(Alignment.TopEnd)
                                         .offset(x = 4.dp, y = (-4).dp)
                                         .graphicsLayer {
                                             transformOrigin = TransformOrigin(0.5f, 0.08f)
-                                            rotationZ = tonearmAngle
+                                            rotationZ = tonearmAngle + if (isDjScratching) (djScratchDirection * 0.7f) else 0f
                                         }
                                 ) {
                                     Column(
@@ -4554,11 +4789,57 @@ fun FullScreenMusicPlayer(
                                         }
                                     }
                                 }
+
+                                // Floating DJ Scratch Live HUD Badge (cleanly placed beneath platter without covering vinyl artwork)
+                                androidx.compose.animation.AnimatedVisibility(
+                                    visible = isDjScratching,
+                                    enter = fadeIn(tween(100)) + scaleIn(initialScale = 0.82f),
+                                    exit = fadeOut(tween(180)) + scaleOut(targetScale = 0.82f),
+                                    modifier = Modifier
+                                        .align(Alignment.BottomCenter)
+                                        .offset(y = 28.dp)
+                                ) {
+                                    Surface(
+                                        shape = RoundedCornerShape(22.dp),
+                                        color = if (c.isDark) Color(0xF2080912) else Color(0xFAFFFFFF),
+                                        border = BorderStroke(1.2.dp, Brush.horizontalGradient(listOf(Color(0xFF00B4D8), c.accentBlue))),
+                                        shadowElevation = 18.dp
+                                    ) {
+                                        Row(
+                                            modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp),
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                        ) {
+                                            Icon(
+                                                imageVector = if (djScratchDirection >= 0) Icons.Rounded.FastForward else Icons.Rounded.FastRewind,
+                                                contentDescription = null,
+                                                tint = if (c.isDark) Color(0xFF00F5D4) else c.accentBlue,
+                                                modifier = Modifier.size(20.dp)
+                                            )
+                                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                                Text(
+                                                    text = "DJ SCRATCH",
+                                                    color = if (c.isDark) Color(0xFF00F5D4) else c.accentBlue,
+                                                    fontSize = 9.5.sp,
+                                                    fontWeight = FontWeight.Black,
+                                                    letterSpacing = 1.2.sp
+                                                )
+                                                Text(
+                                                    text = "${if (djScratchDeltaSeconds >= 0f) "+" else ""}${String.format(Locale.US, "%.1fs", djScratchDeltaSeconds)} • ${formatTime(effectivePosition)}",
+                                                    color = if (c.isDark) Color.White else Color(0xFF0F172A),
+                                                    fontSize = 12.sp,
+                                                    fontWeight = FontWeight.Bold,
+                                                    fontFamily = FontFamily.Monospace
+                                                )
+                                            }
+                                        }
+                                    }
+                                }
                             }
                         }
                         "CASSETTE" -> {
                             // 2. Retro 80s/90s Cassette Tape
-                            val progressRatio = if (duration > 0) (currentPosition.toFloat() / duration.toFloat()).coerceIn(0.05f, 0.95f) else 0.5f
+                            val progressRatio = if (duration > 0) (effectivePosition.toFloat() / duration.toFloat()).coerceIn(0.05f, 0.95f) else 0.5f
                             Box(
                                 modifier = Modifier
                                     .width(300.dp)
@@ -5022,7 +5303,7 @@ fun FullScreenMusicPlayer(
                 Column(modifier = Modifier.weight(1f)) {
                     Text(
                         song.title,
-                        color = Color.White,
+                        color = if (c.isDark) Color.White else Color(0xFF0F172A),
                         fontSize = 24.sp,
                         fontWeight = FontWeight.Bold,
                         maxLines = 1,
@@ -5031,7 +5312,7 @@ fun FullScreenMusicPlayer(
                     Spacer(Modifier.height(4.dp))
                     Text(
                         song.artist,
-                        color = Color.White.copy(0.7f),
+                        color = if (c.isDark) Color.White.copy(0.7f) else Color(0xFF64748B),
                         fontSize = 16.sp,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis
@@ -5041,7 +5322,7 @@ fun FullScreenMusicPlayer(
                     Icon(
                         if (isFavorite) Icons.Rounded.Favorite else Icons.Rounded.FavoriteBorder,
                         contentDescription = "Favorite",
-                        tint = if (isFavorite) Color(0xFFFF4D6D) else Color.White.copy(0.7f),
+                        tint = if (isFavorite) Color(0xFFFF4D6D) else (if (c.isDark) Color.White.copy(0.7f) else Color(0xFF94A3B8)),
                         modifier = Modifier.size(32.dp)
                     )
                 }
@@ -5051,7 +5332,7 @@ fun FullScreenMusicPlayer(
 
             // ─── Seekbar ────────────────────────────────────────────────────
             MusicSeekBar(
-                currentPosition = currentPosition,
+                currentPosition = effectivePosition,
                 duration = duration,
                 isPlaying = isPlaying,
                 onSeek = onSeek
@@ -5070,7 +5351,7 @@ fun FullScreenMusicPlayer(
                     Icon(
                         Icons.Rounded.Shuffle,
                         contentDescription = "Shuffle",
-                        tint = if (isShuffle) c.accentBlue else Color.White.copy(0.5f),
+                        tint = if (isShuffle) c.accentBlue else (if (c.isDark) Color.White.copy(0.5f) else Color(0xFF94A3B8)),
                         modifier = Modifier.size(24.dp)
                     )
                 }
@@ -5080,7 +5361,7 @@ fun FullScreenMusicPlayer(
                     Icon(
                         Icons.Rounded.SkipPrevious,
                         contentDescription = "Previous",
-                        tint = Color.White,
+                        tint = if (c.isDark) Color.White else Color(0xFF0F172A),
                         modifier = Modifier.size(42.dp)
                     )
                 }
@@ -5123,7 +5404,7 @@ fun FullScreenMusicPlayer(
                     Icon(
                         Icons.Rounded.SkipNext,
                         contentDescription = "Next",
-                        tint = Color.White,
+                        tint = if (c.isDark) Color.White else Color(0xFF0F172A),
                         modifier = Modifier.size(42.dp)
                     )
                 }
@@ -5131,7 +5412,7 @@ fun FullScreenMusicPlayer(
                 // Repeat Mode Button
                 IconButton(onClick = onToggleRepeat) {
                     val repeatIcon = if (repeatMode == Player.REPEAT_MODE_ONE) Icons.Rounded.RepeatOne else Icons.Rounded.Repeat
-                    val repeatTint = if (repeatMode != Player.REPEAT_MODE_OFF) c.accentBlue else Color.White.copy(0.5f)
+                    val repeatTint = if (repeatMode != Player.REPEAT_MODE_OFF) c.accentBlue else (if (c.isDark) Color.White.copy(0.5f) else Color(0xFF94A3B8))
                     Icon(
                         repeatIcon,
                         contentDescription = "Repeat",
@@ -5154,8 +5435,8 @@ fun FullScreenMusicPlayer(
                     Surface(
                         onClick = onOpenSpeed,
                         shape = RoundedCornerShape(12.dp),
-                        color = if (playbackSpeed != 1.0f) c.accentBlue.copy(alpha = 0.2f) else Color.White.copy(alpha = 0.08f),
-                        border = BorderStroke(1.dp, if (playbackSpeed != 1.0f) c.accentBlue.copy(alpha = 0.5f) else Color.White.copy(alpha = 0.12f))
+                        color = if (playbackSpeed != 1.0f) c.accentBlue.copy(alpha = 0.2f) else (if (c.isDark) Color.White.copy(alpha = 0.08f) else Color(0xFFFFFFFF)),
+                        border = BorderStroke(1.dp, if (playbackSpeed != 1.0f) c.accentBlue.copy(alpha = 0.5f) else (if (c.isDark) Color.White.copy(alpha = 0.12f) else Color(0xFFE2E8F0)))
                     ) {
                         Row(
                             modifier = Modifier.padding(horizontal = 9.dp, vertical = 6.dp),
@@ -5164,20 +5445,20 @@ fun FullScreenMusicPlayer(
                             Icon(
                                 Icons.Rounded.Speed,
                                 contentDescription = null,
-                                tint = if (playbackSpeed != 1.0f) c.accentBlue else Color.White.copy(0.7f),
+                                tint = if (playbackSpeed != 1.0f) c.accentBlue else (if (c.isDark) Color.White.copy(0.7f) else Color(0xFF475569)),
                                 modifier = Modifier.size(15.dp)
                             )
                             Spacer(Modifier.width(4.dp))
                             Text(
                                 "${playbackSpeed}x",
-                                color = if (playbackSpeed != 1.0f) c.accentBlue else Color.White.copy(0.85f),
+                                color = if (playbackSpeed != 1.0f) c.accentBlue else (if (c.isDark) Color.White.copy(0.85f) else Color(0xFF0F172A)),
                                 fontSize = 12.sp,
                                 fontWeight = FontWeight.Bold
                             )
                         }
                     }
                     Spacer(Modifier.height(4.dp))
-                    Text("Speed", color = Color.White.copy(0.5f), fontSize = 10.sp)
+                    Text("Speed", color = if (c.isDark) Color.White.copy(0.5f) else Color(0xFF64748B), fontSize = 10.sp)
                 }
 
                 // 2. Sound Mode Button (Single-tap cycles through 4 sound profiles: Balanced, Bass Punch, Vocal Boost, 3D Spatial)
@@ -5194,7 +5475,7 @@ fun FullScreenMusicPlayer(
                             modifier = Modifier
                                 .size(36.dp)
                                 .clip(CircleShape)
-                                .background(c.accentBlue.copy(alpha = 0.12f))
+                                .background(c.accentBlue.copy(alpha = if (c.isDark) 0.12f else 0.10f))
                                 .border(1.dp, c.accentBlue.copy(alpha = 0.35f), CircleShape)
                         ) {
                             Icon(
@@ -5222,7 +5503,7 @@ fun FullScreenMusicPlayer(
                             Icon(
                                 Icons.Rounded.Bedtime,
                                 contentDescription = "Sleep Timer",
-                                tint = if (sleepTimerSecondsRemaining > 0) c.accentBlue else Color.White.copy(0.7f)
+                                tint = if (sleepTimerSecondsRemaining > 0) c.accentBlue else (if (c.isDark) Color.White.copy(0.7f) else Color(0xFF475569))
                             )
                             if (sleepTimerSecondsRemaining > 0) {
                                 Box(
@@ -5235,7 +5516,7 @@ fun FullScreenMusicPlayer(
                             }
                         }
                     }
-                    Text("Sleep", color = Color.White.copy(0.5f), fontSize = 10.sp)
+                    Text("Sleep", color = if (c.isDark) Color.White.copy(0.5f) else Color(0xFF64748B), fontSize = 10.sp)
                 }
 
                 // 4. Up Next Queue Button
@@ -5244,10 +5525,10 @@ fun FullScreenMusicPlayer(
                         Icon(
                             Icons.AutoMirrored.Rounded.QueueMusic,
                             contentDescription = "Queue",
-                            tint = Color.White.copy(0.85f)
+                            tint = if (c.isDark) Color.White.copy(0.85f) else Color(0xFF334155)
                         )
                     }
-                    Text("Queue", color = Color.White.copy(0.5f), fontSize = 10.sp)
+                    Text("Queue", color = if (c.isDark) Color.White.copy(0.5f) else Color(0xFF64748B), fontSize = 10.sp)
                 }
 
                 // 5. Share Track File Button (Shares actual audio file)
@@ -5264,10 +5545,10 @@ fun FullScreenMusicPlayer(
                         Icon(
                             Icons.Rounded.Share,
                             contentDescription = "Share",
-                            tint = Color.White.copy(0.75f)
+                            tint = if (c.isDark) Color.White.copy(0.75f) else Color(0xFF475569)
                         )
                     }
-                    Text("Share", color = Color.White.copy(0.5f), fontSize = 10.sp)
+                    Text("Share", color = if (c.isDark) Color.White.copy(0.5f) else Color(0xFF64748B), fontSize = 10.sp)
                 }
             }
 
@@ -5277,21 +5558,26 @@ fun FullScreenMusicPlayer(
         // ─── Brightness Gesture Bar (Left) ──────────────────────────────────
         AnimatedVisibility(
             visible = showBrightnessBar,
-            enter = fadeIn(tween(140)) + slideInHorizontally(initialOffsetX = { -it }, animationSpec = tween(140)),
-            exit = fadeOut(tween(220)) + slideOutHorizontally(targetOffsetX = { -it }, animationSpec = tween(220)),
+            enter = fadeIn(tween(200)) + slideInHorizontally(initialOffsetX = { -it }, animationSpec = spring(stiffness = Spring.StiffnessMedium, dampingRatio = Spring.DampingRatioMediumBouncy)),
+            exit = fadeOut(tween(240)) + slideOutHorizontally(targetOffsetX = { -it }, animationSpec = tween(220)),
             modifier = Modifier
                 .align(Alignment.CenterStart)
-                .offset(y = (-28).dp)
-                .padding(start = 6.dp)
+                .offset(y = (-20).dp)
+                .padding(start = 12.dp)
         ) {
+            val brightnessIcon = when {
+                brightnessPct <= 0.05f -> Icons.Rounded.BrightnessLow
+                brightnessPct < 0.40f -> Icons.Rounded.BrightnessLow
+                brightnessPct < 0.75f -> Icons.Rounded.BrightnessMedium
+                else -> Icons.Rounded.BrightnessHigh
+            }
             MusicVerticalGestureBar(
-                icon = Icons.Rounded.LightMode,
+                icon = brightnessIcon,
                 percentage = brightnessPct,
-                label = "${(brightnessPct * 100).toInt()}%",
-                gradient = Brush.verticalGradient(listOf(c.accentBlue, c.accentBlue.copy(0.7f))),
-                glowColor = c.accentBlue,
+                accentColor = c.accentBlue,
                 onValueChange = {
                     brightnessPct = it.coerceIn(0.01f, 1f)
+                    hasUserAdjustedBrightness = true
                     showBrightnessBar = true
                     brightnessTouchTrigger = System.currentTimeMillis()
                 }
@@ -5301,19 +5587,23 @@ fun FullScreenMusicPlayer(
         // ─── Volume Gesture Bar (Right) ─────────────────────────────────────
         AnimatedVisibility(
             visible = showVolumeBar,
-            enter = fadeIn(tween(140)) + slideInHorizontally(initialOffsetX = { it }, animationSpec = tween(140)),
-            exit = fadeOut(tween(220)) + slideOutHorizontally(targetOffsetX = { it }, animationSpec = tween(220)),
+            enter = fadeIn(tween(200)) + slideInHorizontally(initialOffsetX = { it }, animationSpec = spring(stiffness = Spring.StiffnessMedium, dampingRatio = Spring.DampingRatioMediumBouncy)),
+            exit = fadeOut(tween(240)) + slideOutHorizontally(targetOffsetX = { it }, animationSpec = tween(220)),
             modifier = Modifier
                 .align(Alignment.CenterEnd)
-                .offset(y = (-28).dp)
-                .padding(end = 6.dp)
+                .offset(y = (-20).dp)
+                .padding(end = 12.dp)
         ) {
+            val volumeIcon = when {
+                volumePct <= 0.001f -> Icons.AutoMirrored.Rounded.VolumeOff
+                volumePct < 0.35f -> Icons.AutoMirrored.Rounded.VolumeMute
+                volumePct < 0.70f -> Icons.AutoMirrored.Rounded.VolumeDown
+                else -> Icons.AutoMirrored.Rounded.VolumeUp
+            }
             MusicVerticalGestureBar(
-                icon = if (volumePct <= 0f) Icons.AutoMirrored.Rounded.VolumeOff else Icons.AutoMirrored.Rounded.VolumeUp,
+                icon = volumeIcon,
                 percentage = volumePct,
-                label = if (volumePct <= 0f) "Muted" else "${(volumePct * 100).toInt()}%",
-                gradient = Brush.verticalGradient(listOf(c.accentBlue, c.accentBlue.copy(0.7f))),
-                glowColor = c.accentBlue,
+                accentColor = c.accentBlue,
                 onValueChange = {
                     val newRatio = it.coerceIn(0f, 1f)
                     volumePct = newRatio
@@ -5389,13 +5679,12 @@ fun FullScreenMusicPlayer(
 private fun MusicVerticalGestureBar(
     icon: ImageVector,
     percentage: Float,
-    label: String,
-    gradient: Brush,
-    glowColor: Color,
+    accentColor: Color,
     onValueChange: (Float) -> Unit,
     modifier: Modifier = Modifier
 ) {
     val view = androidx.compose.ui.platform.LocalView.current
+    val c = LocalAppColors.current
     val clampedPct = percentage.coerceIn(0f, 1f)
     val animatedPct by animateFloatAsState(
         targetValue = clampedPct,
@@ -5404,6 +5693,13 @@ private fun MusicVerticalGestureBar(
             dampingRatio = Spring.DampingRatioNoBouncy
         ),
         label = "smoothMusicGesturePct"
+    )
+
+    var isPressed by remember { mutableStateOf(false) }
+    val scale by animateFloatAsState(
+        targetValue = if (isPressed) 1.05f else 1.0f,
+        animationSpec = spring(stiffness = Spring.StiffnessMedium, dampingRatio = Spring.DampingRatioMediumBouncy),
+        label = "sliderScale"
     )
 
     var lastHapticMilestone by remember { mutableIntStateOf(((clampedPct * 100f) / 5f).roundToInt().coerceIn(0, 20)) }
@@ -5421,16 +5717,23 @@ private fun MusicVerticalGestureBar(
         onValueChange(cl)
     }
 
-    // Outer touch area (26.dp wide, sleek & compact to prevent colliding with or overriding any UI elements)
-    Column(
+    val trackHeight = 150.dp
+    val thumbSize = 14.dp
+
+    // Generous touch container (44.dp wide, 210.dp tall) - easy to target without visual clutter
+    Box(
         modifier = modifier
-            .width(26.dp)
+            .width(44.dp)
+            .height(210.dp)
+            .scale(scale)
             .pointerInput(clampedPct) {
                 awaitEachGesture {
                     val down = awaitFirstDown(requireUnconsumed = false)
                     val downY = down.position.y
-                    val barHeight = 136.dp.toPx().coerceAtLeast(1f)
+                    val trackTopY = 22.dp.toPx()
+                    val trackHeightPx = trackHeight.toPx()
                     var hasMoved = false
+                    isPressed = true
 
                     while (true) {
                         val event = awaitPointerEvent()
@@ -5438,157 +5741,132 @@ private fun MusicVerticalGestureBar(
                         if (change == null || !change.pressed) break
 
                         val currentY = change.position.y
-                        if (abs(currentY - downY) > 6f) {
+                        if (abs(currentY - downY) > 5f) {
                             hasMoved = true
-                            // Direct 1:1 scrub tracking with high responsiveness
-                            val targetPct = (1f - (currentY / barHeight)).coerceIn(0f, 1f)
+                            val clampedTouchY = (currentY - trackTopY).coerceIn(0f, trackHeightPx)
+                            val targetPct = (1f - (clampedTouchY / trackHeightPx)).coerceIn(0f, 1f)
                             updateValueWithHaptic(targetPct)
                             change.consume()
                         }
                     }
+                    isPressed = false
 
                     if (!hasMoved) {
-                        // Quick stationary tap on the bar
                         view.performHaptic(HapticType.TICK)
-                        if (downY < barHeight * 0.5f) {
-                            updateValueWithHaptic((clampedPct + 0.05f).coerceAtMost(1f))
-                        } else {
-                            updateValueWithHaptic((clampedPct - 0.05f).coerceAtLeast(0f))
-                        }
+                        val clampedTouchY = (downY - trackTopY).coerceIn(0f, trackHeightPx)
+                        val targetPct = (1f - (clampedTouchY / trackHeightPx)).coerceIn(0f, 1f)
+                        updateValueWithHaptic(targetPct)
                     }
                 }
             },
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.spacedBy(4.dp)
+        contentAlignment = Alignment.TopCenter
     ) {
-        // 1. Sleek Floating Percentage Pill
-        Surface(
-            shape = RoundedCornerShape(6.dp),
-            color = Color(0xEE12141F),
-            border = BorderStroke(0.8.dp, Color.White.copy(alpha = 0.22f)),
-            shadowElevation = 4.dp
+        Column(
+            horizontalAlignment = Alignment.CenterHorizontally,
+            modifier = Modifier.fillMaxSize()
         ) {
-            Text(
-                text = label,
-                color = Color.White,
-                fontSize = 9.sp,
-                fontWeight = FontWeight.Bold,
-                fontFamily = FontFamily.Monospace,
-                letterSpacing = (-0.3).sp,
-                maxLines = 1,
-                modifier = Modifier.padding(horizontal = 4.dp, vertical = 2.dp)
-            )
-        }
-
-        // 2. Slim Capsule Slider (14.dp wide, 136.dp tall) - Ultra-thin, elegant, zero element collision
-        Box(
-            modifier = Modifier
-                .width(14.dp)
-                .height(136.dp)
-                .shadow(
-                    elevation = 8.dp,
-                    shape = RoundedCornerShape(7.dp),
-                    ambientColor = Color.Black.copy(alpha = 0.55f),
-                    spotColor = glowColor.copy(alpha = 0.40f)
-                )
-                .clip(RoundedCornerShape(7.dp))
-                // Dark tinted acrylic base
-                .background(Color(0xDD0B0C13))
-                // Frosted glass micro-gradient
-                .background(
-                    Brush.verticalGradient(
-                        listOf(
-                            Color.White.copy(alpha = 0.16f),
-                            Color.White.copy(alpha = 0.04f),
-                            Color.Black.copy(alpha = 0.25f)
-                        )
-                    )
-                )
-                // Specular Glass Rim Border
-                .border(
-                    width = 1.dp,
-                    brush = Brush.verticalGradient(
-                        listOf(
-                            Color.White.copy(alpha = 0.45f),
-                            glowColor.copy(alpha = 0.60f),
-                            Color.White.copy(alpha = 0.12f)
-                        )
-                    ),
-                    shape = RoundedCornerShape(7.dp)
-                )
-        ) {
-            // Fluid Track Fill
+            // Top Accent Ring Cap
             Box(
                 modifier = Modifier
-                    .fillMaxWidth()
-                    .fillMaxHeight(animatedPct)
-                    .align(Alignment.BottomCenter)
-                    .clip(
-                        RoundedCornerShape(
-                            bottomStart = 7.dp,
-                            bottomEnd = 7.dp,
-                            topStart = if (animatedPct > 0.95f) 7.dp else 2.dp,
-                            topEnd = if (animatedPct > 0.95f) 7.dp else 2.dp
-                        )
-                    )
-                    .background(gradient)
-            )
-
-            // Glowing Fluid Meniscus (Top surface line of liquid)
-            if (animatedPct in 0.02f..0.98f) {
+                    .size(15.dp)
+                    .clip(CircleShape)
+                    .background(if (c.isDark) Color(0x22FFFFFF) else Color(0x10000000))
+                    .border(1.5.dp, accentColor.copy(alpha = 0.55f), CircleShape),
+                contentAlignment = Alignment.Center
+            ) {
                 Box(
                     modifier = Modifier
-                        .fillMaxWidth()
-                        .height(2.dp)
+                        .size(4.dp)
+                        .clip(CircleShape)
+                        .background(accentColor.copy(alpha = 0.85f))
+                )
+            }
+
+            Spacer(Modifier.height(5.dp))
+
+            // Slim Single Bar Track with Circular White Thumb (Clean, No Percent Text)
+            Box(
+                modifier = Modifier
+                    .width(44.dp)
+                    .height(trackHeight),
+                contentAlignment = Alignment.BottomCenter
+            ) {
+                // Inactive Single-Bar Track (Width 3.5.dp)
+                Box(
+                    modifier = Modifier
+                        .width(3.5.dp)
+                        .fillMaxHeight()
+                        .align(Alignment.Center)
+                        .clip(RoundedCornerShape(1.75.dp))
+                        .background(if (c.isDark) Color.White.copy(alpha = 0.18f) else Color.Black.copy(alpha = 0.10f))
+                )
+
+                // Active Track in Accent Color (From Bottom up to animatedPct)
+                Box(
+                    modifier = Modifier
+                        .width(3.5.dp)
+                        .fillMaxHeight(animatedPct)
                         .align(Alignment.BottomCenter)
-                        .offset {
-                            androidx.compose.ui.unit.IntOffset(
-                                0,
-                                ((-136.dp.toPx() * animatedPct) + 1.dp.toPx()).roundToInt()
-                            )
-                        }
-                        .clip(RoundedCornerShape(1.dp))
+                        .clip(RoundedCornerShape(1.75.dp))
                         .background(
-                            Brush.horizontalGradient(
+                            Brush.verticalGradient(
                                 listOf(
-                                    Color.White.copy(alpha = 0.35f),
-                                    Color.White,
-                                    Color.White.copy(alpha = 0.35f)
+                                    accentColor.copy(alpha = 0.88f),
+                                    accentColor
                                 )
                             )
                         )
                 )
+
+                // Circular White Thumb with Accent Border & Elevation Shadow
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .fillMaxHeight()
+                ) {
+                    val density = androidx.compose.ui.platform.LocalDensity.current
+                    val trackHeightPx = with(density) { trackHeight.toPx() }
+                    val thumbRadiusPx = with(density) { (thumbSize / 2).toPx() }
+
+                    Box(
+                        modifier = Modifier
+                            .align(Alignment.TopCenter)
+                            .offset {
+                                androidx.compose.ui.unit.IntOffset(
+                                    x = 0,
+                                    y = ((trackHeightPx * (1f - animatedPct)) - thumbRadiusPx).roundToInt()
+                                )
+                            }
+                            .size(thumbSize)
+                            .shadow(
+                                elevation = if (isPressed) 8.dp else 4.dp,
+                                shape = CircleShape,
+                                ambientColor = Color.White.copy(alpha = 0.5f),
+                                spotColor = accentColor
+                            )
+                            .clip(CircleShape)
+                            .background(Color.White)
+                            .border(2.5.dp, accentColor, CircleShape)
+                    )
+                }
             }
 
-            // Top subtle reflection
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(24.dp)
-                    .align(Alignment.TopCenter)
-                    .background(
-                        Brush.verticalGradient(
-                            listOf(
-                                Color.White.copy(alpha = 0.15f),
-                                Color.Transparent
-                            )
-                        )
-                    )
-            )
+            Spacer(Modifier.height(5.dp))
 
-            // Bottom Icon (Speaker / Light Sun)
+            // Bottom Circular Icon Badge in Accent Color
             Box(
                 modifier = Modifier
-                    .fillMaxWidth()
-                    .align(Alignment.BottomCenter)
-                    .padding(bottom = 4.dp),
+                    .size(28.dp)
+                    .clip(CircleShape)
+                    .background(if (c.isDark) accentColor.copy(alpha = 0.18f) else accentColor.copy(alpha = 0.12f))
+                    .border(1.dp, accentColor.copy(alpha = 0.40f), CircleShape),
                 contentAlignment = Alignment.Center
             ) {
                 Icon(
                     imageVector = icon,
                     contentDescription = null,
-                    tint = Color.White,
-                    modifier = Modifier.size(10.dp)
+                    tint = accentColor,
+                    modifier = Modifier.size(16.dp)
                 )
             }
         }
@@ -6866,7 +7144,7 @@ private fun MusicSeekBar(
                         .clip(RoundedCornerShape(1.5.dp)),
                     colors = SliderDefaults.colors(
                         activeTrackColor = c.accentBlue,
-                        inactiveTrackColor = Color.White.copy(alpha = 0.22f)
+                        inactiveTrackColor = if (c.isDark) Color.White.copy(alpha = 0.22f) else Color(0xFFE2E8F0)
                     ),
                     thumbTrackGapSize = 0.dp,
                     trackInsideCornerSize = 0.dp,
@@ -6876,7 +7154,7 @@ private fun MusicSeekBar(
             colors = SliderDefaults.colors(
                 thumbColor = Color.White,
                 activeTrackColor = c.accentBlue,
-                inactiveTrackColor = Color.White.copy(alpha = 0.22f)
+                inactiveTrackColor = if (c.isDark) Color.White.copy(alpha = 0.22f) else Color(0xFFE2E8F0)
             )
         )
         Row(
@@ -6885,14 +7163,14 @@ private fun MusicSeekBar(
         ) {
             Text(
                 formatTime(currentDisplayValue.toLong()),
-                color = Color.White.copy(0.85f),
+                color = if (c.isDark) Color.White.copy(0.85f) else Color(0xFF475569),
                 fontSize = 12.sp,
                 fontFamily = FontFamily.Monospace,
                 fontWeight = FontWeight.SemiBold
             )
             Text(
                 formatTime(duration),
-                color = Color.White.copy(0.7f),
+                color = if (c.isDark) Color.White.copy(0.7f) else Color(0xFF64748B),
                 fontSize = 12.sp,
                 fontFamily = FontFamily.Monospace
             )

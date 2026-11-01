@@ -49,19 +49,43 @@ fun YMediaPlayerTheme(
   val animBlob1 by animateColorAsState(targetValue = targetBlob1, animationSpec = animSpec, label = "blob1")
   val animBlob2 by animateColorAsState(targetValue = targetBlob2, animationSpec = animSpec, label = "blob2")
 
-  // Apply selected color theme to app accents & ambient gradient blobs (subtle theme colours in bg)
+    // Resolve accessible, high-contrast accents in Clean Light mode so pure white surfaces stay legible
+  val resolvedAccentBlue = when {
+      !isDark && (colorTheme == com.example.ymediaplayer.ui.PlayerTheme.WHITE) -> androidx.compose.ui.graphics.Color(0xFF0F172A) // Sleek monochrome slate/charcoal on pure white (zero blue)
+      !isDark && (colorTheme == com.example.ymediaplayer.ui.PlayerTheme.YELLOW) -> androidx.compose.ui.graphics.Color(0xFFD97706) // Rich amber gold on white
+      else -> animAccentBlue
+  }
+  val resolvedAccentGreen = when {
+      !isDark && (colorTheme == com.example.ymediaplayer.ui.PlayerTheme.WHITE) -> androidx.compose.ui.graphics.Color(0xFF475569) // Neutral slate grey secondary
+      !isDark && (colorTheme == com.example.ymediaplayer.ui.PlayerTheme.YELLOW) -> androidx.compose.ui.graphics.Color(0xFFB45309)
+      else -> animAccentGreen
+  }
+
+  // Apply selected color theme to app accents & ambient gradient blobs
   val appColors = baseAppColors.copy(
-      accentBlue = animAccentBlue,
-      accentGreen = animAccentGreen,
-      onAccent = if (colorTheme == com.example.ymediaplayer.ui.PlayerTheme.WHITE || colorTheme == com.example.ymediaplayer.ui.PlayerTheme.YELLOW) androidx.compose.ui.graphics.Color(0xFF0F172A) else androidx.compose.ui.graphics.Color.White,
-      gradientBlob1 = if (baseAppColors.isMatte && isDark) androidx.compose.ui.graphics.Color.Transparent else animBlob1,
-      gradientBlob2 = if (baseAppColors.isMatte && isDark) androidx.compose.ui.graphics.Color.Transparent else animBlob2
+      accentBlue = resolvedAccentBlue,
+      accentGreen = resolvedAccentGreen,
+      onAccent = if (isDark && colorTheme == com.example.ymediaplayer.ui.PlayerTheme.WHITE) androidx.compose.ui.graphics.Color(0xFF0F172A) else androidx.compose.ui.graphics.Color.White,
+      gradientBlob1 = if (!isDark) (if (colorTheme == com.example.ymediaplayer.ui.PlayerTheme.WHITE) androidx.compose.ui.graphics.Color(0xFFCBD5E1).copy(alpha = 0.25f) else resolvedAccentBlue.copy(alpha = 0.22f)) else if (baseAppColors.isMatte) androidx.compose.ui.graphics.Color.Transparent else animBlob1,
+      gradientBlob2 = if (!isDark) (if (colorTheme == com.example.ymediaplayer.ui.PlayerTheme.WHITE) androidx.compose.ui.graphics.Color(0xFFE2E8F0).copy(alpha = 0.20f) else resolvedAccentGreen.copy(alpha = 0.16f)) else if (baseAppColors.isMatte) androidx.compose.ui.graphics.Color.Transparent else animBlob2
   )
 
   val colorScheme = if (isDark) {
     DarkColorScheme.copy(primary = animAccentBlue, secondary = animAccentGreen, background = appColors.baseBackground, surface = appColors.cardBg, surfaceVariant = appColors.cardBgElevated, onSurface = appColors.textPrimary, onSurfaceVariant = appColors.textSecondary, outline = appColors.glassBorder, surfaceTint = if (appColors.isMatte) androidx.compose.ui.graphics.Color.Transparent else animAccentBlue)
   } else {
     LightColorScheme.copy(primary = animAccentBlue, secondary = animAccentGreen)
+  }
+
+  val view = androidx.compose.ui.platform.LocalView.current
+  if (!view.isInEditMode) {
+    androidx.compose.runtime.SideEffect {
+      val window = (view.context as? android.app.Activity)?.window
+      if (window != null) {
+        val insetsController = androidx.core.view.WindowCompat.getInsetsController(window, view)
+        insetsController.isAppearanceLightStatusBars = !isDark
+        insetsController.isAppearanceLightNavigationBars = !isDark
+      }
+    }
   }
 
   CompositionLocalProvider(LocalAppColors provides appColors) {
