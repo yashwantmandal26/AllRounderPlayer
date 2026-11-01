@@ -88,7 +88,9 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.layout
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
@@ -918,6 +920,54 @@ fun VideoPlayerScreen(
     var playbackSpeed by remember(exoPlayer) { mutableFloatStateOf(exoPlayer.playbackParameters.speed) }
     val configuration = LocalConfiguration.current
     val isLandscape = configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
+    val density = LocalDensity.current
+    val layoutDir = LocalLayoutDirection.current
+
+    // Physical hardware insets as reliable baseline fallback (vital for devices where WindowInsets reports 0 when transient/hidden)
+    val statusBarResId = remember(context) { context.resources.getIdentifier("status_bar_height", "dimen", "android") }
+    val hardwareStatusBarDp = remember(statusBarResId, density) {
+        if (statusBarResId > 0) {
+            with(density) { context.resources.getDimensionPixelSize(statusBarResId).toDp() }
+        } else 32.dp
+    }
+
+    val navBarResId = remember(context) { context.resources.getIdentifier("navigation_bar_height", "dimen", "android") }
+    val hardwareNavBarDp = remember(navBarResId, density) {
+        if (navBarResId > 0) {
+            with(density) { context.resources.getDimensionPixelSize(navBarResId).toDp() }
+        } else 48.dp
+    }
+
+    val statusBarsTop = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
+    val displayCutoutTop = WindowInsets.displayCutout.asPaddingValues().calculateTopPadding()
+    val navBarsBottom = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
+    val safeDrawingBottom = WindowInsets.safeDrawing.asPaddingValues().calculateBottomPadding()
+
+    // Top inset: Ensures controls are NEVER under the status bar, notch, or camera punch-hole
+    val safeTopPadding = maxOf(
+        statusBarsTop,
+        displayCutoutTop,
+        hardwareStatusBarDp
+    ) + (if (isLandscape) 6.dp else 14.dp)
+
+    // Bottom inset: Ensures controls are NEVER under the 3-button navigation (Back/Home/Recents) or gesture bar
+    val safeBottomPadding = if (isLandscape) {
+        maxOf(navBarsBottom, safeDrawingBottom) + 10.dp
+    } else {
+        maxOf(navBarsBottom, safeDrawingBottom, hardwareNavBarDp) + 18.dp
+    }
+
+    // Horizontal insets: Respect side cutouts and landscape navigation bar on either side
+    val safeStartPadding = maxOf(
+        WindowInsets.displayCutout.asPaddingValues().calculateStartPadding(layoutDir),
+        WindowInsets.navigationBars.asPaddingValues().calculateStartPadding(layoutDir),
+        if (isLandscape) 16.dp else 10.dp
+    )
+    val safeEndPadding = maxOf(
+        WindowInsets.displayCutout.asPaddingValues().calculateEndPadding(layoutDir),
+        WindowInsets.navigationBars.asPaddingValues().calculateEndPadding(layoutDir),
+        if (isLandscape) 16.dp else 10.dp
+    )
     val c = LocalAppColors.current
     val coroutineScope = rememberCoroutineScope()
     var isLocked by remember { mutableStateOf(false) }
@@ -3820,6 +3870,7 @@ fun VideoPlayerScreen(
             }
         }
 
+
         // ─── 6b. Press-Hold Speed HUD (Small Pill with Animated ">>" Icon) ───
         AnimatedVisibility(
             visible = isSpeedHolding && !isInPiP,
@@ -3827,7 +3878,7 @@ fun VideoPlayerScreen(
             exit = fadeOut(tween(200)) + scaleOut(targetScale = 0.90f),
             modifier = Modifier
                 .align(Alignment.TopCenter)
-                .padding(top = 22.dp)
+                .padding(top = safeTopPadding + 14.dp)
         ) {
             TemporarySpeedHoldBadge(
                 speed = speedHoldDisplaySpeed,
@@ -3839,10 +3890,6 @@ fun VideoPlayerScreen(
                 }
             )
         }
-
-
-
-
 
         // ─── 7. Main Controls Overlay ─────────────────────────────────────────
         AnimatedVisibility(
@@ -3856,13 +3903,13 @@ fun VideoPlayerScreen(
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .height(if (isMoreExpanded) (if (isLandscape) 170.dp else 230.dp) else (if (isLandscape) 100.dp else 130.dp))
+                        .height(safeTopPadding + (if (isLandscape) 64.dp else 76.dp))
                         .align(Alignment.TopCenter)
                         .background(
                             Brush.verticalGradient(
                                 listOf(
-                                    Color.Black.copy(alpha = 0.78f),
-                                    Color.Black.copy(alpha = 0.35f),
+                                    Color.Black.copy(alpha = 0.85f),
+                                    Color.Black.copy(alpha = 0.45f),
                                     Color.Transparent
                                 )
                             )
@@ -3873,14 +3920,14 @@ fun VideoPlayerScreen(
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .height(180.dp)
+                        .height(safeBottomPadding + (if (isLandscape) 140.dp else 160.dp))
                         .align(Alignment.BottomCenter)
                         .background(
                             Brush.verticalGradient(
                                 listOf(
                                     Color.Transparent,
-                                    Color.Black.copy(alpha = 0.40f),
-                                    Color.Black.copy(alpha = 0.85f)
+                                    Color.Black.copy(alpha = 0.45f),
+                                    Color.Black.copy(alpha = 0.90f)
                                 )
                             )
                         )
@@ -3888,23 +3935,24 @@ fun VideoPlayerScreen(
 
                 if (!isLocked) {
                     // ─── TOP BAR (Back, Title, Playlist, Speed, Audio, Subtitles, More) ───
-                    // ─── TOP BAR & INLINE OVERFLOW CONTROLS ───
                     Column(
                         modifier = Modifier
                             .align(Alignment.TopCenter)
-                            .statusBarsPadding()
-                            .padding(top = if (!isLandscape) 14.dp else 4.dp)
+                            .padding(
+                                top = safeTopPadding,
+                                start = safeStartPadding,
+                                end = safeEndPadding
+                            )
                             .fillMaxWidth()
                     ) {
-                        val topBarPaddingH = if (isLandscape) 16.dp else 8.dp
-                        val topBtnSize = if (isLandscape) 38.dp else 32.dp
-                        val topBtnSpacing = if (isLandscape) 6.dp else 3.dp
-                        val topIconSize = if (isLandscape) 20.dp else 17.dp
+                        val topBtnSize = if (isLandscape) 38.dp else 34.dp
+                        val topBtnSpacing = if (isLandscape) 8.dp else 4.dp
+                        val topIconSize = if (isLandscape) 20.dp else 18.dp
 
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .padding(horizontal = topBarPaddingH, vertical = 6.dp),
+                                .padding(vertical = 4.dp),
                             verticalAlignment = Alignment.CenterVertically,
                             horizontalArrangement = Arrangement.SpaceBetween
                         ) {
@@ -4138,13 +4186,13 @@ fun VideoPlayerScreen(
                                     )
                                 }
 
-                                // 5. More Options (Toggles inline expanded controls without extra menu)
+                                // 5. More Options (Opens player options bottom sheet)
                                 PlayerIconButton(
-                                    name = if (isMoreExpanded) "Collapse options" else "More options",
-                                    description = "Toggle additional controls, sleep timer, theme and settings",
+                                    name = "More options",
+                                    description = "Open player options, timer, theme and settings",
                                     onClick = {
                                         view.performHaptic(HapticType.LIGHT)
-                                        isMoreExpanded = !isMoreExpanded
+                                        showMoreMenuSheet = true
                                     },
                                     icon = Icons.Default.MoreVert,
                                     modifier = Modifier
@@ -4152,7 +4200,7 @@ fun VideoPlayerScreen(
                                         .shadow(6.dp, CircleShape, ambientColor = Color.Black.copy(0.7f))
                                         .clip(CircleShape)
                                         .background(
-                                            if (isMoreExpanded) {
+                                            if (showMoreMenuSheet) {
                                                 if (isWhiteTheme) Brush.verticalGradient(listOf(whiteShade1, whiteShade2))
                                                 else Brush.radialGradient(listOf(primaryAccent.copy(alpha = 0.35f), Color(0xFF11121C)))
                                             } else {
@@ -4162,7 +4210,7 @@ fun VideoPlayerScreen(
                                         )
                                         .border(
                                             1.2.dp,
-                                            if (isMoreExpanded) {
+                                            if (showMoreMenuSheet) {
                                                 if (isWhiteTheme) BorderStroke(1.2.dp, Color(0xFFCBD5E1)).brush
                                                 else BorderStroke(1.2.dp, primaryAccent).brush
                                             } else {
@@ -4175,125 +4223,10 @@ fun VideoPlayerScreen(
                                     Icon(
                                         Icons.Default.MoreVert,
                                         contentDescription = "More",
-                                        tint = if (isMoreExpanded) (if (isWhiteTheme) darkTextPrimary else primaryAccent) else (if (isWhiteTheme) Color.White else primaryAccent),
+                                        tint = if (showMoreMenuSheet) (if (isWhiteTheme) darkTextPrimary else primaryAccent) else (if (isWhiteTheme) Color.White else primaryAccent),
                                         modifier = Modifier.size(topIconSize)
                                     )
                                 }
-                            }
-                        }
-
-                        // ─── INLINE EXPANDED CONTROLS BAR (Row-wise, no sliding) ─────────
-                        AnimatedVisibility(
-                            visible = isMoreExpanded,
-                            enter = fadeIn(tween(180)) + expandVertically(tween(220)),
-                            exit = fadeOut(tween(140)) + shrinkVertically(tween(180))
-                        ) {
-                            FlowRow(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(horizontal = 16.dp, vertical = 6.dp),
-                                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                                verticalArrangement = Arrangement.spacedBy(8.dp)
-                            ) {
-                                // 1. Autoplay Toggle Chip
-                                ExpandedOptionChip(
-                                    icon = Icons.Rounded.Autorenew,
-                                    label = if (isAutoPlayEnabled) "Auto ON" else "Auto OFF",
-                                    isActive = isAutoPlayEnabled,
-                                    accentColor = primaryAccent,
-                                    onClick = { toggleAutoPlay() }
-                                )
-
-                                // 2. Sleep Timer Chip (Shows set duration if set)
-                                ExpandedOptionChip(
-                                    icon = Icons.Rounded.Timer,
-                                    label = if (sleepTimerMinutes > 0) "${sleepTimerMinutes}m" else "Sleep Timer",
-                                    isActive = sleepTimerMinutes > 0,
-                                    accentColor = primaryAccent,
-                                    onClick = { showSleepTimerSheet = true }
-                                )
-
-                                // 3. Night Mode Chip
-                                ExpandedOptionChip(
-                                    icon = Icons.Rounded.DarkMode,
-                                    label = if (isNightMode) "Night ON" else "Night Mode",
-                                    isActive = isNightMode,
-                                    accentColor = primaryAccent,
-                                    onClick = {
-                                        isNightMode = !isNightMode
-                                        appPreferences.setNightMode(isNightMode)
-                                    }
-                                )
-
-                                // 4. Ambient Background Toggle Chip
-                                ExpandedOptionChip(
-                                    icon = if (isAmbientMode) Icons.Rounded.BlurOn else Icons.Rounded.BlurOff,
-                                    label = if (isAmbientMode) "Ambient ON" else "Ambient OFF",
-                                    isActive = isAmbientMode,
-                                    accentColor = primaryAccent,
-                                    onClick = {
-                                        toggleAmbientMode()
-                                        view.performHaptic(HapticType.LIGHT)
-                                    },
-                                    onLongClick = {
-                                        showAmbientSettings = true
-                                        view.performHaptic(HapticType.MEDIUM)
-                                    }
-                                )
-
-                                // 5. Dynamic Theme Chip (Single tap cycles to next color theme directly)
-                                ExpandedOptionChip(
-                                    icon = Icons.Rounded.Palette,
-                                    label = activeTheme.displayName,
-                                    isActive = true,
-                                    accentColor = primaryAccent,
-                                    onClick = {
-                                        themeController.cycleColorTheme()
-                                        view.performHaptic(HapticType.LIGHT)
-                                    },
-                                    onLongClick = {
-                                        showThemePickerSheet = true
-                                        view.performHaptic(HapticType.MEDIUM)
-                                    }
-                                )
-
-                                // 6. Video Media Info Chip
-                                ExpandedOptionChip(
-                                    icon = Icons.Rounded.Info,
-                                    label = "Media Info",
-                                    isActive = false,
-                                    accentColor = primaryAccent,
-                                    onClick = { showVideoInfoSheet = true }
-                                )
-
-                                // 7. Share Video Chip
-                                ExpandedOptionChip(
-                                    icon = Icons.Rounded.Share,
-                                    label = "Share",
-                                    isActive = false,
-                                    accentColor = primaryAccent,
-                                    onClick = {
-                                        view.performHaptic(HapticType.LIGHT)
-                                        executeShareCurrentVideo()
-                                    }
-                                )
-
-                                // 8. Delete Video Chip
-                                ExpandedOptionChip(
-                                    icon = Icons.Rounded.Delete,
-                                    label = "Delete",
-                                    isActive = false,
-                                    accentColor = Color(0xFFEF5350),
-                                    isDestructive = true,
-                                    onClick = {
-                                        view.performHaptic(HapticType.LIGHT)
-                                        wasPlayingBeforeDeleteDialog.value = exoPlayer.isPlaying
-                                        if (exoPlayer.isPlaying) {
-                                            exoPlayer.pause()
-                                        }
-                                        showDeleteConfirmDialog = true
-                                    }
-                                )
                             }
                         }
                     }
@@ -4379,13 +4312,16 @@ fun VideoPlayerScreen(
                         }
                     }
 
-                    // ─── BOTTOM SECTION: Time/Rotate, Progress Bar & 6 Media Control Buttons ──
+                    // ─── BOTTOM SECTION: Time/Rotate, Progress Bar & Media Control Buttons ──
                     Column(
                         modifier = Modifier
                             .align(Alignment.BottomCenter)
-                            .navigationBarsPadding()
                             .fillMaxWidth()
-                            .padding(start = 14.dp, end = 14.dp, bottom = 8.dp),
+                            .padding(
+                                start = safeStartPadding,
+                                end = safeEndPadding,
+                                bottom = safeBottomPadding
+                            ),
                         horizontalAlignment = Alignment.CenterHorizontally
                     ) {
 
@@ -4700,8 +4636,10 @@ fun VideoPlayerScreen(
                         icon = Icons.Rounded.Lock,
                         modifier = Modifier
                             .align(Alignment.BottomStart)
-                            .systemBarsPadding()
-                            .padding(start = 24.dp, bottom = 24.dp)
+                            .padding(
+                                start = safeStartPadding + 16.dp,
+                                bottom = safeBottomPadding + 12.dp
+                            )
                             .size(54.dp)
                             .shadow(14.dp, CircleShape, ambientColor = primaryAccent, spotColor = primaryAccent)
                             .clip(CircleShape)
@@ -4837,14 +4775,18 @@ fun VideoPlayerScreen(
                         .fillMaxHeight()
                         .widthIn(min = 340.dp, max = 460.dp)
                         .fillMaxWidth(0.46f)
-                        .systemBarsPadding()
+                        .padding(
+                            top = safeTopPadding,
+                            bottom = safeBottomPadding,
+                            end = safeEndPadding
+                        )
                 } else {
                     Modifier
                         .align(Alignment.BottomCenter)
                         .fillMaxWidth()
                         .widthIn(max = 540.dp)
                         .fillMaxHeight(0.72f)
-                        .navigationBarsPadding()
+                        .padding(bottom = safeBottomPadding)
                 }
 
                 val effectivePlaylistAppColors = if (isWhiteTheme) {
@@ -5699,32 +5641,104 @@ fun VideoPlayerScreen(
                     modifier = Modifier
                         .fillMaxWidth()
                         .verticalScroll(rememberScrollState())
-                        .padding(horizontal = 20.dp, vertical = 12.dp)
-                        .navigationBarsPadding()
+                        .padding(horizontal = 20.dp, vertical = 8.dp)
+                        .padding(bottom = safeBottomPadding + 16.dp)
                 ) {
-                    Text(
-                        "Player Controls & Features",
-                        color = c.textPrimary,
-                        fontSize = 18.sp,
-                        fontWeight = FontWeight.Bold
-                    )
-                    Spacer(Modifier.height(14.dp))
-
-                    TextButton(onClick = { showMoreMenuSheet = false; showAmbientSettings = true }) {
-                        Text("Ambient lighting", color = primaryAccent)
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(bottom = 12.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            "Player Options & Features",
+                            color = c.textPrimary,
+                            fontSize = 18.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+                        IconButton(
+                            onClick = { showMoreMenuSheet = false },
+                            modifier = Modifier.size(32.dp)
+                        ) {
+                            Icon(Icons.Rounded.Close, contentDescription = "Close", tint = c.textSecondary, modifier = Modifier.size(20.dp))
+                        }
                     }
-                    TextButton(onClick = { showMoreMenuSheet = false; showSubtitleTools = true }) {
-                        Text("Subtitle timing & search", color = primaryAccent)
-                    }
 
-                    // 1. Autoplay Toggle
+                    // 1. Ambient Lighting
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
                             .clip(RoundedCornerShape(12.dp))
                             .clickable {
-                                toggleAutoPlay()
+                                showMoreMenuSheet = false
+                                showAmbientSettings = true
                             }
+                            .padding(12.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(
+                            if (isAmbientMode) Icons.Rounded.BlurOn else Icons.Rounded.BlurOff,
+                            contentDescription = null,
+                            tint = if (isAmbientMode) primaryAccent else c.textSecondary,
+                            modifier = Modifier.size(24.dp)
+                        )
+                        Spacer(Modifier.width(14.dp))
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text("Ambient Lighting Backdrop", color = c.textPrimary, fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
+                            Text(if (isAmbientMode) "Atmospheric glow active • Tap for settings" else "Disabled • Tap to configure", color = c.textSecondary, fontSize = 12.sp)
+                        }
+                        Icon(Icons.AutoMirrored.Rounded.KeyboardArrowRight, contentDescription = null, tint = c.textSecondary, modifier = Modifier.size(20.dp))
+                    }
+
+                    // 2. Subtitle Tools & Timing
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(12.dp))
+                            .clickable {
+                                showMoreMenuSheet = false
+                                showSubtitleTools = true
+                            }
+                            .padding(12.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(Icons.Rounded.Subtitles, contentDescription = null, tint = primaryAccent, modifier = Modifier.size(24.dp))
+                        Spacer(Modifier.width(14.dp))
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text("Subtitle Search & Timing", color = c.textPrimary, fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
+                            Text("Adjust offset, font styles, and download online subs", color = c.textSecondary, fontSize = 12.sp)
+                        }
+                        Icon(Icons.AutoMirrored.Rounded.KeyboardArrowRight, contentDescription = null, tint = c.textSecondary, modifier = Modifier.size(20.dp))
+                    }
+
+                    // 3. Audio Equalizer & Tracks
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(12.dp))
+                            .clickable {
+                                showMoreMenuSheet = false
+                                showAudioTrackSheet = true
+                            }
+                            .padding(12.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(Icons.Rounded.GraphicEq, contentDescription = null, tint = primaryAccent, modifier = Modifier.size(24.dp))
+                        Spacer(Modifier.width(14.dp))
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text("Audio Tracks & Equalizer", color = c.textPrimary, fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
+                            Text("Switch audio streams and boost sound dynamics", color = c.textSecondary, fontSize = 12.sp)
+                        }
+                        Icon(Icons.AutoMirrored.Rounded.KeyboardArrowRight, contentDescription = null, tint = c.textSecondary, modifier = Modifier.size(20.dp))
+                    }
+
+                    // 4. Autoplay Toggle
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(12.dp))
+                            .clickable { toggleAutoPlay() }
                             .padding(12.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
@@ -5736,7 +5750,7 @@ fun VideoPlayerScreen(
                         )
                         Spacer(Modifier.width(14.dp))
                         Column(modifier = Modifier.weight(1f)) {
-                            Text("Autoplay Next", color = c.textPrimary, fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
+                            Text("Autoplay Next Video", color = c.textPrimary, fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
                             Text(if (isAutoPlayEnabled) "Auto-advance to next video on completion" else "Disabled", color = c.textSecondary, fontSize = 12.sp)
                         }
                         Switch(
@@ -5746,7 +5760,7 @@ fun VideoPlayerScreen(
                         )
                     }
 
-                    // 2. Sleep Timer
+                    // 5. Sleep Timer
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
@@ -5772,7 +5786,7 @@ fun VideoPlayerScreen(
                         Icon(Icons.AutoMirrored.Rounded.KeyboardArrowRight, contentDescription = null, tint = c.textSecondary, modifier = Modifier.size(20.dp))
                     }
 
-                    // 3. Night Mode
+                    // 6. Night Mode
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
@@ -5805,7 +5819,7 @@ fun VideoPlayerScreen(
                         )
                     }
 
-                    // 4. A-B Repeat Loop
+                    // 7. A-B Repeat Loop
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
@@ -5843,7 +5857,7 @@ fun VideoPlayerScreen(
                         }
                     }
 
-                    // 5. Add Bookmark
+                    // 8. Add Bookmark
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
@@ -5865,7 +5879,7 @@ fun VideoPlayerScreen(
                         }
                     }
 
-                    // 6. Video Media Details
+                    // 9. Video Media Details
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
@@ -5886,7 +5900,7 @@ fun VideoPlayerScreen(
                         Icon(Icons.AutoMirrored.Rounded.KeyboardArrowRight, contentDescription = null, tint = c.textSecondary, modifier = Modifier.size(20.dp))
                     }
 
-                    // 7. Visual Dynamic Theme
+                    // 10. Visual Dynamic Theme
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
@@ -5907,7 +5921,52 @@ fun VideoPlayerScreen(
                         Icon(Icons.AutoMirrored.Rounded.KeyboardArrowRight, contentDescription = null, tint = c.textSecondary, modifier = Modifier.size(20.dp))
                     }
 
-                    // 8. Player Settings
+                    // 11. Share Video
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(12.dp))
+                            .clickable {
+                                showMoreMenuSheet = false
+                                executeShareCurrentVideo()
+                            }
+                            .padding(12.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(Icons.Rounded.Share, contentDescription = null, tint = primaryAccent, modifier = Modifier.size(24.dp))
+                        Spacer(Modifier.width(14.dp))
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text("Share Video", color = c.textPrimary, fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
+                            Text("Share this video file with other apps", color = c.textSecondary, fontSize = 12.sp)
+                        }
+                        Icon(Icons.AutoMirrored.Rounded.KeyboardArrowRight, contentDescription = null, tint = c.textSecondary, modifier = Modifier.size(20.dp))
+                    }
+
+                    // 12. Delete Video
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(12.dp))
+                            .clickable {
+                                showMoreMenuSheet = false
+                                wasPlayingBeforeDeleteDialog.value = exoPlayer.isPlaying
+                                if (exoPlayer.isPlaying) {
+                                    exoPlayer.pause()
+                                }
+                                showDeleteConfirmDialog = true
+                            }
+                            .padding(12.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(Icons.Rounded.Delete, contentDescription = null, tint = Color(0xFFEF5350), modifier = Modifier.size(24.dp))
+                        Spacer(Modifier.width(14.dp))
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text("Delete Video", color = Color(0xFFEF5350), fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
+                            Text("Permanently remove this file from storage", color = c.textSecondary, fontSize = 12.sp)
+                        }
+                    }
+
+                    // 13. Player Settings
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
