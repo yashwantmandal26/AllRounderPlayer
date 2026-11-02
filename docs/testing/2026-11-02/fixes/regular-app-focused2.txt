@@ -1,0 +1,22 @@
+
+com.example.ymediaplayer.ui.VideoInteractionRegressionTest:
+Error in videoSleepTimerMustSurviveActivityRecreation(com.example.ymediaplayer.ui.VideoInteractionRegressionTest):
+androidx.compose.ui.test.ComposeTimeoutException: Condition still not satisfied after 5000 ms
+	at androidx.compose.ui.test.AndroidComposeUiTestEnvironment$AndroidComposeUiTestImpl.waitUntil(ComposeUiTest.android.kt:901)
+	at androidx.compose.ui.test.junit4.AndroidComposeTestRule.waitUntil(AndroidComposeTestRule.android.kt:500)
+	at com.example.ymediaplayer.ui.VideoInteractionRegressionTest.videoSleepTimerMustSurviveActivityRecreation(VideoInteractionRegressionTest.kt:117)
+
+com.example.ymediaplayer.ui.MusicPlaybackIntegrationTest:.
+
+Time: 15.401
+There was 1 failure:
+1) videoSleepTimerMustSurviveActivityRecreation(com.example.ymediaplayer.ui.VideoInteractionRegressionTest)
+androidx.compose.ui.test.ComposeTimeoutException: Condition still not satisfied after 5000 ms
+	at androidx.compose.ui.test.AndroidComposeUiTestEnvironment$AndroidComposeUiTestImpl.waitUntil(ComposeUiTest.android.kt:901)
+	at androidx.compose.ui.test.junit4.AndroidComposeTestRule.waitUntil(AndroidComposeTestRule.android.kt:500)
+	at com.example.ymediaplayer.ui.VideoInteractionRegressionTest.videoSleepTimerMustSurviveActivityRecreation(VideoInteractionRegressionTest.kt:117)
+
+FAILURES!!!
+Tests run: 2,  Failures: 1
+
+

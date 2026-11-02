@@ -1,0 +1,478 @@
+--------- beginning of main
+11-02 20:48:13.452 17949 17949 I HiddenAudit: extended timer volume=0.7362
+11-02 20:48:21.467 17949 17949 I HiddenAudit: end with repeat OFF current=QA_1 playing=true
+11-02 20:49:09.697 18645 18665 I HiddenAudit: before timer select: Printing with useUnmergedTree = 'false'
+11-02 20:49:09.697 18645 18665 I HiddenAudit: Node #1 at (l=0.0, t=0.0, r=1080.0, b=2400.0)px
+11-02 20:49:09.697 18645 18665 I HiddenAudit:  |-Node #2 at (l=0.0, t=0.0, r=1080.0, b=2400.0)px
+11-02 20:49:09.697 18645 18665 I HiddenAudit:    IsContainer = 'true'
+11-02 20:49:09.697 18645 18665 I HiddenAudit:    Shape = 'RectangleShape'
+11-02 20:49:09.697 18645 18665 I HiddenAudit:     |-Node #4 at (l=0.0, t=0.0, r=1080.0, b=2400.0)px
+11-02 20:49:09.697 18645 18665 I HiddenAudit:       Shape = 'RectangleShape'
+11-02 20:49:09.697 18645 18665 I HiddenAudit:        |-Node #6 at (l=0.0, t=0.0, r=1080.0, b=2400.0)px
+11-02 20:49:09.697 18645 18665 I HiddenAudit:        | Shape = 'RectangleShape'
+11-02 20:49:09.697 18645 18665 I HiddenAudit:        |-Node #8 at (l=0.0, t=0.0, r=1080.0, b=2400.0)px
+11-02 20:49:09.697 18645 18665 I HiddenAudit:          Shape = 'RectangleShape'
+11-02 20:49:09.697 18645 18665 I HiddenAudit:           |-Node #9 at (l=0.0, t=0.0, r=1080.0, b=2400.0)px
+11-02 20:49:09.697 18645 18665 I HiddenAudit:             MergeDescendants = 'true'
+11-02 20:49:49.063 18871 18890 I HiddenAudit: before timer select: Printing with useUnmergedTree = 'false'
+11-02 20:49:49.063 18871 18890 I HiddenAudit: Node #1 at (l=0.0, t=0.0, r=1080.0, b=2400.0)px
+11-02 20:49:49.063 18871 18890 I HiddenAudit:  |-Node #2 at (l=0.0, t=0.0, r=1080.0, b=2400.0)px
+11-02 20:49:49.063 18871 18890 I HiddenAudit:    IsContainer = 'true'
+11-02 20:49:49.063 18871 18890 I HiddenAudit:    Shape = 'RectangleShape'
+11-02 20:49:49.063 18871 18890 I HiddenAudit:     |-Node #4 at (l=0.0, t=0.0, r=1080.0, b=2400.0)px
+11-02 20:49:49.063 18871 18890 I HiddenAudit:       Shape = 'RectangleShape'
+11-02 20:49:49.063 18871 18890 I HiddenAudit:        |-Node #6 at (l=0.0, t=0.0, r=1080.0, b=2400.0)px
+11-02 20:49:49.063 18871 18890 I HiddenAudit:        | Shape = 'RectangleShape'
+11-02 20:49:49.063 18871 18890 I HiddenAudit:        |-Node #8 at (l=0.0, t=0.0, r=1080.0, b=2400.0)px
+11-02 20:49:49.063 18871 18890 I HiddenAudit:        | Shape = 'RectangleShape'
+11-02 20:49:49.063 18871 18890 I HiddenAudit:        |  |-Node #9 at (l=0.0, t=0.0, r=1080.0, b=2400.0)px
+11-02 20:49:49.063 18871 18890 I HiddenAudit:        |    MergeDescendants = 'true'
+11-02 20:49:49.063 18871 18890 I HiddenAudit:        |-Node #10 at (l=0.0, t=0.0, r=1080.0, b=2400.0)px
+11-02 20:49:49.063 18871 18890 I HiddenAudit:           |-Node #12 at (l=0.0, t=0.0, r=1080.0, b=336.0)px
+11-02 20:49:49.063 18871 18890 I HiddenAudit:           | Shape = 'RectangleShape'
+11-02 20:49:49.063 18871 18890 I HiddenAudit:           |-Node #13 at (l=0.0, t=1794.0, r=1080.0, b=2400.0)px
+11-02 20:49:49.063 18871 18890 I HiddenAudit:           | Shape = 'RectangleShape'
+11-02 20:49:49.063 18871 18890 I HiddenAudit:           |-Node #17 at (l=47.0, t=157.0, r=141.0, b=251.0)px
+11-02 20:49:49.063 18871 18890 I HiddenAudit:           | ContentDescription = '[Back, Back]'
+11-02 20:49:49.063 18871 18890 I HiddenAudit:           | Focused = 'false'
+11-02 20:49:49.063 18871 18890 I HiddenAudit:           | Role = 'Button'
+11-02 20:49:49.063 18871 18890 I HiddenAudit:           | Shape = 'RoundedCornerShape(topStart = CornerSize(size = 50.0%), topEnd = CornerSize(size = 50.0%), bottomEnd = CornerSize(size = 50.0%), bottomStart = CornerSize(size = 50.0%))'
+11-02 20:49:49.063 18871 18890 I HiddenAudit:           | Actions = [OnClick, OnLongClick, RequestFocus]
+11-02 20:49:49.063 18871 18890 I HiddenAudit:           | MergeDescendants = 'true'
+11-02 20:49:49.063 18871 18890 I HiddenAudit:           |-Node #22 at (l=174.0, t=138.0, r=381.0, b=204.0)px
+11-02 20:49:49.063 18871 18890 I HiddenAudit:           | Text = '[QA_Hidden_Video]'
+11-02 20:49:49.063 18871 18890 I HiddenAudit:           | Actions = [ClearTextSubstitution, GetTextLayoutResult, SetTextSubstitution, ShowTextSubstitution]
+11-02 20:49:49.063 18871 18890 I HiddenAudit:           |-Node #23 at (l=174.0, t=204.0, r=244.0, b=270.0)px
+11-02 20:49:49.063 18871 18890 I HiddenAudit:           | Text = '[360p]'
+11-02 20:49:49.063 18871 18890 I HiddenAudit:           | Actions = [ClearTextSubstitution, GetTextLayoutResult, SetTextSubstitution, ShowTextSubstitution]
+11-02 20:49:49.063 18871 18890 I HiddenAudit:           |-Node #25 at (l=411.0, t=157.0, r=505.0, b=251.0)px
+11-02 20:49:49.063 18871 18890 I HiddenAudit:           | ContentDescription = '[Playlist, Playlist]'
+11-02 20:49:49.063 18871 18890 I HiddenAudit:           | Focused = 'false'
+11-02 20:49:49.063 18871 18890 I HiddenAudit:           | Role = 'Button'
+11-02 20:49:49.063 18871 18890 I HiddenAudit:           | Shape = 'RoundedCornerShape(topStart = CornerSize(size = 50.0%), topEnd = CornerSize(size = 50.0%), bottomEnd = CornerSize(size = 50.0%), bottomStart = CornerSize(size = 50.0%))'
+11-02 20:49:49.063 18871 18890 I HiddenAudit:           | Actions = [OnClick, OnLongClick, RequestFocus]
+11-02 20:49:49.063 18871 18890 I HiddenAudit:           | MergeDescendants = 'true'
+11-02 20:49:49.063 18871 18890 I HiddenAudit:           |-Node #27 at (l=554.0, t=157.0, r=604.0, b=251.0)px
+11-02 20:49:49.063 18871 18890 I HiddenAudit:           | Shape = 'RoundedCornerShape(topStart = CornerSize(size = 50.0%), topEnd = CornerSize(size = 50.0%), bottomEnd = CornerSize(size = 50.0%), bottomStart = CornerSize(size = 50.0%))'
+11-02 20:49:49.063 18871 18890 I HiddenAudit:           |  |-Node #28 at (l=554.0, t=179.0, r=604.0, b=229.0)px
+11-02 20:49:49.063 18871 18890 I HiddenAudit:           |    ContentDescription = '[Playback speed]'
+11-02 20:49:49.063 18871 18890 I HiddenAudit:           |    Role = 'Image'
+11-02 20:49:49.063 18871 18890 I HiddenAudit:           |-Node #29 at (l=653.0, t=157.0, r=747.0, b=251.0)px
+11-02 20:49:49.063 18871 18890 I HiddenAudit:           | ContentDescription = '[Audio tracks, Audio track]'
+11-02 20:49:49.063 18871 18890 I HiddenAudit:           | Focused = 'false'
+11-02 20:49:49.063 18871 18890 I HiddenAudit:           | Role = 'Button'
+11-02 20:49:49.063 18871 18890 I HiddenAudit:           | Shape = 'RoundedCornerShape(topStart = CornerSize(size = 50.0%), topEnd = CornerSize(size = 50.0%), bottomEnd = CornerSize(size = 50.0%), bottomStart = CornerSize(size = 50.0%))'
+11-02 20:49:49.063 18871 18890 I HiddenAudit:           | Actions = [OnClick, OnLongClick, RequestFocus]
+11-02 20:49:49.063 18871 18890 I HiddenAudit:           | MergeDescendants = 'true'
+11-02 20:49:49.063 18871 18890 I HiddenAudit:           |-Node #31 at (l=796.0, t=157.0, r=890.0, b=251.0)px
+11-02 20:49:49.063 18871 18890 I HiddenAudit:           | ContentDescription = '[Subtitles, Subtitles]'
+11-02 20:49:49.063 18871 18890 I HiddenAudit:           | Focused = 'false'
+11-02 20:49:49.063 18871 18890 I HiddenAudit:           | Role = 'Button'
+11-02 20:49:49.063 18871 18890 I HiddenAudit:           | Shape = 'RoundedCornerShape(topStart = CornerSize(size = 50.0%), topEnd = CornerSize(size = 50.0%), bottomEnd = CornerSize(size = 50.0%), bottomStart = CornerSize(size = 50.0%))'
+11-02 20:49:49.063 18871 18890 I HiddenAudit:           | Actions = [OnClick, OnLongClick, RequestFocus]
+11-02 20:49:49.063 18871 18890 I HiddenAudit:           | MergeDescendants = 'true'
+11-02 20:49:49.063 18871 18890 I HiddenAudit:           |-Node #33 at (l=939.0, t=157.0, r=1033.0, b=251.0)px
+11-02 20:49:49.063 18871 18890 I HiddenAudit:           | ContentDescription = '[Close options, More]'
+11-02 20:49:49.063 18871 18890 I HiddenAudit:           | Focused = 'false'
+11-02 20:49:49.063 18871 18890 I HiddenAudit:           | Role = 'Button'
+11-02 20:49:49.063 18871 18890 I HiddenAudit:           | Shape = 'RoundedCornerShape(topStart = CornerSize(size = 50.0%), topEnd = CornerSize(size = 50.0%), bottomEnd = CornerSize(size = 50.0%), bottomStart = CornerSize(size = 50.0%))'
+11-02 20:49:49.063 18871 18890 I HiddenAudit:           | Actions = [OnClick, OnLongClick, RequestFocus]
+11-02 20:49:49.063 18871 18890 I HiddenAudit:           | MergeDescendants = 'true'
+11-02 20:49:49.063 18871 18890 I HiddenAudit:           |-Node #66 at (l=606.0, t=281.0, r=1052.0, b=1596.0)px
+11-02 20:49:49.063 18871 18890 I HiddenAudit:           |  |-Node #67 at (l=606.0, t=303.0, r=1052.0, b=1596.0)px
+11-02 20:49:49.063 18871 18890 I HiddenAudit:           |    IsTraversalGroup = 'true'
+11-02 20:49:49.063 18871 18890 I HiddenAudit:           |    Shape = 'androidx.compose.foundation.VerticalScrollableClipShape@217563'
+11-02 20:49:49.063 18871 18890 I HiddenAudit:           |    VerticalScrollAxisRange = 'ScrollAxisRange(value=0.0, maxValue=198.0, reverseScrolling=false)'
+11-02 20:49:49.063 18871 18890 I HiddenAudit:           |    Actions = [ScrollBy, ScrollByOffset]
+11-02 20:49:49.063 18871 18890 I HiddenAudit:           |     |-Node #68 at (l=606.0, t=303.0, r=1052.0, b=402.0)px
+11-02 20:49:49.063 18871 18890 I HiddenAudit:           |     | ContentDescription = '[Auto ON]'
+11-02 20:49:49.063 18871 18890 I HiddenAudit:           |     | Focused = 'false'
+11-02 20:49:49.063 18871 18890 I HiddenAudit:           |     | Shape = 'RoundedCornerShape(topStart = CornerSize(size = 12.0.dp), topEnd = CornerSize(size = 12.0.dp), bottomEnd = CornerSize(size = 12.0.dp), bottomStart = CornerSize(size = 12.0.dp))'
+11-02 20:49:49.063 18871 18890 I HiddenAudit:           |     | Text = '[Auto ON]'
+11-02 20:49:49.063 18871 18890 I HiddenAudit:           |     | Actions = [ClearTextSubstitution, GetTextLayoutResult, OnClick, RequestFocus, SetTextSubstitution, ShowTextSubstitution]
+11-02 20:49:49.063 18871 18890 I HiddenAudit:           |     | MergeDescendants = 'true'
+11-02 20:49:49.063 18871 18890 I HiddenAudit:           |     |-Node #73 at (l=606.0, t=419.0, r=1052.0, b=518.0)px
+11-02 20:49:49.063 18871 18890 I HiddenAudit:           |     | ContentDescription = '[Sleep Timer]'
+11-02 20:49:49.063 18871 18890 I HiddenAudit:           |     | Focused = 'false'
+11-02 20:49:49.063 18871 18890 I HiddenAudit:           |     | Shape = 'RoundedCornerShape(topStart = CornerSize(size = 12.0.dp), topEnd = CornerSize(size = 12.0.dp), bottomEnd = CornerSize(size = 12.0.dp), bottomStart = CornerSize(size = 12.0.dp))'
+11-02 20:49:49.063 18871 18890 I HiddenAudit:           |     | Text = '[Sleep Timer]'
+11-02 20:49:49.063 18871 18890 I HiddenAudit:           |     | Actions = [ClearTextSubstitution, GetTextLayoutResult, OnClick, RequestFocus, SetTextSubstitution, ShowTextSubstitution]
+11-02 20:49:49.063 18871 18890 I HiddenAudit:           |     | MergeDescendants = 'true'
+11-02 20:49:49.063 18871 18890 I HiddenAudit:           |     |-Node #77 at (l=606.0, t=535.0, r=1052.0, b=634.0)px
+11-02 20:49:49.063 18871 18890 I HiddenAudit:           |     | ContentDescription = '[Night Mode]'
+11-02 20:49:49.063 18871 18890 I HiddenAudit:           |     | Focused = 'false'
+11-02 20:49:49.063 18871 18890 I HiddenAudit:           |     | Shape = 'RoundedCornerShape(topStart = CornerSize(size = 12.0.dp), topEnd = CornerSize(size = 12.0.dp), bottomEnd = CornerSize(size = 12.0.dp), bottomStart = CornerSize(size = 12.0.dp))'
+11-02 20:49:49.063 18871 18890 I HiddenAudit:           |     | Text = '[Night Mode]'
+11-02 20:49:49.063 18871 18890 I HiddenAudit:           |     | Actions = [ClearTextSubstitution, GetTextLayoutResult, OnClick, RequestFocus, SetTextSubstitution, ShowTextSubstitution]
+11-02 20:49:49.063 18871 18890 I HiddenAudit:           |     | MergeDescendants = 'true'
+11-02 20:49:49.063 18871 18890 I HiddenAudit:           |     |-Node #81 at (l=606.0, t=651.0, r=1052.0, b=750.0)px
+11-02 20:49:49.063 18871 18890 I HiddenAudit:           |     | ContentDescription = '[Ambient ON]'
+11-02 20:49:49.063 18871 18890 I HiddenAudit:           |     | Focused = 'false'
+11-02 20:49:49.063 18871 18890 I HiddenAudit:           |     | Shape = 'RoundedCornerShape(topStart = CornerSize(size = 12.0.dp), topEnd = CornerSize(size = 12.0.dp), bottomEnd = CornerSize(size = 12.0.dp), bottomStart = CornerSize(size = 12.0.dp))'
+11-02 20:49:49.063 18871 18890 I HiddenAudit:           |     | Text = '[Ambient ON]'
+11-02 20:49:49.063 18871 18890 I HiddenAudit:           |     | Actions = [ClearTextSubstitution, GetTextLayoutResult, OnClick, OnLongClick, RequestFocus, SetTextSubstitution, ShowTextSubstitution]
+11-02 20:49:49.063 18871 18890 I HiddenAudit:           |     | MergeDescendants = 'true'
+11-02 20:49:49.063 18871 18890 I HiddenAudit:           |     |-Node #86 at (l=606.0, t=767.0, r=1052.0, b=866.0)px
+11-02 20:49:49.063 18871 18890 I HiddenAudit:           |     | ContentDescription = '[Pure White]'
+11-02 20:49:49.063 18871 18890 I HiddenAudit:           |     | Focused = 'false'
+11-02 20:49:49.063 18871 18890 I HiddenAudit:           |     | Shape = 'RoundedCornerShape(topStart = CornerSize(size = 12.0.dp), topEnd = CornerSize(size = 12.0.dp), bottomEnd = CornerSize(size = 12.0.dp), bottomStart = CornerSize(size = 12.0.dp))'
+11-02 20:49:49.063 18871 18890 I HiddenAudit:           |     | Text = '[Pure White]'
+11-02 20:49:49.063 18871 18890 I HiddenAudit:           |     | Actions = [ClearTextSubstitution, GetTextLayoutResult, OnClick, OnLongClick, RequestFocus, SetTextSubstitution, ShowTextSubstitution]
+11-02 20:49:49.063 18871 18890 I HiddenAudit:           |     | MergeDescendants = 'true'
+11-02 20:49:49.063 18871 18890 I HiddenAudit:           |     |-Node #91 at (l=606.0, t=883.0, r=1052.0, b=982.0)px
+11-02 20:49:49.063 18871 18890 I HiddenAudit:           |     | ContentDescription = '[Equalizer]'
+11-02 20:49:49.063 18871 18890 I HiddenAudit:           |     | Focused = 'false'
+11-02 20:49:49.063 18871 18890 I HiddenAudit:           |     | Shape = 'RoundedCornerShape(topStart = CornerSize(size = 12.0.dp), topEnd = CornerSize(size = 12.0.dp), bottomEnd = CornerSize(size = 12.0.dp), bottomStart = CornerSize(size = 12.0.dp))'
+11-02 20:49:49.063 18871 18890 I HiddenAudit:           |     | Text = '[Equalizer]'
+11-02 20:49:49.063 18871 18890 I HiddenAudit:           |     | Actions = [ClearTextSubstitution, GetTextLayoutResult, OnClick, RequestFocus, SetTextSubstitution, ShowTextSubstitution]
+11-02 20:49:49.063 18871 18890 I HiddenAudit:           |     | MergeDescendants = 'true'
+11-02 20:49:49.063 18871 18890 I HiddenAudit:           |     |-Node #95 at (l=606.0, t=999.0, r=1052.0, b=1098.0)px
+11-02 20:49:49.063 18871 18890 I HiddenAudit:           |     | ContentDescription = '[Subtitles]'
+11-02 20:49:49.063 18871 18890 I HiddenAudit:           |     | Focused = 'false'
+11-02 20:49:49.063 18871 18890 I HiddenAudit:           |     | Shape = 'RoundedCornerShape(topStart = CornerSize(size = 12.0.dp), topEnd = CornerSize(size = 12.0.dp), bottomEnd = CornerSize(size = 12.0.dp), bottomStart = CornerSize(size = 12.0.dp))'
+11-02 20:49:49.063 18871 18890 I HiddenAudit:           |     | Text = '[Subtitles]'
+11-02 20:49:49.063 18871 18890 I HiddenAudit:           |     | Actions = [ClearTextSubstitution, GetTextLayoutResult, OnClick, RequestFocus, SetTextSubstitution, ShowTextSubstitution]
+11-02 20:49:49.063 18871 18890 I HiddenAudit:           |     | MergeDescendants = 'true'
+11-02 20:49:49.063 18871 18890 I HiddenAudit:           |     |-Node #99 at (l=606.0, t=1115.0, r=1052.0, b=1214.0)px
+11-02 20:49:49.063 18871 18890 I HiddenAudit:           |     | ContentDescription = '[A-B Loop]'
+11-02 20:49:49.063 18871 18890 I HiddenAudit:           |     | Focused = 'false'
+11-02 20:49:49.063 18871 18890 I HiddenAudit:           |     | Shape = 'RoundedCornerShape(topStart = CornerSize(size = 12.0.dp), topEnd = CornerSize(size = 12.0.dp), bottomEnd = CornerSize(size = 12.0.dp), bottomStart = CornerSize(size = 12.0.dp))'
+11-02 20:49:49.063 18871 18890 I HiddenAudit:           |     | Text = '[A-B Loop]'
+11-02 20:49:49.063 18871 18890 I HiddenAudit:           |     | Actions = [ClearTextSubstitution, GetTextLayoutResult, OnClick, RequestFocus, SetTextSubstitution, ShowTextSubstitution]
+11-02 20:49:49.063 18871 18890 I HiddenAudit:           |     | MergeDescendants = 'true'
+11-02 20:49:49.063 18871 18890 I HiddenAudit:           |     |-Node #103 at (l=606.0, t=1231.0, r=1052.0, b=1330.0)px
+11-02 20:49:49.063 18871 18890 I HiddenAudit:           |     | ContentDescription = '[Bookmark]'
+11-02 20:49:49.063 18871 18890 I HiddenAudit:           |     | Focused = 'false'
+11-02 20:49:49.063 18871 18890 I HiddenAudit:           |     | Shape = 'RoundedCornerShape(topStart = CornerSize(size = 12.0.dp), topEnd = CornerSize(size = 12.0.dp), bottomEnd = CornerSize(size = 12.0.dp), bottomStart = CornerSize(size = 12.0.dp))'
+11-02 20:49:49.063 18871 18890 I HiddenAudit:           |     | Text = '[Bookmark]'
+11-02 20:49:49.063 18871 18890 I HiddenAudit:           |     | Actions = [ClearTextSubstitution, GetTextLayoutResult, OnClick, RequestFocus, SetTextSubstitution, ShowTextSubstitution]
+11-02 20:49:49.063 18871 18890 I HiddenAudit:           |     | MergeDescendants = 'true'
+11-02 20:49:49.063 18871 18890 I HiddenAudit:           |     |-Node #107 at (l=606.0, t=1347.0, r=1052.0, b=1446.0)px
+11-02 20:49:49.063 18871 18890 I HiddenAudit:           |     | ContentDescription = '[Media Info]'
+11-02 20:49:49.063 18871 18890 I HiddenAudit:           |     | Focused = 'false'
+11-02 20:49:49.063 18871 18890 I HiddenAudit:           |     | Shape = 'RoundedCornerShape(topStart = CornerSize(size = 12.0.dp), topEnd = CornerSize(size = 12.0.dp), bottomEnd = CornerSize(size = 12.0.dp), bottomStart = CornerSize(size = 12.0.dp))'
+11-02 20:49:49.063 18871 18890 I HiddenAudit:           |     | Text = '[Media Info]'
+11-02 20:49:49.063 18871 18890 I HiddenAudit:           |     | Actions = [ClearTextSubstitution, GetTextLayoutResult, OnClick, RequestFocus, SetTextSubstitution, ShowTextSubstitution]
+11-02 20:49:49.063 18871 18890 I HiddenAudit:           |     | MergeDescendants = 'true'
+11-02 20:49:49.063 18871 18890 I HiddenAudit:           |     |-Node #111 at (l=606.0, t=1463.0, r=1052.0, b=1562.0)px
+11-02 20:49:49.063 18871 18890 I HiddenAudit:           |     | ContentDescription = '[Share]'
+11-02 20:49:49.063 18871 18890 I HiddenAudit:           |     | Focused = 'false'
+11-02 20:49:49.063 18871 18890 I HiddenAudit:           |     | Shape = 'RoundedCornerShape(topStart = CornerSize(size = 12.0.dp), topEnd = CornerSize(size = 12.0.dp), bottomEnd = CornerSize(size = 12.0.dp), bottomStart = CornerSize(size = 12.0.dp))'
+11-02 20:49:49.063 18871 18890 I HiddenAudit:           |     | Text = '[Share]'
+11-02 20:49:49.063 18871 18890 I HiddenAudit:           |     | Actions = [ClearTextSubstitution, GetTextLayoutResult, OnClick, RequestFocus, SetTextSubstitution, ShowTextSubstitution]
+11-02 20:49:49.063 18871 18890 I HiddenAudit:           |     | MergeDescendants = 'true'
+11-02 20:49:49.063 18871 18890 I HiddenAudit:           |     |-Node #115 at (l=606.0, t=1579.0, r=1052.0, b=1678.0)px
+11-02 20:49:49.063 18871 18890 I HiddenAudit:           |     | ContentDescription = '[Delete]'
+11-02 20:49:49.063 18871 18890 I HiddenAudit:           |     | Focused = 'false'
+11-02 20:49:49.063 18871 18890 I HiddenAudit:           |     | Shape = 'RoundedCornerShape(topStart = CornerSize(size = 12.0.dp), topEnd = CornerSize(size = 12.0.dp), bottomEnd = CornerSize(size = 12.0.dp), bottomStart = CornerSize(size = 12.0.dp))'
+11-02 20:49:49.063 18871 18890 I HiddenAudit:           |     | Text = '[Delete]'
+11-02 20:49:49.063 18871 18890 I HiddenAudit:           |     | Actions = [ClearTextSubstitution, GetTextLayoutResult, OnClick, RequestFocus, SetTextSubstitution, ShowTextSubstitution]
+11-02 20:49:49.063 18871 18890 I HiddenAudit:           |     | MergeDescendants = 'true'
+11-02 20:49:49.063 18871 18890 I HiddenAudit:           |     |-Node #119 at (l=606.0, t=1695.0, r=1052.0, b=1794.0)px
+11-02 20:49:49.063 18871 18890 I HiddenAudit:           |       ContentDescription = '[Settings]'
+11-02 20:49:49.063 18871 18890 I HiddenAudit:           |       Focused = 'false'
+11-02 20:49:49.063 18871 18890 I HiddenAudit:           |       Shape = 'RoundedCornerShape(topStart = CornerSize(size = 12.0.dp), topEnd = CornerSize(size = 12.0.dp), bottomEnd = CornerSize(size = 12.0.dp), bottomStart = CornerSize(size = 12.0.dp))'
+11-02 20:49:49.063 18871 18890 I HiddenAudit:           |       Text = '[Settings]'
+11-02 20:49:49.063 18871 18890 I HiddenAudit:           |       Actions = [ClearTextSubstitution, GetTextLayoutResult, OnClick, RequestFocus, SetTextSubstitution, ShowTextSubstitution]
+11-02 20:49:49.063 18871 18890 I HiddenAudit:           |       MergeDescendants = 'true'
+11-02 20:49:49.063 18871 18890 I HiddenAudit:           |-Node #36 at (l=256.0, t=1134.0, r=388.0, b=1266.0)px
+11-02 20:49:49.063 18871 18890 I HiddenAudit:           | ContentDescription = '[Previous video, Previous video]'
+11-02 20:49:49.063 18871 18890 I HiddenAudit:           | Role = 'Button'
+11-02 20:49:49.063 18871 18890 I HiddenAudit:           | Shape = 'RoundedCornerShape(topStart = CornerSize(size = 50.0%), topEnd = CornerSize(size = 50.0%), bottomEnd = CornerSize(size = 50.0%), bottomStart = CornerSize(size = 50.0%))'
+11-02 20:49:49.063 18871 18890 I HiddenAudit:           | [Disabled]
+11-02 20:49:49.063 18871 18890 I HiddenAudit:           | Actions = [OnClick, OnLongClick]
+11-02 20:49:49.063 18871 18890 I HiddenAudit:           | MergeDescendants = 'true'
+11-02 20:49:49.063 18871 18890 I HiddenAudit:           |-Node #38 at (l=449.0, t=1109.0, r=631.0, b=1291.0)px
+11-02 20:49:49.063 18871 18890 I HiddenAudit:           | Shape = 'RoundedCornerShape(topStart = CornerSize(size = 50.0%), topEnd = CornerSize(size = 50.0%), bottomEnd = CornerSize(size = 50.0%), bottomStart = CornerSize(size = 50.0%))'
+11-02 20:49:49.063 18871 18890 I HiddenAudit:           |  |-Node #39 at (l=485.0, t=1145.0, r=595.0, b=1255.0)px
+11-02 20:49:49.063 18871 18890 I HiddenAudit:           |    ContentDescription = '[Play/Pause]'
+11-02 20:49:49.063 18871 18890 I HiddenAudit:           |    Role = 'Image'
+11-02 20:49:49.063 18871 18890 I HiddenAudit:           |-Node #40 at (l=692.0, t=1134.0, r=824.0, b=1266.0)px
+11-02 20:49:49.063 18871 18890 I HiddenAudit:           | ContentDescription = '[Next video, Next video]'
+11-02 20:49:49.063 18871 18890 I HiddenAudit:           | Role = 'Button'
+11-02 20:49:49.063 18871 18890 I HiddenAudit:           | Shape = 'RoundedCornerShape(topStart = CornerSize(size = 50.0%), topEnd = CornerSize(size = 50.0%), bottomEnd = CornerSize(size = 50.0%), bottomStart = CornerSize(size = 50.0%))'
+11-02 20:49:49.063 18871 18890 I HiddenAudit:           | [Disabled]
+11-02 20:49:49.063 18871 18890 I HiddenAudit:           | Actions = [OnClick, OnLongClick]
+11-02 20:49:49.063 18871 18890 I HiddenAudit:           | MergeDescendants = 'true'
+11-02 20:49:49.063 18871 18890 I HiddenAudit:           |-Node #44 at (l=39.0, t=1859.0, r=303.0, b=1925.0)px
+11-02 20:49:49.063 18871 18890 I HiddenAudit:           | Text = '[00:00 / 00:30]'
+11-02 20:49:49.063 18871 18890 I HiddenAudit:           | Actions = [ClearTextSubstitution, GetTextLayoutResult, SetTextSubstitution, ShowTextSubstitution]
+11-02 20:49:49.063 18871 18890 I HiddenAudit:           |-Node #46 at (l=926.0, t=1843.0, r=1025.0, b=1942.0)px
+11-02 20:49:49.063 18871 18890 I HiddenAudit:           | ContentDescription = '[Enhanced mode, Enhanced mode]'
+11-02 20:49:49.063 18871 18890 I HiddenAudit:           | Focused = 'false'
+11-02 20:49:49.063 18871 18890 I HiddenAudit:           | Role = 'Button'
+11-02 20:49:49.063 18871 18890 I HiddenAudit:           | Shape = 'RoundedCornerShape(topStart = CornerSize(size = 50.0%), topEnd = CornerSize(size = 50.0%), bottomEnd = CornerSize(size = 50.0%), bottomStart = CornerSize(size = 50.0%))'
+11-02 20:49:49.063 18871 18890 I HiddenAudit:           | Actions = [OnClick, OnLongClick, RequestFocus]
+11-02 20:49:49.063 18871 18890 I HiddenAudit:           | MergeDescendants = 'true'
+11-02 20:49:49.063 18871 18890 I HiddenAudit:           |-Node #60 at (l=6.0, t=1985.0, r=1074.0, b=2029.0)px
+11-02 20:49:49.063 18871 18890 I HiddenAudit:           | Focused = 'false'
+11-02 20:49:49.063 18871 18890 I HiddenAudit:           | ProgressBarRangeInfo = 'ProgressBarRangeInfo(current=107.0, range=0.0..30000.0, steps=0)'
+11-02 20:49:49.063 18871 18890 I HiddenAudit:           | StateDescription = '107.0'
+11-02 20:49:49.063 18871 18890 I HiddenAudit:           | Actions = [RequestFocus, SetProgress]
+11-02 20:49:49.063 18871 18890 I HiddenAudit:           | MergeDescendants = 'true'
+11-02 20:49:49.063 18871 18890 I HiddenAudit:           |-Node #50 at (l=28.0, t=2090.0, r=1052.0, b=2234.0)px
+11-02 20:49:49.063 18871 18890 I HiddenAudit:             HorizontalScrollAxisRange = 'ScrollAxisRange(value=0.0, maxValue=0.0, reverseScrolling=false)'
+11-02 20:49:49.063 18871 18890 I HiddenAudit:             IsTraversalGroup = 'true'
+11-02 20:49:49.063 18871 18890 I HiddenAudit:             Shape = 'androidx.compose.foundation.HorizontalScrollableClipShape@d955560'
+11-02 20:49:49.063 18871 18890 I HiddenAudit:             Actions = [ScrollBy, ScrollByOffset]
+11-02 20:49:49.063 18871 18890 I HiddenAudit:              |-Node #51 at (l=142.0, t=2104.0, r=258.0, b=2220.0)px
+11-02 20:49:49.063 18871 18890 I HiddenAudit:              | ContentDescription = '[Lock controls, Lock controls]'
+11-02 20:49:49.063 18871 18890 I HiddenAudit:              | Focused = 'false'
+11-02 20:49:49.063 18871 18890 I HiddenAudit:              | Role = 'Button'
+11-02 20:49:49.063 18871 18890 I HiddenAudit:              | Shape = 'RoundedCornerShape(topStart = CornerSize(size = 50.0%), topEnd = CornerSize(size = 50.0%), bottomEnd = CornerSize(size = 50.0%), bottomStart = CornerSize(size = 50.0%))'
+11-02 20:49:49.063 18871 18890 I HiddenAudit:              | Actions = [OnClick, OnLongClick, RequestFocus]
+11-02 20:49:49.063 18871 18890 I HiddenAudit:              | MergeDescendants = 'true'
+11-02 20:49:49.063 18871 18890 I HiddenAudit:              |-Node #53 at (l=369.0, t=2104.0, r=485.0, b=2220.0)px
+11-02 20:49:49.063 18871 18890 I HiddenAudit:              | ContentDescription = '[Aspect ratio, Aspect ratio]'
+11-02 20:49:49.063 18871 18890 I HiddenAudit:              | Focused = 'false'
+11-02 20:49:49.063 18871 18890 I HiddenAudit:              | Role = 'Button'
+11-02 20:49:49.063 18871 18890 I HiddenAudit:              | Shape = 'RoundedCornerShape(topStart = CornerSize(size = 50.0%), topEnd = CornerSize(size = 50.0%), bottomEnd = CornerSize(size = 50.0%), bottomStart = CornerSize(size = 50.0%))'
+11-02 20:49:49.063 18871 18890 I HiddenAudit:              | Actions = [OnClick, OnLongClick, RequestFocus]
+11-02 20:49:49.063 18871 18890 I HiddenAudit:              | MergeDescendants = 'true'
+11-02 20:49:49.063 18871 18890 I HiddenAudit:              |-Node #55 at (l=595.0, t=2104.0, r=711.0, b=2220.0)px
+11-02 20:49:49.063 18871 18890 I HiddenAudit:              | ContentDescription = '[Picture-in-Picture, PiP]'
+11-02 20:49:49.063 18871 18890 I HiddenAudit:              | Focused = 'false'
+11-02 20:49:49.063 18871 18890 I HiddenAudit:              | Role = 'Button'
+11-02 20:49:49.063 18871 18890 I HiddenAudit:              | Shape = 'RoundedCornerShape(topStart = CornerSize(size = 50.0%), topEnd = CornerSize(size = 50.0%), bottomEnd = CornerSize(size = 50.0%), bottomStart = CornerSize(size = 50.0%))'
+11-02 20:49:49.063 18871 18890 I HiddenAudit:              | Actions = [OnClick, OnLongClick, RequestFocus]
+11-02 20:49:49.063 18871 18890 I HiddenAudit:              | MergeDescendants = 'true'
+11-02 20:49:49.063 18871 18890 I HiddenAudit:              |-Node #57 at (l=822.0, t=2104.0, r=938.0, b=2220.0)px
+11-02 20:49:49.063 18871 18890 I HiddenAudit:                ContentDescription = '[Rotate screen, Rotate Screen]'
+11-02 20:49:49.063 18871 18890 I HiddenAudit:                Focused = 'false'
+11-02 20:49:49.063 18871 18890 I HiddenAudit:                Role = 'Button'
+11-02 20:49:49.063 18871 18890 I HiddenAudit:                Shape = 'RoundedCornerShape(topStart = CornerSize(size = 50.0%), topEnd = CornerSize(size = 50.0%), bottomEnd = CornerSize(size = 50.0%), bottomStart = CornerSize(size = 50.0%))'
+11-02 20:49:49.063 18871 18890 I HiddenAudit:                Actions = [OnClick, OnLongClick, RequestFocus]
+11-02 20:49:49.063 18871 18890 I HiddenAudit:                MergeDescendants = 'true'
+11-02 20:50:38.778 19124 19124 I HiddenAudit: extended timer volume=0.747
+11-02 20:50:41.204 19124 19124 I HiddenAudit: cancel fade before=0.7488 after=0.7488
+11-02 20:50:43.141 19124 19124 I HiddenAudit: play current next queue keys=[queue_990001, queue_990001, queue_990002, queue_990003]
+11-02 20:50:57.692 19124 19124 I HiddenAudit: end with repeat OFF current=QA_1 playing=true
+11-02 20:51:38.219 19639 19658 I HiddenAudit: before timer select: Printing with useUnmergedTree = 'false'
+11-02 20:51:38.219 19639 19658 I HiddenAudit: Node #1 at (l=0.0, t=0.0, r=1080.0, b=2400.0)px
+11-02 20:51:38.219 19639 19658 I HiddenAudit:  |-Node #2 at (l=0.0, t=0.0, r=1080.0, b=2400.0)px
+11-02 20:51:38.219 19639 19658 I HiddenAudit:    IsContainer = 'true'
+11-02 20:51:38.219 19639 19658 I HiddenAudit:    Shape = 'RectangleShape'
+11-02 20:51:38.219 19639 19658 I HiddenAudit:     |-Node #4 at (l=0.0, t=0.0, r=1080.0, b=2400.0)px
+11-02 20:51:38.219 19639 19658 I HiddenAudit:       Shape = 'RectangleShape'
+11-02 20:51:38.219 19639 19658 I HiddenAudit:        |-Node #6 at (l=0.0, t=0.0, r=1080.0, b=2400.0)px
+11-02 20:51:38.219 19639 19658 I HiddenAudit:        | Shape = 'RectangleShape'
+11-02 20:51:38.219 19639 19658 I HiddenAudit:        |-Node #8 at (l=0.0, t=0.0, r=1080.0, b=2400.0)px
+11-02 20:51:38.219 19639 19658 I HiddenAudit:        | Shape = 'RectangleShape'
+11-02 20:51:38.219 19639 19658 I HiddenAudit:        |  |-Node #9 at (l=0.0, t=0.0, r=1080.0, b=2400.0)px
+11-02 20:51:38.219 19639 19658 I HiddenAudit:        |    MergeDescendants = 'true'
+11-02 20:51:38.219 19639 19658 I HiddenAudit:        |-Node #10 at (l=0.0, t=0.0, r=1080.0, b=2400.0)px
+11-02 20:51:38.219 19639 19658 I HiddenAudit:           |-Node #12 at (l=0.0, t=0.0, r=1080.0, b=336.0)px
+11-02 20:51:38.219 19639 19658 I HiddenAudit:           | Shape = 'RectangleShape'
+11-02 20:51:38.219 19639 19658 I HiddenAudit:           |-Node #13 at (l=0.0, t=1794.0, r=1080.0, b=2400.0)px
+11-02 20:51:38.219 19639 19658 I HiddenAudit:           | Shape = 'RectangleShape'
+11-02 20:51:38.219 19639 19658 I HiddenAudit:           |-Node #17 at (l=47.0, t=157.0, r=141.0, b=251.0)px
+11-02 20:51:38.219 19639 19658 I HiddenAudit:           | ContentDescription = '[Back, Back]'
+11-02 20:51:38.219 19639 19658 I HiddenAudit:           | Focused = 'false'
+11-02 20:51:38.219 19639 19658 I HiddenAudit:           | Role = 'Button'
+11-02 20:51:38.219 19639 19658 I HiddenAudit:           | Shape = 'RoundedCornerShape(topStart = CornerSize(size = 50.0%), topEnd = CornerSize(size = 50.0%), bottomEnd = CornerSize(size = 50.0%), bottomStart = CornerSize(size = 50.0%))'
+11-02 20:51:38.219 19639 19658 I HiddenAudit:           | Actions = [OnClick, OnLongClick, RequestFocus]
+11-02 20:51:38.219 19639 19658 I HiddenAudit:           | MergeDescendants = 'true'
+11-02 20:51:38.219 19639 19658 I HiddenAudit:           |-Node #22 at (l=174.0, t=138.0, r=381.0, b=204.0)px
+11-02 20:51:38.219 19639 19658 I HiddenAudit:           | Text = '[QA_Hidden_Video]'
+11-02 20:51:38.219 19639 19658 I HiddenAudit:           | Actions = [ClearTextSubstitution, GetTextLayoutResult, SetTextSubstitution, ShowTextSubstitution]
+11-02 20:51:38.219 19639 19658 I HiddenAudit:           |-Node #23 at (l=174.0, t=204.0, r=244.0, b=270.0)px
+11-02 20:51:38.219 19639 19658 I HiddenAudit:           | Text = '[360p]'
+11-02 20:51:38.219 19639 19658 I HiddenAudit:           | Actions = [ClearTextSubstitution, GetTextLayoutResult, SetTextSubstitution, ShowTextSubstitution]
+11-02 20:51:38.219 19639 19658 I HiddenAudit:           |-Node #25 at (l=411.0, t=157.0, r=505.0, b=251.0)px
+11-02 20:51:38.219 19639 19658 I HiddenAudit:           | ContentDescription = '[Playlist, Playlist]'
+11-02 20:51:38.219 19639 19658 I HiddenAudit:           | Focused = 'false'
+11-02 20:51:38.219 19639 19658 I HiddenAudit:           | Role = 'Button'
+11-02 20:51:38.219 19639 19658 I HiddenAudit:           | Shape = 'RoundedCornerShape(topStart = CornerSize(size = 50.0%), topEnd = CornerSize(size = 50.0%), bottomEnd = CornerSize(size = 50.0%), bottomStart = CornerSize(size = 50.0%))'
+11-02 20:51:38.219 19639 19658 I HiddenAudit:           | Actions = [OnClick, OnLongClick, RequestFocus]
+11-02 20:51:38.219 19639 19658 I HiddenAudit:           | MergeDescendants = 'true'
+11-02 20:51:38.219 19639 19658 I HiddenAudit:           |-Node #27 at (l=554.0, t=157.0, r=604.0, b=251.0)px
+11-02 20:51:38.219 19639 19658 I HiddenAudit:           | Shape = 'RoundedCornerShape(topStart = CornerSize(size = 50.0%), topEnd = CornerSize(size = 50.0%), bottomEnd = CornerSize(size = 50.0%), bottomStart = CornerSize(size = 50.0%))'
+11-02 20:51:38.219 19639 19658 I HiddenAudit:           |  |-Node #28 at (l=554.0, t=179.0, r=604.0, b=229.0)px
+11-02 20:51:38.219 19639 19658 I HiddenAudit:           |    ContentDescription = '[Playback speed]'
+11-02 20:51:38.219 19639 19658 I HiddenAudit:           |    Role = 'Image'
+11-02 20:51:38.219 19639 19658 I HiddenAudit:           |-Node #29 at (l=653.0, t=157.0, r=747.0, b=251.0)px
+11-02 20:51:38.219 19639 19658 I HiddenAudit:           | ContentDescription = '[Audio tracks, Audio track]'
+11-02 20:51:38.219 19639 19658 I HiddenAudit:           | Focused = 'false'
+11-02 20:51:38.219 19639 19658 I HiddenAudit:           | Role = 'Button'
+11-02 20:51:38.219 19639 19658 I HiddenAudit:           | Shape = 'RoundedCornerShape(topStart = CornerSize(size = 50.0%), topEnd = CornerSize(size = 50.0%), bottomEnd = CornerSize(size = 50.0%), bottomStart = CornerSize(size = 50.0%))'
+11-02 20:51:38.219 19639 19658 I HiddenAudit:           | Actions = [OnClick, OnLongClick, RequestFocus]
+11-02 20:51:38.219 19639 19658 I HiddenAudit:           | MergeDescendants = 'true'
+11-02 20:51:38.219 19639 19658 I HiddenAudit:           |-Node #31 at (l=796.0, t=157.0, r=890.0, b=251.0)px
+11-02 20:51:38.219 19639 19658 I HiddenAudit:           | ContentDescription = '[Subtitles, Subtitles]'
+11-02 20:51:38.219 19639 19658 I HiddenAudit:           | Focused = 'false'
+11-02 20:51:38.219 19639 19658 I HiddenAudit:           | Role = 'Button'
+11-02 20:51:38.219 19639 19658 I HiddenAudit:           | Shape = 'RoundedCornerShape(topStart = CornerSize(size = 50.0%), topEnd = CornerSize(size = 50.0%), bottomEnd = CornerSize(size = 50.0%), bottomStart = CornerSize(size = 50.0%))'
+11-02 20:51:38.219 19639 19658 I HiddenAudit:           | Actions = [OnClick, OnLongClick, RequestFocus]
+11-02 20:51:38.219 19639 19658 I HiddenAudit:           | MergeDescendants = 'true'
+11-02 20:51:38.219 19639 19658 I HiddenAudit:           |-Node #33 at (l=939.0, t=157.0, r=1033.0, b=251.0)px
+11-02 20:51:38.219 19639 19658 I HiddenAudit:           | ContentDescription = '[Close options, More]'
+11-02 20:51:38.219 19639 19658 I HiddenAudit:           | Focused = 'false'
+11-02 20:51:38.219 19639 19658 I HiddenAudit:           | Role = 'Button'
+11-02 20:51:38.219 19639 19658 I HiddenAudit:           | Shape = 'RoundedCornerShape(topStart = CornerSize(size = 50.0%), topEnd = CornerSize(size = 50.0%), bottomEnd = CornerSize(size = 50.0%), bottomStart = CornerSize(size = 50.0%))'
+11-02 20:51:38.219 19639 19658 I HiddenAudit:           | Actions = [OnClick, OnLongClick, RequestFocus]
+11-02 20:51:38.219 19639 19658 I HiddenAudit:           | MergeDescendants = 'true'
+11-02 20:51:38.219 19639 19658 I HiddenAudit:           |-Node #66 at (l=606.0, t=281.0, r=1052.0, b=1596.0)px
+11-02 20:51:38.219 19639 19658 I HiddenAudit:           |  |-Node #67 at (l=606.0, t=303.0, r=1052.0, b=1596.0)px
+11-02 20:51:38.219 19639 19658 I HiddenAudit:           |    IsTraversalGroup = 'true'
+11-02 20:51:38.219 19639 19658 I HiddenAudit:           |    Shape = 'androidx.compose.foundation.VerticalScrollableClipShape@2ea678c'
+11-02 20:51:38.219 19639 19658 I HiddenAudit:           |    VerticalScrollAxisRange = 'ScrollAxisRange(value=0.0, maxValue=198.0, reverseScrolling=false)'
+11-02 20:51:38.219 19639 19658 I HiddenAudit:           |    Actions = [ScrollBy, ScrollByOffset]
+11-02 20:51:38.219 19639 19658 I HiddenAudit:           |     |-Node #68 at (l=606.0, t=303.0, r=1052.0, b=402.0)px
+11-02 20:51:38.219 19639 19658 I HiddenAudit:           |     | ContentDescription = '[Auto ON]'
+11-02 20:51:38.219 19639 19658 I HiddenAudit:           |     | Focused = 'false'
+11-02 20:51:38.219 19639 19658 I HiddenAudit:           |     | Shape = 'RoundedCornerShape(topStart = CornerSize(size = 12.0.dp), topEnd = CornerSize(size = 12.0.dp), bottomEnd = CornerSize(size = 12.0.dp), bottomStart = CornerSize(size = 12.0.dp))'
+11-02 20:51:38.219 19639 19658 I HiddenAudit:           |     | Text = '[Auto ON]'
+11-02 20:51:38.219 19639 19658 I HiddenAudit:           |     | Actions = [ClearTextSubstitution, GetTextLayoutResult, OnClick, RequestFocus, SetTextSubstitution, ShowTextSubstitution]
+11-02 20:51:38.219 19639 19658 I HiddenAudit:           |     | MergeDescendants = 'true'
+11-02 20:51:38.219 19639 19658 I HiddenAudit:           |     |-Node #73 at (l=606.0, t=419.0, r=1052.0, b=518.0)px
+11-02 20:51:38.219 19639 19658 I HiddenAudit:           |     | ContentDescription = '[Sleep Timer]'
+11-02 20:51:38.219 19639 19658 I HiddenAudit:           |     | Focused = 'false'
+11-02 20:51:38.219 19639 19658 I HiddenAudit:           |     | Shape = 'RoundedCornerShape(topStart = CornerSize(size = 12.0.dp), topEnd = CornerSize(size = 12.0.dp), bottomEnd = CornerSize(size = 12.0.dp), bottomStart = CornerSize(size = 12.0.dp))'
+11-02 20:51:38.219 19639 19658 I HiddenAudit:           |     | Text = '[Sleep Timer]'
+11-02 20:51:38.219 19639 19658 I HiddenAudit:           |     | Actions = [ClearTextSubstitution, GetTextLayoutResult, OnClick, RequestFocus, SetTextSubstitution, ShowTextSubstitution]
+11-02 20:51:38.219 19639 19658 I HiddenAudit:           |     | MergeDescendants = 'true'
+11-02 20:51:38.219 19639 19658 I HiddenAudit:           |     |-Node #77 at (l=606.0, t=535.0, r=1052.0, b=634.0)px
+11-02 20:51:38.219 19639 19658 I HiddenAudit:           |     | ContentDescription = '[Night Mode]'
+11-02 20:51:38.219 19639 19658 I HiddenAudit:           |     | Focused = 'false'
+11-02 20:51:38.219 19639 19658 I HiddenAudit:           |     | Shape = 'RoundedCornerShape(topStart = CornerSize(size = 12.0.dp), topEnd = CornerSize(size = 12.0.dp), bottomEnd = CornerSize(size = 12.0.dp), bottomStart = CornerSize(size = 12.0.dp))'
+11-02 20:51:38.219 19639 19658 I HiddenAudit:           |     | Text = '[Night Mode]'
+11-02 20:51:38.219 19639 19658 I HiddenAudit:           |     | Actions = [ClearTextSubstitution, GetTextLayoutResult, OnClick, RequestFocus, SetTextSubstitution, ShowTextSubstitution]
+11-02 20:51:38.219 19639 19658 I HiddenAudit:           |     | MergeDescendants = 'true'
+11-02 20:51:38.219 19639 19658 I HiddenAudit:           |     |-Node #81 at (l=606.0, t=651.0, r=1052.0, b=750.0)px
+11-02 20:51:38.219 19639 19658 I HiddenAudit:           |     | ContentDescription = '[Ambient ON]'
+11-02 20:51:38.219 19639 19658 I HiddenAudit:           |     | Focused = 'false'
+11-02 20:51:38.219 19639 19658 I HiddenAudit:           |     | Shape = 'RoundedCornerShape(topStart = CornerSize(size = 12.0.dp), topEnd = CornerSize(size = 12.0.dp), bottomEnd = CornerSize(size = 12.0.dp), bottomStart = CornerSize(size = 12.0.dp))'
+11-02 20:51:38.219 19639 19658 I HiddenAudit:           |     | Text = '[Ambient ON]'
+11-02 20:51:38.219 19639 19658 I HiddenAudit:           |     | Actions = [ClearTextSubstitution, GetTextLayoutResult, OnClick, OnLongClick, RequestFocus, SetTextSubstitution, ShowTextSubstitution]
+11-02 20:51:38.219 19639 19658 I HiddenAudit:           |     | MergeDescendants = 'true'
+11-02 20:51:38.219 19639 19658 I HiddenAudit:           |     |-Node #86 at (l=606.0, t=767.0, r=1052.0, b=866.0)px
+11-02 20:51:38.219 19639 19658 I HiddenAudit:           |     | ContentDescription = '[Pure White]'
+11-02 20:51:38.219 19639 19658 I HiddenAudit:           |     | Focused = 'false'
+11-02 20:51:38.219 19639 19658 I HiddenAudit:           |     | Shape = 'RoundedCornerShape(topStart = CornerSize(size = 12.0.dp), topEnd = CornerSize(size = 12.0.dp), bottomEnd = CornerSize(size = 12.0.dp), bottomStart = CornerSize(size = 12.0.dp))'
+11-02 20:51:38.219 19639 19658 I HiddenAudit:           |     | Text = '[Pure White]'
+11-02 20:51:38.219 19639 19658 I HiddenAudit:           |     | Actions = [ClearTextSubstitution, GetTextLayoutResult, OnClick, OnLongClick, RequestFocus, SetTextSubstitution, ShowTextSubstitution]
+11-02 20:51:38.219 19639 19658 I HiddenAudit:           |     | MergeDescendants = 'true'
+11-02 20:51:38.219 19639 19658 I HiddenAudit:           |     |-Node #91 at (l=606.0, t=883.0, r=1052.0, b=982.0)px
+11-02 20:51:38.219 19639 19658 I HiddenAudit:           |     | ContentDescription = '[Equalizer]'
+11-02 20:51:38.219 19639 19658 I HiddenAudit:           |     | Focused = 'false'
+11-02 20:51:38.219 19639 19658 I HiddenAudit:           |     | Shape = 'RoundedCornerShape(topStart = CornerSize(size = 12.0.dp), topEnd = CornerSize(size = 12.0.dp), bottomEnd = CornerSize(size = 12.0.dp), bottomStart = CornerSize(size = 12.0.dp))'
+11-02 20:51:38.219 19639 19658 I HiddenAudit:           |     | Text = '[Equalizer]'
+11-02 20:51:38.219 19639 19658 I HiddenAudit:           |     | Actions = [ClearTextSubstitution, GetTextLayoutResult, OnClick, RequestFocus, SetTextSubstitution, ShowTextSubstitution]
+11-02 20:51:38.219 19639 19658 I HiddenAudit:           |     | MergeDescendants = 'true'
+11-02 20:51:38.219 19639 19658 I HiddenAudit:           |     |-Node #95 at (l=606.0, t=999.0, r=1052.0, b=1098.0)px
+11-02 20:51:38.219 19639 19658 I HiddenAudit:           |     | ContentDescription = '[Subtitles]'
+11-02 20:51:38.219 19639 19658 I HiddenAudit:           |     | Focused = 'false'
+11-02 20:51:38.219 19639 19658 I HiddenAudit:           |     | Shape = 'RoundedCornerShape(topStart = CornerSize(size = 12.0.dp), topEnd = CornerSize(size = 12.0.dp), bottomEnd = CornerSize(size = 12.0.dp), bottomStart = CornerSize(size = 12.0.dp))'
+11-02 20:51:38.219 19639 19658 I HiddenAudit:           |     | Text = '[Subtitles]'
+11-02 20:51:38.219 19639 19658 I HiddenAudit:           |     | Actions = [ClearTextSubstitution, GetTextLayoutResult, OnClick, RequestFocus, SetTextSubstitution, ShowTextSubstitution]
+11-02 20:51:38.219 19639 19658 I HiddenAudit:           |     | MergeDescendants = 'true'
+11-02 20:51:38.219 19639 19658 I HiddenAudit:           |     |-Node #99 at (l=606.0, t=1115.0, r=1052.0, b=1214.0)px
+11-02 20:51:38.219 19639 19658 I HiddenAudit:           |     | ContentDescription = '[A-B Loop]'
+11-02 20:51:38.219 19639 19658 I HiddenAudit:           |     | Focused = 'false'
+11-02 20:51:38.219 19639 19658 I HiddenAudit:           |     | Shape = 'RoundedCornerShape(topStart = CornerSize(size = 12.0.dp), topEnd = CornerSize(size = 12.0.dp), bottomEnd = CornerSize(size = 12.0.dp), bottomStart = CornerSize(size = 12.0.dp))'
+11-02 20:51:38.219 19639 19658 I HiddenAudit:           |     | Text = '[A-B Loop]'
+11-02 20:51:38.219 19639 19658 I HiddenAudit:           |     | Actions = [ClearTextSubstitution, GetTextLayoutResult, OnClick, RequestFocus, SetTextSubstitution, ShowTextSubstitution]
+11-02 20:51:38.219 19639 19658 I HiddenAudit:           |     | MergeDescendants = 'true'
+11-02 20:51:38.219 19639 19658 I HiddenAudit:           |     |-Node #103 at (l=606.0, t=1231.0, r=1052.0, b=1330.0)px
+11-02 20:51:38.219 19639 19658 I HiddenAudit:           |     | ContentDescription = '[Bookmark]'
+11-02 20:51:38.219 19639 19658 I HiddenAudit:           |     | Focused = 'false'
+11-02 20:51:38.219 19639 19658 I HiddenAudit:           |     | Shape = 'RoundedCornerShape(topStart = CornerSize(size = 12.0.dp), topEnd = CornerSize(size = 12.0.dp), bottomEnd = CornerSize(size = 12.0.dp), bottomStart = CornerSize(size = 12.0.dp))'
+11-02 20:51:38.219 19639 19658 I HiddenAudit:           |     | Text = '[Bookmark]'
+11-02 20:51:38.219 19639 19658 I HiddenAudit:           |     | Actions = [ClearTextSubstitution, GetTextLayoutResult, OnClick, RequestFocus, SetTextSubstitution, ShowTextSubstitution]
+11-02 20:51:38.219 19639 19658 I HiddenAudit:           |     | MergeDescendants = 'true'
+11-02 20:51:38.219 19639 19658 I HiddenAudit:           |     |-Node #107 at (l=606.0, t=1347.0, r=1052.0, b=1446.0)px
+11-02 20:51:38.219 19639 19658 I HiddenAudit:           |     | ContentDescription = '[Media Info]'
+11-02 20:51:38.219 19639 19658 I HiddenAudit:           |     | Focused = 'false'
+11-02 20:51:38.219 19639 19658 I HiddenAudit:           |     | Shape = 'RoundedCornerShape(topStart = CornerSize(size = 12.0.dp), topEnd = CornerSize(size = 12.0.dp), bottomEnd = CornerSize(size = 12.0.dp), bottomStart = CornerSize(size = 12.0.dp))'
+11-02 20:51:38.219 19639 19658 I HiddenAudit:           |     | Text = '[Media Info]'
+11-02 20:51:38.219 19639 19658 I HiddenAudit:           |     | Actions = [ClearTextSubstitution, GetTextLayoutResult, OnClick, RequestFocus, SetTextSubstitution, ShowTextSubstitution]
+11-02 20:51:38.219 19639 19658 I HiddenAudit:           |     | MergeDescendants = 'true'
+11-02 20:51:38.219 19639 19658 I HiddenAudit:           |     |-Node #111 at (l=606.0, t=1463.0, r=1052.0, b=1562.0)px
+11-02 20:51:38.219 19639 19658 I HiddenAudit:           |     | ContentDescription = '[Share]'
+11-02 20:51:38.219 19639 19658 I HiddenAudit:           |     | Focused = 'false'
+11-02 20:51:38.219 19639 19658 I HiddenAudit:           |     | Shape = 'RoundedCornerShape(topStart = CornerSize(size = 12.0.dp), topEnd = CornerSize(size = 12.0.dp), bottomEnd = CornerSize(size = 12.0.dp), bottomStart = CornerSize(size = 12.0.dp))'
+11-02 20:51:38.219 19639 19658 I HiddenAudit:           |     | Text = '[Share]'
+11-02 20:51:38.219 19639 19658 I HiddenAudit:           |     | Actions = [ClearTextSubstitution, GetTextLayoutResult, OnClick, RequestFocus, SetTextSubstitution, ShowTextSubstitution]
+11-02 20:51:38.219 19639 19658 I HiddenAudit:           |     | MergeDescendants = 'true'
+11-02 20:51:38.219 19639 19658 I HiddenAudit:           |     |-Node #115 at (l=606.0, t=1579.0, r=1052.0, b=1678.0)px
+11-02 20:51:38.219 19639 19658 I HiddenAudit:           |     | ContentDescription = '[Delete]'
+11-02 20:51:38.219 19639 19658 I HiddenAudit:           |     | Focused = 'false'
+11-02 20:51:38.219 19639 19658 I HiddenAudit:           |     | Shape = 'RoundedCornerShape(topStart = CornerSize(size = 12.0.dp), topEnd = CornerSize(size = 12.0.dp), bottomEnd = CornerSize(size = 12.0.dp), bottomStart = CornerSize(size = 12.0.dp))'
+11-02 20:51:38.219 19639 19658 I HiddenAudit:           |     | Text = '[Delete]'
+11-02 20:51:38.219 19639 19658 I HiddenAudit:           |     | Actions = [ClearTextSubstitution, GetTextLayoutResult, OnClick, RequestFocus, SetTextSubstitution, ShowTextSubstitution]
+11-02 20:51:38.219 19639 19658 I HiddenAudit:           |     | MergeDescendants = 'true'
+11-02 20:51:38.219 19639 19658 I HiddenAudit:           |     |-Node #119 at (l=606.0, t=1695.0, r=1052.0, b=1794.0)px
+11-02 20:51:38.219 19639 19658 I HiddenAudit:           |       ContentDescription = '[Settings]'
+11-02 20:51:38.219 19639 19658 I HiddenAudit:           |       Focused = 'false'
+11-02 20:51:38.219 19639 19658 I HiddenAudit:           |       Shape = 'RoundedCornerShape(topStart = CornerSize(size = 12.0.dp), topEnd = CornerSize(size = 12.0.dp), bottomEnd = CornerSize(size = 12.0.dp), bottomStart = CornerSize(size = 12.0.dp))'
+11-02 20:51:38.219 19639 19658 I HiddenAudit:           |       Text = '[Settings]'
+11-02 20:51:38.219 19639 19658 I HiddenAudit:           |       Actions = [ClearTextSubstitution, GetTextLayoutResult, OnClick, RequestFocus, SetTextSubstitution, ShowTextSubstitution]
+11-02 20:51:38.219 19639 19658 I HiddenAudit:           |       MergeDescendants = 'true'
+11-02 20:51:38.219 19639 19658 I HiddenAudit:           |-Node #36 at (l=256.0, t=1134.0, r=388.0, b=1266.0)px
+11-02 20:51:38.219 19639 19658 I HiddenAudit:           | ContentDescription = '[Previous video, Previous video]'
+11-02 20:51:38.219 19639 19658 I HiddenAudit:           | Role = 'Button'
+11-02 20:51:38.219 19639 19658 I HiddenAudit:           | Shape = 'RoundedCornerShape(topStart = CornerSize(size = 50.0%), topEnd = CornerSize(size = 50.0%), bottomEnd = CornerSize(size = 50.0%), bottomStart = CornerSize(size = 50.0%))'
+11-02 20:51:38.219 19639 19658 I HiddenAudit:           | [Disabled]
+11-02 20:51:38.219 19639 19658 I HiddenAudit:           | Actions = [OnClick, OnLongClick]
+11-02 20:51:38.219 19639 19658 I HiddenAudit:           | MergeDescendants = 'true'
+11-02 20:51:38.219 19639 19658 I HiddenAudit:           |-Node #38 at (l=449.0, t=1109.0, r=631.0, b=1291.0)px
+11-02 20:51:38.219 19639 19658 I HiddenAudit:           | Shape = 'RoundedCornerShape(topStart = CornerSize(size = 50.0%), topEnd = CornerSize(size = 50.0%), bottomEnd = CornerSize(size = 50.0%), bottomStart = CornerSize(size = 50.0%))'
+11-02 20:51:38.219 19639 19658 I HiddenAudit:           |  |-Node #39 at (l=485.0, t=1145.0, r=595.0, b=1255.0)px
+11-02 20:51:38.219 19639 19658 I HiddenAudit:           |    ContentDescription = '[Play/Pause]'
+11-02 20:51:38.219 19639 19658 I HiddenAudit:           |    Role = 'Image'
+11-02 20:51:38.219 19639 19658 I HiddenAudit:           |-Node #40 at (l=692.0, t=1134.0, r=824.0, b=1266.0)px
+11-02 20:51:38.219 19639 19658 I HiddenAudit:           | ContentDescription = '[Next video, Next video]'
+11-02 20:51:38.219 19639 19658 I HiddenAudit:           | Role = 'Button'
+11-02 20:51:38.219 19639 19658 I HiddenAudit:           | Shape = 'RoundedCornerShape(topStart = CornerSize(size = 50.0%), topEnd = CornerSize(size = 50.0%), bottomEnd = CornerSize(size = 50.0%), bottomStart = CornerSize(size = 50.0%))'
+11-02 20:51:38.219 19639 19658 I HiddenAudit:           | [Disabled]
+11-02 20:51:38.219 19639 19658 I HiddenAudit:           | Actions = [OnClick, OnLongClick]
+11-02 20:51:38.219 19639 19658 I HiddenAudit:           | MergeDescendants = 'true'
+11-02 20:51:38.219 19639 19658 I HiddenAudit:           |-Node #44 at (l=39.0, t=1859.0, r=303.0, b=1925.0)px
+11-02 20:51:38.219 19639 19658 I HiddenAudit:           | Text = '[00:00 / 00:30]'
+11-02 20:51:38.219 19639 19658 I HiddenAudit:           | Actions = [ClearTextSubstitution, GetTextLayoutResult, SetTextSubstitution, ShowTextSubstitution]
+11-02 20:51:38.219 19639 19658 I HiddenAudit:           |-Node #46 at (l=926.0, t=1843.0, r=1025.0, b=1942.0)px
+11-02 20:51:38.219 19639 19658 I HiddenAudit:           | ContentDescription = '[Enhanced mode, Enhanced mode]'
+11-02 20:51:38.219 19639 19658 I HiddenAudit:           | Focused = 'false'
+11-02 20:51:38.219 19639 19658 I HiddenAudit:           | Role = 'Button'
+11-02 20:51:38.219 19639 19658 I HiddenAudit:           | Shape = 'RoundedCornerShape(topStart = CornerSize(size = 50.0%), topEnd = CornerSize(size = 50.0%), bottomEnd = CornerSize(size = 50.0%), bottomStart = CornerSize(size = 50.0%))'
+11-02 20:51:38.219 19639 19658 I HiddenAudit:           | Actions = [OnClick, OnLongClick, RequestFocus]
+11-02 20:51:38.219 19639 19658 I HiddenAudit:           | MergeDescendants = 'true'
+11-02 20:51:38.219 19639 19658 I HiddenAudit:           |-Node #60 at (l=6.0, t=1985.0, r=1074.0, b=2029.0)px
+11-02 20:51:38.219 19639 19658 I HiddenAudit:           | Focused = 'false'
+11-02 20:51:38.219 19639 19658 I HiddenAudit:           | ProgressBarRangeInfo = 'ProgressBarRangeInfo(current=123.0, range=0.0..30000.0, steps=0)'
+11-02 20:51:38.219 19639 19658 I HiddenAudit:           | StateDescription = '123.0'
+11-02 20:51:38.219 19639 19658 I HiddenAudit:           | Actions = [RequestFocus, SetProgress]
+11-02 20:51:38.219 19639 19658 I HiddenAudit:           | MergeDescendants = 'true'
+11-02 20:51:38.219 19639 19658 I HiddenAudit:           |-Node #50 at (l=28.0, t=2090.0, r=1052.0, b=2234.0)px
+11-02 20:51:38.219 19639 19658 I HiddenAudit:             HorizontalScrollAxisRange = 'ScrollAxisRange(value=0.0, maxValue=0.0, reverseScrolling=false)'
+11-02 20:51:38.219 19639 19658 I HiddenAudit:             IsTraversalGroup = 'true'
+11-02 20:51:38.219 19639 19658 I HiddenAudit:             Shape = 'androidx.compose.foundation.HorizontalScrollableClipShape@ba2eed5'
+11-02 20:51:38.219 19639 19658 I HiddenAudit:             Actions = [ScrollBy, ScrollByOffset]
+11-02 20:51:38.219 19639 19658 I HiddenAudit:              |-Node #51 at (l=142.0, t=2104.0, r=258.0, b=2220.0)px
+11-02 20:51:38.219 19639 19658 I HiddenAudit:              | ContentDescription = '[Lock controls, Lock controls]'
+11-02 20:51:38.219 19639 19658 I HiddenAudit:              | Focused = 'false'
+11-02 20:51:38.219 19639 19658 I HiddenAudit:              | Role = 'Button'
+11-02 20:51:38.219 19639 19658 I HiddenAudit:              | Shape = 'RoundedCornerShape(topStart = CornerSize(size = 50.0%), topEnd = CornerSize(size = 50.0%), bottomEnd = CornerSize(size = 50.0%), bottomStart = CornerSize(size = 50.0%))'
+11-02 20:51:38.219 19639 19658 I HiddenAudit:              | Actions = [OnClick, OnLongClick, RequestFocus]
+11-02 20:51:38.219 19639 19658 I HiddenAudit:              | MergeDescendants = 'true'
+11-02 20:51:38.219 19639 19658 I HiddenAudit:              |-Node #53 at (l=369.0, t=2104.0, r=485.0, b=2220.0)px
+11-02 20:51:38.219 19639 19658 I HiddenAudit:              | ContentDescription = '[Aspect ratio, Aspect ratio]'
+11-02 20:51:38.219 19639 19658 I HiddenAudit:              | Focused = 'false'
+11-02 20:51:38.219 19639 19658 I HiddenAudit:              | Role = 'Button'
+11-02 20:51:38.219 19639 19658 I HiddenAudit:              | Shape = 'RoundedCornerShape(topStart = CornerSize(size = 50.0%), topEnd = CornerSize(size = 50.0%), bottomEnd = CornerSize(size = 50.0%), bottomStart = CornerSize(size = 50.0%))'
+11-02 20:51:38.219 19639 19658 I HiddenAudit:              | Actions = [OnClick, OnLongClick, RequestFocus]
+11-02 20:51:38.219 19639 19658 I HiddenAudit:              | MergeDescendants = 'true'
+11-02 20:51:38.219 19639 19658 I HiddenAudit:              |-Node #55 at (l=595.0, t=2104.0, r=711.0, b=2220.0)px
+11-02 20:51:38.219 19639 19658 I HiddenAudit:              | ContentDescription = '[Picture-in-Picture, PiP]'
+11-02 20:51:38.219 19639 19658 I HiddenAudit:              | Focused = 'false'
+11-02 20:51:38.219 19639 19658 I HiddenAudit:              | Role = 'Button'
+11-02 20:51:38.219 19639 19658 I HiddenAudit:              | Shape = 'RoundedCornerShape(topStart = CornerSize(size = 50.0%), topEnd = CornerSize(size = 50.0%), bottomEnd = CornerSize(size = 50.0%), bottomStart = CornerSize(size = 50.0%))'
+11-02 20:51:38.219 19639 19658 I HiddenAudit:              | Actions = [OnClick, OnLongClick, RequestFocus]
+11-02 20:51:38.219 19639 19658 I HiddenAudit:              | MergeDescendants = 'true'
+11-02 20:51:38.219 19639 19658 I HiddenAudit:              |-Node #57 at (l=822.0, t=2104.0, r=938.0, b=2220.0)px
+11-02 20:51:38.219 19639 19658 I HiddenAudit:                ContentDescription = '[Rotate screen, Rotate Screen]'
+11-02 20:51:38.219 19639 19658 I HiddenAudit:                Focused = 'false'
+11-02 20:51:38.219 19639 19658 I HiddenAudit:                Role = 'Button'
+11-02 20:51:38.219 19639 19658 I HiddenAudit:                Shape = 'RoundedCornerShape(topStart = CornerSize(size = 50.0%), topEnd = CornerSize(size = 50.0%), bottomEnd = CornerSize(size = 50.0%), bottomStart = CornerSize(size = 50.0%))'
+11-02 20:51:38.219 19639 19658 I HiddenAudit:                Actions = [OnClick, OnLongClick, RequestFocus]
+11-02 20:51:38.219 19639 19658 I HiddenAudit:                MergeDescendants = 'true'

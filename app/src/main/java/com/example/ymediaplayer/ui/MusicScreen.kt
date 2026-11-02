@@ -332,13 +332,14 @@ fun MusicScreen(
         appPreferences.isIncludeRingtonesEnabled()
     }
     val displayableSongs = remember(allSongs, includeRecordings, includeRingtones) {
-        allSongs.filter { item ->
+        val filtered = allSongs.filter { item ->
             when (item.audioCategory) {
                 com.example.ymediaplayer.data.AudioCategory.RECORDING -> includeRecordings
                 com.example.ymediaplayer.data.AudioCategory.RINGTONE -> includeRingtones
                 com.example.ymediaplayer.data.AudioCategory.SONG -> true
             }
         }
+        com.example.ymediaplayer.data.deduplicateMusicItems(filtered)
     }
 
     // Player State
@@ -534,7 +535,9 @@ fun MusicScreen(
     // Keep most played songs shelf updated
     LaunchedEffect(displayableSongs, currentlyPlaying) {
         val topUris = appPreferences.getTopPlayedUris(10)
-        mostPlayedSongs = topUris.mapNotNull { uriStr -> displayableSongs.find { it.uri.toString() == uriStr } }
+        mostPlayedSongs = com.example.ymediaplayer.data.deduplicateMusicItems(
+            topUris.mapNotNull { uriStr -> displayableSongs.find { it.uri.toString() == uriStr } }
+        )
     }
 
     val playNext: () -> Unit = { MusicService.playNext() }
@@ -768,7 +771,7 @@ fun MusicScreen(
         if (recentlyPlayedUris.isEmpty()) emptyList()
         else {
             val map = displayableSongs.associateBy { it.uri.toString() }
-            recentlyPlayedUris.mapNotNull { map[it] }
+            com.example.ymediaplayer.data.deduplicateMusicItems(recentlyPlayedUris.mapNotNull { map[it] })
         }
     }
 
@@ -1083,7 +1086,7 @@ fun MusicScreen(
                             Spacer(Modifier.height(20.dp))
                             Button(
                                 onClick = onRequestPermission,
-                                colors = ButtonDefaults.buttonColors(containerColor = c.accentBlue, contentColor = Color.White)
+                                colors = ButtonDefaults.buttonColors(containerColor = c.accentBlue, contentColor = c.onAccent)
                             ) {
                                 Text("Allow Access")
                             }
@@ -1126,7 +1129,7 @@ fun MusicScreen(
                             Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                                 Button(
                                     onClick = { artistSongs.firstOrNull()?.let { playSongForce(it, artistSongs) } },
-                                    colors = ButtonDefaults.buttonColors(containerColor = c.accentBlue, contentColor = Color.White),
+                                    colors = ButtonDefaults.buttonColors(containerColor = c.accentBlue, contentColor = c.onAccent),
                                     shape = RoundedCornerShape(14.dp),
                                     modifier = Modifier.shadow(if (c.isMatte && c.isDark) 0.dp else 6.dp, RoundedCornerShape(14.dp), ambientColor = c.accentBlue, spotColor = c.accentBlue)
                                 ) {
@@ -1207,7 +1210,7 @@ fun MusicScreen(
                             Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                                 Button(
                                     onClick = { albumSongs.firstOrNull()?.let { playSongForce(it, albumSongs) } },
-                                    colors = ButtonDefaults.buttonColors(containerColor = c.accentBlue, contentColor = Color.White),
+                                    colors = ButtonDefaults.buttonColors(containerColor = c.accentBlue, contentColor = c.onAccent),
                                     shape = RoundedCornerShape(14.dp),
                                     modifier = Modifier.shadow(if (c.isMatte && c.isDark) 0.dp else 6.dp, RoundedCornerShape(14.dp), ambientColor = c.accentBlue, spotColor = c.accentBlue)
                                 ) {
@@ -1298,7 +1301,7 @@ fun MusicScreen(
                                     searchQuery = ""
                                     isSearching = false
                                 },
-                                colors = ButtonDefaults.buttonColors(containerColor = c.accentBlue, contentColor = Color.White),
+                                colors = ButtonDefaults.buttonColors(containerColor = c.accentBlue, contentColor = c.onAccent),
                                 shape = RoundedCornerShape(12.dp)
                             ) {
                                 Text("Clear Search", fontWeight = FontWeight.SemiBold)
@@ -1341,7 +1344,7 @@ fun MusicScreen(
                                                 onClick = {
                                                     searchMatchingSongs.firstOrNull()?.let { playSongForce(it) }
                                                 },
-                                                colors = ButtonDefaults.buttonColors(containerColor = c.accentBlue, contentColor = Color.White),
+                                                colors = ButtonDefaults.buttonColors(containerColor = c.accentBlue, contentColor = c.onAccent),
                                                 shape = RoundedCornerShape(12.dp),
                                                 contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp),
                                                 modifier = Modifier.height(34.dp)
@@ -1943,7 +1946,7 @@ fun MusicScreen(
                                     if (recentlyPlayedSongs.isNotEmpty()) {
                                         Button(
                                             onClick = { playSongForce(recentlyPlayedSongs.first()) },
-                                            colors = ButtonDefaults.buttonColors(containerColor = c.accentBlue, contentColor = Color.White),
+                                            colors = ButtonDefaults.buttonColors(containerColor = c.accentBlue, contentColor = c.onAccent),
                                             shape = RoundedCornerShape(14.dp)
                                         ) {
                                             Icon(Icons.Rounded.PlayArrow, contentDescription = null, modifier = Modifier.size(18.dp))
@@ -2304,7 +2307,7 @@ fun MusicScreen(
                                         Spacer(Modifier.height(14.dp))
                                         Button(
                                             onClick = { showCreatePlaylistDialog = true },
-                                            colors = ButtonDefaults.buttonColors(containerColor = c.accentBlue, contentColor = Color.White),
+                                            colors = ButtonDefaults.buttonColors(containerColor = c.accentBlue, contentColor = c.onAccent),
                                             shape = RoundedCornerShape(14.dp)
                                         ) {
                                             Icon(Icons.Rounded.Add, contentDescription = null, modifier = Modifier.size(18.dp))
@@ -2701,9 +2704,14 @@ fun MusicScreen(
                 song = s,
                 isFavorite = favorites.contains(s.uri.toString()),
                 onPlayNext = {
-                    MusicService.enqueueNext(s)
+                    val enqueued = MusicService.enqueueNext(s)
                     songForContextMenu = null
-                    android.widget.Toast.makeText(context, "Will play next: ${s.title}", android.widget.Toast.LENGTH_SHORT).show()
+                    val message = when {
+                        enqueued -> "Will play next: ${s.title}"
+                        MusicService.currentMusicItem.value?.uri == s.uri -> "Already playing: ${s.title}"
+                        else -> "Play a song before adding to Up Next"
+                    }
+                    android.widget.Toast.makeText(context, message, android.widget.Toast.LENGTH_SHORT).show()
                 },
                 onAddToPlaylist = {
                     songForAddToPlaylist = s
@@ -6215,7 +6223,7 @@ private fun EqualizerDialog(
             Button(
                 onClick = onDismiss,
                 modifier = Modifier.fillMaxWidth(),
-                colors = ButtonDefaults.buttonColors(containerColor = c.accentBlue, contentColor = Color.White)
+                colors = ButtonDefaults.buttonColors(containerColor = c.accentBlue, contentColor = c.onAccent)
             ) {
                 Text("Done")
             }
@@ -6576,7 +6584,7 @@ private fun SongInfoDialog(song: MusicItem, onDismiss: () -> Unit) {
                 Button(
                     onClick = onDismiss,
                     modifier = Modifier.weight(1f),
-                    colors = ButtonDefaults.buttonColors(containerColor = c.accentBlue, contentColor = Color.White),
+                    colors = ButtonDefaults.buttonColors(containerColor = c.accentBlue, contentColor = c.onAccent),
                     shape = RoundedCornerShape(12.dp)
                 ) {
                     Text("Close")
@@ -6836,7 +6844,7 @@ private fun CreatePlaylistDialog(
                     onClick = { if (name.isNotBlank()) onCreate(name.trim()) },
                     enabled = name.isNotBlank(),
                     modifier = Modifier.weight(1f),
-                    colors = ButtonDefaults.buttonColors(containerColor = c.accentBlue, contentColor = Color.White),
+                    colors = ButtonDefaults.buttonColors(containerColor = c.accentBlue, contentColor = c.onAccent),
                     shape = RoundedCornerShape(12.dp)
                 ) {
                     Text("Create")

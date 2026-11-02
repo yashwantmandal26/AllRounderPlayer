@@ -1,0 +1,29 @@
+
+com.example.ymediaplayer.ui.MusicPlaybackIntegrationTest:
+Error in uiPlaybackShouldAddGeneratedTrackToRecentlyPlayed(com.example.ymediaplayer.ui.MusicPlaybackIntegrationTest):
+java.lang.IllegalStateException: No compose hierarchies found in the app. Possible reasons include: (1) the Activity that calls setContent did not launch; (2) setContent was not called; (3) setContent was called before the ComposeTestRule ran. If setContent is called by the Activity, make sure the Activity is launched after the ComposeTestRule runs
+	at androidx.compose.ui.test.TestOwnerKt.getAllSemanticsNodes(TestOwner.kt:117)
+	at androidx.compose.ui.test.SemanticsNodeInteraction.fetchSemanticsNodes$ui_test(SemanticsNodeInteraction.kt:64)
+	at androidx.compose.ui.test.SemanticsNodeInteraction.fetchOneOrThrow(SemanticsNodeInteraction.kt:157)
+	at androidx.compose.ui.test.SemanticsNodeInteraction.fetchOneOrThrow$default(SemanticsNodeInteraction.kt:150)
+	at androidx.compose.ui.test.SemanticsNodeInteraction.fetchSemanticsNode(SemanticsNodeInteraction.kt:84)
+	at androidx.compose.ui.test.ActionsKt.performTouchInput(Actions.kt:403)
+	at androidx.compose.ui.test.AndroidActions.performClickImpl(Actions.android.kt:23)
+	at androidx.compose.ui.test.ActionsKt.performClick(Actions.kt:61)
+	at com.example.ymediaplayer.ui.MusicPlaybackIntegrationTest.playFixtureThroughSearchUi(MusicPlaybackIntegrationTest.kt:259)
+	at com.example.ymediaplayer.ui.MusicPlaybackIntegrationTest.uiPlaybackShouldAddGeneratedTrackToRecentlyPlayed(MusicPlaybackIntegrationTest.kt:162)
+
+Error in repeatOneUiShouldUpdatePlaybackServiceRepeatMode(com.example.ymediaplayer.ui.MusicPlaybackIntegrationTest):
+java.lang.IllegalStateException: No compose hierarchies found in the app. Possible reasons include: (1) the Activity that calls setContent did not launch; (2) setContent was not called; (3) setContent was called before the ComposeTestRule ran. If setContent is called by the Activity, make sure the Activity is launched after the ComposeTestRule runs
+	at androidx.compose.ui.test.TestOwnerKt.getAllSemanticsNodes(TestOwner.kt:117)
+	at androidx.compose.ui.test.SemanticsNodeInteraction.fetchSemanticsNodes$ui_test(SemanticsNodeInteraction.kt:64)
+	at androidx.compose.ui.test.SemanticsNodeInteraction.fetchOneOrThrow(SemanticsNodeInteraction.kt:157)
+	at androidx.compose.ui.test.SemanticsNodeInteraction.fetchOneOrThrow$default(SemanticsNodeInteraction.kt:150)
+	at androidx.compose.ui.test.SemanticsNodeInteraction.fetchSemanticsNode(SemanticsNodeInteraction.kt:84)
+	at androidx.compose.ui.test.ActionsKt.performTouchInput(Actions.kt:403)
+	at androidx.compose.ui.test.AndroidActions.performClickImpl(Actions.android.kt:23)
+	at androidx.compose.ui.test.ActionsKt.performClick(Actions.kt:61)
+	at com.example.ymediaplayer.ui.MusicPlaybackIntegrationTest.playFixtureThroughSearchUi(MusicPlaybackIntegrationTest.kt:259)
+	at com.example.ymediaplayer.ui.MusicPlaybackIntegrationTest.repeatOneUiShouldUpdatePlaybackServiceRepeatMode(MusicPlaybackIntegrationTest.kt:174)
+...INSTRUMENTATION_RESULT: shortMsg=Process crashed.
+INSTRUMENTATION_CODE: 0

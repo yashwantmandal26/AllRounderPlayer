@@ -79,6 +79,29 @@ object VideoPlaybackManager {
     val compatibilityFallbackRequest: MutableState<CompatibilityFallbackRequest?> = mutableStateOf(null)
 
     private val managerScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
+    val sleepTimerSecondsRemaining = mutableIntStateOf(0)
+    private var sleepTimerJob: Job? = null
+
+    fun setSleepTimer(minutes: Int) = startSleepTimer(minutes.coerceAtLeast(0).toLong() * 60_000L)
+
+    internal fun startSleepTimer(durationMs: Long) {
+        sleepTimerJob?.cancel()
+        sleepTimerJob = null
+        val deadline = SystemClock.elapsedRealtime() + durationMs.coerceAtLeast(0L)
+        sleepTimerSecondsRemaining.intValue = ((durationMs.coerceAtLeast(0L) + 999L) / 1000L).toInt()
+        if (durationMs <= 0L) return
+        sleepTimerJob = managerScope.launch {
+            while (true) {
+                val remaining = (deadline - SystemClock.elapsedRealtime()).coerceAtLeast(0L)
+                sleepTimerSecondsRemaining.intValue = ((remaining + 999L) / 1000L).toInt()
+                if (remaining == 0L) {
+                    player?.pause()
+                    break
+                }
+                delay(minOf(remaining, 250L))
+            }
+        }
+    }
     private var recoveryJob: Job? = null
     private var recoveryAttempt = 0
     private var lastReadyAtMs = 0L
@@ -472,7 +495,7 @@ object VideoPlaybackManager {
         }
 
         // Release existing player if switching to a new video
-        releasePlayer()
+        releasePlayer(clearSleepTimer = false)
 
         val applicationContext = context.applicationContext
         configuredSubtitlesEnabled = subtitlesEnabled
@@ -735,7 +758,8 @@ object VideoPlaybackManager {
         videoHeight.value = 0
     }
 
-    fun releasePlayer() {
+    fun releasePlayer(clearSleepTimer: Boolean = true) {
+        if (clearSleepTimer) setSleepTimer(0)
         activeStreamingHash = null
         recoveryJob?.cancel()
         recoveryJob = null

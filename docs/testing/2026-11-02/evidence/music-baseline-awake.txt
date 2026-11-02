@@ -1,0 +1,52 @@
+
+com.example.ymediaplayer.ui.MusicPlaybackIntegrationTest:
+Error in uiPlaybackShouldAddGeneratedTrackToRecentlyPlayed(com.example.ymediaplayer.ui.MusicPlaybackIntegrationTest):
+java.util.NoSuchElementException: Collection contains no element matching the predicate.
+	at com.example.ymediaplayer.ui.MusicPlaybackIntegrationTest.prepareGeneratedFixture(MusicPlaybackIntegrationTest.kt:297)
+
+Error in repeatOneUiShouldUpdatePlaybackServiceRepeatMode(com.example.ymediaplayer.ui.MusicPlaybackIntegrationTest):
+java.util.NoSuchElementException: Collection contains no element matching the predicate.
+	at com.example.ymediaplayer.ui.MusicPlaybackIntegrationTest.prepareGeneratedFixture(MusicPlaybackIntegrationTest.kt:297)
+
+Error in activeQueueSurvivesLeavingMusicAndNextUsesThatQueue(com.example.ymediaplayer.ui.MusicPlaybackIntegrationTest):
+java.util.NoSuchElementException: Collection contains no element matching the predicate.
+	at com.example.ymediaplayer.ui.MusicPlaybackIntegrationTest.prepareGeneratedFixture(MusicPlaybackIntegrationTest.kt:297)
+
+Error in sleepTimerShouldSurviveMusicScreenDetachAndRemount(com.example.ymediaplayer.ui.MusicPlaybackIntegrationTest):
+java.util.NoSuchElementException: Collection contains no element matching the predicate.
+	at com.example.ymediaplayer.ui.MusicPlaybackIntegrationTest.prepareGeneratedFixture(MusicPlaybackIntegrationTest.kt:297)
+
+Error in autoPlayOffPausesAtBoundaryWhileKeepingTheSelectedQueue(com.example.ymediaplayer.ui.MusicPlaybackIntegrationTest):
+java.util.NoSuchElementException: Collection contains no element matching the predicate.
+	at com.example.ymediaplayer.ui.MusicPlaybackIntegrationTest.prepareGeneratedFixture(MusicPlaybackIntegrationTest.kt:297)
+
+Error in serviceSleepTimerPausesWithoutMusicScreen(com.example.ymediaplayer.ui.MusicPlaybackIntegrationTest):
+java.util.NoSuchElementException: Collection contains no element matching the predicate.
+	at com.example.ymediaplayer.ui.MusicPlaybackIntegrationTest.prepareGeneratedFixture(MusicPlaybackIntegrationTest.kt:297)
+
+
+Time: 16.966
+There were 6 failures:
+1) uiPlaybackShouldAddGeneratedTrackToRecentlyPlayed(com.example.ymediaplayer.ui.MusicPlaybackIntegrationTest)
+java.util.NoSuchElementException: Collection contains no element matching the predicate.
+	at com.example.ymediaplayer.ui.MusicPlaybackIntegrationTest.prepareGeneratedFixture(MusicPlaybackIntegrationTest.kt:297)
+2) repeatOneUiShouldUpdatePlaybackServiceRepeatMode(com.example.ymediaplayer.ui.MusicPlaybackIntegrationTest)
+java.util.NoSuchElementException: Collection contains no element matching the predicate.
+	at com.example.ymediaplayer.ui.MusicPlaybackIntegrationTest.prepareGeneratedFixture(MusicPlaybackIntegrationTest.kt:297)
+3) activeQueueSurvivesLeavingMusicAndNextUsesThatQueue(com.example.ymediaplayer.ui.MusicPlaybackIntegrationTest)
+java.util.NoSuchElementException: Collection contains no element matching the predicate.
+	at com.example.ymediaplayer.ui.MusicPlaybackIntegrationTest.prepareGeneratedFixture(MusicPlaybackIntegrationTest.kt:297)
+4) sleepTimerShouldSurviveMusicScreenDetachAndRemount(com.example.ymediaplayer.ui.MusicPlaybackIntegrationTest)
+java.util.NoSuchElementException: Collection contains no element matching the predicate.
+	at com.example.ymediaplayer.ui.MusicPlaybackIntegrationTest.prepareGeneratedFixture(MusicPlaybackIntegrationTest.kt:297)
+5) autoPlayOffPausesAtBoundaryWhileKeepingTheSelectedQueue(com.example.ymediaplayer.ui.MusicPlaybackIntegrationTest)
+java.util.NoSuchElementException: Collection contains no element matching the predicate.
+	at com.example.ymediaplayer.ui.MusicPlaybackIntegrationTest.prepareGeneratedFixture(MusicPlaybackIntegrationTest.kt:297)
+6) serviceSleepTimerPausesWithoutMusicScreen(com.example.ymediaplayer.ui.MusicPlaybackIntegrationTest)
+java.util.NoSuchElementException: Collection contains no element matching the predicate.
+	at com.example.ymediaplayer.ui.MusicPlaybackIntegrationTest.prepareGeneratedFixture(MusicPlaybackIntegrationTest.kt:297)
+
+FAILURES!!!
+Tests run: 6,  Failures: 6
+
+

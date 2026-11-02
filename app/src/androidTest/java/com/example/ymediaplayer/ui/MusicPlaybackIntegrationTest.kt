@@ -6,6 +6,7 @@ import android.content.Context
 import android.content.SharedPreferences
 import android.graphics.Bitmap
 import android.util.Log
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.Text
@@ -41,9 +42,10 @@ class MusicPlaybackIntegrationTest {
     private lateinit var fixture: MusicItem
     private lateinit var preferences: SharedPreferences
     private var originalPreferenceValues: Map<String, Any?> = emptyMap()
-    private val fixtureTitle = "AllRounder_QA_A"
+    private val fixtureTitle = "QA_" + System.nanoTime().toString().takeLast(12)
     private val createdUris = mutableListOf<android.net.Uri>()
     private lateinit var secondFixture: MusicItem
+    private lateinit var themeController: com.example.ymediaplayer.theme.ThemeController
 
     private fun createFixture(asset: String): android.net.Uri {
         val values = android.content.ContentValues().apply {
@@ -56,14 +58,26 @@ class MusicPlaybackIntegrationTest {
         }
         val uri = requireNotNull(context.contentResolver.insert(android.provider.MediaStore.Audio.Media.EXTERNAL_CONTENT_URI, values))
         createdUris += uri
-        InstrumentationRegistry.getInstrumentation().context.assets.open(asset).use { input ->
-            requireNotNull(context.contentResolver.openOutputStream(uri)).use { input.copyTo(it) }
-        }
+        val title = if (asset.startsWith("QA_A")) fixtureTitle else fixtureTitle.dropLast(1) + "B"
+        // Replace the equal-length ASCII ID3 title too, so asynchronous scanning
+        // cannot restore a title that collides with a previous run's fixture.
+        val originalTitle = if (asset.startsWith("QA_A")) "AllRounder_QA_A" else "AllRounder_QA_B"
+        val bytes = InstrumentationRegistry.getInstrumentation().context.assets.open(asset).use { it.readBytes() }
+        val tagged = String(bytes, Charsets.ISO_8859_1).replace(originalTitle, title).toByteArray(Charsets.ISO_8859_1)
+        check(tagged.size == bytes.size)
+        requireNotNull(context.contentResolver.openOutputStream(uri)).use { it.write(tagged) }
         if (android.os.Build.VERSION.SDK_INT >= 29) {
             context.contentResolver.update(uri, android.content.ContentValues().apply {
                 put(android.provider.MediaStore.Audio.Media.IS_PENDING, 0)
             }, null, null)
         }
+        // Known fixture metadata avoids scanner timing and collisions with old QA
+        // tracks retained by the production library's duplicate suppression.
+        context.contentResolver.update(uri, android.content.ContentValues().apply {
+            put(android.provider.MediaStore.Audio.Media.TITLE,
+                title)
+            put(android.provider.MediaStore.Audio.Media.DURATION, 30_000L)
+        }, null, null)
         return uri
     }
 
@@ -83,17 +97,32 @@ class MusicPlaybackIntegrationTest {
     }
 
     @Before fun prepareGeneratedFixture() {
-        check(context.packageName.endsWith(".debug")) { "Use the isolated debug application for integration tests" }
+        check(context.packageName.endsWith(".debug") ||
+            InstrumentationRegistry.getArguments().getString("allowReleaseQa") == "true") {
+            "Regular-app QA requires an explicit allowReleaseQa instrumentation argument"
+        }
         val firstUri = createFixture("QA_A_30s.mp3")
         val secondUri = createFixture("QA_B_30s.mp3")
         MusicRepository.invalidateCache()
         val songs = runBlocking { MusicRepository(context).getMusicFiles(forceRefresh = true) }
-        fixture = songs.first { it.uri == firstUri }
-        secondFixture = songs.first { it.uri == secondUri }
+        for (uri in listOf(firstUri, secondUri)) {
+            context.contentResolver.query(uri, null, null, null, null)?.use { cursor ->
+                if (cursor.moveToFirst()) {
+                    val details = listOf("_id", "title", "duration", "_size", "_data").joinToString { key ->
+                        val index = cursor.getColumnIndex(key)
+                        "$key=${if (index >= 0) cursor.getString(index) else "?"}"
+                    }
+                    Log.i("MusicRegression", "Generated fixture $uri: $details")
+                }
+            }
+        }
+        // Some providers return external_primary URIs on insert while the
+        // repository uses the equivalent external-volume URI for the same ID.
+        fixture = songs.first { it.id == android.content.ContentUris.parseId(firstUri) }
+        secondFixture = songs.first { it.id == android.content.ContentUris.parseId(secondUri) }
 
         preferences = context.getSharedPreferences("ymedia_prefs", Context.MODE_PRIVATE)
-        val keys = listOf("music_played_uris", "played_songs_uris", "play_count_${fixture.uri}")
-        originalPreferenceValues = keys.associateWith { preferences.all[it] }
+        originalPreferenceValues = preferences.all.toMap()
         val previousHistory = preferences.getString("music_played_uris", "").orEmpty()
         preferences.edit().putString("music_played_uris",
             previousHistory.split(";;;").filter { it.isNotBlank() && it != fixture.uri.toString() }
@@ -117,10 +146,13 @@ class MusicPlaybackIntegrationTest {
         }
         rule.setContent {
             AppRoot {
-                if (mounted.value) {
-                    MusicScreen(hasMediaPermission = true)
-                } else {
-                    Box(Modifier.fillMaxSize()) { Text("Music screen detached for QA") }
+                themeController = com.example.ymediaplayer.theme.LocalThemeController.current
+                Box(Modifier.fillMaxSize().background(com.example.ymediaplayer.theme.LocalAppColors.current.baseBackground)) {
+                    if (mounted.value) {
+                        MusicScreen(hasMediaPermission = true)
+                    } else {
+                        Text("Music screen detached for QA")
+                    }
                 }
             }
         }
@@ -143,16 +175,20 @@ class MusicPlaybackIntegrationTest {
             MusicService.playerInstance?.clearMediaItems()
         }
         if (::preferences.isInitialized) {
-            val editor = preferences.edit()
+            val editor = preferences.edit().clear()
             originalPreferenceValues.forEach { (key, value) ->
                 when (value) {
                     null -> editor.remove(key)
                     is String -> editor.putString(key, value)
                     is Int -> editor.putInt(key, value)
+                    is Long -> editor.putLong(key, value)
+                    is Float -> editor.putFloat(key, value)
+                    is Boolean -> editor.putBoolean(key, value)
                     is Set<*> -> editor.putStringSet(key, value.filterIsInstance<String>().toSet())
                 }
             }
             editor.commit()
+            AppPreferences.clearCache()
         }
         createdUris.forEach { context.contentResolver.delete(it, null, null) }
         MusicRepository.invalidateCache()
@@ -170,6 +206,36 @@ class MusicPlaybackIntegrationTest {
             recent.contains(fixture.uri.toString()))
     }
 
+    @Test fun whiteAccentSearchPlayButtonHasVisibleDarkContent() {
+        val oldMode = rule.runOnIdle { themeController.mode }
+        val oldColor = rule.runOnIdle { themeController.colorTheme }
+        try {
+            rule.runOnIdle {
+                themeController.updateMode(com.example.ymediaplayer.theme.ThemeMode.OLED_BLACK)
+                themeController.updateColorTheme(PlayerTheme.WHITE)
+            }
+            rule.onNodeWithText("Search songs, artists, albums...").performClick()
+            rule.onNode(hasSetTextAction()).performTextInput(fixtureTitle)
+            rule.waitUntil(10_000) { rule.onAllNodesWithText("Play").fetchSemanticsNodes().isNotEmpty() }
+            val bitmap = rule.onNodeWithText("Play").captureToImage().asAndroidBitmap()
+            var darkPixels = 0
+            for (y in bitmap.height / 5 until bitmap.height * 4 / 5) {
+                for (x in bitmap.width / 10 until bitmap.width * 9 / 10) {
+                    val pixel = bitmap.getPixel(x, y)
+                    if (android.graphics.Color.red(pixel) < 80 && android.graphics.Color.green(pixel) < 80 &&
+                        android.graphics.Color.blue(pixel) < 100) darkPixels++
+                }
+            }
+            assertTrue("White Play button must contain visible dark text/icon; darkPixels=$darkPixels", darkPixels > 20)
+            saveScreenshot("music-white-accent-fixed.png")
+        } finally {
+            rule.runOnIdle {
+                themeController.updateMode(oldMode)
+                themeController.updateColorTheme(oldColor)
+            }
+        }
+    }
+
     @Test fun repeatOneUiShouldUpdatePlaybackServiceRepeatMode() {
         playFixtureThroughSearchUi()
         openFullPlayer()
@@ -180,6 +246,19 @@ class MusicPlaybackIntegrationTest {
         Log.i("FullQaMusicProbe", "Repeat One selected in UI; service repeatMode=$actual")
         assertEquals("Selecting Repeat One in the actual UI must update the playback service",
             Player.REPEAT_MODE_ONE, actual)
+    }
+
+    @Test fun playNextOnCurrentSongThenOpeningQueueDoesNotCrash() {
+        playFixtureThroughSearchUi()
+        val queueBefore = rule.runOnIdle { MusicService.currentPlaylist.map { it.uri } }
+        rule.onNodeWithContentDescription("Options").performClick()
+        rule.onNodeWithText("Play Next").performClick()
+        openFullPlayer()
+        rule.onNodeWithContentDescription("Queue").performClick()
+        rule.onNode(hasText("Up Next (", substring = true)).assertIsDisplayed()
+        rule.runOnIdle {
+            assertEquals(queueBefore, MusicService.currentPlaylist.map { it.uri })
+        }
     }
 
     @Test fun sleepTimerShouldSurviveMusicScreenDetachAndRemount() {

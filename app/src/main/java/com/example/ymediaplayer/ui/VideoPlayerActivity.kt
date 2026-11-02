@@ -119,13 +119,15 @@ class VideoPlayerActivity : ComponentActivity() {
 
     override fun onWindowFocusChanged(hasFocus: Boolean) {
         super.onWindowFocusChanged(hasFocus)
+        // Restart pointer handlers on either edge of a system interruption.
+        // A screenshot overlay can cancel a gesture without delivering normal UPs.
+        com.example.ymediaplayer.player.VideoPlaybackManager.windowFocusEvent.value += 1L
         if (hasFocus) {
             try {
                 val controller = WindowCompat.getInsetsController(window, window.decorView)
                 controller.systemBarsBehavior = WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
                 controller.hide(WindowInsetsCompat.Type.systemBars())
             } catch (_: Exception) {}
-            com.example.ymediaplayer.player.VideoPlaybackManager.windowFocusEvent.value = System.currentTimeMillis()
         }
     }
 

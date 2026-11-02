@@ -1,0 +1,309 @@
+Activity Resolver Table:
+  Full MIME Types:
+      audio/*:
+        c7d9b23 com.example.ymediaplayer/androidx.media3.session.BluetoothValidationActivity filter 6d1e820
+          Action: "android.intent.action.VIEW"
+          Scheme: "content"
+          Authority: "media": -1
+          Path: "PatternMatcher{PREFIX: /internal/audio/media/}"
+          StaticType: "audio"
+          mPriority=0, mOrder=0, mHasStaticPartialTypes=true, mHasDynamicPartialTypes=false
+
+  Wild MIME Types:
+      audio:
+        c7d9b23 com.example.ymediaplayer/androidx.media3.session.BluetoothValidationActivity filter 6d1e820
+          Action: "android.intent.action.VIEW"
+          Scheme: "content"
+          Authority: "media": -1
+          Path: "PatternMatcher{PREFIX: /internal/audio/media/}"
+          StaticType: "audio"
+          mPriority=0, mOrder=0, mHasStaticPartialTypes=true, mHasDynamicPartialTypes=false
+
+  Schemes:
+      ymedia:
+        9fdad87 com.example.ymediaplayer/.MainActivity filter db9fc52
+          Action: "android.intent.action.VIEW"
+          Category: "android.intent.category.DEFAULT"
+          Category: "android.intent.category.BROWSABLE"
+          Scheme: "ymedia"
+          Authority: "cinema": -1
+      http:
+        9fdad87 com.example.ymediaplayer/.MainActivity filter 4b978dd
+          Action: "android.intent.action.VIEW"
+          Category: "android.intent.category.DEFAULT"
+          Category: "android.intent.category.BROWSABLE"
+          Scheme: "https"
+          Scheme: "http"
+          Authority: "www.themoviedb.org": -1
+          Authority: "www.themoviedb.org": -1
+          Authority: "themoviedb.org": -1
+          Authority: "themoviedb.org": -1
+          Authority: "www.themoviedb.org": -1
+          Authority: "www.themoviedb.org": -1
+          Authority: "themoviedb.org": -1
+          Authority: "themoviedb.org": -1
+          Path: "PatternMatcher{PREFIX: /movie/}"
+          Path: "PatternMatcher{PREFIX: /tv/}"
+          Path: "PatternMatcher{PREFIX: /movie/}"
+          Path: "PatternMatcher{PREFIX: /tv/}"
+          Path: "PatternMatcher{PREFIX: /movie/}"
+          Path: "PatternMatcher{PREFIX: /tv/}"
+          Path: "PatternMatcher{PREFIX: /movie/}"
+          Path: "PatternMatcher{PREFIX: /tv/}"
+      https:
+        9fdad87 com.example.ymediaplayer/.MainActivity filter 4b978dd
+          Action: "android.intent.action.VIEW"
+          Category: "android.intent.category.DEFAULT"
+          Category: "android.intent.category.BROWSABLE"
+          Scheme: "https"
+          Scheme: "http"
+          Authority: "www.themoviedb.org": -1
+          Authority: "www.themoviedb.org": -1
+          Authority: "themoviedb.org": -1
+          Authority: "themoviedb.org": -1
+          Authority: "www.themoviedb.org": -1
+          Authority: "www.themoviedb.org": -1
+          Authority: "themoviedb.org": -1
+          Authority: "themoviedb.org": -1
+          Path: "PatternMatcher{PREFIX: /movie/}"
+          Path: "PatternMatcher{PREFIX: /tv/}"
+          Path: "PatternMatcher{PREFIX: /movie/}"
+          Path: "PatternMatcher{PREFIX: /tv/}"
+          Path: "PatternMatcher{PREFIX: /movie/}"
+          Path: "PatternMatcher{PREFIX: /tv/}"
+          Path: "PatternMatcher{PREFIX: /movie/}"
+          Path: "PatternMatcher{PREFIX: /tv/}"
+      content:
+        c7d9b23 com.example.ymediaplayer/androidx.media3.session.BluetoothValidationActivity filter 6d1e820
+          Action: "android.intent.action.VIEW"
+          Scheme: "content"
+          Authority: "media": -1
+          Path: "PatternMatcher{PREFIX: /internal/audio/media/}"
+          StaticType: "audio"
+          mPriority=0, mOrder=0, mHasStaticPartialTypes=true, mHasDynamicPartialTypes=false
+
+  Non-Data Actions:
+      android.intent.action.MAIN:
+        9fdad87 com.example.ymediaplayer/.MainActivity filter 94c34b4
+          Action: "android.intent.action.MAIN"
+          Category: "android.intent.category.LAUNCHER"
+
+  MIME Typed Actions:
+      android.intent.action.VIEW:
+        c7d9b23 com.example.ymediaplayer/androidx.media3.session.BluetoothValidationActivity filter 6d1e820
+          Action: "android.intent.action.VIEW"
+          Scheme: "content"
+          Authority: "media": -1
+          Path: "PatternMatcher{PREFIX: /internal/audio/media/}"
+          StaticType: "audio"
+          mPriority=0, mOrder=0, mHasStaticPartialTypes=true, mHasDynamicPartialTypes=false
+
+Receiver Resolver Table:
+  Non-Data Actions:
+      androidx.profileinstaller.action.SAVE_PROFILE:
+        4d9c5d9 com.example.ymediaplayer/androidx.profileinstaller.ProfileInstallReceiver filter d3d664c
+          Action: "androidx.profileinstaller.action.SAVE_PROFILE"
+      androidx.profileinstaller.action.INSTALL_PROFILE:
+        4d9c5d9 com.example.ymediaplayer/androidx.profileinstaller.ProfileInstallReceiver filter 9d78b9e
+          Action: "androidx.profileinstaller.action.INSTALL_PROFILE"
+      androidx.profileinstaller.action.SKIP_FILE:
+        4d9c5d9 com.example.ymediaplayer/androidx.profileinstaller.ProfileInstallReceiver filter 784c67f
+          Action: "androidx.profileinstaller.action.SKIP_FILE"
+      androidx.profileinstaller.action.BENCHMARK_OPERATION:
+        4d9c5d9 com.example.ymediaplayer/androidx.profileinstaller.ProfileInstallReceiver filter 317e695
+          Action: "androidx.profileinstaller.action.BENCHMARK_OPERATION"
+
+Service Resolver Table:
+  Non-Data Actions:
+      androidx.media3.session.MediaSessionService:
+        5acc3aa com.example.ymediaplayer/.service.MusicService filter da94b9b permission android.permission.BIND_MEDIA_BROWSER_SERVICE
+          Action: "androidx.media3.session.MediaSessionService"
+          Action: "android.media.browse.MediaBrowserService"
+        b009b38 com.example.ymediaplayer/.service.VideoPlaybackService filter 3dd5711
+          Action: "androidx.media3.session.MediaSessionService"
+      android.media.browse.MediaBrowserService:
+        5acc3aa com.example.ymediaplayer/.service.MusicService filter da94b9b permission android.permission.BIND_MEDIA_BROWSER_SERVICE
+          Action: "androidx.media3.session.MediaSessionService"
+          Action: "android.media.browse.MediaBrowserService"
+
+Domain verification status:
+    User all:
+      Verification link handling allowed: true
+      Selection state:
+        Disabled:
+          www.themoviedb.org
+          themoviedb.org
+
+Permissions:
+  Permission [com.example.ymediaplayer.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION] (b513da4):
+    sourcePackage=com.example.ymediaplayer
+    uid=10323 gids=[] type=0 prot=signature
+    perm=PermissionInfo{337670d com.example.ymediaplayer.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION}
+    flags=0x0
+
+Registered ContentProviders:
+  com.example.ymediaplayer/androidx.startup.InitializationProvider:
+    Provider{10b06c2 com.example.ymediaplayer/androidx.startup.InitializationProvider}
+  com.example.ymediaplayer/androidx.core.content.FileProvider:
+    Provider{9cd2cd3 com.example.ymediaplayer/androidx.core.content.FileProvider}
+
+ContentProvider Authorities:
+  [com.example.ymediaplayer.provider]:
+    Provider{9cd2cd3 com.example.ymediaplayer/androidx.core.content.FileProvider}
+      applicationInfo=ApplicationInfo{e369010 com.example.ymediaplayer}
+  [com.example.ymediaplayer.androidx-startup]:
+    Provider{10b06c2 com.example.ymediaplayer/androidx.startup.InitializationProvider}
+      applicationInfo=ApplicationInfo{9806709 com.example.ymediaplayer}
+
+Key Set Manager:
+  [com.example.ymediaplayer]
+      Signing KeySets: 150
+
+Packages:
+  Package [com.example.ymediaplayer] (506cd0e):
+    appId=10323
+    pkg=Package{32d43a1 com.example.ymediaplayer}
+    codePath=/data/app/~~3xTzziSLYXWYUND0VCHqzA==/com.example.ymediaplayer-nhbnm8VCIqznehW166z6IQ==
+    resourcePath=/data/app/~~3xTzziSLYXWYUND0VCHqzA==/com.example.ymediaplayer-nhbnm8VCIqznehW166z6IQ==
+    legacyNativeLibraryDir=/data/app/~~3xTzziSLYXWYUND0VCHqzA==/com.example.ymediaplayer-nhbnm8VCIqznehW166z6IQ==/lib
+    extractNativeLibs=false
+    primaryCpuAbi=arm64-v8a
+    secondaryCpuAbi=null
+    cpuAbiOverride=null
+    versionCode=40 minSdk=24 targetSdk=37
+    minExtensionVersions=[]
+    versionName=2.8
+    usesNonSdkApi=false
+    splits=[base]
+    apkSigningVersion=2
+    flags=[ HAS_CODE ALLOW_CLEAR_USER_DATA ALLOW_BACKUP ]
+    privateFlags=[ PRIVATE_FLAG_ACTIVITIES_RESIZE_MODE_RESIZEABLE_VIA_SDK_VERSION ALLOW_AUDIO_PLAYBACK_CAPTURE HAS_DOMAIN_URLS PRIVATE_FLAG_ALLOW_NATIVE_HEAP_POINTER_TAGGING ]
+    forceQueryable=false
+    queriesPackages=[moctale.android.app, com.imdb.mobile, com.letterboxd.letterboxd, com.google.android.youtube, com.reddit.frontpage, com.netflix.mediaclient, com.amazon.avod.thirdpartyclient, com.apple.atve.androidtv.app, in.startv.hotstar, com.disney.disneyplus, com.jio.media.ondemand, com.graymatrix.did, com.sonyliv, com.google.android.videos, com.wbd.stream, com.hbo.hbonow, com.cbs.app, com.hulu.plus, com.peacocktv.peacockandroid, com.crunchyroll.crunchyroll]
+    queriesIntents=[Intent { act=android.intent.action.VIEW dat=https:/... }]
+    dataDir=/data/user/0/com.example.ymediaplayer
+    supportsScreens=[small, medium, large, xlarge, resizeable, anyDensity]
+    usesOptionalLibraries:
+      androidx.window.extensions
+      androidx.window.sidecar
+    timeStamp=2026-11-02 21:48:23
+    lastUpdateTime=2026-11-02 21:48:23
+    installerPackageName=null
+    installerPackageUid=-1
+    initiatingPackageName=com.android.shell
+    originatingPackageName=null
+    packageSource=1
+    appMetadataFilePath=null
+    signatures=PackageSignatures{a3c5b3c version:2, signatures:[a3cca750], past signatures:[]}
+    installPermissionsFixed=true
+    pkgFlags=[ HAS_CODE ALLOW_CLEAR_USER_DATA ALLOW_BACKUP ]
+    privatePkgFlags=[ PRIVATE_FLAG_ACTIVITIES_RESIZE_MODE_RESIZEABLE_VIA_SDK_VERSION ALLOW_AUDIO_PLAYBACK_CAPTURE HAS_DOMAIN_URLS PRIVATE_FLAG_ALLOW_NATIVE_HEAP_POINTER_TAGGING ]
+    apexModuleName=null
+    declared permissions:
+      com.example.ymediaplayer.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION: prot=signature
+    requested permissions:
+      android.permission.INTERNET
+      android.permission.WAKE_LOCK
+      android.permission.VIBRATE
+      android.permission.READ_MEDIA_VIDEO
+      android.permission.READ_MEDIA_AUDIO
+      android.permission.READ_MEDIA_VISUAL_USER_SELECTED
+      android.permission.FOREGROUND_SERVICE
+      android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK
+      android.permission.FOREGROUND_SERVICE_DATA_SYNC
+      android.permission.POST_NOTIFICATIONS
+      android.permission.REQUEST_INSTALL_PACKAGES
+      android.permission.ACCESS_NETWORK_STATE
+      com.example.ymediaplayer.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION
+    install permissions:
+      android.permission.FOREGROUND_SERVICE: granted=true
+      android.permission.INTERNET: granted=true
+      android.permission.FOREGROUND_SERVICE_DATA_SYNC: granted=true
+      android.permission.ACCESS_NETWORK_STATE: granted=true
+      com.example.ymediaplayer.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION: granted=true
+      android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK: granted=true
+      android.permission.VIBRATE: granted=true
+      android.permission.REQUEST_INSTALL_PACKAGES: granted=false
+      android.permission.WAKE_LOCK: granted=true
+    User 0: ceDataInode=192506 installed=true hidden=false vHidden=1 suspended=false distractionFlags=0 stopped=false notLaunched=false enabled=0 instant=false virtual=false
+      installReason=0
+      firstInstallTime=2026-10-23 11:28:26
+      uninstallReason=0
+      overlay paths:
+        /system/product/overlay/NavigationBarMode3Button/NavigationBarMode3ButtonOverlay.apk
+      legacy overlay paths:
+        /system/product/overlay/NavigationBarMode3Button/NavigationBarMode3ButtonOverlay.apk
+      gids=[3003]
+      runtime permissions:
+        android.permission.POST_NOTIFICATIONS: granted=true, flags=[ USER_SET|USER_SENSITIVE_WHEN_GRANTED|USER_SENSITIVE_WHEN_DENIED]
+        android.permission.READ_MEDIA_VISUAL_USER_SELECTED: granted=true, flags=[ USER_SET|USER_SENSITIVE_WHEN_GRANTED|USER_SENSITIVE_WHEN_DENIED]
+        android.permission.READ_MEDIA_AUDIO: granted=true, flags=[ USER_SET|USER_SENSITIVE_WHEN_GRANTED|USER_SENSITIVE_WHEN_DENIED]
+        android.permission.READ_MEDIA_VIDEO: granted=true, flags=[ USER_SET|USER_SENSITIVE_WHEN_GRANTED|USER_SENSITIVE_WHEN_DENIED]
+
+Queries:
+  system apps queryable: false
+  queries via forceQueryable:
+  queries via package name:
+    com.example.ymediaplayer:
+      com.netflix.mediaclient
+      com.google.android.youtube
+  queries via component:
+    com.android.settings.intelligence:
+      com.example.ymediaplayer
+    com.google.android.as:
+      com.example.ymediaplayer
+    com.snapchat.android:
+      com.example.ymediaplayer
+    com.community.oneroom:
+      com.example.ymediaplayer
+    com.whatsapp:
+      com.example.ymediaplayer
+    com.nothing.smartcenter:
+      com.example.ymediaplayer
+    com.openai.chatgpt:
+      com.example.ymediaplayer
+    com.rush.xtreme.sports:
+      com.example.ymediaplayer
+    com.cloudflare.onedotonedotonedotone:
+      com.example.ymediaplayer
+    com.realme.link:
+      com.example.ymediaplayer
+    com.mxtech.videoplayer.ad:
+      com.example.ymediaplayer
+    com.phonewalls.stockwallpapers:
+      com.example.ymediaplayer
+    com.instagram.android:
+      com.example.ymediaplayer
+    com.flipkart.android:
+      com.example.ymediaplayer
+    com.flipkart.shopsy:
+      com.example.ymediaplayer
+    in.amazon.mShop.android.shopping:
+      com.example.ymediaplayer
+    com.snaptube.premium:
+      com.example.ymediaplayer
+    com.example.ymediaplayer:
+      com.google.android.googlequicksearchbox
+      com.google.android.calendar
+      com.android.chrome
+      com.google.android.setupwizard
+      com.google.android.apps.docs
+      com.sec.android.app.sbrowser
+      com.mxtech.videoplayer.ad
+      video.player.videoplayer
+      com.snaptube.premium
+  queryable via interaction:
+    User 0:
+      [com.vivo.fingerprintvit,com.android.localtransport,com.vivo.pem,com.android.providers.settings,com.vivo.doubleinstance,com.vivo.epm,com.android.inputdevices,android,com.vivo.appfilter,com.vivo.upslide,com.iqoo.engineermode,com.vivo.minscreen,com.android.keychain,com.vivo.crontab,com.android.settings,com.vivo.fuelsummary,com.vivo.smartshot,com.vivo.vibrator4d,com.android.dynsystem,com.qualcomm.qti.xrvd.service,com.vivo.bsptest,com.qti.diagservices,com.android.server.telecom,com.vivo.faceui,com.vivo.assistant,com.vivo.sps,com.vivo.networkstate,com.vivo.smartmultiwindow,com.vivo.fingerprintui,com.android.location.fused,com.vivo.audiofx,com.vivo.nightpearl,com.android.wallpaperbackup,com.vivo.aiengine,com.vivo.gamecube,com.vivo.daemonService,com.vivo.globalanimation,com.vivo.abe,com.vivo.gamewatch]:
+        com.example.ymediaplayer
+  queryable via uses-library:
+
+Dexopt state:
+  [com.example.ymediaplayer]
+    path: /data/app/~~3xTzziSLYXWYUND0VCHqzA==/com.example.ymediaplayer-nhbnm8VCIqznehW166z6IQ==/base.apk
+      arm64: [status=verify] [reason=install] [primary-abi]
+        [location is /data/app/~~3xTzziSLYXWYUND0VCHqzA==/com.example.ymediaplayer-nhbnm8VCIqznehW166z6IQ==/oat/arm64/base.odex]
+
+Compiler stats:
+  [com.example.ymediaplayer]
+     base.apk - 438

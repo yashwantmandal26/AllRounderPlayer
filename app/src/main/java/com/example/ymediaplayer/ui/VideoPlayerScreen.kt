@@ -96,6 +96,7 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
@@ -1203,7 +1204,6 @@ fun VideoPlayerScreen(
     // Sheets & Dialogs
     var showPlaylistSheet by remember { mutableStateOf(false) }
     var showSettingsOverlay by remember { mutableStateOf(false) }
-    var showMoreMenuSheet by remember { mutableStateOf(false) }
     var isMoreExpanded by rememberSaveable { mutableStateOf(false) }
     var showSpeedSheet by remember { mutableStateOf(false) }
     var showSleepTimerSheet by remember { mutableStateOf(false) }
@@ -1377,7 +1377,8 @@ fun VideoPlayerScreen(
     }
 
     // Sleep Timer
-    var sleepTimerMinutes by remember { mutableIntStateOf(0) }
+    val sleepTimerSecondsRemaining by VideoPlaybackManager.sleepTimerSecondsRemaining
+    val sleepTimerMinutes = (sleepTimerSecondsRemaining + 59) / 60
 
     // Picture in Picture
     var isInPiP by remember { mutableStateOf(false) }
@@ -1637,6 +1638,13 @@ fun VideoPlayerScreen(
     }
     var torrentSeekBufferingTarget by remember { mutableStateOf<Long?>(null) }
     var torrentSeekJob by remember { mutableStateOf<kotlinx.coroutines.Job?>(null) }
+    var resumeAfterTorrentSeek by remember { mutableStateOf(false) }
+
+    LaunchedEffect(currentUrl) {
+        torrentSeekJob?.cancel()
+        torrentSeekBufferingTarget = null
+        resumeAfterTorrentSeek = false
+    }
 
     // ─── Helper Functions ─────────────────────────────────────────────────────
     fun safeSeek(targetMs: Long) {
@@ -1656,12 +1664,15 @@ fun VideoPlayerScreen(
         if (isActivelyDownloading && hash != null && maxDur > 0L) {
             val frac = (target.toDouble() / maxDur.toDouble()).coerceIn(0.0, 1.0)
             if (!com.example.ymediaplayer.mycinema.service.TorrentEngine.isPieceAvailable(hash, frac)) {
+                val sourceUrl = currentUrl
+                val shouldResume = if (torrentSeekJob?.isActive == true) resumeAfterTorrentSeek else exoPlayer.playWhenReady
                 exoPlayer.pause()
                 torrentSeekBufferingTarget = target
                 currentPosition = target
                 val durSec = if (maxDur > 0) maxDur / 1000L else 6600L
                 com.example.ymediaplayer.mycinema.service.TorrentEngine.prioritizeStreamSeek(hash, frac, durSec)
                 torrentSeekJob?.cancel()
+                resumeAfterTorrentSeek = shouldResume
                 torrentSeekJob = coroutineScope.launch {
                     val startWait = System.currentTimeMillis()
                     while (System.currentTimeMillis() - startWait < 15_000L) {
@@ -1670,10 +1681,12 @@ fun VideoPlayerScreen(
                         }
                         kotlinx.coroutines.delay(150L)
                     }
+                    if (currentUrl != sourceUrl) return@launch
                     exoPlayer.seekTo(target)
                     currentPosition = target
                     torrentSeekBufferingTarget = null
-                    VideoPlaybackManager.manualPlay()
+                    if (resumeAfterTorrentSeek) VideoPlaybackManager.manualPlay()
+                    resumeAfterTorrentSeek = false
                 }
                 return
             }
@@ -1682,9 +1695,7 @@ fun VideoPlayerScreen(
         torrentSeekBufferingTarget = null
         exoPlayer.seekTo(target)
         currentPosition = target
-        if (!exoPlayer.isPlaying) {
-            VideoPlaybackManager.manualPlay()
-        }
+        resumeAfterTorrentSeek = false
     }
 
     fun seekBy(deltaMs: Long) {
@@ -1692,8 +1703,10 @@ fun VideoPlayerScreen(
     }
 
     val togglePlayPause: () -> Unit = {
-        val actuallyPlaying = isPlaying || exoPlayer.isPlaying || exoPlayer.playWhenReady
+        val actuallyPlaying = isPlaying || exoPlayer.isPlaying || exoPlayer.playWhenReady ||
+            (torrentSeekJob?.isActive == true && resumeAfterTorrentSeek)
         if (actuallyPlaying) {
+            resumeAfterTorrentSeek = false
             val curPos = exoPlayer.currentPosition
             if (curPos > 1000L) {
                 appPreferences.saveVideoProgress(currentUrl, curPos, exoPlayer.duration.coerceAtLeast(0L))
@@ -1710,7 +1723,8 @@ fun VideoPlayerScreen(
             if (exoPlayer.playbackState == Player.STATE_ENDED || (duration > 0L && exoPlayer.currentPosition >= duration - 500L)) {
                 safeSeek(0L)
             }
-            VideoPlaybackManager.manualPlay()
+            if (torrentSeekJob?.isActive == true) resumeAfterTorrentSeek = true
+            else VideoPlaybackManager.manualPlay()
             isPlaying = true
             VideoPlaybackManager.isPlaying.value = true
             try {
@@ -2509,7 +2523,7 @@ fun VideoPlayerScreen(
     // ─── Auto-hide Controls (Stay visible while touching, dragging, dialogs open, or paused) ──
     val isAnySheetOrMenuOpen = showSubtitleTools || showAmbientSettings || modePicker != null || showPlaylistSheet ||
             showSettingsOverlay ||
-            showMoreMenuSheet ||
+            isMoreExpanded ||
             showDeleteConfirmDialog ||
             showSpeedSheet ||
             showSleepTimerSheet ||
@@ -2520,7 +2534,7 @@ fun VideoPlayerScreen(
             showRewindJumpMenu ||
             showForwardJumpMenu
 
-    val isControlsBusy = isDraggingSeek ||
+    val isControlsBusy = isDraggingSeek || isTouchingControls ||
             isAnySheetOrMenuOpen
 
     val autoHideTimeoutMs = remember { appPreferences.getControlsAutoHideTimeoutMs() }
@@ -2535,6 +2549,7 @@ fun VideoPlayerScreen(
             showBrightnessBar = false
             showVolumeBar = false
             activeGestureMode = PlayerGestureMode.NONE
+            isTouchingControls = false
             controlsInteractionTimestamp = System.currentTimeMillis()
             if (isLandscape || isVerticalVideo) {
                 insetsController?.systemBarsBehavior = WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
@@ -2593,16 +2608,6 @@ fun VideoPlayerScreen(
         if (centerDoubleTapKey > 0L) {
             delay(750.milliseconds)
             centerDoubleTapPlayPause = null
-        }
-    }
-
-    // ─── Sleep Timer Countdown ────────────────────────────────────────────────
-    LaunchedEffect(sleepTimerMinutes) {
-        if (sleepTimerMinutes > 0) {
-            delay((sleepTimerMinutes * 60).seconds)
-            exoPlayer.pause()
-            sleepTimerMinutes = 0
-            Toast.makeText(context, "Sleep timer finished. Playback stopped.", Toast.LENGTH_LONG).show()
         }
     }
 
@@ -3073,7 +3078,6 @@ fun VideoPlayerScreen(
             modePicker != null -> { previewOriginal = false; modePicker = null }
             showPlaylistSheet -> showPlaylistSheet = false
             isMoreExpanded -> isMoreExpanded = false
-            showMoreMenuSheet -> showMoreMenuSheet = false
             showSpeedSheet -> showSpeedSheet = false
             showSleepTimerSheet -> showSleepTimerSheet = false
             showAudioTrackSheet -> showAudioTrackSheet = false
@@ -3090,7 +3094,7 @@ fun VideoPlayerScreen(
         }
     }
 
-    val controlsTouchModifier = Modifier.pointerInput(Unit) {
+    val controlsTouchModifier = Modifier.pointerInput(windowFocusEvent) {
         awaitPointerEventScope {
             var lastTouchResetTime = 0L
             try {
@@ -3116,8 +3120,10 @@ fun VideoPlayerScreen(
     val currentDuration by rememberUpdatedState(duration)
     val currentIsLandscape by rememberUpdatedState(isLandscape)
     val currentIsVerticalVideo by rememberUpdatedState(isVerticalVideo)
+    val currentIsMoreExpanded by rememberUpdatedState(isMoreExpanded)
+    val currentShowControls by rememberUpdatedState(showControls)
 
-    val playerGestureModifier = Modifier.pointerInput(isLocked) {
+    val playerGestureModifier = Modifier.pointerInput(isLocked, windowFocusEvent) {
         if (isLocked) {
             detectTapGestures(
                 onTap = { showControls = !showControls }
@@ -3142,6 +3148,10 @@ fun VideoPlayerScreen(
                 val startY = down.position.y
                 val screenWidth = size.width.toFloat()
                 val screenHeight = size.height.toFloat()
+
+                val inTopControlsZone = startY <= (if (currentIsLandscape) 140f else 170f) * view.resources.displayMetrics.density
+                val inBottomControlsZone = startY >= screenHeight - (if (currentIsLandscape) 130f else 160f) * view.resources.displayMetrics.density
+                val isControlsTouch = (currentShowControls && (inTopControlsZone || inBottomControlsZone)) || currentIsMoreExpanded
 
                 val isDoubleTap = (downTime - lastTapTime < 320L) &&
                         (abs(startX - lastTapX) < 90f && abs(startY - lastTapY) < 90f)
@@ -3173,7 +3183,7 @@ fun VideoPlayerScreen(
                     val elapsed = System.currentTimeMillis() - downTime
 
                     // ─── 0.5-Second Speed Hold Activation (Tapping & holding anywhere on screen) ───
-                    if (gestureMode == PlayerGestureMode.NONE && elapsed >= 450L && !isDoubleTap) {
+                    if (gestureMode == PlayerGestureMode.NONE && !wasConsumed && !isControlsTouch && elapsed >= 450L && !isDoubleTap) {
                         gestureMode = PlayerGestureMode.SPEED_HOLD
                         activeGestureMode = gestureMode
                         didActivateSpeedHold = true
@@ -3215,7 +3225,11 @@ fun VideoPlayerScreen(
 
                 // ─── Check for 3 or More Fingers: IGNORE COMPLETELY ───
                 val pressedPointers = event.changes.filter { it.pressed }
+                // ACTION_UP/ACTION_CANCEL must end ignored system gestures too.
+                // Otherwise IGNORED_DRAG keeps eating every subsequent tap.
+                if (pressedPointers.isEmpty()) break
                 if (event.changes.size >= 3 || pressedPointers.size >= 3) {
+                    lastTapTime = 0L
                     if (gestureMode == PlayerGestureMode.SPEED_HOLD && didActivateSpeedHold) {
                         isSpeedHolding = false
                         exoPlayer.playbackParameters = PlaybackParameters(preHoldSpeed)
@@ -3297,6 +3311,12 @@ fun VideoPlayerScreen(
 
                 // Step 1: Detect mode if still NONE
                 if (gestureMode == PlayerGestureMode.NONE) {
+                    if (wasConsumed || event.changes.any { it.isConsumed } || isControlsTouch) {
+                        gestureMode = PlayerGestureMode.IGNORED_DRAG
+                        activeGestureMode = PlayerGestureMode.NONE
+                        continue
+                    }
+
                     val moveDistX = abs(diffX)
                     val moveDistY = abs(diffY)
 
@@ -3498,7 +3518,7 @@ fun VideoPlayerScreen(
                     // Ignored drag - do not trigger tap
                 }
                 PlayerGestureMode.NONE -> {
-                    if (!hasMoved && !didActivateSpeedHold) {
+                    if (!wasConsumed && !hasMoved && !didActivateSpeedHold) {
                         // Quick stationary tap!
                         if (isDoubleTap) {
                             lastTapTime = 0L // consume double tap
@@ -3562,6 +3582,9 @@ fun VideoPlayerScreen(
             centerSeekText = null
             centerSeekIcon = null
             activeGestureMode = PlayerGestureMode.NONE
+            isTouchingControls = false
+            showBrightnessBar = false
+            showVolumeBar = false
         }
     }
 }
@@ -3934,6 +3957,21 @@ fun VideoPlayerScreen(
                 )
 
                 if (!isLocked) {
+                    // Fullscreen dismiss backdrop when More Options column is open
+                    if (isMoreExpanded) {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .pointerInput(Unit) {
+                                    detectTapGestures(
+                                        onTap = {
+                                            isMoreExpanded = false
+                                        }
+                                    )
+                                }
+                        )
+                    }
+
                     // ─── TOP BAR (Back, Title, Playlist, Speed, Audio, Subtitles, More) ───
                     Column(
                         modifier = Modifier
@@ -4049,7 +4087,10 @@ fun VideoPlayerScreen(
                                 PlayerIconButton(
                                     name = "Playlist",
                                     description = "View and select queued videos in current folder",
-                                    onClick = { showPlaylistSheet = true },
+                                    onClick = {
+                                        isMoreExpanded = false
+                                        showPlaylistSheet = true
+                                    },
                                     icon = Icons.AutoMirrored.Rounded.QueueMusic,
                                     modifier = Modifier
                                         .size(topBtnSize)
@@ -4100,7 +4141,10 @@ fun VideoPlayerScreen(
                                         )
                                         .pointerInput(playbackSpeed) {
                                             detectTapGestures(
-                                                onTap = { showSpeedSheet = true },
+                                                onTap = {
+                                                    isMoreExpanded = false
+                                                    showSpeedSheet = true
+                                                },
                                                 onLongPress = {
                                                     view.performHaptic(HapticType.MEDIUM)
                                                     activeElementTooltip = ElementTooltipData(
@@ -4138,7 +4182,10 @@ fun VideoPlayerScreen(
                                 PlayerIconButton(
                                     name = "Audio tracks",
                                     description = "Select multi-language audio or alternate audio stream",
-                                    onClick = { showAudioTrackSheet = true },
+                                    onClick = {
+                                        isMoreExpanded = false
+                                        showAudioTrackSheet = true
+                                    },
                                     icon = Icons.Rounded.MusicNote,
                                     modifier = Modifier
                                         .size(topBtnSize)
@@ -4164,7 +4211,10 @@ fun VideoPlayerScreen(
                                 PlayerIconButton(
                                     name = "Subtitles",
                                     description = "Choose embedded subtitles or load external subtitle file",
-                                    onClick = { showSubtitleSheet = true },
+                                    onClick = {
+                                        isMoreExpanded = false
+                                        showSubtitleSheet = true
+                                    },
                                     icon = Icons.Rounded.Subtitles,
                                     modifier = Modifier
                                         .size(topBtnSize)
@@ -4186,13 +4236,13 @@ fun VideoPlayerScreen(
                                     )
                                 }
 
-                                // 5. More Options (Opens player options bottom sheet)
+                                // 5. More Options (Toggles options dropdown column in accent)
                                 PlayerIconButton(
-                                    name = "More options",
-                                    description = "Open player options, timer, theme and settings",
+                                    name = if (isMoreExpanded) "Close options" else "More options",
+                                    description = "Toggle player options, timer, theme and settings",
                                     onClick = {
                                         view.performHaptic(HapticType.LIGHT)
-                                        showMoreMenuSheet = true
+                                        isMoreExpanded = !isMoreExpanded
                                     },
                                     icon = Icons.Default.MoreVert,
                                     modifier = Modifier
@@ -4200,7 +4250,7 @@ fun VideoPlayerScreen(
                                         .shadow(6.dp, CircleShape, ambientColor = Color.Black.copy(0.7f))
                                         .clip(CircleShape)
                                         .background(
-                                            if (showMoreMenuSheet) {
+                                            if (isMoreExpanded) {
                                                 if (isWhiteTheme) Brush.verticalGradient(listOf(whiteShade1, whiteShade2))
                                                 else Brush.radialGradient(listOf(primaryAccent.copy(alpha = 0.35f), Color(0xFF11121C)))
                                             } else {
@@ -4210,7 +4260,7 @@ fun VideoPlayerScreen(
                                         )
                                         .border(
                                             1.2.dp,
-                                            if (showMoreMenuSheet) {
+                                            if (isMoreExpanded) {
                                                 if (isWhiteTheme) BorderStroke(1.2.dp, Color(0xFFCBD5E1)).brush
                                                 else BorderStroke(1.2.dp, primaryAccent).brush
                                             } else {
@@ -4223,10 +4273,276 @@ fun VideoPlayerScreen(
                                     Icon(
                                         Icons.Default.MoreVert,
                                         contentDescription = "More",
-                                        tint = if (showMoreMenuSheet) (if (isWhiteTheme) darkTextPrimary else primaryAccent) else (if (isWhiteTheme) Color.White else primaryAccent),
+                                        tint = if (isMoreExpanded) (if (isWhiteTheme) darkTextPrimary else primaryAccent) else (if (isWhiteTheme) Color.White else primaryAccent),
                                         modifier = Modifier.size(topIconSize)
                                     )
                                 }
+                            }
+                        }
+
+                        // ─── TOP OPTIONS ROW (Horizontal row of circular buttons in Accent) ───
+                        AnimatedVisibility(
+                            visible = isMoreExpanded,
+                            enter = fadeIn(tween(180)) + expandVertically(tween(200)),
+                            exit = fadeOut(tween(140)) + shrinkVertically(tween(160)),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(top = 4.dp)
+                        ) {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .horizontalScroll(rememberScrollState()),
+                                horizontalArrangement = Arrangement.spacedBy(if (isLandscape) 10.dp else 8.dp, Alignment.End),
+                                verticalAlignment = Alignment.Top
+                            ) {
+                                // 1. Autoplay Toggle
+                                TopBarOptionButton(
+                                    icon = Icons.Rounded.Autorenew,
+                                    label = if (isAutoPlayEnabled) "Auto ON" else "Auto OFF",
+                                    isActive = isAutoPlayEnabled,
+                                    accentColor = primaryAccent,
+                                    isWhiteTheme = isWhiteTheme,
+                                    darkTextPrimary = darkTextPrimary,
+                                    buttonSize = topBtnSize,
+                                    iconSize = topIconSize,
+                                    onClick = {
+                                        view.performHaptic(HapticType.LIGHT)
+                                        toggleAutoPlay()
+                                    }
+                                )
+
+                                // 2. Sleep Timer
+                                TopBarOptionButton(
+                                    icon = Icons.Rounded.Timer,
+                                    label = if (sleepTimerMinutes > 0) "${sleepTimerMinutes}m" else "Sleep Timer",
+                                    isActive = sleepTimerMinutes > 0,
+                                    accentColor = primaryAccent,
+                                    isWhiteTheme = isWhiteTheme,
+                                    darkTextPrimary = darkTextPrimary,
+                                    buttonSize = topBtnSize,
+                                    iconSize = topIconSize,
+                                    onClick = {
+                                        view.performHaptic(HapticType.LIGHT)
+                                        isMoreExpanded = false
+                                        showSleepTimerSheet = true
+                                    }
+                                )
+
+                                // 3. Night Mode
+                                TopBarOptionButton(
+                                    icon = Icons.Rounded.DarkMode,
+                                    label = if (isNightMode) "Night ON" else "Night Mode",
+                                    isActive = isNightMode,
+                                    accentColor = primaryAccent,
+                                    isWhiteTheme = isWhiteTheme,
+                                    darkTextPrimary = darkTextPrimary,
+                                    buttonSize = topBtnSize,
+                                    iconSize = topIconSize,
+                                    onClick = {
+                                        view.performHaptic(HapticType.LIGHT)
+                                        isNightMode = !isNightMode
+                                        appPreferences.setNightMode(isNightMode)
+                                    }
+                                )
+
+                                // 4. Ambient Background
+                                TopBarOptionButton(
+                                    icon = if (isAmbientMode) Icons.Rounded.BlurOn else Icons.Rounded.BlurOff,
+                                    label = if (isAmbientMode) "Ambient ON" else "Ambient OFF",
+                                    isActive = isAmbientMode,
+                                    accentColor = primaryAccent,
+                                    isWhiteTheme = isWhiteTheme,
+                                    darkTextPrimary = darkTextPrimary,
+                                    buttonSize = topBtnSize,
+                                    iconSize = topIconSize,
+                                    onClick = {
+                                        view.performHaptic(HapticType.LIGHT)
+                                        toggleAmbientMode()
+                                    },
+                                    onLongClick = {
+                                        view.performHaptic(HapticType.MEDIUM)
+                                        isMoreExpanded = false
+                                        showAmbientSettings = true
+                                    }
+                                )
+
+                                // 5. Dynamic Theme
+                                TopBarOptionButton(
+                                    icon = Icons.Rounded.Palette,
+                                    label = activeTheme.displayName,
+                                    isActive = true,
+                                    accentColor = primaryAccent,
+                                    isWhiteTheme = isWhiteTheme,
+                                    darkTextPrimary = darkTextPrimary,
+                                    buttonSize = topBtnSize,
+                                    iconSize = topIconSize,
+                                    onClick = {
+                                        view.performHaptic(HapticType.LIGHT)
+                                        themeController.cycleColorTheme()
+                                    },
+                                    onLongClick = {
+                                        view.performHaptic(HapticType.MEDIUM)
+                                        isMoreExpanded = false
+                                        showThemePickerSheet = true
+                                    }
+                                )
+
+                                // 6. Audio Tracks & Equalizer
+                                TopBarOptionButton(
+                                    icon = Icons.Rounded.GraphicEq,
+                                    label = "Equalizer",
+                                    isActive = false,
+                                    accentColor = primaryAccent,
+                                    isWhiteTheme = isWhiteTheme,
+                                    darkTextPrimary = darkTextPrimary,
+                                    buttonSize = topBtnSize,
+                                    iconSize = topIconSize,
+                                    onClick = {
+                                        view.performHaptic(HapticType.LIGHT)
+                                        isMoreExpanded = false
+                                        showAudioTrackSheet = true
+                                    }
+                                )
+
+                                // 7. Subtitle Timing & Tools
+                                TopBarOptionButton(
+                                    icon = Icons.Rounded.Subtitles,
+                                    label = "Subtitles",
+                                    isActive = false,
+                                    accentColor = primaryAccent,
+                                    isWhiteTheme = isWhiteTheme,
+                                    darkTextPrimary = darkTextPrimary,
+                                    buttonSize = topBtnSize,
+                                    iconSize = topIconSize,
+                                    onClick = {
+                                        view.performHaptic(HapticType.LIGHT)
+                                        isMoreExpanded = false
+                                        showSubtitleTools = true
+                                    }
+                                )
+
+                                // 8. A-B Repeat Loop
+                                val loopLabel = when {
+                                    loopStartMs != null && loopEndMs != null -> "Looping"
+                                    loopStartMs != null -> "Set Point B"
+                                    else -> "A-B Loop"
+                                }
+                                TopBarOptionButton(
+                                    icon = Icons.Rounded.AllInclusive,
+                                    label = loopLabel,
+                                    isActive = loopStartMs != null,
+                                    accentColor = primaryAccent,
+                                    isWhiteTheme = isWhiteTheme,
+                                    darkTextPrimary = darkTextPrimary,
+                                    buttonSize = topBtnSize,
+                                    iconSize = topIconSize,
+                                    onClick = {
+                                        view.performHaptic(HapticType.LIGHT)
+                                        if (loopStartMs == null) {
+                                            loopStartMs = currentPosition
+                                        } else if (loopEndMs == null) {
+                                            if (currentPosition > loopStartMs!!) {
+                                                loopEndMs = currentPosition
+                                            }
+                                        } else {
+                                            loopStartMs = null
+                                            loopEndMs = null
+                                        }
+                                    }
+                                )
+
+                                // 9. Add Bookmark
+                                TopBarOptionButton(
+                                    icon = Icons.Rounded.BookmarkAdd,
+                                    label = "Bookmark",
+                                    isActive = false,
+                                    accentColor = primaryAccent,
+                                    isWhiteTheme = isWhiteTheme,
+                                    darkTextPrimary = darkTextPrimary,
+                                    buttonSize = topBtnSize,
+                                    iconSize = topIconSize,
+                                    onClick = {
+                                        view.performHaptic(HapticType.LIGHT)
+                                        appPreferences.saveBookmark(currentUrl, currentPosition, "")
+                                        bookmarksList = appPreferences.getBookmarks(currentUrl)
+                                        Toast.makeText(context, "Bookmark saved at ${formatTime(currentPosition)}", Toast.LENGTH_SHORT).show()
+                                        isMoreExpanded = false
+                                    }
+                                )
+
+                                // 10. Video Media Info
+                                TopBarOptionButton(
+                                    icon = Icons.Rounded.Info,
+                                    label = "Media Info",
+                                    isActive = false,
+                                    accentColor = primaryAccent,
+                                    isWhiteTheme = isWhiteTheme,
+                                    darkTextPrimary = darkTextPrimary,
+                                    buttonSize = topBtnSize,
+                                    iconSize = topIconSize,
+                                    onClick = {
+                                        view.performHaptic(HapticType.LIGHT)
+                                        isMoreExpanded = false
+                                        showVideoInfoSheet = true
+                                    }
+                                )
+
+                                // 11. Share Video
+                                TopBarOptionButton(
+                                    icon = Icons.Rounded.Share,
+                                    label = "Share",
+                                    isActive = false,
+                                    accentColor = primaryAccent,
+                                    isWhiteTheme = isWhiteTheme,
+                                    darkTextPrimary = darkTextPrimary,
+                                    buttonSize = topBtnSize,
+                                    iconSize = topIconSize,
+                                    onClick = {
+                                        view.performHaptic(HapticType.LIGHT)
+                                        isMoreExpanded = false
+                                        executeShareCurrentVideo()
+                                    }
+                                )
+
+                                // 12. Delete Video
+                                TopBarOptionButton(
+                                    icon = Icons.Rounded.Delete,
+                                    label = "Delete",
+                                    isActive = false,
+                                    accentColor = primaryAccent,
+                                    isDestructive = true,
+                                    isWhiteTheme = isWhiteTheme,
+                                    darkTextPrimary = darkTextPrimary,
+                                    buttonSize = topBtnSize,
+                                    iconSize = topIconSize,
+                                    onClick = {
+                                        view.performHaptic(HapticType.LIGHT)
+                                        isMoreExpanded = false
+                                        wasPlayingBeforeDeleteDialog.value = exoPlayer.isPlaying
+                                        if (exoPlayer.isPlaying) {
+                                            exoPlayer.pause()
+                                        }
+                                        showDeleteConfirmDialog = true
+                                    }
+                                )
+
+                                // 13. Player Settings
+                                TopBarOptionButton(
+                                    icon = Icons.Rounded.Settings,
+                                    label = "Settings",
+                                    isActive = false,
+                                    accentColor = primaryAccent,
+                                    isWhiteTheme = isWhiteTheme,
+                                    darkTextPrimary = darkTextPrimary,
+                                    buttonSize = topBtnSize,
+                                    iconSize = topIconSize,
+                                    onClick = {
+                                        view.performHaptic(HapticType.LIGHT)
+                                        isMoreExpanded = false
+                                        showSettingsOverlay = true
+                                    }
+                                )
                             }
                         }
                     }
@@ -5365,7 +5681,7 @@ fun VideoPlayerScreen(
             MiniSleepTimerDialog(
                 currentMinutes = sleepTimerMinutes,
                 onSelectTimer = { mins ->
-                    sleepTimerMinutes = mins
+                    VideoPlaybackManager.setSleepTimer(mins)
                     showSleepTimerSheet = false
                 },
                 accentColor = primaryAccent,
@@ -5629,368 +5945,7 @@ fun VideoPlayerScreen(
                 shape = RoundedCornerShape(20.dp)
             )
         }
-        // ─── Player More Options Menu Bottom Sheet ───────────────────────────
-        if (showMoreMenuSheet) {
-            ModalBottomSheet(
-                onDismissRequest = { showMoreMenuSheet = false },
-                containerColor = c.dropdownBg,
-                scrimColor = Color.Black.copy(alpha = 0.70f),
-                shape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp)
-            ) {
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .verticalScroll(rememberScrollState())
-                        .padding(horizontal = 20.dp, vertical = 8.dp)
-                        .padding(bottom = safeBottomPadding + 16.dp)
-                ) {
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(bottom = 12.dp),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Text(
-                            "Player Options & Features",
-                            color = c.textPrimary,
-                            fontSize = 18.sp,
-                            fontWeight = FontWeight.Bold
-                        )
-                        IconButton(
-                            onClick = { showMoreMenuSheet = false },
-                            modifier = Modifier.size(32.dp)
-                        ) {
-                            Icon(Icons.Rounded.Close, contentDescription = "Close", tint = c.textSecondary, modifier = Modifier.size(20.dp))
-                        }
-                    }
 
-                    // 1. Ambient Lighting
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clip(RoundedCornerShape(12.dp))
-                            .clickable {
-                                showMoreMenuSheet = false
-                                showAmbientSettings = true
-                            }
-                            .padding(12.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Icon(
-                            if (isAmbientMode) Icons.Rounded.BlurOn else Icons.Rounded.BlurOff,
-                            contentDescription = null,
-                            tint = if (isAmbientMode) primaryAccent else c.textSecondary,
-                            modifier = Modifier.size(24.dp)
-                        )
-                        Spacer(Modifier.width(14.dp))
-                        Column(modifier = Modifier.weight(1f)) {
-                            Text("Ambient Lighting Backdrop", color = c.textPrimary, fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
-                            Text(if (isAmbientMode) "Atmospheric glow active • Tap for settings" else "Disabled • Tap to configure", color = c.textSecondary, fontSize = 12.sp)
-                        }
-                        Icon(Icons.AutoMirrored.Rounded.KeyboardArrowRight, contentDescription = null, tint = c.textSecondary, modifier = Modifier.size(20.dp))
-                    }
-
-                    // 2. Subtitle Tools & Timing
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clip(RoundedCornerShape(12.dp))
-                            .clickable {
-                                showMoreMenuSheet = false
-                                showSubtitleTools = true
-                            }
-                            .padding(12.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Icon(Icons.Rounded.Subtitles, contentDescription = null, tint = primaryAccent, modifier = Modifier.size(24.dp))
-                        Spacer(Modifier.width(14.dp))
-                        Column(modifier = Modifier.weight(1f)) {
-                            Text("Subtitle Search & Timing", color = c.textPrimary, fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
-                            Text("Adjust offset, font styles, and download online subs", color = c.textSecondary, fontSize = 12.sp)
-                        }
-                        Icon(Icons.AutoMirrored.Rounded.KeyboardArrowRight, contentDescription = null, tint = c.textSecondary, modifier = Modifier.size(20.dp))
-                    }
-
-                    // 3. Audio Equalizer & Tracks
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clip(RoundedCornerShape(12.dp))
-                            .clickable {
-                                showMoreMenuSheet = false
-                                showAudioTrackSheet = true
-                            }
-                            .padding(12.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Icon(Icons.Rounded.GraphicEq, contentDescription = null, tint = primaryAccent, modifier = Modifier.size(24.dp))
-                        Spacer(Modifier.width(14.dp))
-                        Column(modifier = Modifier.weight(1f)) {
-                            Text("Audio Tracks & Equalizer", color = c.textPrimary, fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
-                            Text("Switch audio streams and boost sound dynamics", color = c.textSecondary, fontSize = 12.sp)
-                        }
-                        Icon(Icons.AutoMirrored.Rounded.KeyboardArrowRight, contentDescription = null, tint = c.textSecondary, modifier = Modifier.size(20.dp))
-                    }
-
-                    // 4. Autoplay Toggle
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clip(RoundedCornerShape(12.dp))
-                            .clickable { toggleAutoPlay() }
-                            .padding(12.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Icon(
-                            Icons.Rounded.Autorenew,
-                            contentDescription = null,
-                            tint = if (isAutoPlayEnabled) primaryAccent else c.textSecondary,
-                            modifier = Modifier.size(24.dp)
-                        )
-                        Spacer(Modifier.width(14.dp))
-                        Column(modifier = Modifier.weight(1f)) {
-                            Text("Autoplay Next Video", color = c.textPrimary, fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
-                            Text(if (isAutoPlayEnabled) "Auto-advance to next video on completion" else "Disabled", color = c.textSecondary, fontSize = 12.sp)
-                        }
-                        Switch(
-                            checked = isAutoPlayEnabled,
-                            onCheckedChange = { toggleAutoPlay() },
-                            colors = SwitchDefaults.colors(checkedThumbColor = Color.White, checkedTrackColor = primaryAccent)
-                        )
-                    }
-
-                    // 5. Sleep Timer
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clip(RoundedCornerShape(12.dp))
-                            .clickable {
-                                showMoreMenuSheet = false
-                                showSleepTimerSheet = true
-                            }
-                            .padding(12.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Icon(
-                            Icons.Rounded.Timer,
-                            contentDescription = null,
-                            tint = if (sleepTimerMinutes > 0) primaryAccent else c.textSecondary,
-                            modifier = Modifier.size(24.dp)
-                        )
-                        Spacer(Modifier.width(14.dp))
-                        Column(modifier = Modifier.weight(1f)) {
-                            Text("Sleep Timer", color = c.textPrimary, fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
-                            Text(if (sleepTimerMinutes > 0) "${sleepTimerMinutes}m remaining" else "Off", color = c.textSecondary, fontSize = 12.sp)
-                        }
-                        Icon(Icons.AutoMirrored.Rounded.KeyboardArrowRight, contentDescription = null, tint = c.textSecondary, modifier = Modifier.size(20.dp))
-                    }
-
-                    // 6. Night Mode
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clip(RoundedCornerShape(12.dp))
-                            .clickable {
-                                isNightMode = !isNightMode
-                                appPreferences.setNightMode(isNightMode)
-                            }
-                            .padding(12.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Icon(
-                            Icons.Rounded.DarkMode,
-                            contentDescription = null,
-                            tint = if (isNightMode) primaryAccent else c.textSecondary,
-                            modifier = Modifier.size(24.dp)
-                        )
-                        Spacer(Modifier.width(14.dp))
-                        Column(modifier = Modifier.weight(1f)) {
-                            Text("Night Mode", color = c.textPrimary, fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
-                            Text(if (isNightMode) "Dimmed screen filter active" else "Normal", color = c.textSecondary, fontSize = 12.sp)
-                        }
-                        Switch(
-                            checked = isNightMode,
-                            onCheckedChange = {
-                                isNightMode = it
-                                appPreferences.setNightMode(it)
-                            },
-                            colors = SwitchDefaults.colors(checkedThumbColor = Color.White, checkedTrackColor = primaryAccent)
-                        )
-                    }
-
-                    // 7. A-B Repeat Loop
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clip(RoundedCornerShape(12.dp))
-                            .clickable {
-                                if (loopStartMs == null) {
-                                    loopStartMs = currentPosition
-                                } else if (loopEndMs == null) {
-                                    if (currentPosition > loopStartMs!!) {
-                                        loopEndMs = currentPosition
-                                    }
-                                } else {
-                                    loopStartMs = null
-                                    loopEndMs = null
-                                }
-                            }
-                            .padding(12.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Icon(
-                            Icons.Rounded.AllInclusive,
-                            contentDescription = null,
-                            tint = if (loopStartMs != null) primaryAccent else c.textSecondary,
-                            modifier = Modifier.size(24.dp)
-                        )
-                        Spacer(Modifier.width(14.dp))
-                        Column(modifier = Modifier.weight(1f)) {
-                            Text("A-B Repeat Loop", color = c.textPrimary, fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
-                            val statusText = when {
-                                loopStartMs != null && loopEndMs != null -> "Looping [${formatTime(loopStartMs!!)} - ${formatTime(loopEndMs!!)}]"
-                                loopStartMs != null -> "Point A set at ${formatTime(loopStartMs!!)}. Tap to set Point B"
-                                else -> "Tap to set Point A at current position"
-                            }
-                            Text(statusText, color = c.textSecondary, fontSize = 12.sp)
-                        }
-                    }
-
-                    // 8. Add Bookmark
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clip(RoundedCornerShape(12.dp))
-                            .clickable {
-                                appPreferences.saveBookmark(currentUrl, currentPosition, "")
-                                bookmarksList = appPreferences.getBookmarks(currentUrl)
-                                Toast.makeText(context, "Bookmark saved at ${formatTime(currentPosition)}", Toast.LENGTH_SHORT).show()
-                                showMoreMenuSheet = false
-                            }
-                            .padding(12.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Icon(Icons.Rounded.BookmarkAdd, contentDescription = null, tint = primaryAccent, modifier = Modifier.size(24.dp))
-                        Spacer(Modifier.width(14.dp))
-                        Column(modifier = Modifier.weight(1f)) {
-                            Text("Add Bookmark", color = c.textPrimary, fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
-                            Text("Save bookmark at ${formatTime(currentPosition)}", color = c.textSecondary, fontSize = 12.sp)
-                        }
-                    }
-
-                    // 9. Video Media Details
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clip(RoundedCornerShape(12.dp))
-                            .clickable {
-                                showMoreMenuSheet = false
-                                showVideoInfoSheet = true
-                            }
-                            .padding(12.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Icon(Icons.Rounded.Info, contentDescription = null, tint = c.textSecondary, modifier = Modifier.size(24.dp))
-                        Spacer(Modifier.width(14.dp))
-                        Column(modifier = Modifier.weight(1f)) {
-                            Text("Video Details & Media Info", color = c.textPrimary, fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
-                            Text("Codec, resolution, bitrate, audio tracks", color = c.textSecondary, fontSize = 12.sp)
-                        }
-                        Icon(Icons.AutoMirrored.Rounded.KeyboardArrowRight, contentDescription = null, tint = c.textSecondary, modifier = Modifier.size(20.dp))
-                    }
-
-                    // 10. Visual Dynamic Theme
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clip(RoundedCornerShape(12.dp))
-                            .clickable {
-                                showMoreMenuSheet = false
-                                showThemePickerSheet = true
-                            }
-                            .padding(12.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Icon(Icons.Rounded.Palette, contentDescription = null, tint = primaryAccent, modifier = Modifier.size(24.dp))
-                        Spacer(Modifier.width(14.dp))
-                        Column(modifier = Modifier.weight(1f)) {
-                            Text("Player Dynamic Theme", color = c.textPrimary, fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
-                            Text(activeTheme.displayName, color = c.textSecondary, fontSize = 12.sp)
-                        }
-                        Icon(Icons.AutoMirrored.Rounded.KeyboardArrowRight, contentDescription = null, tint = c.textSecondary, modifier = Modifier.size(20.dp))
-                    }
-
-                    // 11. Share Video
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clip(RoundedCornerShape(12.dp))
-                            .clickable {
-                                showMoreMenuSheet = false
-                                executeShareCurrentVideo()
-                            }
-                            .padding(12.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Icon(Icons.Rounded.Share, contentDescription = null, tint = primaryAccent, modifier = Modifier.size(24.dp))
-                        Spacer(Modifier.width(14.dp))
-                        Column(modifier = Modifier.weight(1f)) {
-                            Text("Share Video", color = c.textPrimary, fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
-                            Text("Share this video file with other apps", color = c.textSecondary, fontSize = 12.sp)
-                        }
-                        Icon(Icons.AutoMirrored.Rounded.KeyboardArrowRight, contentDescription = null, tint = c.textSecondary, modifier = Modifier.size(20.dp))
-                    }
-
-                    // 12. Delete Video
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clip(RoundedCornerShape(12.dp))
-                            .clickable {
-                                showMoreMenuSheet = false
-                                wasPlayingBeforeDeleteDialog.value = exoPlayer.isPlaying
-                                if (exoPlayer.isPlaying) {
-                                    exoPlayer.pause()
-                                }
-                                showDeleteConfirmDialog = true
-                            }
-                            .padding(12.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Icon(Icons.Rounded.Delete, contentDescription = null, tint = Color(0xFFEF5350), modifier = Modifier.size(24.dp))
-                        Spacer(Modifier.width(14.dp))
-                        Column(modifier = Modifier.weight(1f)) {
-                            Text("Delete Video", color = Color(0xFFEF5350), fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
-                            Text("Permanently remove this file from storage", color = c.textSecondary, fontSize = 12.sp)
-                        }
-                    }
-
-                    // 13. Player Settings
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clip(RoundedCornerShape(12.dp))
-                            .clickable {
-                                showMoreMenuSheet = false
-                                showSettingsOverlay = true
-                            }
-                            .padding(12.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Icon(Icons.Rounded.Settings, contentDescription = null, tint = c.textSecondary, modifier = Modifier.size(24.dp))
-                        Spacer(Modifier.width(14.dp))
-                        Column(modifier = Modifier.weight(1f)) {
-                            Text("Player Settings", color = c.textPrimary, fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
-                            Text("Gestures, decoder, audio boost, subtitle styles", color = c.textSecondary, fontSize = 12.sp)
-                        }
-                        Icon(Icons.AutoMirrored.Rounded.KeyboardArrowRight, contentDescription = null, tint = c.textSecondary, modifier = Modifier.size(20.dp))
-                    }
-
-                    Spacer(Modifier.height(16.dp))
-                }
-            }
-        }
 
         // ─── Pre-Roll Torrent Stream Buffering Overlay ────────────────────────
         val showStreamOverlay = streamTorrentHash != null && (!isStreamReady || !hasRenderedFirstFrame) && !isInPiP
@@ -7680,74 +7635,99 @@ private fun resolveSubtitleTrackDetails(format: Format, trackIndex: Int): TrackD
     return TrackDisplayMeta(title = title, details = details, badges = badges)
 }
 
-// ─── Expanded Option Chip for 3-Dots Inline Menu ─────────────────────────────
+// ─── Top Bar Option Button (Matches circular top-bar control styling) ────────
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
-private fun ExpandedOptionChip(
+private fun TopBarOptionButton(
     icon: ImageVector,
     label: String,
     isActive: Boolean = false,
     accentColor: Color,
     isDestructive: Boolean = false,
+    isWhiteTheme: Boolean = false,
+    darkTextPrimary: Color = Color(0xFF0F172A),
+    buttonSize: Dp = 34.dp,
+    iconSize: Dp = 18.dp,
+    modifier: Modifier = Modifier,
     onLongClick: (() -> Unit)? = null,
     onClick: () -> Unit
 ) {
-    val isWhite = accentColor == Color.White || accentColor == Color(0xFFFFFFFF) || accentColor == Color(0xFFF8FAFC)
+    val isWhite = accentColor == Color.White || accentColor == Color(0xFFFFFFFF) || accentColor == Color(0xFFF8FAFC) || isWhiteTheme
     val effectiveColor = if (isDestructive) Color(0xFFEF5350) else accentColor
 
-    val chipBg = when {
-        isDestructive -> Brush.linearGradient(listOf(Color(0xFFEF5350).copy(alpha = 0.22f), Color(0xFF161824)))
+    val btnBg = when {
+        isDestructive -> Brush.verticalGradient(listOf(Color(0xFF4A1515), Color(0xFF1E0A0A)))
         isActive && isWhite -> Brush.verticalGradient(listOf(Color(0xFFFFFFFF), Color(0xFFF1F5F9)))
-        isActive -> Brush.linearGradient(listOf(effectiveColor.copy(alpha = 0.38f), Color(0xFF161824)))
+        isActive -> Brush.radialGradient(listOf(effectiveColor.copy(alpha = 0.38f), Color(0xFF11121C)))
         isWhite -> Brush.verticalGradient(listOf(Color.White.copy(alpha = 0.20f), Color.White.copy(alpha = 0.08f)))
         else -> Brush.verticalGradient(listOf(Color(0xFF252636), Color(0xFF11121C)))
     }
 
-    val chipBorder = when {
-        isDestructive -> BorderStroke(1.dp, Color(0xFFEF5350).copy(alpha = 0.55f)).brush
+    val btnBorder = when {
+        isDestructive -> BorderStroke(1.2.dp, Color(0xFFEF5350)).brush
         isActive && isWhite -> BorderStroke(1.2.dp, Color(0xFFCBD5E1)).brush
         isActive -> BorderStroke(1.2.dp, effectiveColor).brush
-        isWhite -> Brush.verticalGradient(listOf(Color.White.copy(alpha = 0.45f), Color.White.copy(alpha = 0.18f)))
+        isWhite -> BorderStroke(1.2.dp, Color.White.copy(alpha = 0.45f)).brush
         else -> Brush.verticalGradient(listOf(effectiveColor.copy(alpha = 0.60f), effectiveColor.copy(alpha = 0.20f)))
     }
 
     val contentTint = when {
         isDestructive -> Color(0xFFEF5350)
-        isActive && isWhite -> Color(0xFF0F172A)
+        isActive && isWhite -> darkTextPrimary
         isActive -> effectiveColor
         isWhite -> Color.White
         else -> effectiveColor
     }
 
-    Row(
-        modifier = Modifier
-            .height(34.dp)
-            .then(
-                if (isActive && isWhite) Modifier.shadow(4.dp, RoundedCornerShape(10.dp), ambientColor = Color.Black.copy(0.12f))
-                else Modifier
-            )
-            .clip(RoundedCornerShape(10.dp))
-            .background(chipBg)
-            .border(1.dp, chipBorder, RoundedCornerShape(10.dp))
-            .combinedClickable(
-                onClick = onClick,
-                onLongClick = onLongClick
-            )
-            .padding(horizontal = 10.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(6.dp)
+    Column(
+        horizontalAlignment = Alignment.CenterHorizontally,
+        modifier = modifier
+            .widthIn(min = buttonSize + 10.dp)
+            .padding(horizontal = 2.dp)
     ) {
-        Icon(
-            icon,
-            contentDescription = label,
-            tint = contentTint,
-            modifier = Modifier.size(16.dp)
-        )
+        Box(
+            modifier = Modifier
+                .size(buttonSize)
+                .shadow(6.dp, CircleShape, ambientColor = Color.Black.copy(0.7f))
+                .clip(CircleShape)
+                .background(btnBg)
+                .border(1.2.dp, btnBorder, CircleShape)
+                .combinedClickable(
+                    role = Role.Button,
+                    onClick = onClick,
+                    onLongClick = onLongClick
+                ),
+            contentAlignment = Alignment.Center
+        ) {
+            Icon(
+                imageVector = icon,
+                contentDescription = label,
+                tint = contentTint,
+                modifier = Modifier.size(iconSize)
+            )
+            if (isActive && !isDestructive) {
+                Box(
+                    modifier = Modifier
+                        .align(Alignment.TopEnd)
+                        .padding(top = 4.dp, end = 4.dp)
+                        .size(5.dp)
+                        .clip(CircleShape)
+                        .background(contentTint)
+                )
+            }
+        }
+        Spacer(Modifier.height(3.dp))
         Text(
             text = label,
-            color = contentTint,
-            fontSize = 12.sp,
-            fontWeight = if (isDestructive || isActive) FontWeight.Bold else FontWeight.SemiBold
+            color = when {
+                isDestructive -> Color(0xFFEF5350)
+                isActive -> effectiveColor
+                else -> Color.White.copy(alpha = 0.85f)
+            },
+            fontSize = 9.5.sp,
+            fontWeight = if (isActive || isDestructive) FontWeight.Bold else FontWeight.Medium,
+            maxLines = 1,
+            softWrap = false
         )
     }
 }

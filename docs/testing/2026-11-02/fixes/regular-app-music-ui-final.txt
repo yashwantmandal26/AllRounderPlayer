@@ -1,0 +1,8 @@
+
+com.example.ymediaplayer.ui.MusicPlaybackIntegrationTest:........
+
+Time: 49.821
+
+OK (8 tests)
+
+

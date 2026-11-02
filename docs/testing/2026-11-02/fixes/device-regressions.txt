@@ -1,0 +1,114 @@
+
+com.example.ymediaplayer.ui.MusicQueueAndTimerRegressionTest:........
+com.example.ymediaplayer.ui.VideoInteractionRegressionTest:.
+Error in threeFingerGestureThenReleaseDoesNotFreezeControls(com.example.ymediaplayer.ui.VideoInteractionRegressionTest):
+androidx.compose.ui.test.junit4.android.ComposeNotIdleException: Idling resource timed out: possibly due to compose being busy.
+IdlingResourceRegistry has the following idling resources registered:
+- [busy] ComposeIdlingResource is busy due to pending recompositions.
+         - Note: Timeout on pending recomposition means that there are most likely infinite re-compositions happening in the tested code.
+         - Debug: hadRecomposerChanges = true, hadSnapshotChanges = false, hadAwaitersOnMainClock = false 
+All registered idling resources: Compose-Espresso link
+	at androidx.compose.ui.test.EspressoLink_androidKt.rethrowWithMoreInfo(EspressoLink.android.kt:133)
+	at androidx.compose.ui.test.EspressoLink_androidKt.runEspressoOnIdle(EspressoLink.android.kt:106)
+	at androidx.compose.ui.test.EspressoLink.runUntilIdle(EspressoLink.android.kt:82)
+	at androidx.compose.ui.test.AndroidComposeUiTestEnvironment.waitForIdle(ComposeUiTest.android.kt:716)
+	at androidx.compose.ui.test.AndroidComposeUiTestEnvironment.access$waitForIdle(ComposeUiTest.android.kt:481)
+	at androidx.compose.ui.test.AndroidComposeUiTestEnvironment$AndroidTestOwner.getRoots(ComposeUiTest.android.kt:988)
+	at androidx.compose.ui.test.TestOwnerKt.getAllSemanticsNodes(TestOwner.kt:116)
+	at androidx.compose.ui.test.SemanticsNodeInteraction.fetchSemanticsNodes$ui_test(SemanticsNodeInteraction.kt:64)
+	at androidx.compose.ui.test.SemanticsNodeInteraction.fetchOneOrThrow(SemanticsNodeInteraction.kt:157)
+	at androidx.compose.ui.test.SemanticsNodeInteraction.fetchOneOrThrow$default(SemanticsNodeInteraction.kt:150)
+	at androidx.compose.ui.test.SemanticsNodeInteraction.assertExists(SemanticsNodeInteraction.kt:125)
+	at androidx.compose.ui.test.SemanticsNodeInteraction.assertExists$default(SemanticsNodeInteraction.kt:124)
+	at com.example.ymediaplayer.ui.VideoInteractionRegressionTest.exerciseSystemGesture(VideoInteractionRegressionTest.kt:137)
+	at com.example.ymediaplayer.ui.VideoInteractionRegressionTest.threeFingerGestureThenReleaseDoesNotFreezeControls(VideoInteractionRegressionTest.kt:111)
+	... 65 trimmed
+Caused by: androidx.test.espresso.IdlingResourceTimeoutException: Wait for [Compose-Espresso link] to become idle timed out
+	at androidx.test.espresso.IdlingPolicy.handleTimeout(IdlingPolicy.java:63)
+	at androidx.test.espresso.base.UiControllerImpl$5.resourcesHaveTimedOut(UiControllerImpl.java:421)
+	at androidx.test.espresso.base.IdlingResourceRegistry$Dispatcher.handleTimeout(IdlingResourceRegistry.java:536)
+	at androidx.test.espresso.base.IdlingResourceRegistry$Dispatcher.handleMessage(IdlingResourceRegistry.java:469)
+	at android.os.Handler.dispatchMessage(Handler.java:104)
+	at androidx.test.espresso.base.TestLooperManagerCompat.execute(TestLooperManagerCompat.java:121)
+	at androidx.test.espresso.base.Interrogator.loopAndInterrogate(Interrogator.java:128)
+	at androidx.test.espresso.base.UiControllerImpl.loopUntil(UiControllerImpl.java:513)
+	at androidx.test.espresso.base.UiControllerImpl.loopMainThreadUntilIdle(UiControllerImpl.java:434)
+	at androidx.test.espresso.Espresso.lambda$onIdle$2(Espresso.java:340)
+	at androidx.test.espresso.Espresso$$ExternalSyntheticLambda1.call(D8$$SyntheticClass:0)
+	at java.util.concurrent.FutureTask.run(FutureTask.java:328)
+	at android.os.Handler.handleCallback(Handler.java:1013)
+	at android.os.Handler.dispatchMessage(Handler.java:101)
+	at android.os.Looper.loopOnce(Looper.java:226)
+	at android.os.Looper.loop(Looper.java:328)
+	at android.app.ActivityThread.main(ActivityThread.java:9220)
+	at java.lang.reflect.Method.invoke(Native Method)
+	at com.android.internal.os.RuntimeInit$MethodAndArgsCaller.run(RuntimeInit.java:586)
+	at com.android.internal.os.ZygoteInit.main(ZygoteInit.java:1099)
+
+Error in threeFingerGestureCancellationDoesNotFreezeControls(com.example.ymediaplayer.ui.VideoInteractionRegressionTest):
+androidx.compose.ui.test.junit4.android.ComposeNotIdleException: Idling resource timed out: possibly due to compose being busy.
+IdlingResourceRegistry has the following idling resources registered:
+- [busy] ComposeIdlingResource is busy due to pending recompositions.
+         - Note: Timeout on pending recomposition means that there are most likely infinite re-compositions happening in the tested code.
+         - Debug: hadRecomposerChanges = true, hadSnapshotChanges = false, hadAwaitersOnMainClock = false 
+All registered idling resources: Compose-Espresso link
+	at androidx.compose.ui.test.EspressoLink_androidKt.rethrowWithMoreInfo(EspressoLink.android.kt:133)
+	at androidx.compose.ui.test.EspressoLink_androidKt.runEspressoOnIdle(EspressoLink.android.kt:106)
+	at androidx.compose.ui.test.EspressoLink.runUntilIdle(EspressoLink.android.kt:82)
+	at androidx.compose.ui.test.AndroidComposeUiTestEnvironment.waitForIdle(ComposeUiTest.android.kt:716)
+	at androidx.compose.ui.test.AndroidComposeUiTestEnvironment.access$waitForIdle(ComposeUiTest.android.kt:481)
+	at androidx.compose.ui.test.AndroidComposeUiTestEnvironment$AndroidTestOwner.getRoots(ComposeUiTest.android.kt:988)
+	at androidx.compose.ui.test.TestOwnerKt.getAllSemanticsNodes(TestOwner.kt:116)
+	at androidx.compose.ui.test.SemanticsNodeInteraction.fetchSemanticsNodes$ui_test(SemanticsNodeInteraction.kt:64)
+	at androidx.compose.ui.test.SemanticsNodeInteraction.fetchOneOrThrow(SemanticsNodeInteraction.kt:157)
+	at androidx.compose.ui.test.SemanticsNodeInteraction.fetchOneOrThrow$default(SemanticsNodeInteraction.kt:150)
+	at androidx.compose.ui.test.SemanticsNodeInteraction.assertExists(SemanticsNodeInteraction.kt:125)
+	at androidx.compose.ui.test.SemanticsNodeInteraction.assertExists$default(SemanticsNodeInteraction.kt:124)
+	at com.example.ymediaplayer.ui.VideoInteractionRegressionTest.exerciseSystemGesture(VideoInteractionRegressionTest.kt:137)
+	at com.example.ymediaplayer.ui.VideoInteractionRegressionTest.threeFingerGestureCancellationDoesNotFreezeControls(VideoInteractionRegressionTest.kt:114)
+	... 65 trimmed
+Caused by: androidx.test.espresso.IdlingResourceTimeoutException: Wait for [Compose-Espresso link] to become idle timed out
+	at androidx.test.espresso.IdlingPolicy.handleTimeout(IdlingPolicy.java:63)
+	at androidx.test.espresso.base.UiControllerImpl$5.resourcesHaveTimedOut(UiControllerImpl.java:421)
+	at androidx.test.espresso.base.IdlingResourceRegistry$Dispatcher.handleTimeout(IdlingResourceRegistry.java:536)
+	at androidx.test.espresso.base.IdlingResourceRegistry$Dispatcher.handleMessage(IdlingResourceRegistry.java:469)
+	at android.os.Handler.dispatchMessage(Handler.java:104)
+	at androidx.test.espresso.base.TestLooperManagerCompat.execute(TestLooperManagerCompat.java:121)
+	at androidx.test.espresso.base.Interrogator.loopAndInterrogate(Interrogator.java:128)
+	at androidx.test.espresso.base.UiControllerImpl.loopUntil(UiControllerImpl.java:513)
+	at androidx.test.espresso.base.UiControllerImpl.loopMainThreadUntilIdle(UiControllerImpl.java:434)
+	at androidx.test.espresso.Espresso.lambda$onIdle$2(Espresso.java:340)
+	at androidx.test.espresso.Espresso$$ExternalSyntheticLambda1.call(D8$$SyntheticClass:0)
+	at java.util.concurrent.FutureTask.run(FutureTask.java:328)
+	at android.os.Handler.handleCallback(Handler.java:1013)
+	at android.os.Handler.dispatchMessage(Handler.java:101)
+	at android.os.Looper.loopOnce(Looper.java:226)
+	at android.os.Looper.loop(Looper.java:328)
+	at android.app.ActivityThread.main(ActivityThread.java:9220)
+	at java.lang.reflect.Method.invoke(Native Method)
+	at com.android.internal.os.RuntimeInit$MethodAndArgsCaller.run(RuntimeInit.java:586)
+	at com.android.internal.os.ZygoteInit.main(ZygoteInit.java:1099)
+.
+Error in videoSleepTimerMustSurviveActivityRecreation(com.example.ymediaplayer.ui.VideoInteractionRegressionTest):
+java.lang.AssertionError: Configured video sleep timer must survive Activity recreation
+Reason: Expected exactly '1' node but could not find any node that satisfies: (Text + InputText + EditableText contains '15m' (ignoreCase: false))
+
+	at androidx.compose.ui.test.SemanticsNodeInteraction.fetchOneOrThrow(SemanticsNodeInteraction.kt:178)
+	at androidx.compose.ui.test.SemanticsNodeInteraction.fetchOneOrThrow$default(SemanticsNodeInteraction.kt:150)
+	at androidx.compose.ui.test.SemanticsNodeInteraction.assertExists(SemanticsNodeInteraction.kt:125)
+	at com.example.ymediaplayer.ui.VideoInteractionRegressionTest.videoSleepTimerMustSurviveActivityRecreation(VideoInteractionRegressionTest.kt:108)
+
+com.example.ymediaplayer.ui.MusicPlaybackIntegrationTest:
+Error in uiPlaybackShouldAddGeneratedTrackToRecentlyPlayed(com.example.ymediaplayer.ui.MusicPlaybackIntegrationTest):
+java.util.NoSuchElementException: Collection contains no element matching the predicate.
+	at com.example.ymediaplayer.ui.MusicPlaybackIntegrationTest.prepareGeneratedFixture(MusicPlaybackIntegrationTest.kt:336)
+
+Error in repeatOneUiShouldUpdatePlaybackServiceRepeatMode(com.example.ymediaplayer.ui.MusicPlaybackIntegrationTest):
+java.util.NoSuchElementException: Collection contains no element matching the predicate.
+	at com.example.ymediaplayer.ui.MusicPlaybackIntegrationTest.prepareGeneratedFixture(MusicPlaybackIntegrationTest.kt:336)
+
+Error in whiteAccentSearchPlayButtonHasVisibleDarkContent(com.example.ymediaplayer.ui.MusicPlaybackIntegrationTest):
+java.util.NoSuchElementException: Collection contains no element matching the predicate.
+	at com.example.ymediaplayer.ui.MusicPlaybackIntegrationTest.prepareGeneratedFixture(MusicPlaybackIntegrationTest.kt:336)
+INSTRUMENTATION_RESULT: shortMsg=Process crashed.
+INSTRUMENTATION_CODE: 0

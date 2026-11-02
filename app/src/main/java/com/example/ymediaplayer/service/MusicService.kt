@@ -222,7 +222,7 @@ class MusicService : MediaSessionService() {
         val activeQueue = androidx.compose.runtime.mutableStateOf<List<MusicItem>>(emptyList())
         var currentPlaylist: List<MusicItem>
             get() = activeQueue.value
-            set(value) { activeQueue.value = value.toList() }
+            set(value) { activeQueue.value = value.distinctBy { it.uri } }
 
         fun reorderQueue(fromIndex: Int, toIndex: Int) {
             val list = currentPlaylist.toMutableList()
@@ -230,6 +230,12 @@ class MusicService : MediaSessionService() {
                 val item = list.removeAt(fromIndex)
                 list.add(toIndex, item)
                 currentPlaylist = list
+                playerInstance?.let { player ->
+                    if (player.mediaItemCount == list.size) {
+                        player.moveMediaItem(fromIndex, toIndex)
+                        currentSongIndex = player.currentMediaItemIndex
+                    }
+                }
             }
         }
         val repeatMode = androidx.compose.runtime.mutableIntStateOf(Player.REPEAT_MODE_OFF)
@@ -237,6 +243,19 @@ class MusicService : MediaSessionService() {
         val sleepTimerSecondsRemaining = androidx.compose.runtime.mutableIntStateOf(0)
         private var sleepTimerJob: Job? = null
         private var sleepDeadlineMs = 0L
+        private var sleepFadePlayer: Player? = null
+        private var sleepFadeOriginalVolume = 1f
+        private var sleepFadeAppliedVolume = 1f
+
+        private fun restoreSleepFadeVolume() {
+            sleepFadePlayer?.let { player ->
+                // Preserve a volume change made by the user during the fade.
+                if (kotlin.math.abs(player.volume - sleepFadeAppliedVolume) < 0.001f) {
+                    player.volume = sleepFadeOriginalVolume
+                }
+            }
+            sleepFadePlayer = null
+        }
 
         fun setRepeatMode(mode: Int) {
             repeatMode.intValue = mode
@@ -265,12 +284,14 @@ class MusicService : MediaSessionService() {
             .setMediaMetadata(MediaMetadata.Builder().setTitle(item.title).setArtist(item.artist)
                 .setAlbumTitle(item.album).setArtworkUri(item.albumArtUri).build()).build()
 
-        fun enqueueNext(song: MusicItem) {
-            val player = playerInstance ?: return
-            val current = currentMusicItem.value ?: return
-            val queue = currentPlaylist.filter { it.uri != song.uri || it.uri == current.uri }.toMutableList()
+        fun enqueueNext(song: MusicItem): Boolean {
+            val player = playerInstance ?: return false
+            val current = currentMusicItem.value ?: return false
+            // This queue contains each song once; do not duplicate the current row.
+            if (song.uri == current.uri) return false
+            val queue = currentPlaylist.filter { it.uri != song.uri }.toMutableList()
             val index = queue.indexOfFirst { it.uri == current.uri }
-            if (index < 0) return
+            if (index < 0) return false
             queue.add(index + 1, song)
             val position = player.currentPosition
             val playing = player.playWhenReady
@@ -278,12 +299,15 @@ class MusicService : MediaSessionService() {
             player.setMediaItems(queue.map(::queueMediaItem), index, position)
             player.prepare()
             player.playWhenReady = playing
+            return true
         }
 
         fun setSleepTimer(minutes: Int) = startSleepTimer(minutes.coerceAtLeast(0).toLong() * 60_000L)
 
         internal fun startSleepTimer(durationMs: Long) {
             sleepTimerJob?.cancel()
+            sleepTimerJob = null
+            restoreSleepFadeVolume()
             sleepDeadlineMs = if (durationMs > 0) android.os.SystemClock.elapsedRealtime() + durationMs else 0L
             sleepTimerSecondsRemaining.intValue = ((durationMs.coerceAtLeast(0L) + 999) / 1000).toInt()
             if (durationMs <= 0) return
@@ -295,11 +319,20 @@ class MusicService : MediaSessionService() {
                     sleepTimerSecondsRemaining.intValue = ((remaining + 999) / 1000).toInt()
                     if (fadeOut && remaining <= 20_000L && remaining > 0L) {
                         val factor = (remaining / 20_000f).coerceIn(0.05f, 1f)
-                        (playerInstance as? ExoPlayer)?.volume = factor
+                        playerInstance?.let { player ->
+                            if (sleepFadePlayer !== player ||
+                                kotlin.math.abs(player.volume - sleepFadeAppliedVolume) >= 0.001f) {
+                                sleepFadePlayer = player
+                                sleepFadeOriginalVolume = player.volume
+                            }
+                            sleepFadeAppliedVolume = sleepFadeOriginalVolume * factor
+                            player.volume = sleepFadeAppliedVolume
+                        }
                     }
                     if (remaining == 0L) {
                         playerInstance?.pause()
-                        (playerInstance as? ExoPlayer)?.volume = 1f
+                        restoreSleepFadeVolume()
+                        sleepDeadlineMs = 0L
                         break
                     }
                     delay(minOf(remaining, 250L))
@@ -615,11 +648,8 @@ class MusicService : MediaSessionService() {
                     playbackState == Player.STATE_IDLE) {
                     AudioReactor.reset()
                 }
-                if (playbackState == Player.STATE_ENDED) {
-                    if ((isAutoPlayEnabled.value || repeatMode.intValue == Player.REPEAT_MODE_ALL || shuffleEnabled.value) && player.repeatMode != Player.REPEAT_MODE_ONE) {
-                        playNext()
-                    }
-                }
+                // Media3 advances/repeats the timeline itself. STATE_ENDED with
+                // Repeat Off is the end of the queue, not an implicit Next tap.
                 updateForegroundNotification()
             }
             override fun onPositionDiscontinuity(

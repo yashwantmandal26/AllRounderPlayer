@@ -1,0 +1,16 @@
+--------- beginning of main
+11-02 20:48:13.452 17949 17949 I HiddenAudit: extended timer volume=0.7362
+11-02 20:48:21.467 17949 17949 I HiddenAudit: end with repeat OFF current=QA_1 playing=true
+11-02 20:49:09.697 18645 18665 I HiddenAudit: before timer select: Printing with useUnmergedTree = 'false'
+11-02 20:49:09.697 18645 18665 I HiddenAudit: Node #1 at (l=0.0, t=0.0, r=1080.0, b=2400.0)px
+11-02 20:49:09.697 18645 18665 I HiddenAudit:  |-Node #2 at (l=0.0, t=0.0, r=1080.0, b=2400.0)px
+11-02 20:49:09.697 18645 18665 I HiddenAudit:    IsContainer = 'true'
+11-02 20:49:09.697 18645 18665 I HiddenAudit:    Shape = 'RectangleShape'
+11-02 20:49:09.697 18645 18665 I HiddenAudit:     |-Node #4 at (l=0.0, t=0.0, r=1080.0, b=2400.0)px
+11-02 20:49:09.697 18645 18665 I HiddenAudit:       Shape = 'RectangleShape'
+11-02 20:49:09.697 18645 18665 I HiddenAudit:        |-Node #6 at (l=0.0, t=0.0, r=1080.0, b=2400.0)px
+11-02 20:49:09.697 18645 18665 I HiddenAudit:        | Shape = 'RectangleShape'
+11-02 20:49:09.697 18645 18665 I HiddenAudit:        |-Node #8 at (l=0.0, t=0.0, r=1080.0, b=2400.0)px
+11-02 20:49:09.697 18645 18665 I HiddenAudit:          Shape = 'RectangleShape'
+11-02 20:49:09.697 18645 18665 I HiddenAudit:           |-Node #9 at (l=0.0, t=0.0, r=1080.0, b=2400.0)px
+11-02 20:49:09.697 18645 18665 I HiddenAudit:             MergeDescendants = 'true'

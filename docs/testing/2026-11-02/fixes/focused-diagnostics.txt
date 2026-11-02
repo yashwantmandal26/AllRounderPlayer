@@ -1,0 +1,133 @@
+--------- beginning of main
+11-02 21:36:56.522 26546 26546 I VideoRegression: Timer after recreate=900
+11-02 21:40:37.983 28278 28278 I VideoRegression: Timer after recreate=900
+11-02 21:40:38.224 28278 28319 I VideoRegression: After recreate controls: Printing with useUnmergedTree = 'false'
+11-02 21:40:38.224 28278 28319 I VideoRegression: Node #206 at (l=0.0, t=0.0, r=1080.0, b=2400.0)px
+11-02 21:40:38.224 28278 28319 I VideoRegression:  |-Node #207 at (l=0.0, t=0.0, r=1080.0, b=2400.0)px
+11-02 21:40:38.224 28278 28319 I VideoRegression:    IsContainer = 'true'
+11-02 21:40:38.224 28278 28319 I VideoRegression:    Shape = 'RectangleShape'
+11-02 21:40:38.224 28278 28319 I VideoRegression:     |-Node #209 at (l=0.0, t=0.0, r=1080.0, b=2400.0)px
+11-02 21:40:38.224 28278 28319 I VideoRegression:       Shape = 'RectangleShape'
+11-02 21:40:38.224 28278 28319 I VideoRegression:        |-Node #210 at (l=0.0, t=0.0, r=1080.0, b=2400.0)px
+11-02 21:40:38.224 28278 28319 I VideoRegression:        | Shape = 'RectangleShape'
+11-02 21:40:38.224 28278 28319 I VideoRegression:        |  |-Node #211 at (l=0.0, t=0.0, r=1080.0, b=2400.0)px
+11-02 21:40:38.224 28278 28319 I VideoRegression:        |    MergeDescendants = 'true'
+11-02 21:40:38.224 28278 28319 I VideoRegression:        |-Node #212 at (l=0.0, t=0.0, r=1080.0, b=2400.0)px
+11-02 21:40:38.224 28278 28319 I VideoRegression:           |-Node #214 at (l=0.0, t=0.0, r=1080.0, b=336.0)px
+11-02 21:40:38.224 28278 28319 I VideoRegression:           | Shape = 'RectangleShape'
+11-02 21:40:38.224 28278 28319 I VideoRegression:           |-Node #215 at (l=0.0, t=1794.0, r=1080.0, b=2400.0)px
+11-02 21:40:38.224 28278 28319 I VideoRegression:           | Shape = 'RectangleShape'
+11-02 21:40:38.224 28278 28319 I VideoRegression:           |-Node #220 at (l=47.0, t=157.0, r=141.0, b=251.0)px
+11-02 21:40:38.224 28278 28319 I VideoRegression:           | ContentDescription = '[Back, Back]'
+11-02 21:40:38.224 28278 28319 I VideoRegression:           | Focused = 'false'
+11-02 21:40:38.224 28278 28319 I VideoRegression:           | Role = 'Button'
+11-02 21:40:38.224 28278 28319 I VideoRegression:           | Shape = 'RoundedCornerShape(topStart = CornerSize(size = 50.0%), topEnd = CornerSize(size = 50.0%), bottomEnd = CornerSize(size = 50.0%), bottomStart = CornerSize(size = 50.0%))'
+11-02 21:40:38.224 28278 28319 I VideoRegression:           | Actions = [OnClick, OnLongClick, RequestFocus]
+11-02 21:40:38.224 28278 28319 I VideoRegression:           | MergeDescendants = 'true'
+11-02 21:40:38.224 28278 28319 I VideoRegression:           |-Node #225 at (l=174.0, t=138.0, r=381.0, b=204.0)px
+11-02 21:40:38.224 28278 28319 I VideoRegression:           | Text = '[QA_Hidden_Video]'
+11-02 21:40:38.224 28278 28319 I VideoRegression:           | Actions = [ClearTextSubstitution, GetTextLayoutResult, SetTextSubstitution, ShowTextSubstitution]
+11-02 21:40:38.224 28278 28319 I VideoRegression:           |-Node #226 at (l=174.0, t=204.0, r=244.0, b=270.0)px
+11-02 21:40:38.224 28278 28319 I VideoRegression:           | Text = '[360p]'
+11-02 21:40:38.224 28278 28319 I VideoRegression:           | Actions = [ClearTextSubstitution, GetTextLayoutResult, SetTextSubstitution, ShowTextSubstitution]
+11-02 21:40:38.224 28278 28319 I VideoRegression:           |-Node #228 at (l=411.0, t=157.0, r=505.0, b=251.0)px
+11-02 21:40:38.224 28278 28319 I VideoRegression:           | ContentDescription = '[Playlist, Playlist]'
+11-02 21:40:38.224 28278 28319 I VideoRegression:           | Focused = 'false'
+11-02 21:40:38.224 28278 28319 I VideoRegression:           | Role = 'Button'
+11-02 21:40:38.224 28278 28319 I VideoRegression:           | Shape = 'RoundedCornerShape(topStart = CornerSize(size = 50.0%), topEnd = CornerSize(size = 50.0%), bottomEnd = CornerSize(size = 50.0%), bottomStart = CornerSize(size = 50.0%))'
+11-02 21:40:38.224 28278 28319 I VideoRegression:           | Actions = [OnClick, OnLongClick, RequestFocus]
+11-02 21:40:38.224 28278 28319 I VideoRegression:           | MergeDescendants = 'true'
+11-02 21:40:38.224 28278 28319 I VideoRegression:           |-Node #230 at (l=554.0, t=157.0, r=604.0, b=251.0)px
+11-02 21:40:38.224 28278 28319 I VideoRegression:           | Shape = 'RoundedCornerShape(topStart = CornerSize(size = 50.0%), topEnd = CornerSize(size = 50.0%), bottomEnd = CornerSize(size = 50.0%), bottomStart = CornerSize(size = 50.0%))'
+11-02 21:40:38.224 28278 28319 I VideoRegression:           |  |-Node #231 at (l=554.0, t=179.0, r=604.0, b=229.0)px
+11-02 21:40:38.224 28278 28319 I VideoRegression:           |    ContentDescription = '[Playback speed]'
+11-02 21:40:38.224 28278 28319 I VideoRegression:           |    Role = 'Image'
+11-02 21:40:38.224 28278 28319 I VideoRegression:           |-Node #232 at (l=653.0, t=157.0, r=747.0, b=251.0)px
+11-02 21:40:38.224 28278 28319 I VideoRegression:           | ContentDescription = '[Audio tracks, Audio track]'
+11-02 21:40:38.224 28278 28319 I VideoRegression:           | Focused = 'false'
+11-02 21:40:38.224 28278 28319 I VideoRegression:           | Role = 'Button'
+11-02 21:40:38.224 28278 28319 I VideoRegression:           | Shape = 'RoundedCornerShape(topStart = CornerSize(size = 50.0%), topEnd = CornerSize(size = 50.0%), bottomEnd = CornerSize(size = 50.0%), bottomStart = CornerSize(size = 50.0%))'
+11-02 21:40:38.224 28278 28319 I VideoRegression:           | Actions = [OnClick, OnLongClick, RequestFocus]
+11-02 21:40:38.224 28278 28319 I VideoRegression:           | MergeDescendants = 'true'
+11-02 21:40:38.224 28278 28319 I VideoRegression:           |-Node #234 at (l=796.0, t=157.0, r=890.0, b=251.0)px
+11-02 21:40:38.224 28278 28319 I VideoRegression:           | ContentDescription = '[Subtitles, Subtitles]'
+11-02 21:40:38.224 28278 28319 I VideoRegression:           | Focused = 'false'
+11-02 21:40:38.224 28278 28319 I VideoRegression:           | Role = 'Button'
+11-02 21:40:38.224 28278 28319 I VideoRegression:           | Shape = 'RoundedCornerShape(topStart = CornerSize(size = 50.0%), topEnd = CornerSize(size = 50.0%), bottomEnd = CornerSize(size = 50.0%), bottomStart = CornerSize(size = 50.0%))'
+11-02 21:40:38.224 28278 28319 I VideoRegression:           | Actions = [OnClick, OnLongClick, RequestFocus]
+11-02 21:40:38.224 28278 28319 I VideoRegression:           | MergeDescendants = 'true'
+11-02 21:40:38.224 28278 28319 I VideoRegression:           |-Node #236 at (l=939.0, t=157.0, r=1033.0, b=251.0)px
+11-02 21:40:38.224 28278 28319 I VideoRegression:           | ContentDescription = '[More options, More]'
+11-02 21:40:38.224 28278 28319 I VideoRegression:           | Focused = 'false'
+11-02 21:40:38.224 28278 28319 I VideoRegression:           | Role = 'Button'
+11-02 21:40:38.224 28278 28319 I VideoRegression:           | Shape = 'RoundedCornerShape(topStart = CornerSize(size = 50.0%), topEnd = CornerSize(size = 50.0%), bottomEnd = CornerSize(size = 50.0%), bottomStart = CornerSize(size = 50.0%))'
+11-02 21:40:38.224 28278 28319 I VideoRegression:           | Actions = [OnClick, OnLongClick, RequestFocus]
+11-02 21:40:38.224 28278 28319 I VideoRegression:           | MergeDescendants = 'true'
+11-02 21:40:38.224 28278 28319 I VideoRegression:           |-Node #296 at (l=256.0, t=1134.0, r=388.0, b=1266.0)px
+11-02 21:40:38.224 28278 28319 I VideoRegression:           | ContentDescription = '[Previous video, Previous video]'
+11-02 21:40:38.224 28278 28319 I VideoRegression:           | Role = 'Button'
+11-02 21:40:38.224 28278 28319 I VideoRegression:           | Shape = 'RoundedCornerShape(topStart = CornerSize(size = 50.0%), topEnd = CornerSize(size = 50.0%), bottomEnd = CornerSize(size = 50.0%), bottomStart = CornerSize(size = 50.0%))'
+11-02 21:40:38.224 28278 28319 I VideoRegression:           | [Disabled]
+11-02 21:40:38.224 28278 28319 I VideoRegression:           | Actions = [OnClick, OnLongClick]
+11-02 21:40:38.224 28278 28319 I VideoRegression:           | MergeDescendants = 'true'
+11-02 21:40:38.224 28278 28319 I VideoRegression:           |-Node #298 at (l=449.0, t=1109.0, r=631.0, b=1291.0)px
+11-02 21:40:38.224 28278 28319 I VideoRegression:           | Shape = 'RoundedCornerShape(topStart = CornerSize(size = 50.0%), topEnd = CornerSize(size = 50.0%), bottomEnd = CornerSize(size = 50.0%), bottomStart = CornerSize(size = 50.0%))'
+11-02 21:40:38.224 28278 28319 I VideoRegression:           |  |-Node #299 at (l=485.0, t=1145.0, r=595.0, b=1255.0)px
+11-02 21:40:38.224 28278 28319 I VideoRegression:           |    ContentDescription = '[Play/Pause]'
+11-02 21:40:38.224 28278 28319 I VideoRegression:           |    Role = 'Image'
+11-02 21:40:38.224 28278 28319 I VideoRegression:           |-Node #300 at (l=692.0, t=1134.0, r=824.0, b=1266.0)px
+11-02 21:40:38.224 28278 28319 I VideoRegression:           | ContentDescription = '[Next video, Next video]'
+11-02 21:40:38.224 28278 28319 I VideoRegression:           | Role = 'Button'
+11-02 21:40:38.224 28278 28319 I VideoRegression:           | Shape = 'RoundedCornerShape(topStart = CornerSize(size = 50.0%), topEnd = CornerSize(size = 50.0%), bottomEnd = CornerSize(size = 50.0%), bottomStart = CornerSize(size = 50.0%))'
+11-02 21:40:38.224 28278 28319 I VideoRegression:           | [Disabled]
+11-02 21:40:38.224 28278 28319 I VideoRegression:           | Actions = [OnClick, OnLongClick]
+11-02 21:40:38.224 28278 28319 I VideoRegression:           | MergeDescendants = 'true'
+11-02 21:40:38.224 28278 28319 I VideoRegression:           |-Node #304 at (l=39.0, t=1859.0, r=303.0, b=1925.0)px
+11-02 21:40:38.224 28278 28319 I VideoRegression:           | Text = '[00:00 / 00:30]'
+11-02 21:40:38.224 28278 28319 I VideoRegression:           | Actions = [ClearTextSubstitution, GetTextLayoutResult, SetTextSubstitution, ShowTextSubstitution]
+11-02 21:40:38.224 28278 28319 I VideoRegression:           |-Node #306 at (l=926.0, t=1843.0, r=1025.0, b=1942.0)px
+11-02 21:40:38.224 28278 28319 I VideoRegression:           | ContentDescription = '[Enhanced mode, Enhanced mode]'
+11-02 21:40:38.224 28278 28319 I VideoRegression:           | Focused = 'false'
+11-02 21:40:38.224 28278 28319 I VideoRegression:           | Role = 'Button'
+11-02 21:40:38.224 28278 28319 I VideoRegression:           | Shape = 'RoundedCornerShape(topStart = CornerSize(size = 50.0%), topEnd = CornerSize(size = 50.0%), bottomEnd = CornerSize(size = 50.0%), bottomStart = CornerSize(size = 50.0%))'
+11-02 21:40:38.224 28278 28319 I VideoRegression:           | Actions = [OnClick, OnLongClick, RequestFocus]
+11-02 21:40:38.224 28278 28319 I VideoRegression:           | MergeDescendants = 'true'
+11-02 21:40:38.224 28278 28319 I VideoRegression:           |-Node #320 at (l=6.0, t=1985.0, r=1074.0, b=2029.0)px
+11-02 21:40:38.224 28278 28319 I VideoRegression:           | Focused = 'false'
+11-02 21:40:38.224 28278 28319 I VideoRegression:           | ProgressBarRangeInfo = 'ProgressBarRangeInfo(current=68.0, range=0.0..30000.0, steps=0)'
+11-02 21:40:38.224 28278 28319 I VideoRegression:           | StateDescription = '68.0'
+11-02 21:40:38.224 28278 28319 I VideoRegression:           | Actions = [RequestFocus, SetProgress]
+11-02 21:40:38.224 28278 28319 I VideoRegression:           | MergeDescendants = 'true'
+11-02 21:40:38.224 28278 28319 I VideoRegression:           |-Node #310 at (l=28.0, t=2090.0, r=1052.0, b=2234.0)px
+11-02 21:40:38.224 28278 28319 I VideoRegression:             HorizontalScrollAxisRange = 'ScrollAxisRange(value=0.0, maxValue=0.0, reverseScrolling=false)'
+11-02 21:40:38.224 28278 28319 I VideoRegression:             IsTraversalGroup = 'true'
+11-02 21:40:38.224 28278 28319 I VideoRegression:             Shape = 'androidx.compose.foundation.HorizontalScrollableClipShape@f4d925a'
+11-02 21:40:38.224 28278 28319 I VideoRegression:             Actions = [ScrollBy, ScrollByOffset]
+11-02 21:40:38.224 28278 28319 I VideoRegression:              |-Node #311 at (l=142.0, t=2104.0, r=258.0, b=2220.0)px
+11-02 21:40:38.224 28278 28319 I VideoRegression:              | ContentDescription = '[Lock controls, Lock controls]'
+11-02 21:40:38.224 28278 28319 I VideoRegression:              | Focused = 'false'
+11-02 21:40:38.224 28278 28319 I VideoRegression:              | Role = 'Button'
+11-02 21:40:38.224 28278 28319 I VideoRegression:              | Shape = 'RoundedCornerShape(topStart = CornerSize(size = 50.0%), topEnd = CornerSize(size = 50.0%), bottomEnd = CornerSize(size = 50.0%), bottomStart = CornerSize(size = 50.0%))'
+11-02 21:40:38.224 28278 28319 I VideoRegression:              | Actions = [OnClick, OnLongClick, RequestFocus]
+11-02 21:40:38.224 28278 28319 I VideoRegression:              | MergeDescendants = 'true'
+11-02 21:40:38.224 28278 28319 I VideoRegression:              |-Node #313 at (l=369.0, t=2104.0, r=485.0, b=2220.0)px
+11-02 21:40:38.224 28278 28319 I VideoRegression:              | ContentDescription = '[Aspect ratio, Aspect ratio]'
+11-02 21:40:38.224 28278 28319 I VideoRegression:              | Focused = 'false'
+11-02 21:40:38.224 28278 28319 I VideoRegression:              | Role = 'Button'
+11-02 21:40:38.224 28278 28319 I VideoRegression:              | Shape = 'RoundedCornerShape(topStart = CornerSize(size = 50.0%), topEnd = CornerSize(size = 50.0%), bottomEnd = CornerSize(size = 50.0%), bottomStart = CornerSize(size = 50.0%))'
+11-02 21:40:38.224 28278 28319 I VideoRegression:              | Actions = [OnClick, OnLongClick, RequestFocus]
+11-02 21:40:38.224 28278 28319 I VideoRegression:              | MergeDescendants = 'true'
+11-02 21:40:38.224 28278 28319 I VideoRegression:              |-Node #315 at (l=595.0, t=2104.0, r=711.0, b=2220.0)px
+11-02 21:40:38.224 28278 28319 I VideoRegression:              | ContentDescription = '[Picture-in-Picture, PiP]'
+11-02 21:40:38.224 28278 28319 I VideoRegression:              | Focused = 'false'
+11-02 21:40:38.224 28278 28319 I VideoRegression:              | Role = 'Button'
+11-02 21:40:38.224 28278 28319 I VideoRegression:              | Shape = 'RoundedCornerShape(topStart = CornerSize(size = 50.0%), topEnd = CornerSize(size = 50.0%), bottomEnd = CornerSize(size = 50.0%), bottomStart = CornerSize(size = 50.0%))'
+11-02 21:40:38.224 28278 28319 I VideoRegression:              | Actions = [OnClick, OnLongClick, RequestFocus]
+11-02 21:40:38.224 28278 28319 I VideoRegression:              | MergeDescendants = 'true'
+11-02 21:40:38.224 28278 28319 I VideoRegression:              |-Node #317 at (l=822.0, t=2104.0, r=938.0, b=2220.0)px
+11-02 21:40:38.224 28278 28319 I VideoRegression:                ContentDescription = '[Rotate screen, Rotate Screen]'
+11-02 21:40:38.224 28278 28319 I VideoRegression:                Focused = 'false'
+11-02 21:40:38.224 28278 28319 I VideoRegression:                Role = 'Button'
+11-02 21:40:38.224 28278 28319 I VideoRegression:                Shape = 'RoundedCornerShape(topStart = CornerSize(size = 50.0%), topEnd = CornerSize(size = 50.0%), bottomEnd = CornerSize(size = 50.0%), bottomStart = CornerSize(size = 50.0%))'
+11-02 21:40:38.224 28278 28319 I VideoRegression:                Actions = [OnClick, OnLongClick, RequestFocus]
+11-02 21:40:38.224 28278 28319 I VideoRegression:                MergeDescendants = 'true'

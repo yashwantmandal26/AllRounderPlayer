@@ -1,0 +1,1365 @@
+--------- beginning of main
+11-02 20:43:44.089 16538 16573 I TestRunner: run started: 10 tests
+11-02 20:43:44.131 16538 16573 I TestRunner: started: uiPlaybackShouldAddGeneratedTrackToRecentlyPlayed(com.example.ymediaplayer.ui.MusicPlaybackIntegrationTest)
+11-02 20:44:02.677 16538 16573 E TestRunner: failed: uiPlaybackShouldAddGeneratedTrackToRecentlyPlayed(com.example.ymediaplayer.ui.MusicPlaybackIntegrationTest)
+11-02 20:44:02.683 16538 16573 E TestRunner: ----- begin exception -----
+11-02 20:44:02.683 16538 16573 E TestRunner: java.lang.IllegalStateException: No compose hierarchies found in the app. Possible reasons include: (1) the Activity that calls setContent did not launch; (2) setContent was not called; (3) setContent was called before the ComposeTestRule ran. If setContent is called by the Activity, make sure the Activity is launched after the ComposeTestRule runs
+11-02 20:44:02.683 16538 16573 E TestRunner: 	at androidx.compose.ui.test.TestOwnerKt.getAllSemanticsNodes(TestOwner.kt:117)
+11-02 20:44:02.683 16538 16573 E TestRunner: 	at androidx.compose.ui.test.SemanticsNodeInteraction.fetchSemanticsNodes$ui_test(SemanticsNodeInteraction.kt:64)
+11-02 20:44:02.683 16538 16573 E TestRunner: 	at androidx.compose.ui.test.SemanticsNodeInteraction.fetchOneOrThrow(SemanticsNodeInteraction.kt:157)
+11-02 20:44:02.683 16538 16573 E TestRunner: 	at androidx.compose.ui.test.SemanticsNodeInteraction.fetchOneOrThrow$default(SemanticsNodeInteraction.kt:150)
+11-02 20:44:02.683 16538 16573 E TestRunner: 	at androidx.compose.ui.test.SemanticsNodeInteraction.fetchSemanticsNode(SemanticsNodeInteraction.kt:84)
+11-02 20:44:02.683 16538 16573 E TestRunner: 	at androidx.compose.ui.test.ActionsKt.performTouchInput(Actions.kt:403)
+11-02 20:44:02.683 16538 16573 E TestRunner: 	at androidx.compose.ui.test.AndroidActions.performClickImpl(Actions.android.kt:23)
+11-02 20:44:02.683 16538 16573 E TestRunner: 	at androidx.compose.ui.test.ActionsKt.performClick(Actions.kt:61)
+11-02 20:44:02.683 16538 16573 E TestRunner: 	at com.example.ymediaplayer.ui.MusicPlaybackIntegrationTest.playFixtureThroughSearchUi(MusicPlaybackIntegrationTest.kt:259)
+11-02 20:44:02.683 16538 16573 E TestRunner: 	at com.example.ymediaplayer.ui.MusicPlaybackIntegrationTest.uiPlaybackShouldAddGeneratedTrackToRecentlyPlayed(MusicPlaybackIntegrationTest.kt:162)
+11-02 20:44:02.683 16538 16573 E TestRunner: 	at java.lang.reflect.Method.invoke(Native Method)
+11-02 20:44:02.683 16538 16573 E TestRunner: 	at org.junit.runners.model.FrameworkMethod$1.runReflectiveCall(FrameworkMethod.java:59)
+11-02 20:44:02.683 16538 16573 E TestRunner: 	at org.junit.internal.runners.model.ReflectiveCallable.run(ReflectiveCallable.java:12)
+11-02 20:44:02.683 16538 16573 E TestRunner: 	at org.junit.runners.model.FrameworkMethod.invokeExplosively(FrameworkMethod.java:56)
+11-02 20:44:02.683 16538 16573 E TestRunner: 	at org.junit.internal.runners.statements.InvokeMethod.evaluate(InvokeMethod.java:17)
+11-02 20:44:02.683 16538 16573 E TestRunner: 	at androidx.test.internal.runner.junit4.statement.RunBefores.evaluate(RunBefores.java:80)
+11-02 20:44:02.683 16538 16573 E TestRunner: 	at androidx.test.internal.runner.junit4.statement.RunAfters.evaluate(RunAfters.java:61)
+11-02 20:44:02.683 16538 16573 E TestRunner: 	at androidx.compose.ui.test.junit4.AndroidComposeTestRule$apply$testWithDisposal$1.evaluate(AndroidComposeTestRule.android.kt:426)
+11-02 20:44:02.683 16538 16573 E TestRunner: 	at org.junit.rules.ExternalResource$1.evaluate(ExternalResource.java:54)
+11-02 20:44:02.683 16538 16573 E TestRunner: 	at androidx.compose.ui.test.junit4.AndroidComposeTestRule$apply$1$evaluate$1.invokeSuspend(AndroidComposeTestRule.android.kt:448)
+11-02 20:44:02.683 16538 16573 E TestRunner: 	at androidx.compose.ui.test.junit4.AndroidComposeTestRule$apply$1$evaluate$1.invoke(AndroidComposeTestRule.android.kt:8)
+11-02 20:44:02.683 16538 16573 E TestRunner: 	at androidx.compose.ui.test.junit4.AndroidComposeTestRule$apply$1$evaluate$1.invoke(AndroidComposeTestRule.android.kt:4)
+11-02 20:44:02.683 16538 16573 E TestRunner: 	at androidx.compose.ui.test.AndroidComposeUiTestEnvironment$runTest$1$1$1$1$1.invokeSuspend(ComposeUiTest.android.kt:689)
+11-02 20:44:02.683 16538 16573 E TestRunner: 	at androidx.compose.ui.test.AndroidComposeUiTestEnvironment$runTest$1$1$1$1$1.invoke(ComposeUiTest.android.kt:8)
+11-02 20:44:02.683 16538 16573 E TestRunner: 	at androidx.compose.ui.test.AndroidComposeUiTestEnvironment$runTest$1$1$1$1$1.invoke(ComposeUiTest.android.kt:2)
+11-02 20:44:02.683 16538 16573 E TestRunner: 	at androidx.compose.ui.test.EspressoLink.withStrategy(EspressoLink.android.kt:69)
+11-02 20:44:02.683 16538 16573 E TestRunner: 	at androidx.compose.ui.test.AndroidComposeUiTestEnvironment$runTest$1$1.invokeSuspend(ComposeUiTest.android.kt:686)
+11-02 20:44:02.683 16538 16573 E TestRunner: 	at androidx.compose.ui.test.AndroidComposeUiTestEnvironment$runTest$1$1.invoke(ComposeUiTest.android.kt:8)
+11-02 20:44:02.683 16538 16573 E TestRunner: 	at androidx.compose.ui.test.AndroidComposeUiTestEnvironment$runTest$1$1.invoke(ComposeUiTest.android.kt:4)
+11-02 20:44:02.683 16538 16573 E TestRunner: 	at kotlinx.coroutines.test.TestBuildersKt__TestBuildersKt$runTest$2$1$1.invokeSuspend(TestBuilders.kt:317)
+11-02 20:44:02.683 16538 16573 E TestRunner: 	at kotlin.coroutines.jvm.internal.BaseContinuationImpl.resumeWith(ContinuationImpl.kt:34)
+11-02 20:44:02.683 16538 16573 E TestRunner: 	at kotlinx.coroutines.DispatchedTask.run(DispatchedTask.kt:100)
+11-02 20:44:02.683 16538 16573 E TestRunner: 	at kotlinx.coroutines.test.TestDispatcher.processEvent$kotlinx_coroutines_test(TestDispatcher.kt:24)
+11-02 20:44:02.683 16538 16573 E TestRunner: 	at kotlinx.coroutines.test.TestCoroutineScheduler.tryRunNextTaskUnless$kotlinx_coroutines_test(TestCoroutineScheduler.kt:99)
+11-02 20:44:02.683 16538 16573 E TestRunner: 	at kotlinx.coroutines.test.TestBuildersKt__TestBuildersKt$runTest$2$1$workRunner$1.invokeSuspend(TestBuilders.kt:326)
+11-02 20:44:02.683 16538 16573 E TestRunner: 	at kotlin.coroutines.jvm.internal.BaseContinuationImpl.resumeWith(ContinuationImpl.kt:34)
+11-02 20:44:02.685 16538 16573 E TestRunner: 	at kotlinx.coroutines.DispatchedTask.run(DispatchedTask.kt:100)
+11-02 20:44:02.685 16538 16573 E TestRunner: 	at kotlinx.coroutines.EventLoopImplBase.processNextEvent(EventLoop.common.kt:263)
+11-02 20:44:02.685 16538 16573 E TestRunner: 	at kotlinx.coroutines.BlockingCoroutine.joinBlocking(Builders.kt:94)
+11-02 20:44:02.685 16538 16573 E TestRunner: 	at kotlinx.coroutines.BuildersKt__BuildersKt.runBlocking(Builders.kt:70)
+11-02 20:44:02.685 16538 16573 E TestRunner: 	at kotlinx.coroutines.BuildersKt.runBlocking(dex-id-7e891886282f657a0c2e7600c286f69a4e2f90c4:1)
+11-02 20:44:02.685 16538 16573 E TestRunner: 	at kotlinx.coroutines.BuildersKt__BuildersKt.runBlocking$default(Builders.kt:48)
+11-02 20:44:02.685 16538 16573 E TestRunner: 	at kotlinx.coroutines.BuildersKt.runBlocking$default(dex-id-7e891886282f657a0c2e7600c286f69a4e2f90c4:1)
+11-02 20:44:02.685 16538 16573 E TestRunner: 	at kotlinx.coroutines.test.TestBuildersJvmKt.createTestResult(TestBuildersJvm.kt:10)
+11-02 20:44:02.685 16538 16573 E TestRunner: 	at kotlinx.coroutines.test.TestBuildersKt__TestBuildersKt.runTest-8Mi8wO0(TestBuilders.kt:309)
+11-02 20:44:02.685 16538 16573 E TestRunner: 	at kotlinx.coroutines.test.TestBuildersKt.runTest-8Mi8wO0(dex-id-7e6b3808279efd3cb39bf2dfa1a45ff99919b721:1)
+11-02 20:44:02.685 16538 16573 E TestRunner: 	at kotlinx.coroutines.test.TestBuildersKt__TestBuildersKt.runTest-8Mi8wO0(TestBuilders.kt:167)
+11-02 20:44:02.685 16538 16573 E TestRunner: 	at kotlinx.coroutines.test.TestBuildersKt.runTest-8Mi8wO0(dex-id-7e6b3808279efd3cb39bf2dfa1a45ff99919b721:1)
+11-02 20:44:02.685 16538 16573 E TestRunner: 	at androidx.compose.ui.test.AndroidComposeUiTestEnvironment.runTest(ComposeUiTest.android.kt:665)
+11-02 20:44:02.685 16538 16573 E TestRunner: 	at androidx.compose.ui.test.junit4.AndroidComposeTestRule$apply$1.evaluate(AndroidComposeTestRule.android.kt:447)
+11-02 20:44:02.685 16538 16573 E TestRunner: 	at org.junit.runners.ParentRunner$3.evaluate(ParentRunner.java:306)
+11-02 20:44:02.685 16538 16573 E TestRunner: 	at org.junit.runners.BlockJUnit4ClassRunner$1.evaluate(BlockJUnit4ClassRunner.java:100)
+11-02 20:44:02.685 16538 16573 E TestRunner: 	at org.junit.runners.ParentRunner.runLeaf(ParentRunner.java:366)
+11-02 20:44:02.685 16538 16573 E TestRunner: 	at org.junit.runners.BlockJUnit4ClassRunner.runChild(BlockJUnit4ClassRunner.java:103)
+11-02 20:44:02.685 16538 16573 E TestRunner: 	at org.junit.runners.BlockJUnit4ClassRunner.runChild(BlockJUnit4ClassRunner.java:63)
+11-02 20:44:02.685 16538 16573 E TestRunner: 	at org.junit.runners.ParentRunner$4.run(ParentRunner.java:331)
+11-02 20:44:02.685 16538 16573 E TestRunner: 	at org.junit.runners.ParentRunner$1.schedule(ParentRunner.java:79)
+11-02 20:44:02.685 16538 16573 E TestRunner: 	at org.junit.runners.ParentRunner.runChildren(ParentRunner.java:329)
+11-02 20:44:02.685 16538 16573 E TestRunner: 	at org.junit.runners.ParentRunner.access$100(ParentRunner.java:66)
+11-02 20:44:02.685 16538 16573 E TestRunner: 	at org.junit.runners.ParentRunner$2.evaluate(ParentRunner.java:293)
+11-02 20:44:02.685 16538 16573 E TestRunner: 	at org.junit.internal.runners.statements.RunBefores.evaluate(RunBefores.java:26)
+11-02 20:44:02.685 16538 16573 E TestRunner: 	at org.junit.runners.ParentRunner$3.evaluate(ParentRunner.java:306)
+11-02 20:44:02.685 16538 16573 E TestRunner: 	at org.junit.runners.ParentRunner.run(ParentRunner.java:413)
+11-02 20:44:02.685 16538 16573 E TestRunner: 	at org.junit.runners.Suite.runChild(Suite.java:128)
+11-02 20:44:02.685 16538 16573 E TestRunner: 	at org.junit.runners.Suite.runChild(Suite.java:27)
+11-02 20:44:02.685 16538 16573 E TestRunner: 	at org.junit.runners.ParentRunner$4.run(ParentRunner.java:331)
+11-02 20:44:02.685 16538 16573 E TestRunner: 	at org.junit.runners.ParentRunner$1.schedule(ParentRunner.java:79)
+11-02 20:44:02.685 16538 16573 E TestRunner: 	at org.junit.runners.ParentRunner.runChildren(ParentRunner.java:329)
+11-02 20:44:02.685 16538 16573 E TestRunner: 	at org.junit.runners.ParentRunner.access$100(ParentRunner.java:66)
+11-02 20:44:02.685 16538 16573 E TestRunner: 	at org.junit.runners.ParentRunner$2.evaluate(ParentRunner.java:293)
+11-02 20:44:02.685 16538 16573 E TestRunner: 	at org.junit.runners.ParentRunner$3.evaluate(ParentRunner.java:306)
+11-02 20:44:02.685 16538 16573 E TestRunner: 	at org.junit.runners.ParentRunner.run(ParentRunner.java:413)
+11-02 20:44:02.685 16538 16573 E TestRunner: 	at org.junit.runner.JUnitCore.run(JUnitCore.java:137)
+11-02 20:44:02.685 16538 16573 E TestRunner: 	at org.junit.runner.JUnitCore.run(JUnitCore.java:115)
+11-02 20:44:02.685 16538 16573 E TestRunner: 	at androidx.test.internal.runner.TestExecutor.execute(TestExecutor.java:68)
+11-02 20:44:02.685 16538 16573 E TestRunner: 	at androidx.test.internal.runner.TestExecutor.execute(TestExecutor.java:59)
+11-02 20:44:02.685 16538 16573 E TestRunner: 	at androidx.test.runner.AndroidJUnitRunner.onStart(AndroidJUnitRunner.java:467)
+11-02 20:44:02.685 16538 16573 E TestRunner: 	at android.app.Instrumentation$InstrumentationThread.run(Instrumentation.java:2402)
+11-02 20:44:02.685 16538 16573 E TestRunner: ----- end exception -----
+11-02 20:44:02.687 16538 16573 I TestRunner: finished: uiPlaybackShouldAddGeneratedTrackToRecentlyPlayed(com.example.ymediaplayer.ui.MusicPlaybackIntegrationTest)
+11-02 20:44:02.691 16538 16573 I TestRunner: started: repeatOneUiShouldUpdatePlaybackServiceRepeatMode(com.example.ymediaplayer.ui.MusicPlaybackIntegrationTest)
+11-02 20:44:21.529 16538 16573 E TestRunner: failed: repeatOneUiShouldUpdatePlaybackServiceRepeatMode(com.example.ymediaplayer.ui.MusicPlaybackIntegrationTest)
+11-02 20:44:21.530 16538 16573 E TestRunner: ----- begin exception -----
+11-02 20:44:21.530 16538 16573 E TestRunner: java.lang.IllegalStateException: No compose hierarchies found in the app. Possible reasons include: (1) the Activity that calls setContent did not launch; (2) setContent was not called; (3) setContent was called before the ComposeTestRule ran. If setContent is called by the Activity, make sure the Activity is launched after the ComposeTestRule runs
+11-02 20:44:21.530 16538 16573 E TestRunner: 	at androidx.compose.ui.test.TestOwnerKt.getAllSemanticsNodes(TestOwner.kt:117)
+11-02 20:44:21.530 16538 16573 E TestRunner: 	at androidx.compose.ui.test.SemanticsNodeInteraction.fetchSemanticsNodes$ui_test(SemanticsNodeInteraction.kt:64)
+11-02 20:44:21.530 16538 16573 E TestRunner: 	at androidx.compose.ui.test.SemanticsNodeInteraction.fetchOneOrThrow(SemanticsNodeInteraction.kt:157)
+11-02 20:44:21.530 16538 16573 E TestRunner: 	at androidx.compose.ui.test.SemanticsNodeInteraction.fetchOneOrThrow$default(SemanticsNodeInteraction.kt:150)
+11-02 20:44:21.530 16538 16573 E TestRunner: 	at androidx.compose.ui.test.SemanticsNodeInteraction.fetchSemanticsNode(SemanticsNodeInteraction.kt:84)
+11-02 20:44:21.530 16538 16573 E TestRunner: 	at androidx.compose.ui.test.ActionsKt.performTouchInput(Actions.kt:403)
+11-02 20:44:21.530 16538 16573 E TestRunner: 	at androidx.compose.ui.test.AndroidActions.performClickImpl(Actions.android.kt:23)
+11-02 20:44:21.530 16538 16573 E TestRunner: 	at androidx.compose.ui.test.ActionsKt.performClick(Actions.kt:61)
+11-02 20:44:21.530 16538 16573 E TestRunner: 	at com.example.ymediaplayer.ui.MusicPlaybackIntegrationTest.playFixtureThroughSearchUi(MusicPlaybackIntegrationTest.kt:259)
+11-02 20:44:21.530 16538 16573 E TestRunner: 	at com.example.ymediaplayer.ui.MusicPlaybackIntegrationTest.repeatOneUiShouldUpdatePlaybackServiceRepeatMode(MusicPlaybackIntegrationTest.kt:174)
+11-02 20:44:21.530 16538 16573 E TestRunner: 	at java.lang.reflect.Method.invoke(Native Method)
+11-02 20:44:21.530 16538 16573 E TestRunner: 	at org.junit.runners.model.FrameworkMethod$1.runReflectiveCall(FrameworkMethod.java:59)
+11-02 20:44:21.530 16538 16573 E TestRunner: 	at org.junit.internal.runners.model.ReflectiveCallable.run(ReflectiveCallable.java:12)
+11-02 20:44:21.530 16538 16573 E TestRunner: 	at org.junit.runners.model.FrameworkMethod.invokeExplosively(FrameworkMethod.java:56)
+11-02 20:44:21.530 16538 16573 E TestRunner: 	at org.junit.internal.runners.statements.InvokeMethod.evaluate(InvokeMethod.java:17)
+11-02 20:44:21.530 16538 16573 E TestRunner: 	at androidx.test.internal.runner.junit4.statement.RunBefores.evaluate(RunBefores.java:80)
+11-02 20:44:21.530 16538 16573 E TestRunner: 	at androidx.test.internal.runner.junit4.statement.RunAfters.evaluate(RunAfters.java:61)
+11-02 20:44:21.530 16538 16573 E TestRunner: 	at androidx.compose.ui.test.junit4.AndroidComposeTestRule$apply$testWithDisposal$1.evaluate(AndroidComposeTestRule.android.kt:426)
+11-02 20:44:21.530 16538 16573 E TestRunner: 	at org.junit.rules.ExternalResource$1.evaluate(ExternalResource.java:54)
+11-02 20:44:21.530 16538 16573 E TestRunner: 	at androidx.compose.ui.test.junit4.AndroidComposeTestRule$apply$1$evaluate$1.invokeSuspend(AndroidComposeTestRule.android.kt:448)
+11-02 20:44:21.530 16538 16573 E TestRunner: 	at androidx.compose.ui.test.junit4.AndroidComposeTestRule$apply$1$evaluate$1.invoke(AndroidComposeTestRule.android.kt:8)
+11-02 20:44:21.530 16538 16573 E TestRunner: 	at androidx.compose.ui.test.junit4.AndroidComposeTestRule$apply$1$evaluate$1.invoke(AndroidComposeTestRule.android.kt:4)
+11-02 20:44:21.530 16538 16573 E TestRunner: 	at androidx.compose.ui.test.AndroidComposeUiTestEnvironment$runTest$1$1$1$1$1.invokeSuspend(ComposeUiTest.android.kt:689)
+11-02 20:44:21.530 16538 16573 E TestRunner: 	at androidx.compose.ui.test.AndroidComposeUiTestEnvironment$runTest$1$1$1$1$1.invoke(ComposeUiTest.android.kt:8)
+11-02 20:44:21.530 16538 16573 E TestRunner: 	at androidx.compose.ui.test.AndroidComposeUiTestEnvironment$runTest$1$1$1$1$1.invoke(ComposeUiTest.android.kt:2)
+11-02 20:44:21.530 16538 16573 E TestRunner: 	at androidx.compose.ui.test.EspressoLink.withStrategy(EspressoLink.android.kt:69)
+11-02 20:44:21.530 16538 16573 E TestRunner: 	at androidx.compose.ui.test.AndroidComposeUiTestEnvironment$runTest$1$1.invokeSuspend(ComposeUiTest.android.kt:686)
+11-02 20:44:21.530 16538 16573 E TestRunner: 	at androidx.compose.ui.test.AndroidComposeUiTestEnvironment$runTest$1$1.invoke(ComposeUiTest.android.kt:8)
+11-02 20:44:21.530 16538 16573 E TestRunner: 	at androidx.compose.ui.test.AndroidComposeUiTestEnvironment$runTest$1$1.invoke(ComposeUiTest.android.kt:4)
+11-02 20:44:21.530 16538 16573 E TestRunner: 	at kotlinx.coroutines.test.TestBuildersKt__TestBuildersKt$runTest$2$1$1.invokeSuspend(TestBuilders.kt:317)
+11-02 20:44:21.530 16538 16573 E TestRunner: 	at kotlin.coroutines.jvm.internal.BaseContinuationImpl.resumeWith(ContinuationImpl.kt:34)
+11-02 20:44:21.530 16538 16573 E TestRunner: 	at kotlinx.coroutines.DispatchedTask.run(DispatchedTask.kt:100)
+11-02 20:44:21.530 16538 16573 E TestRunner: 	at kotlinx.coroutines.test.TestDispatcher.processEvent$kotlinx_coroutines_test(TestDispatcher.kt:24)
+11-02 20:44:21.530 16538 16573 E TestRunner: 	at kotlinx.coroutines.test.TestCoroutineScheduler.tryRunNextTaskUnless$kotlinx_coroutines_test(TestCoroutineScheduler.kt:99)
+11-02 20:44:21.530 16538 16573 E TestRunner: 	at kotlinx.coroutines.test.TestBuildersKt__TestBuildersKt$runTest$2$1$workRunner$1.invokeSuspend(TestBuilders.kt:326)
+11-02 20:44:21.530 16538 16573 E TestRunner: 	at kotlin.coroutines.jvm.internal.BaseContinuationImpl.resumeWith(ContinuationImpl.kt:34)
+11-02 20:44:21.530 16538 16573 E TestRunner: 	at kotlinx.coroutines.DispatchedTask.run(DispatchedTask.kt:100)
+11-02 20:44:21.530 16538 16573 E TestRunner: 	at kotlinx.coroutines.EventLoopImplBase.processNextEvent(EventLoop.common.kt:263)
+11-02 20:44:21.530 16538 16573 E TestRunner: 	at kotlinx.coroutines.BlockingCoroutine.joinBlocking(Builders.kt:94)
+11-02 20:44:21.530 16538 16573 E TestRunner: 	at kotlinx.coroutines.BuildersKt__BuildersKt.runBlocking(Builders.kt:70)
+11-02 20:44:21.530 16538 16573 E TestRunner: 	at kotlinx.coroutines.BuildersKt.runBlocking(dex-id-7e891886282f657a0c2e7600c286f69a4e2f90c4:1)
+11-02 20:44:21.530 16538 16573 E TestRunner: 	at kotlinx.coroutines.BuildersKt__BuildersKt.runBlocking$default(Builders.kt:48)
+11-02 20:44:21.530 16538 16573 E TestRunner: 	at kotlinx.coroutines.BuildersKt.runBlocking$default(dex-id-7e891886282f657a0c2e7600c286f69a4e2f90c4:1)
+11-02 20:44:21.530 16538 16573 E TestRunner: 	at kotlinx.coroutines.test.TestBuildersJvmKt.createTestResult(TestBuildersJvm.kt:10)
+11-02 20:44:21.530 16538 16573 E TestRunner: 	at kotlinx.coroutines.test.TestBuildersKt__TestBuildersKt.runTest-8Mi8wO0(TestBuilders.kt:309)
+11-02 20:44:21.530 16538 16573 E TestRunner: 	at kotlinx.coroutines.test.TestBuildersKt.runTest-8Mi8wO0(dex-id-7e6b3808279efd3cb39bf2dfa1a45ff99919b721:1)
+11-02 20:44:21.530 16538 16573 E TestRunner: 	at kotlinx.coroutines.test.TestBuildersKt__TestBuildersKt.runTest-8Mi8wO0(TestBuilders.kt:167)
+11-02 20:44:21.530 16538 16573 E TestRunner: 	at kotlinx.coroutines.test.TestBuildersKt.runTest-8Mi8wO0(dex-id-7e6b3808279efd3cb39bf2dfa1a45ff99919b721:1)
+11-02 20:44:21.530 16538 16573 E TestRunner: 	at androidx.compose.ui.test.AndroidComposeUiTestEnvironment.runTest(ComposeUiTest.android.kt:665)
+11-02 20:44:21.530 16538 16573 E TestRunner: 	at androidx.compose.ui.test.junit4.AndroidComposeTestRule$apply$1.evaluate(AndroidComposeTestRule.android.kt:447)
+11-02 20:44:21.530 16538 16573 E TestRunner: 	at org.junit.runners.ParentRunner$3.evaluate(ParentRunner.java:306)
+11-02 20:44:21.530 16538 16573 E TestRunner: 	at org.junit.runners.BlockJUnit4ClassRunner$1.evaluate(BlockJUnit4ClassRunner.java:100)
+11-02 20:44:21.530 16538 16573 E TestRunner: 	at org.junit.runners.ParentRunner.runLeaf(ParentRunner.java:366)
+11-02 20:44:21.530 16538 16573 E TestRunner: 	at org.junit.runners.BlockJUnit4ClassRunner.runChild(BlockJUnit4ClassRunner.java:103)
+11-02 20:44:21.530 16538 16573 E TestRunner: 	at org.junit.runners.BlockJUnit4ClassRunner.runChild(BlockJUnit4ClassRunner.java:63)
+11-02 20:44:21.530 16538 16573 E TestRunner: 	at org.junit.runners.ParentRunner$4.run(ParentRunner.java:331)
+11-02 20:44:21.530 16538 16573 E TestRunner: 	at org.junit.runners.ParentRunner$1.schedule(ParentRunner.java:79)
+11-02 20:44:21.530 16538 16573 E TestRunner: 	at org.junit.runners.ParentRunner.runChildren(ParentRunner.java:329)
+11-02 20:44:21.530 16538 16573 E TestRunner: 	at org.junit.runners.ParentRunner.access$100(ParentRunner.java:66)
+11-02 20:44:21.530 16538 16573 E TestRunner: 	at org.junit.runners.ParentRunner$2.evaluate(ParentRunner.java:293)
+11-02 20:44:21.530 16538 16573 E TestRunner: 	at org.junit.internal.runners.statements.RunBefores.evaluate(RunBefores.java:26)
+11-02 20:44:21.530 16538 16573 E TestRunner: 	at org.junit.runners.ParentRunner$3.evaluate(ParentRunner.java:306)
+11-02 20:44:21.530 16538 16573 E TestRunner: 	at org.junit.runners.ParentRunner.run(ParentRunner.java:413)
+11-02 20:44:21.530 16538 16573 E TestRunner: 	at org.junit.runners.Suite.runChild(Suite.java:128)
+11-02 20:44:21.530 16538 16573 E TestRunner: 	at org.junit.runners.Suite.runChild(Suite.java:27)
+11-02 20:44:21.530 16538 16573 E TestRunner: 	at org.junit.runners.ParentRunner$4.run(ParentRunner.java:331)
+11-02 20:44:21.530 16538 16573 E TestRunner: 	at org.junit.runners.ParentRunner$1.schedule(ParentRunner.java:79)
+11-02 20:44:21.530 16538 16573 E TestRunner: 	at org.junit.runners.ParentRunner.runChildren(ParentRunner.java:329)
+11-02 20:44:21.530 16538 16573 E TestRunner: 	at org.junit.runners.ParentRunner.access$100(ParentRunner.java:66)
+11-02 20:44:21.530 16538 16573 E TestRunner: 	at org.junit.runners.ParentRunner$2.evaluate(ParentRunner.java:293)
+11-02 20:44:21.530 16538 16573 E TestRunner: 	at org.junit.runners.ParentRunner$3.evaluate(ParentRunner.java:306)
+11-02 20:44:21.530 16538 16573 E TestRunner: 	at org.junit.runners.ParentRunner.run(ParentRunner.java:413)
+11-02 20:44:21.530 16538 16573 E TestRunner: 	at org.junit.runner.JUnitCore.run(JUnitCore.java:137)
+11-02 20:44:21.530 16538 16573 E TestRunner: 	at org.junit.runner.JUnitCore.run(JUnitCore.java:115)
+11-02 20:44:21.530 16538 16573 E TestRunner: 	at androidx.test.internal.runner.TestExecutor.execute(TestExecutor.java:68)
+11-02 20:44:21.530 16538 16573 E TestRunner: 	at androidx.test.internal.runner.TestExecutor.execute(TestExecutor.java:59)
+11-02 20:44:21.530 16538 16573 E TestRunner: 	at androidx.test.runner.AndroidJUnitRunner.onStart(AndroidJUnitRunner.java:467)
+11-02 20:44:21.530 16538 16573 E TestRunner: 	at android.app.Instrumentation$InstrumentationThread.run(Instrumentation.java:2402)
+11-02 20:44:21.530 16538 16573 E TestRunner: ----- end exception -----
+11-02 20:44:21.531 16538 16573 I TestRunner: finished: repeatOneUiShouldUpdatePlaybackServiceRepeatMode(com.example.ymediaplayer.ui.MusicPlaybackIntegrationTest)
+11-02 20:44:21.538 16538 16573 I TestRunner: started: activeQueueSurvivesLeavingMusicAndNextUsesThatQueue(com.example.ymediaplayer.ui.MusicPlaybackIntegrationTest)
+11-02 20:44:33.015 16538 16573 I TestRunner: finished: activeQueueSurvivesLeavingMusicAndNextUsesThatQueue(com.example.ymediaplayer.ui.MusicPlaybackIntegrationTest)
+11-02 20:44:33.016 16538 16573 I TestRunner: started: sleepTimerShouldSurviveMusicScreenDetachAndRemount(com.example.ymediaplayer.ui.MusicPlaybackIntegrationTest)
+11-02 20:44:40.202 16538 16573 I TestRunner: finished: sleepTimerShouldSurviveMusicScreenDetachAndRemount(com.example.ymediaplayer.ui.MusicPlaybackIntegrationTest)
+11-02 20:44:40.204 16538 16573 I TestRunner: started: autoPlayOffPausesAtBoundaryWhileKeepingTheSelectedQueue(com.example.ymediaplayer.ui.MusicPlaybackIntegrationTest)
+11-02 20:44:45.387 16538 16573 I TestRunner: finished: autoPlayOffPausesAtBoundaryWhileKeepingTheSelectedQueue(com.example.ymediaplayer.ui.MusicPlaybackIntegrationTest)
+11-02 20:44:45.389 16538 16573 I TestRunner: started: serviceSleepTimerPausesWithoutMusicScreen(com.example.ymediaplayer.ui.MusicPlaybackIntegrationTest)
+11-02 20:44:47.451 17224 17247 I TestRunner: run started: 4 tests
+11-02 20:44:47.452 17224 17247 I TestRunner: started: normalPipelineStartupEmptyDrainThenSequentialChunks(com.example.ymediaplayer.player.VideoAudioPipelineTest)
+11-02 20:44:47.460 17224 17247 I TestRunner: finished: normalPipelineStartupEmptyDrainThenSequentialChunks(com.example.ymediaplayer.player.VideoAudioPipelineTest)
+11-02 20:44:47.462 17224 17247 I TestRunner: started: volumeLevelingSequentialPcm16StereoChunks(com.example.ymediaplayer.player.VideoAudioPipelineTest)
+11-02 20:44:47.499 17224 17247 I TestRunner: finished: volumeLevelingSequentialPcm16StereoChunks(com.example.ymediaplayer.player.VideoAudioPipelineTest)
+11-02 20:44:47.501 17224 17247 I TestRunner: started: volumeLevelingPipelineStartupEmptyDrainThenSequentialChunks(com.example.ymediaplayer.player.VideoAudioPipelineTest)
+11-02 20:44:47.542 17224 17247 I TestRunner: finished: volumeLevelingPipelineStartupEmptyDrainThenSequentialChunks(com.example.ymediaplayer.player.VideoAudioPipelineTest)
+11-02 20:44:47.543 17224 17247 I TestRunner: started: normalSequentialPcm16StereoChunks(com.example.ymediaplayer.player.VideoAudioPipelineTest)
+11-02 20:44:47.550 17224 17247 I TestRunner: finished: normalSequentialPcm16StereoChunks(com.example.ymediaplayer.player.VideoAudioPipelineTest)
+11-02 20:44:47.552 17224 17247 I TestRunner: run finished: 4 tests, 0 failed, 0 ignored
+11-02 20:45:33.853 17379 17398 I TestRunner: run started: 6 tests
+11-02 20:45:33.888 17379 17398 I TestRunner: started: uiPlaybackShouldAddGeneratedTrackToRecentlyPlayed(com.example.ymediaplayer.ui.MusicPlaybackIntegrationTest)
+11-02 20:45:37.003 17379 17398 E TestRunner: failed: uiPlaybackShouldAddGeneratedTrackToRecentlyPlayed(com.example.ymediaplayer.ui.MusicPlaybackIntegrationTest)
+11-02 20:45:37.006 17379 17398 E TestRunner: ----- begin exception -----
+11-02 20:45:37.006 17379 17398 E TestRunner: java.util.NoSuchElementException: Collection contains no element matching the predicate.
+11-02 20:45:37.006 17379 17398 E TestRunner: 	at com.example.ymediaplayer.ui.MusicPlaybackIntegrationTest.prepareGeneratedFixture(MusicPlaybackIntegrationTest.kt:297)
+11-02 20:45:37.006 17379 17398 E TestRunner: 	at java.lang.reflect.Method.invoke(Native Method)
+11-02 20:45:37.006 17379 17398 E TestRunner: 	at org.junit.runners.model.FrameworkMethod$1.runReflectiveCall(FrameworkMethod.java:59)
+11-02 20:45:37.006 17379 17398 E TestRunner: 	at org.junit.internal.runners.model.ReflectiveCallable.run(ReflectiveCallable.java:12)
+11-02 20:45:37.006 17379 17398 E TestRunner: 	at org.junit.runners.model.FrameworkMethod.invokeExplosively(FrameworkMethod.java:56)
+11-02 20:45:37.006 17379 17398 E TestRunner: 	at androidx.test.internal.runner.junit4.statement.RunBefores.evaluate(RunBefores.java:76)
+11-02 20:45:37.006 17379 17398 E TestRunner: 	at androidx.test.internal.runner.junit4.statement.RunAfters.evaluate(RunAfters.java:61)
+11-02 20:45:37.006 17379 17398 E TestRunner: 	at androidx.compose.ui.test.junit4.AndroidComposeTestRule$apply$testWithDisposal$1.evaluate(AndroidComposeTestRule.android.kt:426)
+11-02 20:45:37.006 17379 17398 E TestRunner: 	at org.junit.rules.ExternalResource$1.evaluate(ExternalResource.java:54)
+11-02 20:45:37.006 17379 17398 E TestRunner: 	at androidx.compose.ui.test.junit4.AndroidComposeTestRule$apply$1$evaluate$1.invokeSuspend(AndroidComposeTestRule.android.kt:448)
+11-02 20:45:37.006 17379 17398 E TestRunner: 	at androidx.compose.ui.test.junit4.AndroidComposeTestRule$apply$1$evaluate$1.invoke(AndroidComposeTestRule.android.kt:8)
+11-02 20:45:37.006 17379 17398 E TestRunner: 	at androidx.compose.ui.test.junit4.AndroidComposeTestRule$apply$1$evaluate$1.invoke(AndroidComposeTestRule.android.kt:4)
+11-02 20:45:37.006 17379 17398 E TestRunner: 	at androidx.compose.ui.test.AndroidComposeUiTestEnvironment$runTest$1$1$1$1$1.invokeSuspend(ComposeUiTest.android.kt:689)
+11-02 20:45:37.006 17379 17398 E TestRunner: 	at androidx.compose.ui.test.AndroidComposeUiTestEnvironment$runTest$1$1$1$1$1.invoke(ComposeUiTest.android.kt:8)
+11-02 20:45:37.006 17379 17398 E TestRunner: 	at androidx.compose.ui.test.AndroidComposeUiTestEnvironment$runTest$1$1$1$1$1.invoke(ComposeUiTest.android.kt:2)
+11-02 20:45:37.006 17379 17398 E TestRunner: 	at androidx.compose.ui.test.EspressoLink.withStrategy(EspressoLink.android.kt:69)
+11-02 20:45:37.006 17379 17398 E TestRunner: 	at androidx.compose.ui.test.AndroidComposeUiTestEnvironment$runTest$1$1.invokeSuspend(ComposeUiTest.android.kt:686)
+11-02 20:45:37.006 17379 17398 E TestRunner: 	at androidx.compose.ui.test.AndroidComposeUiTestEnvironment$runTest$1$1.invoke(ComposeUiTest.android.kt:8)
+11-02 20:45:37.006 17379 17398 E TestRunner: 	at androidx.compose.ui.test.AndroidComposeUiTestEnvironment$runTest$1$1.invoke(ComposeUiTest.android.kt:4)
+11-02 20:45:37.006 17379 17398 E TestRunner: 	at kotlinx.coroutines.test.TestBuildersKt__TestBuildersKt$runTest$2$1$1.invokeSuspend(TestBuilders.kt:317)
+11-02 20:45:37.006 17379 17398 E TestRunner: 	at kotlin.coroutines.jvm.internal.BaseContinuationImpl.resumeWith(ContinuationImpl.kt:34)
+11-02 20:45:37.006 17379 17398 E TestRunner: 	at kotlinx.coroutines.DispatchedTask.run(DispatchedTask.kt:100)
+11-02 20:45:37.006 17379 17398 E TestRunner: 	at kotlinx.coroutines.test.TestDispatcher.processEvent$kotlinx_coroutines_test(TestDispatcher.kt:24)
+11-02 20:45:37.006 17379 17398 E TestRunner: 	at kotlinx.coroutines.test.TestCoroutineScheduler.tryRunNextTaskUnless$kotlinx_coroutines_test(TestCoroutineScheduler.kt:99)
+11-02 20:45:37.006 17379 17398 E TestRunner: 	at kotlinx.coroutines.test.TestBuildersKt__TestBuildersKt$runTest$2$1$workRunner$1.invokeSuspend(TestBuilders.kt:326)
+11-02 20:45:37.006 17379 17398 E TestRunner: 	at kotlin.coroutines.jvm.internal.BaseContinuationImpl.resumeWith(ContinuationImpl.kt:34)
+11-02 20:45:37.006 17379 17398 E TestRunner: 	at kotlinx.coroutines.DispatchedTask.run(DispatchedTask.kt:100)
+11-02 20:45:37.006 17379 17398 E TestRunner: 	at kotlinx.coroutines.EventLoopImplBase.processNextEvent(EventLoop.common.kt:263)
+11-02 20:45:37.006 17379 17398 E TestRunner: 	at kotlinx.coroutines.BlockingCoroutine.joinBlocking(Builders.kt:94)
+11-02 20:45:37.006 17379 17398 E TestRunner: 	at kotlinx.coroutines.BuildersKt__BuildersKt.runBlocking(Builders.kt:70)
+11-02 20:45:37.006 17379 17398 E TestRunner: 	at kotlinx.coroutines.BuildersKt.runBlocking(dex-id-7e891886282f657a0c2e7600c286f69a4e2f90c4:1)
+11-02 20:45:37.006 17379 17398 E TestRunner: 	at kotlinx.coroutines.BuildersKt__BuildersKt.runBlocking$default(Builders.kt:48)
+11-02 20:45:37.006 17379 17398 E TestRunner: 	at kotlinx.coroutines.BuildersKt.runBlocking$default(dex-id-7e891886282f657a0c2e7600c286f69a4e2f90c4:1)
+11-02 20:45:37.006 17379 17398 E TestRunner: 	at kotlinx.coroutines.test.TestBuildersJvmKt.createTestResult(TestBuildersJvm.kt:10)
+11-02 20:45:37.006 17379 17398 E TestRunner: 	at kotlinx.coroutines.test.TestBuildersKt__TestBuildersKt.runTest-8Mi8wO0(TestBuilders.kt:309)
+11-02 20:45:37.006 17379 17398 E TestRunner: 	at kotlinx.coroutines.test.TestBuildersKt.runTest-8Mi8wO0(dex-id-7e6b3808279efd3cb39bf2dfa1a45ff99919b721:1)
+11-02 20:45:37.006 17379 17398 E TestRunner: 	at kotlinx.coroutines.test.TestBuildersKt__TestBuildersKt.runTest-8Mi8wO0(TestBuilders.kt:167)
+11-02 20:45:37.006 17379 17398 E TestRunner: 	at kotlinx.coroutines.test.TestBuildersKt.runTest-8Mi8wO0(dex-id-7e6b3808279efd3cb39bf2dfa1a45ff99919b721:1)
+11-02 20:45:37.006 17379 17398 E TestRunner: 	at androidx.compose.ui.test.AndroidComposeUiTestEnvironment.runTest(ComposeUiTest.android.kt:665)
+11-02 20:45:37.009 17379 17398 E TestRunner: 	at androidx.compose.ui.test.junit4.AndroidComposeTestRule$apply$1.evaluate(AndroidComposeTestRule.android.kt:447)
+11-02 20:45:37.009 17379 17398 E TestRunner: 	at org.junit.runners.ParentRunner$3.evaluate(ParentRunner.java:306)
+11-02 20:45:37.009 17379 17398 E TestRunner: 	at org.junit.runners.BlockJUnit4ClassRunner$1.evaluate(BlockJUnit4ClassRunner.java:100)
+11-02 20:45:37.009 17379 17398 E TestRunner: 	at org.junit.runners.ParentRunner.runLeaf(ParentRunner.java:366)
+11-02 20:45:37.009 17379 17398 E TestRunner: 	at org.junit.runners.BlockJUnit4ClassRunner.runChild(BlockJUnit4ClassRunner.java:103)
+11-02 20:45:37.009 17379 17398 E TestRunner: 	at org.junit.runners.BlockJUnit4ClassRunner.runChild(BlockJUnit4ClassRunner.java:63)
+11-02 20:45:37.009 17379 17398 E TestRunner: 	at org.junit.runners.ParentRunner$4.run(ParentRunner.java:331)
+11-02 20:45:37.009 17379 17398 E TestRunner: 	at org.junit.runners.ParentRunner$1.schedule(ParentRunner.java:79)
+11-02 20:45:37.009 17379 17398 E TestRunner: 	at org.junit.runners.ParentRunner.runChildren(ParentRunner.java:329)
+11-02 20:45:37.009 17379 17398 E TestRunner: 	at org.junit.runners.ParentRunner.access$100(ParentRunner.java:66)
+11-02 20:45:37.009 17379 17398 E TestRunner: 	at org.junit.runners.ParentRunner$2.evaluate(ParentRunner.java:293)
+11-02 20:45:37.009 17379 17398 E TestRunner: 	at org.junit.internal.runners.statements.RunBefores.evaluate(RunBefores.java:26)
+11-02 20:45:37.009 17379 17398 E TestRunner: 	at org.junit.runners.ParentRunner$3.evaluate(ParentRunner.java:306)
+11-02 20:45:37.009 17379 17398 E TestRunner: 	at org.junit.runners.ParentRunner.run(ParentRunner.java:413)
+11-02 20:45:37.009 17379 17398 E TestRunner: 	at org.junit.runners.Suite.runChild(Suite.java:128)
+11-02 20:45:37.009 17379 17398 E TestRunner: 	at org.junit.runners.Suite.runChild(Suite.java:27)
+11-02 20:45:37.009 17379 17398 E TestRunner: 	at org.junit.runners.ParentRunner$4.run(ParentRunner.java:331)
+11-02 20:45:37.009 17379 17398 E TestRunner: 	at org.junit.runners.ParentRunner$1.schedule(ParentRunner.java:79)
+11-02 20:45:37.009 17379 17398 E TestRunner: 	at org.junit.runners.ParentRunner.runChildren(ParentRunner.java:329)
+11-02 20:45:37.009 17379 17398 E TestRunner: 	at org.junit.runners.ParentRunner.access$100(ParentRunner.java:66)
+11-02 20:45:37.009 17379 17398 E TestRunner: 	at org.junit.runners.ParentRunner$2.evaluate(ParentRunner.java:293)
+11-02 20:45:37.009 17379 17398 E TestRunner: 	at org.junit.runners.ParentRunner$3.evaluate(ParentRunner.java:306)
+11-02 20:45:37.009 17379 17398 E TestRunner: 	at org.junit.runners.ParentRunner.run(ParentRunner.java:413)
+11-02 20:45:37.009 17379 17398 E TestRunner: 	at org.junit.runner.JUnitCore.run(JUnitCore.java:137)
+11-02 20:45:37.009 17379 17398 E TestRunner: 	at org.junit.runner.JUnitCore.run(JUnitCore.java:115)
+11-02 20:45:37.009 17379 17398 E TestRunner: 	at androidx.test.internal.runner.TestExecutor.execute(TestExecutor.java:68)
+11-02 20:45:37.009 17379 17398 E TestRunner: 	at androidx.test.internal.runner.TestExecutor.execute(TestExecutor.java:59)
+11-02 20:45:37.009 17379 17398 E TestRunner: 	at androidx.test.runner.AndroidJUnitRunner.onStart(AndroidJUnitRunner.java:467)
+11-02 20:45:37.009 17379 17398 E TestRunner: 	at android.app.Instrumentation$InstrumentationThread.run(Instrumentation.java:2402)
+11-02 20:45:37.010 17379 17398 E TestRunner: ----- end exception -----
+11-02 20:45:37.011 17379 17398 I TestRunner: finished: uiPlaybackShouldAddGeneratedTrackToRecentlyPlayed(com.example.ymediaplayer.ui.MusicPlaybackIntegrationTest)
+11-02 20:45:37.013 17379 17398 I TestRunner: started: repeatOneUiShouldUpdatePlaybackServiceRepeatMode(com.example.ymediaplayer.ui.MusicPlaybackIntegrationTest)
+11-02 20:45:39.783 17379 17398 E TestRunner: failed: repeatOneUiShouldUpdatePlaybackServiceRepeatMode(com.example.ymediaplayer.ui.MusicPlaybackIntegrationTest)
+11-02 20:45:39.783 17379 17398 E TestRunner: ----- begin exception -----
+11-02 20:45:39.783 17379 17398 E TestRunner: java.util.NoSuchElementException: Collection contains no element matching the predicate.
+11-02 20:45:39.783 17379 17398 E TestRunner: 	at com.example.ymediaplayer.ui.MusicPlaybackIntegrationTest.prepareGeneratedFixture(MusicPlaybackIntegrationTest.kt:297)
+11-02 20:45:39.783 17379 17398 E TestRunner: 	at java.lang.reflect.Method.invoke(Native Method)
+11-02 20:45:39.783 17379 17398 E TestRunner: 	at org.junit.runners.model.FrameworkMethod$1.runReflectiveCall(FrameworkMethod.java:59)
+11-02 20:45:39.783 17379 17398 E TestRunner: 	at org.junit.internal.runners.model.ReflectiveCallable.run(ReflectiveCallable.java:12)
+11-02 20:45:39.783 17379 17398 E TestRunner: 	at org.junit.runners.model.FrameworkMethod.invokeExplosively(FrameworkMethod.java:56)
+11-02 20:45:39.783 17379 17398 E TestRunner: 	at androidx.test.internal.runner.junit4.statement.RunBefores.evaluate(RunBefores.java:76)
+11-02 20:45:39.783 17379 17398 E TestRunner: 	at androidx.test.internal.runner.junit4.statement.RunAfters.evaluate(RunAfters.java:61)
+11-02 20:45:39.783 17379 17398 E TestRunner: 	at androidx.compose.ui.test.junit4.AndroidComposeTestRule$apply$testWithDisposal$1.evaluate(AndroidComposeTestRule.android.kt:426)
+11-02 20:45:39.783 17379 17398 E TestRunner: 	at org.junit.rules.ExternalResource$1.evaluate(ExternalResource.java:54)
+11-02 20:45:39.783 17379 17398 E TestRunner: 	at androidx.compose.ui.test.junit4.AndroidComposeTestRule$apply$1$evaluate$1.invokeSuspend(AndroidComposeTestRule.android.kt:448)
+11-02 20:45:39.783 17379 17398 E TestRunner: 	at androidx.compose.ui.test.junit4.AndroidComposeTestRule$apply$1$evaluate$1.invoke(AndroidComposeTestRule.android.kt:8)
+11-02 20:45:39.783 17379 17398 E TestRunner: 	at androidx.compose.ui.test.junit4.AndroidComposeTestRule$apply$1$evaluate$1.invoke(AndroidComposeTestRule.android.kt:4)
+11-02 20:45:39.783 17379 17398 E TestRunner: 	at androidx.compose.ui.test.AndroidComposeUiTestEnvironment$runTest$1$1$1$1$1.invokeSuspend(ComposeUiTest.android.kt:689)
+11-02 20:45:39.783 17379 17398 E TestRunner: 	at androidx.compose.ui.test.AndroidComposeUiTestEnvironment$runTest$1$1$1$1$1.invoke(ComposeUiTest.android.kt:8)
+11-02 20:45:39.783 17379 17398 E TestRunner: 	at androidx.compose.ui.test.AndroidComposeUiTestEnvironment$runTest$1$1$1$1$1.invoke(ComposeUiTest.android.kt:2)
+11-02 20:45:39.783 17379 17398 E TestRunner: 	at androidx.compose.ui.test.EspressoLink.withStrategy(EspressoLink.android.kt:69)
+11-02 20:45:39.783 17379 17398 E TestRunner: 	at androidx.compose.ui.test.AndroidComposeUiTestEnvironment$runTest$1$1.invokeSuspend(ComposeUiTest.android.kt:686)
+11-02 20:45:39.783 17379 17398 E TestRunner: 	at androidx.compose.ui.test.AndroidComposeUiTestEnvironment$runTest$1$1.invoke(ComposeUiTest.android.kt:8)
+11-02 20:45:39.783 17379 17398 E TestRunner: 	at androidx.compose.ui.test.AndroidComposeUiTestEnvironment$runTest$1$1.invoke(ComposeUiTest.android.kt:4)
+11-02 20:45:39.783 17379 17398 E TestRunner: 	at kotlinx.coroutines.test.TestBuildersKt__TestBuildersKt$runTest$2$1$1.invokeSuspend(TestBuilders.kt:317)
+11-02 20:45:39.783 17379 17398 E TestRunner: 	at kotlin.coroutines.jvm.internal.BaseContinuationImpl.resumeWith(ContinuationImpl.kt:34)
+11-02 20:45:39.783 17379 17398 E TestRunner: 	at kotlinx.coroutines.DispatchedTask.run(DispatchedTask.kt:100)
+11-02 20:45:39.783 17379 17398 E TestRunner: 	at kotlinx.coroutines.test.TestDispatcher.processEvent$kotlinx_coroutines_test(TestDispatcher.kt:24)
+11-02 20:45:39.783 17379 17398 E TestRunner: 	at kotlinx.coroutines.test.TestCoroutineScheduler.tryRunNextTaskUnless$kotlinx_coroutines_test(TestCoroutineScheduler.kt:99)
+11-02 20:45:39.783 17379 17398 E TestRunner: 	at kotlinx.coroutines.test.TestBuildersKt__TestBuildersKt$runTest$2$1$workRunner$1.invokeSuspend(TestBuilders.kt:326)
+11-02 20:45:39.783 17379 17398 E TestRunner: 	at kotlin.coroutines.jvm.internal.BaseContinuationImpl.resumeWith(ContinuationImpl.kt:34)
+11-02 20:45:39.783 17379 17398 E TestRunner: 	at kotlinx.coroutines.DispatchedTask.run(DispatchedTask.kt:100)
+11-02 20:45:39.783 17379 17398 E TestRunner: 	at kotlinx.coroutines.EventLoopImplBase.processNextEvent(EventLoop.common.kt:263)
+11-02 20:45:39.783 17379 17398 E TestRunner: 	at kotlinx.coroutines.BlockingCoroutine.joinBlocking(Builders.kt:94)
+11-02 20:45:39.783 17379 17398 E TestRunner: 	at kotlinx.coroutines.BuildersKt__BuildersKt.runBlocking(Builders.kt:70)
+11-02 20:45:39.783 17379 17398 E TestRunner: 	at kotlinx.coroutines.BuildersKt.runBlocking(dex-id-7e891886282f657a0c2e7600c286f69a4e2f90c4:1)
+11-02 20:45:39.783 17379 17398 E TestRunner: 	at kotlinx.coroutines.BuildersKt__BuildersKt.runBlocking$default(Builders.kt:48)
+11-02 20:45:39.783 17379 17398 E TestRunner: 	at kotlinx.coroutines.BuildersKt.runBlocking$default(dex-id-7e891886282f657a0c2e7600c286f69a4e2f90c4:1)
+11-02 20:45:39.783 17379 17398 E TestRunner: 	at kotlinx.coroutines.test.TestBuildersJvmKt.createTestResult(TestBuildersJvm.kt:10)
+11-02 20:45:39.783 17379 17398 E TestRunner: 	at kotlinx.coroutines.test.TestBuildersKt__TestBuildersKt.runTest-8Mi8wO0(TestBuilders.kt:309)
+11-02 20:45:39.783 17379 17398 E TestRunner: 	at kotlinx.coroutines.test.TestBuildersKt.runTest-8Mi8wO0(dex-id-7e6b3808279efd3cb39bf2dfa1a45ff99919b721:1)
+11-02 20:45:39.783 17379 17398 E TestRunner: 	at kotlinx.coroutines.test.TestBuildersKt__TestBuildersKt.runTest-8Mi8wO0(TestBuilders.kt:167)
+11-02 20:45:39.783 17379 17398 E TestRunner: 	at kotlinx.coroutines.test.TestBuildersKt.runTest-8Mi8wO0(dex-id-7e6b3808279efd3cb39bf2dfa1a45ff99919b721:1)
+11-02 20:45:39.783 17379 17398 E TestRunner: 	at androidx.compose.ui.test.AndroidComposeUiTestEnvironment.runTest(ComposeUiTest.android.kt:665)
+11-02 20:45:39.784 17379 17398 E TestRunner: 	at androidx.compose.ui.test.junit4.AndroidComposeTestRule$apply$1.evaluate(AndroidComposeTestRule.android.kt:447)
+11-02 20:45:39.784 17379 17398 E TestRunner: 	at org.junit.runners.ParentRunner$3.evaluate(ParentRunner.java:306)
+11-02 20:45:39.784 17379 17398 E TestRunner: 	at org.junit.runners.BlockJUnit4ClassRunner$1.evaluate(BlockJUnit4ClassRunner.java:100)
+11-02 20:45:39.784 17379 17398 E TestRunner: 	at org.junit.runners.ParentRunner.runLeaf(ParentRunner.java:366)
+11-02 20:45:39.784 17379 17398 E TestRunner: 	at org.junit.runners.BlockJUnit4ClassRunner.runChild(BlockJUnit4ClassRunner.java:103)
+11-02 20:45:39.784 17379 17398 E TestRunner: 	at org.junit.runners.BlockJUnit4ClassRunner.runChild(BlockJUnit4ClassRunner.java:63)
+11-02 20:45:39.784 17379 17398 E TestRunner: 	at org.junit.runners.ParentRunner$4.run(ParentRunner.java:331)
+11-02 20:45:39.784 17379 17398 E TestRunner: 	at org.junit.runners.ParentRunner$1.schedule(ParentRunner.java:79)
+11-02 20:45:39.784 17379 17398 E TestRunner: 	at org.junit.runners.ParentRunner.runChildren(ParentRunner.java:329)
+11-02 20:45:39.784 17379 17398 E TestRunner: 	at org.junit.runners.ParentRunner.access$100(ParentRunner.java:66)
+11-02 20:45:39.784 17379 17398 E TestRunner: 	at org.junit.runners.ParentRunner$2.evaluate(ParentRunner.java:293)
+11-02 20:45:39.784 17379 17398 E TestRunner: 	at org.junit.internal.runners.statements.RunBefores.evaluate(RunBefores.java:26)
+11-02 20:45:39.784 17379 17398 E TestRunner: 	at org.junit.runners.ParentRunner$3.evaluate(ParentRunner.java:306)
+11-02 20:45:39.784 17379 17398 E TestRunner: 	at org.junit.runners.ParentRunner.run(ParentRunner.java:413)
+11-02 20:45:39.784 17379 17398 E TestRunner: 	at org.junit.runners.Suite.runChild(Suite.java:128)
+11-02 20:45:39.784 17379 17398 E TestRunner: 	at org.junit.runners.Suite.runChild(Suite.java:27)
+11-02 20:45:39.784 17379 17398 E TestRunner: 	at org.junit.runners.ParentRunner$4.run(ParentRunner.java:331)
+11-02 20:45:39.784 17379 17398 E TestRunner: 	at org.junit.runners.ParentRunner$1.schedule(ParentRunner.java:79)
+11-02 20:45:39.784 17379 17398 E TestRunner: 	at org.junit.runners.ParentRunner.runChildren(ParentRunner.java:329)
+11-02 20:45:39.784 17379 17398 E TestRunner: 	at org.junit.runners.ParentRunner.access$100(ParentRunner.java:66)
+11-02 20:45:39.784 17379 17398 E TestRunner: 	at org.junit.runners.ParentRunner$2.evaluate(ParentRunner.java:293)
+11-02 20:45:39.784 17379 17398 E TestRunner: 	at org.junit.runners.ParentRunner$3.evaluate(ParentRunner.java:306)
+11-02 20:45:39.784 17379 17398 E TestRunner: 	at org.junit.runners.ParentRunner.run(ParentRunner.java:413)
+11-02 20:45:39.784 17379 17398 E TestRunner: 	at org.junit.runner.JUnitCore.run(JUnitCore.java:137)
+11-02 20:45:39.784 17379 17398 E TestRunner: 	at org.junit.runner.JUnitCore.run(JUnitCore.java:115)
+11-02 20:45:39.784 17379 17398 E TestRunner: 	at androidx.test.internal.runner.TestExecutor.execute(TestExecutor.java:68)
+11-02 20:45:39.784 17379 17398 E TestRunner: 	at androidx.test.internal.runner.TestExecutor.execute(TestExecutor.java:59)
+11-02 20:45:39.784 17379 17398 E TestRunner: 	at androidx.test.runner.AndroidJUnitRunner.onStart(AndroidJUnitRunner.java:467)
+11-02 20:45:39.784 17379 17398 E TestRunner: 	at android.app.Instrumentation$InstrumentationThread.run(Instrumentation.java:2402)
+11-02 20:45:39.784 17379 17398 E TestRunner: ----- end exception -----
+11-02 20:45:39.786 17379 17398 I TestRunner: finished: repeatOneUiShouldUpdatePlaybackServiceRepeatMode(com.example.ymediaplayer.ui.MusicPlaybackIntegrationTest)
+11-02 20:45:39.788 17379 17398 I TestRunner: started: activeQueueSurvivesLeavingMusicAndNextUsesThatQueue(com.example.ymediaplayer.ui.MusicPlaybackIntegrationTest)
+11-02 20:45:42.524 17379 17398 E TestRunner: failed: activeQueueSurvivesLeavingMusicAndNextUsesThatQueue(com.example.ymediaplayer.ui.MusicPlaybackIntegrationTest)
+11-02 20:45:42.525 17379 17398 E TestRunner: ----- begin exception -----
+11-02 20:45:42.525 17379 17398 E TestRunner: java.util.NoSuchElementException: Collection contains no element matching the predicate.
+11-02 20:45:42.525 17379 17398 E TestRunner: 	at com.example.ymediaplayer.ui.MusicPlaybackIntegrationTest.prepareGeneratedFixture(MusicPlaybackIntegrationTest.kt:297)
+11-02 20:45:42.525 17379 17398 E TestRunner: 	at java.lang.reflect.Method.invoke(Native Method)
+11-02 20:45:42.525 17379 17398 E TestRunner: 	at org.junit.runners.model.FrameworkMethod$1.runReflectiveCall(FrameworkMethod.java:59)
+11-02 20:45:42.525 17379 17398 E TestRunner: 	at org.junit.internal.runners.model.ReflectiveCallable.run(ReflectiveCallable.java:12)
+11-02 20:45:42.525 17379 17398 E TestRunner: 	at org.junit.runners.model.FrameworkMethod.invokeExplosively(FrameworkMethod.java:56)
+11-02 20:45:42.525 17379 17398 E TestRunner: 	at androidx.test.internal.runner.junit4.statement.RunBefores.evaluate(RunBefores.java:76)
+11-02 20:45:42.525 17379 17398 E TestRunner: 	at androidx.test.internal.runner.junit4.statement.RunAfters.evaluate(RunAfters.java:61)
+11-02 20:45:42.525 17379 17398 E TestRunner: 	at androidx.compose.ui.test.junit4.AndroidComposeTestRule$apply$testWithDisposal$1.evaluate(AndroidComposeTestRule.android.kt:426)
+11-02 20:45:42.525 17379 17398 E TestRunner: 	at org.junit.rules.ExternalResource$1.evaluate(ExternalResource.java:54)
+11-02 20:45:42.525 17379 17398 E TestRunner: 	at androidx.compose.ui.test.junit4.AndroidComposeTestRule$apply$1$evaluate$1.invokeSuspend(AndroidComposeTestRule.android.kt:448)
+11-02 20:45:42.525 17379 17398 E TestRunner: 	at androidx.compose.ui.test.junit4.AndroidComposeTestRule$apply$1$evaluate$1.invoke(AndroidComposeTestRule.android.kt:8)
+11-02 20:45:42.525 17379 17398 E TestRunner: 	at androidx.compose.ui.test.junit4.AndroidComposeTestRule$apply$1$evaluate$1.invoke(AndroidComposeTestRule.android.kt:4)
+11-02 20:45:42.525 17379 17398 E TestRunner: 	at androidx.compose.ui.test.AndroidComposeUiTestEnvironment$runTest$1$1$1$1$1.invokeSuspend(ComposeUiTest.android.kt:689)
+11-02 20:45:42.525 17379 17398 E TestRunner: 	at androidx.compose.ui.test.AndroidComposeUiTestEnvironment$runTest$1$1$1$1$1.invoke(ComposeUiTest.android.kt:8)
+11-02 20:45:42.525 17379 17398 E TestRunner: 	at androidx.compose.ui.test.AndroidComposeUiTestEnvironment$runTest$1$1$1$1$1.invoke(ComposeUiTest.android.kt:2)
+11-02 20:45:42.525 17379 17398 E TestRunner: 	at androidx.compose.ui.test.EspressoLink.withStrategy(EspressoLink.android.kt:69)
+11-02 20:45:42.525 17379 17398 E TestRunner: 	at androidx.compose.ui.test.AndroidComposeUiTestEnvironment$runTest$1$1.invokeSuspend(ComposeUiTest.android.kt:686)
+11-02 20:45:42.525 17379 17398 E TestRunner: 	at androidx.compose.ui.test.AndroidComposeUiTestEnvironment$runTest$1$1.invoke(ComposeUiTest.android.kt:8)
+11-02 20:45:42.525 17379 17398 E TestRunner: 	at androidx.compose.ui.test.AndroidComposeUiTestEnvironment$runTest$1$1.invoke(ComposeUiTest.android.kt:4)
+11-02 20:45:42.525 17379 17398 E TestRunner: 	at kotlinx.coroutines.test.TestBuildersKt__TestBuildersKt$runTest$2$1$1.invokeSuspend(TestBuilders.kt:317)
+11-02 20:45:42.525 17379 17398 E TestRunner: 	at kotlin.coroutines.jvm.internal.BaseContinuationImpl.resumeWith(ContinuationImpl.kt:34)
+11-02 20:45:42.525 17379 17398 E TestRunner: 	at kotlinx.coroutines.DispatchedTask.run(DispatchedTask.kt:100)
+11-02 20:45:42.525 17379 17398 E TestRunner: 	at kotlinx.coroutines.test.TestDispatcher.processEvent$kotlinx_coroutines_test(TestDispatcher.kt:24)
+11-02 20:45:42.525 17379 17398 E TestRunner: 	at kotlinx.coroutines.test.TestCoroutineScheduler.tryRunNextTaskUnless$kotlinx_coroutines_test(TestCoroutineScheduler.kt:99)
+11-02 20:45:42.525 17379 17398 E TestRunner: 	at kotlinx.coroutines.test.TestBuildersKt__TestBuildersKt$runTest$2$1$workRunner$1.invokeSuspend(TestBuilders.kt:326)
+11-02 20:45:42.525 17379 17398 E TestRunner: 	at kotlin.coroutines.jvm.internal.BaseContinuationImpl.resumeWith(ContinuationImpl.kt:34)
+11-02 20:45:42.525 17379 17398 E TestRunner: 	at kotlinx.coroutines.DispatchedTask.run(DispatchedTask.kt:100)
+11-02 20:45:42.525 17379 17398 E TestRunner: 	at kotlinx.coroutines.EventLoopImplBase.processNextEvent(EventLoop.common.kt:263)
+11-02 20:45:42.525 17379 17398 E TestRunner: 	at kotlinx.coroutines.BlockingCoroutine.joinBlocking(Builders.kt:94)
+11-02 20:45:42.525 17379 17398 E TestRunner: 	at kotlinx.coroutines.BuildersKt__BuildersKt.runBlocking(Builders.kt:70)
+11-02 20:45:42.525 17379 17398 E TestRunner: 	at kotlinx.coroutines.BuildersKt.runBlocking(dex-id-7e891886282f657a0c2e7600c286f69a4e2f90c4:1)
+11-02 20:45:42.525 17379 17398 E TestRunner: 	at kotlinx.coroutines.BuildersKt__BuildersKt.runBlocking$default(Builders.kt:48)
+11-02 20:45:42.525 17379 17398 E TestRunner: 	at kotlinx.coroutines.BuildersKt.runBlocking$default(dex-id-7e891886282f657a0c2e7600c286f69a4e2f90c4:1)
+11-02 20:45:42.525 17379 17398 E TestRunner: 	at kotlinx.coroutines.test.TestBuildersJvmKt.createTestResult(TestBuildersJvm.kt:10)
+11-02 20:45:42.525 17379 17398 E TestRunner: 	at kotlinx.coroutines.test.TestBuildersKt__TestBuildersKt.runTest-8Mi8wO0(TestBuilders.kt:309)
+11-02 20:45:42.525 17379 17398 E TestRunner: 	at kotlinx.coroutines.test.TestBuildersKt.runTest-8Mi8wO0(dex-id-7e6b3808279efd3cb39bf2dfa1a45ff99919b721:1)
+11-02 20:45:42.525 17379 17398 E TestRunner: 	at kotlinx.coroutines.test.TestBuildersKt__TestBuildersKt.runTest-8Mi8wO0(TestBuilders.kt:167)
+11-02 20:45:42.525 17379 17398 E TestRunner: 	at kotlinx.coroutines.test.TestBuildersKt.runTest-8Mi8wO0(dex-id-7e6b3808279efd3cb39bf2dfa1a45ff99919b721:1)
+11-02 20:45:42.525 17379 17398 E TestRunner: 	at androidx.compose.ui.test.AndroidComposeUiTestEnvironment.runTest(ComposeUiTest.android.kt:665)
+11-02 20:45:42.525 17379 17398 E TestRunner: 	at androidx.compose.ui.test.junit4.AndroidComposeTestRule$apply$1.evaluate(AndroidComposeTestRule.android.kt:447)
+11-02 20:45:42.525 17379 17398 E TestRunner: 	at org.junit.runners.ParentRunner$3.evaluate(ParentRunner.java:306)
+11-02 20:45:42.525 17379 17398 E TestRunner: 	at org.junit.runners.BlockJUnit4ClassRunner$1.evaluate(BlockJUnit4ClassRunner.java:100)
+11-02 20:45:42.525 17379 17398 E TestRunner: 	at org.junit.runners.ParentRunner.runLeaf(ParentRunner.java:366)
+11-02 20:45:42.525 17379 17398 E TestRunner: 	at org.junit.runners.BlockJUnit4ClassRunner.runChild(BlockJUnit4ClassRunner.java:103)
+11-02 20:45:42.525 17379 17398 E TestRunner: 	at org.junit.runners.BlockJUnit4ClassRunner.runChild(BlockJUnit4ClassRunner.java:63)
+11-02 20:45:42.525 17379 17398 E TestRunner: 	at org.junit.runners.ParentRunner$4.run(ParentRunner.java:331)
+11-02 20:45:42.525 17379 17398 E TestRunner: 	at org.junit.runners.ParentRunner$1.schedule(ParentRunner.java:79)
+11-02 20:45:42.525 17379 17398 E TestRunner: 	at org.junit.runners.ParentRunner.runChildren(ParentRunner.java:329)
+11-02 20:45:42.525 17379 17398 E TestRunner: 	at org.junit.runners.ParentRunner.access$100(ParentRunner.java:66)
+11-02 20:45:42.525 17379 17398 E TestRunner: 	at org.junit.runners.ParentRunner$2.evaluate(ParentRunner.java:293)
+11-02 20:45:42.525 17379 17398 E TestRunner: 	at org.junit.internal.runners.statements.RunBefores.evaluate(RunBefores.java:26)
+11-02 20:45:42.525 17379 17398 E TestRunner: 	at org.junit.runners.ParentRunner$3.evaluate(ParentRunner.java:306)
+11-02 20:45:42.525 17379 17398 E TestRunner: 	at org.junit.runners.ParentRunner.run(ParentRunner.java:413)
+11-02 20:45:42.525 17379 17398 E TestRunner: 	at org.junit.runners.Suite.runChild(Suite.java:128)
+11-02 20:45:42.525 17379 17398 E TestRunner: 	at org.junit.runners.Suite.runChild(Suite.java:27)
+11-02 20:45:42.525 17379 17398 E TestRunner: 	at org.junit.runners.ParentRunner$4.run(ParentRunner.java:331)
+11-02 20:45:42.525 17379 17398 E TestRunner: 	at org.junit.runners.ParentRunner$1.schedule(ParentRunner.java:79)
+11-02 20:45:42.525 17379 17398 E TestRunner: 	at org.junit.runners.ParentRunner.runChildren(ParentRunner.java:329)
+11-02 20:45:42.525 17379 17398 E TestRunner: 	at org.junit.runners.ParentRunner.access$100(ParentRunner.java:66)
+11-02 20:45:42.525 17379 17398 E TestRunner: 	at org.junit.runners.ParentRunner$2.evaluate(ParentRunner.java:293)
+11-02 20:45:42.525 17379 17398 E TestRunner: 	at org.junit.runners.ParentRunner$3.evaluate(ParentRunner.java:306)
+11-02 20:45:42.525 17379 17398 E TestRunner: 	at org.junit.runners.ParentRunner.run(ParentRunner.java:413)
+11-02 20:45:42.525 17379 17398 E TestRunner: 	at org.junit.runner.JUnitCore.run(JUnitCore.java:137)
+11-02 20:45:42.525 17379 17398 E TestRunner: 	at org.junit.runner.JUnitCore.run(JUnitCore.java:115)
+11-02 20:45:42.525 17379 17398 E TestRunner: 	at androidx.test.internal.runner.TestExecutor.execute(TestExecutor.java:68)
+11-02 20:45:42.525 17379 17398 E TestRunner: 	at androidx.test.internal.runner.TestExecutor.execute(TestExecutor.java:59)
+11-02 20:45:42.525 17379 17398 E TestRunner: 	at androidx.test.runner.AndroidJUnitRunner.onStart(AndroidJUnitRunner.java:467)
+11-02 20:45:42.525 17379 17398 E TestRunner: 	at android.app.Instrumentation$InstrumentationThread.run(Instrumentation.java:2402)
+11-02 20:45:42.525 17379 17398 E TestRunner: ----- end exception -----
+11-02 20:45:42.526 17379 17398 I TestRunner: finished: activeQueueSurvivesLeavingMusicAndNextUsesThatQueue(com.example.ymediaplayer.ui.MusicPlaybackIntegrationTest)
+11-02 20:45:42.527 17379 17398 I TestRunner: started: sleepTimerShouldSurviveMusicScreenDetachAndRemount(com.example.ymediaplayer.ui.MusicPlaybackIntegrationTest)
+11-02 20:45:45.277 17379 17398 E TestRunner: failed: sleepTimerShouldSurviveMusicScreenDetachAndRemount(com.example.ymediaplayer.ui.MusicPlaybackIntegrationTest)
+11-02 20:45:45.278 17379 17398 E TestRunner: ----- begin exception -----
+11-02 20:45:45.278 17379 17398 E TestRunner: java.util.NoSuchElementException: Collection contains no element matching the predicate.
+11-02 20:45:45.278 17379 17398 E TestRunner: 	at com.example.ymediaplayer.ui.MusicPlaybackIntegrationTest.prepareGeneratedFixture(MusicPlaybackIntegrationTest.kt:297)
+11-02 20:45:45.278 17379 17398 E TestRunner: 	at java.lang.reflect.Method.invoke(Native Method)
+11-02 20:45:45.278 17379 17398 E TestRunner: 	at org.junit.runners.model.FrameworkMethod$1.runReflectiveCall(FrameworkMethod.java:59)
+11-02 20:45:45.278 17379 17398 E TestRunner: 	at org.junit.internal.runners.model.ReflectiveCallable.run(ReflectiveCallable.java:12)
+11-02 20:45:45.278 17379 17398 E TestRunner: 	at org.junit.runners.model.FrameworkMethod.invokeExplosively(FrameworkMethod.java:56)
+11-02 20:45:45.278 17379 17398 E TestRunner: 	at androidx.test.internal.runner.junit4.statement.RunBefores.evaluate(RunBefores.java:76)
+11-02 20:45:45.278 17379 17398 E TestRunner: 	at androidx.test.internal.runner.junit4.statement.RunAfters.evaluate(RunAfters.java:61)
+11-02 20:45:45.278 17379 17398 E TestRunner: 	at androidx.compose.ui.test.junit4.AndroidComposeTestRule$apply$testWithDisposal$1.evaluate(AndroidComposeTestRule.android.kt:426)
+11-02 20:45:45.278 17379 17398 E TestRunner: 	at org.junit.rules.ExternalResource$1.evaluate(ExternalResource.java:54)
+11-02 20:45:45.278 17379 17398 E TestRunner: 	at androidx.compose.ui.test.junit4.AndroidComposeTestRule$apply$1$evaluate$1.invokeSuspend(AndroidComposeTestRule.android.kt:448)
+11-02 20:45:45.278 17379 17398 E TestRunner: 	at androidx.compose.ui.test.junit4.AndroidComposeTestRule$apply$1$evaluate$1.invoke(AndroidComposeTestRule.android.kt:8)
+11-02 20:45:45.278 17379 17398 E TestRunner: 	at androidx.compose.ui.test.junit4.AndroidComposeTestRule$apply$1$evaluate$1.invoke(AndroidComposeTestRule.android.kt:4)
+11-02 20:45:45.278 17379 17398 E TestRunner: 	at androidx.compose.ui.test.AndroidComposeUiTestEnvironment$runTest$1$1$1$1$1.invokeSuspend(ComposeUiTest.android.kt:689)
+11-02 20:45:45.278 17379 17398 E TestRunner: 	at androidx.compose.ui.test.AndroidComposeUiTestEnvironment$runTest$1$1$1$1$1.invoke(ComposeUiTest.android.kt:8)
+11-02 20:45:45.278 17379 17398 E TestRunner: 	at androidx.compose.ui.test.AndroidComposeUiTestEnvironment$runTest$1$1$1$1$1.invoke(ComposeUiTest.android.kt:2)
+11-02 20:45:45.278 17379 17398 E TestRunner: 	at androidx.compose.ui.test.EspressoLink.withStrategy(EspressoLink.android.kt:69)
+11-02 20:45:45.278 17379 17398 E TestRunner: 	at androidx.compose.ui.test.AndroidComposeUiTestEnvironment$runTest$1$1.invokeSuspend(ComposeUiTest.android.kt:686)
+11-02 20:45:45.278 17379 17398 E TestRunner: 	at androidx.compose.ui.test.AndroidComposeUiTestEnvironment$runTest$1$1.invoke(ComposeUiTest.android.kt:8)
+11-02 20:45:45.278 17379 17398 E TestRunner: 	at androidx.compose.ui.test.AndroidComposeUiTestEnvironment$runTest$1$1.invoke(ComposeUiTest.android.kt:4)
+11-02 20:45:45.278 17379 17398 E TestRunner: 	at kotlinx.coroutines.test.TestBuildersKt__TestBuildersKt$runTest$2$1$1.invokeSuspend(TestBuilders.kt:317)
+11-02 20:45:45.278 17379 17398 E TestRunner: 	at kotlin.coroutines.jvm.internal.BaseContinuationImpl.resumeWith(ContinuationImpl.kt:34)
+11-02 20:45:45.278 17379 17398 E TestRunner: 	at kotlinx.coroutines.DispatchedTask.run(DispatchedTask.kt:100)
+11-02 20:45:45.278 17379 17398 E TestRunner: 	at kotlinx.coroutines.test.TestDispatcher.processEvent$kotlinx_coroutines_test(TestDispatcher.kt:24)
+11-02 20:45:45.278 17379 17398 E TestRunner: 	at kotlinx.coroutines.test.TestCoroutineScheduler.tryRunNextTaskUnless$kotlinx_coroutines_test(TestCoroutineScheduler.kt:99)
+11-02 20:45:45.278 17379 17398 E TestRunner: 	at kotlinx.coroutines.test.TestBuildersKt__TestBuildersKt$runTest$2$1$workRunner$1.invokeSuspend(TestBuilders.kt:326)
+11-02 20:45:45.278 17379 17398 E TestRunner: 	at kotlin.coroutines.jvm.internal.BaseContinuationImpl.resumeWith(ContinuationImpl.kt:34)
+11-02 20:45:45.278 17379 17398 E TestRunner: 	at kotlinx.coroutines.DispatchedTask.run(DispatchedTask.kt:100)
+11-02 20:45:45.278 17379 17398 E TestRunner: 	at kotlinx.coroutines.EventLoopImplBase.processNextEvent(EventLoop.common.kt:263)
+11-02 20:45:45.278 17379 17398 E TestRunner: 	at kotlinx.coroutines.BlockingCoroutine.joinBlocking(Builders.kt:94)
+11-02 20:45:45.278 17379 17398 E TestRunner: 	at kotlinx.coroutines.BuildersKt__BuildersKt.runBlocking(Builders.kt:70)
+11-02 20:45:45.278 17379 17398 E TestRunner: 	at kotlinx.coroutines.BuildersKt.runBlocking(dex-id-7e891886282f657a0c2e7600c286f69a4e2f90c4:1)
+11-02 20:45:45.278 17379 17398 E TestRunner: 	at kotlinx.coroutines.BuildersKt__BuildersKt.runBlocking$default(Builders.kt:48)
+11-02 20:45:45.278 17379 17398 E TestRunner: 	at kotlinx.coroutines.BuildersKt.runBlocking$default(dex-id-7e891886282f657a0c2e7600c286f69a4e2f90c4:1)
+11-02 20:45:45.278 17379 17398 E TestRunner: 	at kotlinx.coroutines.test.TestBuildersJvmKt.createTestResult(TestBuildersJvm.kt:10)
+11-02 20:45:45.278 17379 17398 E TestRunner: 	at kotlinx.coroutines.test.TestBuildersKt__TestBuildersKt.runTest-8Mi8wO0(TestBuilders.kt:309)
+11-02 20:45:45.278 17379 17398 E TestRunner: 	at kotlinx.coroutines.test.TestBuildersKt.runTest-8Mi8wO0(dex-id-7e6b3808279efd3cb39bf2dfa1a45ff99919b721:1)
+11-02 20:45:45.278 17379 17398 E TestRunner: 	at kotlinx.coroutines.test.TestBuildersKt__TestBuildersKt.runTest-8Mi8wO0(TestBuilders.kt:167)
+11-02 20:45:45.278 17379 17398 E TestRunner: 	at kotlinx.coroutines.test.TestBuildersKt.runTest-8Mi8wO0(dex-id-7e6b3808279efd3cb39bf2dfa1a45ff99919b721:1)
+11-02 20:45:45.278 17379 17398 E TestRunner: 	at androidx.compose.ui.test.AndroidComposeUiTestEnvironment.runTest(ComposeUiTest.android.kt:665)
+11-02 20:45:45.278 17379 17398 E TestRunner: 	at androidx.compose.ui.test.junit4.AndroidComposeTestRule$apply$1.evaluate(AndroidComposeTestRule.android.kt:447)
+11-02 20:45:45.278 17379 17398 E TestRunner: 	at org.junit.runners.ParentRunner$3.evaluate(ParentRunner.java:306)
+11-02 20:45:45.278 17379 17398 E TestRunner: 	at org.junit.runners.BlockJUnit4ClassRunner$1.evaluate(BlockJUnit4ClassRunner.java:100)
+11-02 20:45:45.278 17379 17398 E TestRunner: 	at org.junit.runners.ParentRunner.runLeaf(ParentRunner.java:366)
+11-02 20:45:45.278 17379 17398 E TestRunner: 	at org.junit.runners.BlockJUnit4ClassRunner.runChild(BlockJUnit4ClassRunner.java:103)
+11-02 20:45:45.278 17379 17398 E TestRunner: 	at org.junit.runners.BlockJUnit4ClassRunner.runChild(BlockJUnit4ClassRunner.java:63)
+11-02 20:45:45.278 17379 17398 E TestRunner: 	at org.junit.runners.ParentRunner$4.run(ParentRunner.java:331)
+11-02 20:45:45.278 17379 17398 E TestRunner: 	at org.junit.runners.ParentRunner$1.schedule(ParentRunner.java:79)
+11-02 20:45:45.278 17379 17398 E TestRunner: 	at org.junit.runners.ParentRunner.runChildren(ParentRunner.java:329)
+11-02 20:45:45.278 17379 17398 E TestRunner: 	at org.junit.runners.ParentRunner.access$100(ParentRunner.java:66)
+11-02 20:45:45.278 17379 17398 E TestRunner: 	at org.junit.runners.ParentRunner$2.evaluate(ParentRunner.java:293)
+11-02 20:45:45.278 17379 17398 E TestRunner: 	at org.junit.internal.runners.statements.RunBefores.evaluate(RunBefores.java:26)
+11-02 20:45:45.278 17379 17398 E TestRunner: 	at org.junit.runners.ParentRunner$3.evaluate(ParentRunner.java:306)
+11-02 20:45:45.278 17379 17398 E TestRunner: 	at org.junit.runners.ParentRunner.run(ParentRunner.java:413)
+11-02 20:45:45.278 17379 17398 E TestRunner: 	at org.junit.runners.Suite.runChild(Suite.java:128)
+11-02 20:45:45.278 17379 17398 E TestRunner: 	at org.junit.runners.Suite.runChild(Suite.java:27)
+11-02 20:45:45.278 17379 17398 E TestRunner: 	at org.junit.runners.ParentRunner$4.run(ParentRunner.java:331)
+11-02 20:45:45.278 17379 17398 E TestRunner: 	at org.junit.runners.ParentRunner$1.schedule(ParentRunner.java:79)
+11-02 20:45:45.278 17379 17398 E TestRunner: 	at org.junit.runners.ParentRunner.runChildren(ParentRunner.java:329)
+11-02 20:45:45.278 17379 17398 E TestRunner: 	at org.junit.runners.ParentRunner.access$100(ParentRunner.java:66)
+11-02 20:45:45.278 17379 17398 E TestRunner: 	at org.junit.runners.ParentRunner$2.evaluate(ParentRunner.java:293)
+11-02 20:45:45.278 17379 17398 E TestRunner: 	at org.junit.runners.ParentRunner$3.evaluate(ParentRunner.java:306)
+11-02 20:45:45.278 17379 17398 E TestRunner: 	at org.junit.runners.ParentRunner.run(ParentRunner.java:413)
+11-02 20:45:45.278 17379 17398 E TestRunner: 	at org.junit.runner.JUnitCore.run(JUnitCore.java:137)
+11-02 20:45:45.278 17379 17398 E TestRunner: 	at org.junit.runner.JUnitCore.run(JUnitCore.java:115)
+11-02 20:45:45.278 17379 17398 E TestRunner: 	at androidx.test.internal.runner.TestExecutor.execute(TestExecutor.java:68)
+11-02 20:45:45.278 17379 17398 E TestRunner: 	at androidx.test.internal.runner.TestExecutor.execute(TestExecutor.java:59)
+11-02 20:45:45.278 17379 17398 E TestRunner: 	at androidx.test.runner.AndroidJUnitRunner.onStart(AndroidJUnitRunner.java:467)
+11-02 20:45:45.278 17379 17398 E TestRunner: 	at android.app.Instrumentation$InstrumentationThread.run(Instrumentation.java:2402)
+11-02 20:45:45.278 17379 17398 E TestRunner: ----- end exception -----
+11-02 20:45:45.280 17379 17398 I TestRunner: finished: sleepTimerShouldSurviveMusicScreenDetachAndRemount(com.example.ymediaplayer.ui.MusicPlaybackIntegrationTest)
+11-02 20:45:45.282 17379 17398 I TestRunner: started: autoPlayOffPausesAtBoundaryWhileKeepingTheSelectedQueue(com.example.ymediaplayer.ui.MusicPlaybackIntegrationTest)
+11-02 20:45:48.049 17379 17398 E TestRunner: failed: autoPlayOffPausesAtBoundaryWhileKeepingTheSelectedQueue(com.example.ymediaplayer.ui.MusicPlaybackIntegrationTest)
+11-02 20:45:48.050 17379 17398 E TestRunner: ----- begin exception -----
+11-02 20:45:48.050 17379 17398 E TestRunner: java.util.NoSuchElementException: Collection contains no element matching the predicate.
+11-02 20:45:48.050 17379 17398 E TestRunner: 	at com.example.ymediaplayer.ui.MusicPlaybackIntegrationTest.prepareGeneratedFixture(MusicPlaybackIntegrationTest.kt:297)
+11-02 20:45:48.050 17379 17398 E TestRunner: 	at java.lang.reflect.Method.invoke(Native Method)
+11-02 20:45:48.050 17379 17398 E TestRunner: 	at org.junit.runners.model.FrameworkMethod$1.runReflectiveCall(FrameworkMethod.java:59)
+11-02 20:45:48.050 17379 17398 E TestRunner: 	at org.junit.internal.runners.model.ReflectiveCallable.run(ReflectiveCallable.java:12)
+11-02 20:45:48.050 17379 17398 E TestRunner: 	at org.junit.runners.model.FrameworkMethod.invokeExplosively(FrameworkMethod.java:56)
+11-02 20:45:48.050 17379 17398 E TestRunner: 	at androidx.test.internal.runner.junit4.statement.RunBefores.evaluate(RunBefores.java:76)
+11-02 20:45:48.050 17379 17398 E TestRunner: 	at androidx.test.internal.runner.junit4.statement.RunAfters.evaluate(RunAfters.java:61)
+11-02 20:45:48.050 17379 17398 E TestRunner: 	at androidx.compose.ui.test.junit4.AndroidComposeTestRule$apply$testWithDisposal$1.evaluate(AndroidComposeTestRule.android.kt:426)
+11-02 20:45:48.050 17379 17398 E TestRunner: 	at org.junit.rules.ExternalResource$1.evaluate(ExternalResource.java:54)
+11-02 20:45:48.050 17379 17398 E TestRunner: 	at androidx.compose.ui.test.junit4.AndroidComposeTestRule$apply$1$evaluate$1.invokeSuspend(AndroidComposeTestRule.android.kt:448)
+11-02 20:45:48.050 17379 17398 E TestRunner: 	at androidx.compose.ui.test.junit4.AndroidComposeTestRule$apply$1$evaluate$1.invoke(AndroidComposeTestRule.android.kt:8)
+11-02 20:45:48.050 17379 17398 E TestRunner: 	at androidx.compose.ui.test.junit4.AndroidComposeTestRule$apply$1$evaluate$1.invoke(AndroidComposeTestRule.android.kt:4)
+11-02 20:45:48.050 17379 17398 E TestRunner: 	at androidx.compose.ui.test.AndroidComposeUiTestEnvironment$runTest$1$1$1$1$1.invokeSuspend(ComposeUiTest.android.kt:689)
+11-02 20:45:48.050 17379 17398 E TestRunner: 	at androidx.compose.ui.test.AndroidComposeUiTestEnvironment$runTest$1$1$1$1$1.invoke(ComposeUiTest.android.kt:8)
+11-02 20:45:48.050 17379 17398 E TestRunner: 	at androidx.compose.ui.test.AndroidComposeUiTestEnvironment$runTest$1$1$1$1$1.invoke(ComposeUiTest.android.kt:2)
+11-02 20:45:48.050 17379 17398 E TestRunner: 	at androidx.compose.ui.test.EspressoLink.withStrategy(EspressoLink.android.kt:69)
+11-02 20:45:48.050 17379 17398 E TestRunner: 	at androidx.compose.ui.test.AndroidComposeUiTestEnvironment$runTest$1$1.invokeSuspend(ComposeUiTest.android.kt:686)
+11-02 20:45:48.050 17379 17398 E TestRunner: 	at androidx.compose.ui.test.AndroidComposeUiTestEnvironment$runTest$1$1.invoke(ComposeUiTest.android.kt:8)
+11-02 20:45:48.050 17379 17398 E TestRunner: 	at androidx.compose.ui.test.AndroidComposeUiTestEnvironment$runTest$1$1.invoke(ComposeUiTest.android.kt:4)
+11-02 20:45:48.050 17379 17398 E TestRunner: 	at kotlinx.coroutines.test.TestBuildersKt__TestBuildersKt$runTest$2$1$1.invokeSuspend(TestBuilders.kt:317)
+11-02 20:45:48.050 17379 17398 E TestRunner: 	at kotlin.coroutines.jvm.internal.BaseContinuationImpl.resumeWith(ContinuationImpl.kt:34)
+11-02 20:45:48.050 17379 17398 E TestRunner: 	at kotlinx.coroutines.DispatchedTask.run(DispatchedTask.kt:100)
+11-02 20:45:48.050 17379 17398 E TestRunner: 	at kotlinx.coroutines.test.TestDispatcher.processEvent$kotlinx_coroutines_test(TestDispatcher.kt:24)
+11-02 20:45:48.050 17379 17398 E TestRunner: 	at kotlinx.coroutines.test.TestCoroutineScheduler.tryRunNextTaskUnless$kotlinx_coroutines_test(TestCoroutineScheduler.kt:99)
+11-02 20:45:48.050 17379 17398 E TestRunner: 	at kotlinx.coroutines.test.TestBuildersKt__TestBuildersKt$runTest$2$1$workRunner$1.invokeSuspend(TestBuilders.kt:326)
+11-02 20:45:48.050 17379 17398 E TestRunner: 	at kotlin.coroutines.jvm.internal.BaseContinuationImpl.resumeWith(ContinuationImpl.kt:34)
+11-02 20:45:48.050 17379 17398 E TestRunner: 	at kotlinx.coroutines.DispatchedTask.run(DispatchedTask.kt:100)
+11-02 20:45:48.050 17379 17398 E TestRunner: 	at kotlinx.coroutines.EventLoopImplBase.processNextEvent(EventLoop.common.kt:263)
+11-02 20:45:48.050 17379 17398 E TestRunner: 	at kotlinx.coroutines.BlockingCoroutine.joinBlocking(Builders.kt:94)
+11-02 20:45:48.050 17379 17398 E TestRunner: 	at kotlinx.coroutines.BuildersKt__BuildersKt.runBlocking(Builders.kt:70)
+11-02 20:45:48.050 17379 17398 E TestRunner: 	at kotlinx.coroutines.BuildersKt.runBlocking(dex-id-7e891886282f657a0c2e7600c286f69a4e2f90c4:1)
+11-02 20:45:48.050 17379 17398 E TestRunner: 	at kotlinx.coroutines.BuildersKt__BuildersKt.runBlocking$default(Builders.kt:48)
+11-02 20:45:48.050 17379 17398 E TestRunner: 	at kotlinx.coroutines.BuildersKt.runBlocking$default(dex-id-7e891886282f657a0c2e7600c286f69a4e2f90c4:1)
+11-02 20:45:48.050 17379 17398 E TestRunner: 	at kotlinx.coroutines.test.TestBuildersJvmKt.createTestResult(TestBuildersJvm.kt:10)
+11-02 20:45:48.050 17379 17398 E TestRunner: 	at kotlinx.coroutines.test.TestBuildersKt__TestBuildersKt.runTest-8Mi8wO0(TestBuilders.kt:309)
+11-02 20:45:48.050 17379 17398 E TestRunner: 	at kotlinx.coroutines.test.TestBuildersKt.runTest-8Mi8wO0(dex-id-7e6b3808279efd3cb39bf2dfa1a45ff99919b721:1)
+11-02 20:45:48.050 17379 17398 E TestRunner: 	at kotlinx.coroutines.test.TestBuildersKt__TestBuildersKt.runTest-8Mi8wO0(TestBuilders.kt:167)
+11-02 20:45:48.050 17379 17398 E TestRunner: 	at kotlinx.coroutines.test.TestBuildersKt.runTest-8Mi8wO0(dex-id-7e6b3808279efd3cb39bf2dfa1a45ff99919b721:1)
+11-02 20:45:48.050 17379 17398 E TestRunner: 	at androidx.compose.ui.test.AndroidComposeUiTestEnvironment.runTest(ComposeUiTest.android.kt:665)
+11-02 20:45:48.050 17379 17398 E TestRunner: 	at androidx.compose.ui.test.junit4.AndroidComposeTestRule$apply$1.evaluate(AndroidComposeTestRule.android.kt:447)
+11-02 20:45:48.050 17379 17398 E TestRunner: 	at org.junit.runners.ParentRunner$3.evaluate(ParentRunner.java:306)
+11-02 20:45:48.050 17379 17398 E TestRunner: 	at org.junit.runners.BlockJUnit4ClassRunner$1.evaluate(BlockJUnit4ClassRunner.java:100)
+11-02 20:45:48.050 17379 17398 E TestRunner: 	at org.junit.runners.ParentRunner.runLeaf(ParentRunner.java:366)
+11-02 20:45:48.050 17379 17398 E TestRunner: 	at org.junit.runners.BlockJUnit4ClassRunner.runChild(BlockJUnit4ClassRunner.java:103)
+11-02 20:45:48.050 17379 17398 E TestRunner: 	at org.junit.runners.BlockJUnit4ClassRunner.runChild(BlockJUnit4ClassRunner.java:63)
+11-02 20:45:48.050 17379 17398 E TestRunner: 	at org.junit.runners.ParentRunner$4.run(ParentRunner.java:331)
+11-02 20:45:48.050 17379 17398 E TestRunner: 	at org.junit.runners.ParentRunner$1.schedule(ParentRunner.java:79)
+11-02 20:45:48.050 17379 17398 E TestRunner: 	at org.junit.runners.ParentRunner.runChildren(ParentRunner.java:329)
+11-02 20:45:48.050 17379 17398 E TestRunner: 	at org.junit.runners.ParentRunner.access$100(ParentRunner.java:66)
+11-02 20:45:48.050 17379 17398 E TestRunner: 	at org.junit.runners.ParentRunner$2.evaluate(ParentRunner.java:293)
+11-02 20:45:48.050 17379 17398 E TestRunner: 	at org.junit.internal.runners.statements.RunBefores.evaluate(RunBefores.java:26)
+11-02 20:45:48.050 17379 17398 E TestRunner: 	at org.junit.runners.ParentRunner$3.evaluate(ParentRunner.java:306)
+11-02 20:45:48.050 17379 17398 E TestRunner: 	at org.junit.runners.ParentRunner.run(ParentRunner.java:413)
+11-02 20:45:48.050 17379 17398 E TestRunner: 	at org.junit.runners.Suite.runChild(Suite.java:128)
+11-02 20:45:48.050 17379 17398 E TestRunner: 	at org.junit.runners.Suite.runChild(Suite.java:27)
+11-02 20:45:48.050 17379 17398 E TestRunner: 	at org.junit.runners.ParentRunner$4.run(ParentRunner.java:331)
+11-02 20:45:48.050 17379 17398 E TestRunner: 	at org.junit.runners.ParentRunner$1.schedule(ParentRunner.java:79)
+11-02 20:45:48.050 17379 17398 E TestRunner: 	at org.junit.runners.ParentRunner.runChildren(ParentRunner.java:329)
+11-02 20:45:48.050 17379 17398 E TestRunner: 	at org.junit.runners.ParentRunner.access$100(ParentRunner.java:66)
+11-02 20:45:48.050 17379 17398 E TestRunner: 	at org.junit.runners.ParentRunner$2.evaluate(ParentRunner.java:293)
+11-02 20:45:48.050 17379 17398 E TestRunner: 	at org.junit.runners.ParentRunner$3.evaluate(ParentRunner.java:306)
+11-02 20:45:48.050 17379 17398 E TestRunner: 	at org.junit.runners.ParentRunner.run(ParentRunner.java:413)
+11-02 20:45:48.050 17379 17398 E TestRunner: 	at org.junit.runner.JUnitCore.run(JUnitCore.java:137)
+11-02 20:45:48.050 17379 17398 E TestRunner: 	at org.junit.runner.JUnitCore.run(JUnitCore.java:115)
+11-02 20:45:48.050 17379 17398 E TestRunner: 	at androidx.test.internal.runner.TestExecutor.execute(TestExecutor.java:68)
+11-02 20:45:48.050 17379 17398 E TestRunner: 	at androidx.test.internal.runner.TestExecutor.execute(TestExecutor.java:59)
+11-02 20:45:48.050 17379 17398 E TestRunner: 	at androidx.test.runner.AndroidJUnitRunner.onStart(AndroidJUnitRunner.java:467)
+11-02 20:45:48.050 17379 17398 E TestRunner: 	at android.app.Instrumentation$InstrumentationThread.run(Instrumentation.java:2402)
+11-02 20:45:48.050 17379 17398 E TestRunner: ----- end exception -----
+11-02 20:45:48.050 17379 17398 I TestRunner: finished: autoPlayOffPausesAtBoundaryWhileKeepingTheSelectedQueue(com.example.ymediaplayer.ui.MusicPlaybackIntegrationTest)
+11-02 20:45:48.051 17379 17398 I TestRunner: started: serviceSleepTimerPausesWithoutMusicScreen(com.example.ymediaplayer.ui.MusicPlaybackIntegrationTest)
+11-02 20:45:50.814 17379 17398 E TestRunner: failed: serviceSleepTimerPausesWithoutMusicScreen(com.example.ymediaplayer.ui.MusicPlaybackIntegrationTest)
+11-02 20:45:50.814 17379 17398 E TestRunner: ----- begin exception -----
+11-02 20:45:50.814 17379 17398 E TestRunner: java.util.NoSuchElementException: Collection contains no element matching the predicate.
+11-02 20:45:50.814 17379 17398 E TestRunner: 	at com.example.ymediaplayer.ui.MusicPlaybackIntegrationTest.prepareGeneratedFixture(MusicPlaybackIntegrationTest.kt:297)
+11-02 20:45:50.814 17379 17398 E TestRunner: 	at java.lang.reflect.Method.invoke(Native Method)
+11-02 20:45:50.814 17379 17398 E TestRunner: 	at org.junit.runners.model.FrameworkMethod$1.runReflectiveCall(FrameworkMethod.java:59)
+11-02 20:45:50.814 17379 17398 E TestRunner: 	at org.junit.internal.runners.model.ReflectiveCallable.run(ReflectiveCallable.java:12)
+11-02 20:45:50.814 17379 17398 E TestRunner: 	at org.junit.runners.model.FrameworkMethod.invokeExplosively(FrameworkMethod.java:56)
+11-02 20:45:50.814 17379 17398 E TestRunner: 	at androidx.test.internal.runner.junit4.statement.RunBefores.evaluate(RunBefores.java:76)
+11-02 20:45:50.814 17379 17398 E TestRunner: 	at androidx.test.internal.runner.junit4.statement.RunAfters.evaluate(RunAfters.java:61)
+11-02 20:45:50.814 17379 17398 E TestRunner: 	at androidx.compose.ui.test.junit4.AndroidComposeTestRule$apply$testWithDisposal$1.evaluate(AndroidComposeTestRule.android.kt:426)
+11-02 20:45:50.814 17379 17398 E TestRunner: 	at org.junit.rules.ExternalResource$1.evaluate(ExternalResource.java:54)
+11-02 20:45:50.814 17379 17398 E TestRunner: 	at androidx.compose.ui.test.junit4.AndroidComposeTestRule$apply$1$evaluate$1.invokeSuspend(AndroidComposeTestRule.android.kt:448)
+11-02 20:45:50.814 17379 17398 E TestRunner: 	at androidx.compose.ui.test.junit4.AndroidComposeTestRule$apply$1$evaluate$1.invoke(AndroidComposeTestRule.android.kt:8)
+11-02 20:45:50.814 17379 17398 E TestRunner: 	at androidx.compose.ui.test.junit4.AndroidComposeTestRule$apply$1$evaluate$1.invoke(AndroidComposeTestRule.android.kt:4)
+11-02 20:45:50.814 17379 17398 E TestRunner: 	at androidx.compose.ui.test.AndroidComposeUiTestEnvironment$runTest$1$1$1$1$1.invokeSuspend(ComposeUiTest.android.kt:689)
+11-02 20:45:50.814 17379 17398 E TestRunner: 	at androidx.compose.ui.test.AndroidComposeUiTestEnvironment$runTest$1$1$1$1$1.invoke(ComposeUiTest.android.kt:8)
+11-02 20:45:50.814 17379 17398 E TestRunner: 	at androidx.compose.ui.test.AndroidComposeUiTestEnvironment$runTest$1$1$1$1$1.invoke(ComposeUiTest.android.kt:2)
+11-02 20:45:50.814 17379 17398 E TestRunner: 	at androidx.compose.ui.test.EspressoLink.withStrategy(EspressoLink.android.kt:69)
+11-02 20:45:50.814 17379 17398 E TestRunner: 	at androidx.compose.ui.test.AndroidComposeUiTestEnvironment$runTest$1$1.invokeSuspend(ComposeUiTest.android.kt:686)
+11-02 20:45:50.814 17379 17398 E TestRunner: 	at androidx.compose.ui.test.AndroidComposeUiTestEnvironment$runTest$1$1.invoke(ComposeUiTest.android.kt:8)
+11-02 20:45:50.814 17379 17398 E TestRunner: 	at androidx.compose.ui.test.AndroidComposeUiTestEnvironment$runTest$1$1.invoke(ComposeUiTest.android.kt:4)
+11-02 20:45:50.814 17379 17398 E TestRunner: 	at kotlinx.coroutines.test.TestBuildersKt__TestBuildersKt$runTest$2$1$1.invokeSuspend(TestBuilders.kt:317)
+11-02 20:45:50.814 17379 17398 E TestRunner: 	at kotlin.coroutines.jvm.internal.BaseContinuationImpl.resumeWith(ContinuationImpl.kt:34)
+11-02 20:45:50.814 17379 17398 E TestRunner: 	at kotlinx.coroutines.DispatchedTask.run(DispatchedTask.kt:100)
+11-02 20:45:50.814 17379 17398 E TestRunner: 	at kotlinx.coroutines.test.TestDispatcher.processEvent$kotlinx_coroutines_test(TestDispatcher.kt:24)
+11-02 20:45:50.814 17379 17398 E TestRunner: 	at kotlinx.coroutines.test.TestCoroutineScheduler.tryRunNextTaskUnless$kotlinx_coroutines_test(TestCoroutineScheduler.kt:99)
+11-02 20:45:50.814 17379 17398 E TestRunner: 	at kotlinx.coroutines.test.TestBuildersKt__TestBuildersKt$runTest$2$1$workRunner$1.invokeSuspend(TestBuilders.kt:326)
+11-02 20:45:50.814 17379 17398 E TestRunner: 	at kotlin.coroutines.jvm.internal.BaseContinuationImpl.resumeWith(ContinuationImpl.kt:34)
+11-02 20:45:50.814 17379 17398 E TestRunner: 	at kotlinx.coroutines.DispatchedTask.run(DispatchedTask.kt:100)
+11-02 20:45:50.814 17379 17398 E TestRunner: 	at kotlinx.coroutines.EventLoopImplBase.processNextEvent(EventLoop.common.kt:263)
+11-02 20:45:50.814 17379 17398 E TestRunner: 	at kotlinx.coroutines.BlockingCoroutine.joinBlocking(Builders.kt:94)
+11-02 20:45:50.814 17379 17398 E TestRunner: 	at kotlinx.coroutines.BuildersKt__BuildersKt.runBlocking(Builders.kt:70)
+11-02 20:45:50.814 17379 17398 E TestRunner: 	at kotlinx.coroutines.BuildersKt.runBlocking(dex-id-7e891886282f657a0c2e7600c286f69a4e2f90c4:1)
+11-02 20:45:50.814 17379 17398 E TestRunner: 	at kotlinx.coroutines.BuildersKt__BuildersKt.runBlocking$default(Builders.kt:48)
+11-02 20:45:50.814 17379 17398 E TestRunner: 	at kotlinx.coroutines.BuildersKt.runBlocking$default(dex-id-7e891886282f657a0c2e7600c286f69a4e2f90c4:1)
+11-02 20:45:50.814 17379 17398 E TestRunner: 	at kotlinx.coroutines.test.TestBuildersJvmKt.createTestResult(TestBuildersJvm.kt:10)
+11-02 20:45:50.814 17379 17398 E TestRunner: 	at kotlinx.coroutines.test.TestBuildersKt__TestBuildersKt.runTest-8Mi8wO0(TestBuilders.kt:309)
+11-02 20:45:50.814 17379 17398 E TestRunner: 	at kotlinx.coroutines.test.TestBuildersKt.runTest-8Mi8wO0(dex-id-7e6b3808279efd3cb39bf2dfa1a45ff99919b721:1)
+11-02 20:45:50.814 17379 17398 E TestRunner: 	at kotlinx.coroutines.test.TestBuildersKt__TestBuildersKt.runTest-8Mi8wO0(TestBuilders.kt:167)
+11-02 20:45:50.814 17379 17398 E TestRunner: 	at kotlinx.coroutines.test.TestBuildersKt.runTest-8Mi8wO0(dex-id-7e6b3808279efd3cb39bf2dfa1a45ff99919b721:1)
+11-02 20:45:50.814 17379 17398 E TestRunner: 	at androidx.compose.ui.test.AndroidComposeUiTestEnvironment.runTest(ComposeUiTest.android.kt:665)
+11-02 20:45:50.814 17379 17398 E TestRunner: 	at androidx.compose.ui.test.junit4.AndroidComposeTestRule$apply$1.evaluate(AndroidComposeTestRule.android.kt:447)
+11-02 20:45:50.814 17379 17398 E TestRunner: 	at org.junit.runners.ParentRunner$3.evaluate(ParentRunner.java:306)
+11-02 20:45:50.814 17379 17398 E TestRunner: 	at org.junit.runners.BlockJUnit4ClassRunner$1.evaluate(BlockJUnit4ClassRunner.java:100)
+11-02 20:45:50.814 17379 17398 E TestRunner: 	at org.junit.runners.ParentRunner.runLeaf(ParentRunner.java:366)
+11-02 20:45:50.814 17379 17398 E TestRunner: 	at org.junit.runners.BlockJUnit4ClassRunner.runChild(BlockJUnit4ClassRunner.java:103)
+11-02 20:45:50.814 17379 17398 E TestRunner: 	at org.junit.runners.BlockJUnit4ClassRunner.runChild(BlockJUnit4ClassRunner.java:63)
+11-02 20:45:50.814 17379 17398 E TestRunner: 	at org.junit.runners.ParentRunner$4.run(ParentRunner.java:331)
+11-02 20:45:50.814 17379 17398 E TestRunner: 	at org.junit.runners.ParentRunner$1.schedule(ParentRunner.java:79)
+11-02 20:45:50.814 17379 17398 E TestRunner: 	at org.junit.runners.ParentRunner.runChildren(ParentRunner.java:329)
+11-02 20:45:50.814 17379 17398 E TestRunner: 	at org.junit.runners.ParentRunner.access$100(ParentRunner.java:66)
+11-02 20:45:50.814 17379 17398 E TestRunner: 	at org.junit.runners.ParentRunner$2.evaluate(ParentRunner.java:293)
+11-02 20:45:50.814 17379 17398 E TestRunner: 	at org.junit.internal.runners.statements.RunBefores.evaluate(RunBefores.java:26)
+11-02 20:45:50.814 17379 17398 E TestRunner: 	at org.junit.runners.ParentRunner$3.evaluate(ParentRunner.java:306)
+11-02 20:45:50.814 17379 17398 E TestRunner: 	at org.junit.runners.ParentRunner.run(ParentRunner.java:413)
+11-02 20:45:50.814 17379 17398 E TestRunner: 	at org.junit.runners.Suite.runChild(Suite.java:128)
+11-02 20:45:50.814 17379 17398 E TestRunner: 	at org.junit.runners.Suite.runChild(Suite.java:27)
+11-02 20:45:50.814 17379 17398 E TestRunner: 	at org.junit.runners.ParentRunner$4.run(ParentRunner.java:331)
+11-02 20:45:50.814 17379 17398 E TestRunner: 	at org.junit.runners.ParentRunner$1.schedule(ParentRunner.java:79)
+11-02 20:45:50.814 17379 17398 E TestRunner: 	at org.junit.runners.ParentRunner.runChildren(ParentRunner.java:329)
+11-02 20:45:50.814 17379 17398 E TestRunner: 	at org.junit.runners.ParentRunner.access$100(ParentRunner.java:66)
+11-02 20:45:50.814 17379 17398 E TestRunner: 	at org.junit.runners.ParentRunner$2.evaluate(ParentRunner.java:293)
+11-02 20:45:50.814 17379 17398 E TestRunner: 	at org.junit.runners.ParentRunner$3.evaluate(ParentRunner.java:306)
+11-02 20:45:50.814 17379 17398 E TestRunner: 	at org.junit.runners.ParentRunner.run(ParentRunner.java:413)
+11-02 20:45:50.814 17379 17398 E TestRunner: 	at org.junit.runner.JUnitCore.run(JUnitCore.java:137)
+11-02 20:45:50.814 17379 17398 E TestRunner: 	at org.junit.runner.JUnitCore.run(JUnitCore.java:115)
+11-02 20:45:50.814 17379 17398 E TestRunner: 	at androidx.test.internal.runner.TestExecutor.execute(TestExecutor.java:68)
+11-02 20:45:50.814 17379 17398 E TestRunner: 	at androidx.test.internal.runner.TestExecutor.execute(TestExecutor.java:59)
+11-02 20:45:50.814 17379 17398 E TestRunner: 	at androidx.test.runner.AndroidJUnitRunner.onStart(AndroidJUnitRunner.java:467)
+11-02 20:45:50.814 17379 17398 E TestRunner: 	at android.app.Instrumentation$InstrumentationThread.run(Instrumentation.java:2402)
+11-02 20:45:50.814 17379 17398 E TestRunner: ----- end exception -----
+11-02 20:45:50.818 17379 17398 I TestRunner: finished: serviceSleepTimerPausesWithoutMusicScreen(com.example.ymediaplayer.ui.MusicPlaybackIntegrationTest)
+11-02 20:45:50.819 17379 17398 I TestRunner: run finished: 6 tests, 6 failed, 0 ignored
+11-02 20:48:10.212 17949 17972 I TestRunner: run started: 6 tests
+11-02 20:48:10.213 17949 17972 I TestRunner: started: extendingFadingSleepTimerMustRestoreVolume(com.example.ymediaplayer.ui.HiddenMusicAuditProbeTest)
+11-02 20:48:13.452 17949 17949 I HiddenAudit: extended timer volume=0.7362
+11-02 20:48:14.160 17949 17972 E TestRunner: failed: extendingFadingSleepTimerMustRestoreVolume(com.example.ymediaplayer.ui.HiddenMusicAuditProbeTest)
+11-02 20:48:14.161 17949 17972 E TestRunner: ----- begin exception -----
+11-02 20:48:14.161 17949 17972 E TestRunner: java.lang.AssertionError: Extending timer must stop old fade expected:<1.0> but was:<0.7362>
+11-02 20:48:14.161 17949 17972 E TestRunner: 	at org.junit.Assert.fail(Assert.java:89)
+11-02 20:48:14.161 17949 17972 E TestRunner: 	at org.junit.Assert.failNotEquals(Assert.java:835)
+11-02 20:48:14.161 17949 17972 E TestRunner: 	at org.junit.Assert.assertEquals(Assert.java:577)
+11-02 20:48:14.161 17949 17972 E TestRunner: 	at com.example.ymediaplayer.ui.HiddenMusicAuditProbeTest.extendingFadingSleepTimerMustRestoreVolume$lambda$3(HiddenMusicAuditProbeTest.kt:105)
+11-02 20:48:14.161 17949 17972 E TestRunner: 	at com.example.ymediaplayer.ui.HiddenMusicAuditProbeTest$$ExternalSyntheticLambda18.invoke(D8$$SyntheticClass:0)
+11-02 20:48:14.161 17949 17972 E TestRunner: 	at com.example.ymediaplayer.ui.HiddenMusicAuditProbeTest.main$lambda$0(HiddenMusicAuditProbeTest.kt:28)
+11-02 20:48:14.161 17949 17972 E TestRunner: 	at com.example.ymediaplayer.ui.HiddenMusicAuditProbeTest$$ExternalSyntheticLambda10.run(D8$$SyntheticClass:0)
+11-02 20:48:14.161 17949 17972 E TestRunner: 	at java.util.concurrent.Executors$RunnableAdapter.call(Executors.java:520)
+11-02 20:48:14.161 17949 17972 E TestRunner: 	at java.util.concurrent.FutureTask.run(FutureTask.java:328)
+11-02 20:48:14.161 17949 17972 E TestRunner: 	at android.app.Instrumentation$SyncRunnable.run(Instrumentation.java:2420)
+11-02 20:48:14.161 17949 17972 E TestRunner: 	at android.os.Handler.handleCallback(Handler.java:1013)
+11-02 20:48:14.161 17949 17972 E TestRunner: 	at android.os.Handler.dispatchMessage(Handler.java:101)
+11-02 20:48:14.161 17949 17972 E TestRunner: 	at android.os.Looper.loopOnce(Looper.java:226)
+11-02 20:48:14.161 17949 17972 E TestRunner: 	at android.os.Looper.loop(Looper.java:328)
+11-02 20:48:14.161 17949 17972 E TestRunner: 	at android.app.ActivityThread.main(ActivityThread.java:9220)
+11-02 20:48:14.161 17949 17972 E TestRunner: 	at java.lang.reflect.Method.invoke(Native Method)
+11-02 20:48:14.161 17949 17972 E TestRunner: 	at com.android.internal.os.RuntimeInit$MethodAndArgsCaller.run(RuntimeInit.java:586)
+11-02 20:48:14.161 17949 17972 E TestRunner: 	at com.android.internal.os.ZygoteInit.main(ZygoteInit.java:1099)
+11-02 20:48:14.161 17949 17972 E TestRunner: ----- end exception -----
+11-02 20:48:14.162 17949 17972 I TestRunner: finished: extendingFadingSleepTimerMustRestoreVolume(com.example.ymediaplayer.ui.HiddenMusicAuditProbeTest)
+11-02 20:48:14.164 17949 17972 I TestRunner: started: cancellingFadingSleepTimerMustRestoreVolume(com.example.ymediaplayer.ui.HiddenMusicAuditProbeTest)
+11-02 20:48:16.303 17949 17972 E TestRunner: failed: cancellingFadingSleepTimerMustRestoreVolume(com.example.ymediaplayer.ui.HiddenMusicAuditProbeTest)
+11-02 20:48:16.304 17949 17972 E TestRunner: ----- begin exception -----
+11-02 20:48:16.304 17949 17972 E TestRunner: java.lang.AssertionError: Cancel must restore pre-fade volume expected:<1.0> but was:<0.7486>
+11-02 20:48:16.304 17949 17972 E TestRunner: 	at org.junit.Assert.fail(Assert.java:89)
+11-02 20:48:16.304 17949 17972 E TestRunner: 	at org.junit.Assert.failNotEquals(Assert.java:835)
+11-02 20:48:16.304 17949 17972 E TestRunner: 	at org.junit.Assert.assertEquals(Assert.java:577)
+11-02 20:48:16.304 17949 17972 E TestRunner: 	at com.example.ymediaplayer.ui.HiddenMusicAuditProbeTest.cancellingFadingSleepTimerMustRestoreVolume$lambda$2(HiddenMusicAuditProbeTest.kt:95)
+11-02 20:48:16.304 17949 17972 E TestRunner: 	at com.example.ymediaplayer.ui.HiddenMusicAuditProbeTest$$ExternalSyntheticLambda13.invoke(D8$$SyntheticClass:0)
+11-02 20:48:16.304 17949 17972 E TestRunner: 	at com.example.ymediaplayer.ui.HiddenMusicAuditProbeTest.main$lambda$0(HiddenMusicAuditProbeTest.kt:28)
+11-02 20:48:16.304 17949 17972 E TestRunner: 	at com.example.ymediaplayer.ui.HiddenMusicAuditProbeTest$$ExternalSyntheticLambda10.run(D8$$SyntheticClass:0)
+11-02 20:48:16.304 17949 17972 E TestRunner: 	at java.util.concurrent.Executors$RunnableAdapter.call(Executors.java:520)
+11-02 20:48:16.304 17949 17972 E TestRunner: 	at java.util.concurrent.FutureTask.run(FutureTask.java:328)
+11-02 20:48:16.304 17949 17972 E TestRunner: 	at android.app.Instrumentation$SyncRunnable.run(Instrumentation.java:2420)
+11-02 20:48:16.304 17949 17972 E TestRunner: 	at android.os.Handler.handleCallback(Handler.java:1013)
+11-02 20:48:16.304 17949 17972 E TestRunner: 	at android.os.Handler.dispatchMessage(Handler.java:101)
+11-02 20:48:16.304 17949 17972 E TestRunner: 	at android.os.Looper.loopOnce(Looper.java:226)
+11-02 20:48:16.304 17949 17972 E TestRunner: 	at android.os.Looper.loop(Looper.java:328)
+11-02 20:48:16.304 17949 17972 E TestRunner: 	at android.app.ActivityThread.main(ActivityThread.java:9220)
+11-02 20:48:16.304 17949 17972 E TestRunner: 	at java.lang.reflect.Method.invoke(Native Method)
+11-02 20:48:16.304 17949 17972 E TestRunner: 	at com.android.internal.os.RuntimeInit$MethodAndArgsCaller.run(RuntimeInit.java:586)
+11-02 20:48:16.304 17949 17972 E TestRunner: 	at com.android.internal.os.ZygoteInit.main(ZygoteInit.java:1099)
+11-02 20:48:16.304 17949 17972 E TestRunner: ----- end exception -----
+11-02 20:48:16.305 17949 17972 I TestRunner: finished: cancellingFadingSleepTimerMustRestoreVolume(com.example.ymediaplayer.ui.HiddenMusicAuditProbeTest)
+11-02 20:48:16.308 17949 17972 I TestRunner: started: queueReorderingMustChangeTheActualNextTrack(com.example.ymediaplayer.ui.HiddenMusicAuditProbeTest)
+11-02 20:48:18.221 17949 17972 E TestRunner: failed: queueReorderingMustChangeTheActualNextTrack(com.example.ymediaplayer.ui.HiddenMusicAuditProbeTest)
+11-02 20:48:18.222 17949 17972 E TestRunner: ----- begin exception -----
+11-02 20:48:18.222 17949 17972 E TestRunner: java.lang.AssertionError: Next must respect reordered queue expected:<file:///data/user/0/com.example.ymediaplayer.debug/files/hidden_qa_3.mp3> but was:<file:///data/user/0/com.example.ymediaplayer.debug/files/hidden_qa_2.mp3>
+11-02 20:48:18.222 17949 17972 E TestRunner: 	at org.junit.Assert.fail(Assert.java:89)
+11-02 20:48:18.222 17949 17972 E TestRunner: 	at org.junit.Assert.failNotEquals(Assert.java:835)
+11-02 20:48:18.222 17949 17972 E TestRunner: 	at org.junit.Assert.assertEquals(Assert.java:120)
+11-02 20:48:18.222 17949 17972 E TestRunner: 	at com.example.ymediaplayer.ui.HiddenMusicAuditProbeTest.queueReorderingMustChangeTheActualNextTrack$lambda$0(HiddenMusicAuditProbeTest.kt:85)
+11-02 20:48:18.222 17949 17972 E TestRunner: 	at com.example.ymediaplayer.ui.HiddenMusicAuditProbeTest$$ExternalSyntheticLambda1.invoke(D8$$SyntheticClass:0)
+11-02 20:48:18.222 17949 17972 E TestRunner: 	at com.example.ymediaplayer.ui.HiddenMusicAuditProbeTest.main$lambda$0(HiddenMusicAuditProbeTest.kt:28)
+11-02 20:48:18.222 17949 17972 E TestRunner: 	at com.example.ymediaplayer.ui.HiddenMusicAuditProbeTest$$ExternalSyntheticLambda10.run(D8$$SyntheticClass:0)
+11-02 20:48:18.222 17949 17972 E TestRunner: 	at java.util.concurrent.Executors$RunnableAdapter.call(Executors.java:520)
+11-02 20:48:18.222 17949 17972 E TestRunner: 	at java.util.concurrent.FutureTask.run(FutureTask.java:328)
+11-02 20:48:18.222 17949 17972 E TestRunner: 	at android.app.Instrumentation$SyncRunnable.run(Instrumentation.java:2420)
+11-02 20:48:18.222 17949 17972 E TestRunner: 	at android.os.Handler.handleCallback(Handler.java:1013)
+11-02 20:48:18.222 17949 17972 E TestRunner: 	at android.os.Handler.dispatchMessage(Handler.java:101)
+11-02 20:48:18.222 17949 17972 E TestRunner: 	at android.os.Looper.loopOnce(Looper.java:226)
+11-02 20:48:18.222 17949 17972 E TestRunner: 	at android.os.Looper.loop(Looper.java:328)
+11-02 20:48:18.222 17949 17972 E TestRunner: 	at android.app.ActivityThread.main(ActivityThread.java:9220)
+11-02 20:48:18.222 17949 17972 E TestRunner: 	at java.lang.reflect.Method.invoke(Native Method)
+11-02 20:48:18.222 17949 17972 E TestRunner: 	at com.android.internal.os.RuntimeInit$MethodAndArgsCaller.run(RuntimeInit.java:586)
+11-02 20:48:18.222 17949 17972 E TestRunner: 	at com.android.internal.os.ZygoteInit.main(ZygoteInit.java:1099)
+11-02 20:48:18.222 17949 17972 E TestRunner: ----- end exception -----
+11-02 20:48:18.223 17949 17972 I TestRunner: finished: queueReorderingMustChangeTheActualNextTrack(com.example.ymediaplayer.ui.HiddenMusicAuditProbeTest)
+11-02 20:48:18.227 17949 17972 I TestRunner: started: repeatOffMustNotWrapAtEndOfQueue(com.example.ymediaplayer.ui.HiddenMusicAuditProbeTest)
+11-02 20:48:21.467 17949 17949 I HiddenAudit: end with repeat OFF current=QA_1 playing=true
+11-02 20:48:21.842 17949 17972 E TestRunner: failed: repeatOffMustNotWrapAtEndOfQueue(com.example.ymediaplayer.ui.HiddenMusicAuditProbeTest)
+11-02 20:48:21.844 17949 17972 E TestRunner: ----- begin exception -----
+11-02 20:48:21.844 17949 17972 E TestRunner: java.lang.AssertionError: Repeat OFF must end queue instead of wrapping expected:<file:///data/user/0/com.example.ymediaplayer.debug/files/hidden_qa_3.mp3> but was:<file:///data/user/0/com.example.ymediaplayer.debug/files/hidden_qa_1.mp3>
+11-02 20:48:21.844 17949 17972 E TestRunner: 	at org.junit.Assert.fail(Assert.java:89)
+11-02 20:48:21.844 17949 17972 E TestRunner: 	at org.junit.Assert.failNotEquals(Assert.java:835)
+11-02 20:48:21.844 17949 17972 E TestRunner: 	at org.junit.Assert.assertEquals(Assert.java:120)
+11-02 20:48:21.844 17949 17972 E TestRunner: 	at com.example.ymediaplayer.ui.HiddenMusicAuditProbeTest.repeatOffMustNotWrapAtEndOfQueue$lambda$3(HiddenMusicAuditProbeTest.kt:115)
+11-02 20:48:21.844 17949 17972 E TestRunner: 	at com.example.ymediaplayer.ui.HiddenMusicAuditProbeTest$$ExternalSyntheticLambda5.invoke(D8$$SyntheticClass:0)
+11-02 20:48:21.844 17949 17972 E TestRunner: 	at com.example.ymediaplayer.ui.HiddenMusicAuditProbeTest.main$lambda$0(HiddenMusicAuditProbeTest.kt:28)
+11-02 20:48:21.844 17949 17972 E TestRunner: 	at com.example.ymediaplayer.ui.HiddenMusicAuditProbeTest$$ExternalSyntheticLambda10.run(D8$$SyntheticClass:0)
+11-02 20:48:21.844 17949 17972 E TestRunner: 	at java.util.concurrent.Executors$RunnableAdapter.call(Executors.java:520)
+11-02 20:48:21.844 17949 17972 E TestRunner: 	at java.util.concurrent.FutureTask.run(FutureTask.java:328)
+11-02 20:48:21.844 17949 17972 E TestRunner: 	at android.app.Instrumentation$SyncRunnable.run(Instrumentation.java:2420)
+11-02 20:48:21.844 17949 17972 E TestRunner: 	at android.os.Handler.handleCallback(Handler.java:1013)
+11-02 20:48:21.844 17949 17972 E TestRunner: 	at android.os.Handler.dispatchMessage(Handler.java:101)
+11-02 20:48:21.844 17949 17972 E TestRunner: 	at android.os.Looper.loopOnce(Looper.java:226)
+11-02 20:48:21.844 17949 17972 E TestRunner: 	at android.os.Looper.loop(Looper.java:328)
+11-02 20:48:21.844 17949 17972 E TestRunner: 	at android.app.ActivityThread.main(ActivityThread.java:9220)
+11-02 20:48:21.844 17949 17972 E TestRunner: 	at java.lang.reflect.Method.invoke(Native Method)
+11-02 20:48:21.844 17949 17972 E TestRunner: 	at com.android.internal.os.RuntimeInit$MethodAndArgsCaller.run(RuntimeInit.java:586)
+11-02 20:48:21.844 17949 17972 E TestRunner: 	at com.android.internal.os.ZygoteInit.main(ZygoteInit.java:1099)
+11-02 20:48:21.844 17949 17972 E TestRunner: ----- end exception -----
+11-02 20:48:21.846 17949 17972 I TestRunner: finished: repeatOffMustNotWrapAtEndOfQueue(com.example.ymediaplayer.ui.HiddenMusicAuditProbeTest)
+11-02 20:48:21.850 17949 17972 I TestRunner: started: pausedSeekMustRemainPaused(com.example.ymediaplayer.ui.HiddenVideoAuditProbeTest)
+11-02 20:48:23.605 17949 17972 E TestRunner: failed: pausedSeekMustRemainPaused(com.example.ymediaplayer.ui.HiddenVideoAuditProbeTest)
+11-02 20:48:23.605 17949 17972 E TestRunner: ----- begin exception -----
+11-02 20:48:23.605 17949 17972 E TestRunner: java.lang.AssertionError: Scrubbing paused video must preserve pause
+11-02 20:48:23.605 17949 17972 E TestRunner: 	at org.junit.Assert.fail(Assert.java:89)
+11-02 20:48:23.605 17949 17972 E TestRunner: 	at org.junit.Assert.assertTrue(Assert.java:42)
+11-02 20:48:23.605 17949 17972 E TestRunner: 	at org.junit.Assert.assertFalse(Assert.java:65)
+11-02 20:48:23.605 17949 17972 E TestRunner: 	at com.example.ymediaplayer.ui.HiddenVideoAuditProbeTest.pausedSeekMustRemainPaused$lambda$2(HiddenVideoAuditProbeTest.kt:72)
+11-02 20:48:23.605 17949 17972 E TestRunner: 	at com.example.ymediaplayer.ui.HiddenVideoAuditProbeTest$$ExternalSyntheticLambda2.invoke(D8$$SyntheticClass:0)
+11-02 20:48:23.605 17949 17972 E TestRunner: 	at com.example.ymediaplayer.ui.HiddenVideoAuditProbeTest.main$lambda$0(HiddenVideoAuditProbeTest.kt:26)
+11-02 20:48:23.605 17949 17972 E TestRunner: 	at com.example.ymediaplayer.ui.HiddenVideoAuditProbeTest$$ExternalSyntheticLambda9.run(D8$$SyntheticClass:0)
+11-02 20:48:23.605 17949 17972 E TestRunner: 	at java.util.concurrent.Executors$RunnableAdapter.call(Executors.java:520)
+11-02 20:48:23.605 17949 17972 E TestRunner: 	at java.util.concurrent.FutureTask.run(FutureTask.java:328)
+11-02 20:48:23.605 17949 17972 E TestRunner: 	at android.app.Instrumentation$SyncRunnable.run(Instrumentation.java:2420)
+11-02 20:48:23.605 17949 17972 E TestRunner: 	at android.os.Handler.handleCallback(Handler.java:1013)
+11-02 20:48:23.605 17949 17972 E TestRunner: 	at android.os.Handler.dispatchMessage(Handler.java:101)
+11-02 20:48:23.605 17949 17972 E TestRunner: 	at android.os.Looper.loopOnce(Looper.java:226)
+11-02 20:48:23.605 17949 17972 E TestRunner: 	at android.os.Looper.loop(Looper.java:328)
+11-02 20:48:23.605 17949 17972 E TestRunner: 	at android.app.ActivityThread.main(ActivityThread.java:9220)
+11-02 20:48:23.605 17949 17972 E TestRunner: 	at java.lang.reflect.Method.invoke(Native Method)
+11-02 20:48:23.605 17949 17972 E TestRunner: 	at com.android.internal.os.RuntimeInit$MethodAndArgsCaller.run(RuntimeInit.java:586)
+11-02 20:48:23.605 17949 17972 E TestRunner: 	at com.android.internal.os.ZygoteInit.main(ZygoteInit.java:1099)
+11-02 20:48:23.605 17949 17972 E TestRunner: ----- end exception -----
+11-02 20:48:23.605 17949 17972 I TestRunner: finished: pausedSeekMustRemainPaused(com.example.ymediaplayer.ui.HiddenVideoAuditProbeTest)
+11-02 20:48:23.607 17949 17972 I TestRunner: started: videoSleepTimerMustSurviveActivityRecreation(com.example.ymediaplayer.ui.HiddenVideoAuditProbeTest)
+11-02 20:48:24.626 17949 17972 E TestRunner: failed: videoSleepTimerMustSurviveActivityRecreation(com.example.ymediaplayer.ui.HiddenVideoAuditProbeTest)
+11-02 20:48:24.626 17949 17972 E TestRunner: ----- begin exception -----
+11-02 20:48:24.626 17949 17972 E TestRunner: java.lang.AssertionError: Failed to inject touch input.
+11-02 20:48:24.626 17949 17972 E TestRunner: Reason: Expected exactly '1' node but could not find any node that satisfies: (Text + InputText + EditableText contains 'Sleep Timer' (ignoreCase: false))
+11-02 20:48:24.626 17949 17972 E TestRunner: 
+11-02 20:48:24.626 17949 17972 E TestRunner: 	at androidx.compose.ui.test.SemanticsNodeInteraction.fetchOneOrThrow(SemanticsNodeInteraction.kt:178)
+11-02 20:48:24.626 17949 17972 E TestRunner: 	at androidx.compose.ui.test.SemanticsNodeInteraction.fetchOneOrThrow$default(SemanticsNodeInteraction.kt:150)
+11-02 20:48:24.626 17949 17972 E TestRunner: 	at androidx.compose.ui.test.SemanticsNodeInteraction.fetchSemanticsNode(SemanticsNodeInteraction.kt:84)
+11-02 20:48:24.626 17949 17972 E TestRunner: 	at androidx.compose.ui.test.ActionsKt.performTouchInput(Actions.kt:403)
+11-02 20:48:24.626 17949 17972 E TestRunner: 	at androidx.compose.ui.test.AndroidActions.performClickImpl(Actions.android.kt:23)
+11-02 20:48:24.626 17949 17972 E TestRunner: 	at androidx.compose.ui.test.ActionsKt.performClick(Actions.kt:61)
+11-02 20:48:24.626 17949 17972 E TestRunner: 	at com.example.ymediaplayer.ui.HiddenVideoAuditProbeTest.videoSleepTimerMustSurviveActivityRecreation(HiddenVideoAuditProbeTest.kt:79)
+11-02 20:48:24.626 17949 17972 E TestRunner: 	at java.lang.reflect.Method.invoke(Native Method)
+11-02 20:48:24.626 17949 17972 E TestRunner: 	at org.junit.runners.model.FrameworkMethod$1.runReflectiveCall(FrameworkMethod.java:59)
+11-02 20:48:24.626 17949 17972 E TestRunner: 	at org.junit.internal.runners.model.ReflectiveCallable.run(ReflectiveCallable.java:12)
+11-02 20:48:24.626 17949 17972 E TestRunner: 	at org.junit.runners.model.FrameworkMethod.invokeExplosively(FrameworkMethod.java:56)
+11-02 20:48:24.626 17949 17972 E TestRunner: 	at org.junit.internal.runners.statements.InvokeMethod.evaluate(InvokeMethod.java:17)
+11-02 20:48:24.626 17949 17972 E TestRunner: 	at androidx.test.internal.runner.junit4.statement.RunBefores.evaluate(RunBefores.java:80)
+11-02 20:48:24.626 17949 17972 E TestRunner: 	at androidx.test.internal.runner.junit4.statement.RunAfters.evaluate(RunAfters.java:61)
+11-02 20:48:24.626 17949 17972 E TestRunner: 	at androidx.compose.ui.test.junit4.AndroidComposeTestRule$apply$testWithDisposal$1.evaluate(AndroidComposeTestRule.android.kt:426)
+11-02 20:48:24.626 17949 17972 E TestRunner: 	at androidx.compose.ui.test.junit4.AndroidComposeTestRule$apply$1$evaluate$1.invokeSuspend(AndroidComposeTestRule.android.kt:448)
+11-02 20:48:24.626 17949 17972 E TestRunner: 	at androidx.compose.ui.test.junit4.AndroidComposeTestRule$apply$1$evaluate$1.invoke(AndroidComposeTestRule.android.kt:8)
+11-02 20:48:24.626 17949 17972 E TestRunner: 	at androidx.compose.ui.test.junit4.AndroidComposeTestRule$apply$1$evaluate$1.invoke(AndroidComposeTestRule.android.kt:4)
+11-02 20:48:24.626 17949 17972 E TestRunner: 	at androidx.compose.ui.test.AndroidComposeUiTestEnvironment$runTest$1$1$1$1$1.invokeSuspend(ComposeUiTest.android.kt:689)
+11-02 20:48:24.626 17949 17972 E TestRunner: 	at androidx.compose.ui.test.AndroidComposeUiTestEnvironment$runTest$1$1$1$1$1.invoke(ComposeUiTest.android.kt:8)
+11-02 20:48:24.626 17949 17972 E TestRunner: 	at androidx.compose.ui.test.AndroidComposeUiTestEnvironment$runTest$1$1$1$1$1.invoke(ComposeUiTest.android.kt:2)
+11-02 20:48:24.626 17949 17972 E TestRunner: 	at androidx.compose.ui.test.EspressoLink.withStrategy(EspressoLink.android.kt:69)
+11-02 20:48:24.626 17949 17972 E TestRunner: 	at androidx.compose.ui.test.AndroidComposeUiTestEnvironment$runTest$1$1.invokeSuspend(ComposeUiTest.android.kt:686)
+11-02 20:48:24.626 17949 17972 E TestRunner: 	at androidx.compose.ui.test.AndroidComposeUiTestEnvironment$runTest$1$1.invoke(ComposeUiTest.android.kt:8)
+11-02 20:48:24.626 17949 17972 E TestRunner: 	at androidx.compose.ui.test.AndroidComposeUiTestEnvironment$runTest$1$1.invoke(ComposeUiTest.android.kt:4)
+11-02 20:48:24.626 17949 17972 E TestRunner: 	at kotlinx.coroutines.test.TestBuildersKt__TestBuildersKt$runTest$2$1$1.invokeSuspend(TestBuilders.kt:317)
+11-02 20:48:24.626 17949 17972 E TestRunner: 	at kotlin.coroutines.jvm.internal.BaseContinuationImpl.resumeWith(ContinuationImpl.kt:34)
+11-02 20:48:24.626 17949 17972 E TestRunner: 	at kotlinx.coroutines.DispatchedTask.run(DispatchedTask.kt:100)
+11-02 20:48:24.626 17949 17972 E TestRunner: 	at kotlinx.coroutines.test.TestDispatcher.processEvent$kotlinx_coroutines_test(TestDispatcher.kt:24)
+11-02 20:48:24.626 17949 17972 E TestRunner: 	at kotlinx.coroutines.test.TestCoroutineScheduler.tryRunNextTaskUnless$kotlinx_coroutines_test(TestCoroutineScheduler.kt:99)
+11-02 20:48:24.626 17949 17972 E TestRunner: 	at kotlinx.coroutines.test.TestBuildersKt__TestBuildersKt$runTest$2$1$workRunner$1.invokeSuspend(TestBuilders.kt:326)
+11-02 20:48:24.626 17949 17972 E TestRunner: 	at kotlin.coroutines.jvm.internal.BaseContinuationImpl.resumeWith(ContinuationImpl.kt:34)
+11-02 20:48:24.626 17949 17972 E TestRunner: 	at kotlinx.coroutines.DispatchedTask.run(DispatchedTask.kt:100)
+11-02 20:48:24.626 17949 17972 E TestRunner: 	at kotlinx.coroutines.EventLoopImplBase.processNextEvent(EventLoop.common.kt:263)
+11-02 20:48:24.626 17949 17972 E TestRunner: 	at kotlinx.coroutines.BlockingCoroutine.joinBlocking(Builders.kt:94)
+11-02 20:48:24.626 17949 17972 E TestRunner: 	at kotlinx.coroutines.BuildersKt__BuildersKt.runBlocking(Builders.kt:70)
+11-02 20:48:24.626 17949 17972 E TestRunner: 	at kotlinx.coroutines.BuildersKt.runBlocking(dex-id-7e891886282f657a0c2e7600c286f69a4e2f90c4:1)
+11-02 20:48:24.626 17949 17972 E TestRunner: 	at kotlinx.coroutines.BuildersKt__BuildersKt.runBlocking$default(Builders.kt:48)
+11-02 20:48:24.627 17949 17972 E TestRunner: 	at kotlinx.coroutines.BuildersKt.runBlocking$default(dex-id-7e891886282f657a0c2e7600c286f69a4e2f90c4:1)
+11-02 20:48:24.627 17949 17972 E TestRunner: 	at kotlinx.coroutines.test.TestBuildersJvmKt.createTestResult(TestBuildersJvm.kt:10)
+11-02 20:48:24.627 17949 17972 E TestRunner: 	at kotlinx.coroutines.test.TestBuildersKt__TestBuildersKt.runTest-8Mi8wO0(TestBuilders.kt:309)
+11-02 20:48:24.627 17949 17972 E TestRunner: 	at kotlinx.coroutines.test.TestBuildersKt.runTest-8Mi8wO0(dex-id-7e6b3808279efd3cb39bf2dfa1a45ff99919b721:1)
+11-02 20:48:24.627 17949 17972 E TestRunner: 	at kotlinx.coroutines.test.TestBuildersKt__TestBuildersKt.runTest-8Mi8wO0(TestBuilders.kt:167)
+11-02 20:48:24.627 17949 17972 E TestRunner: 	at kotlinx.coroutines.test.TestBuildersKt.runTest-8Mi8wO0(dex-id-7e6b3808279efd3cb39bf2dfa1a45ff99919b721:1)
+11-02 20:48:24.627 17949 17972 E TestRunner: 	at androidx.compose.ui.test.AndroidComposeUiTestEnvironment.runTest(ComposeUiTest.android.kt:665)
+11-02 20:48:24.627 17949 17972 E TestRunner: 	at androidx.compose.ui.test.junit4.AndroidComposeTestRule$apply$1.evaluate(AndroidComposeTestRule.android.kt:447)
+11-02 20:48:24.627 17949 17972 E TestRunner: 	at org.junit.runners.ParentRunner$3.evaluate(ParentRunner.java:306)
+11-02 20:48:24.627 17949 17972 E TestRunner: 	at org.junit.runners.BlockJUnit4ClassRunner$1.evaluate(BlockJUnit4ClassRunner.java:100)
+11-02 20:48:24.627 17949 17972 E TestRunner: 	at org.junit.runners.ParentRunner.runLeaf(ParentRunner.java:366)
+11-02 20:48:24.627 17949 17972 E TestRunner: 	at org.junit.runners.BlockJUnit4ClassRunner.runChild(BlockJUnit4ClassRunner.java:103)
+11-02 20:48:24.627 17949 17972 E TestRunner: 	at org.junit.runners.BlockJUnit4ClassRunner.runChild(BlockJUnit4ClassRunner.java:63)
+11-02 20:48:24.627 17949 17972 E TestRunner: 	at org.junit.runners.ParentRunner$4.run(ParentRunner.java:331)
+11-02 20:48:24.627 17949 17972 E TestRunner: 	at org.junit.runners.ParentRunner$1.schedule(ParentRunner.java:79)
+11-02 20:48:24.627 17949 17972 E TestRunner: 	at org.junit.runners.ParentRunner.runChildren(ParentRunner.java:329)
+11-02 20:48:24.627 17949 17972 E TestRunner: 	at org.junit.runners.ParentRunner.access$100(ParentRunner.java:66)
+11-02 20:48:24.627 17949 17972 E TestRunner: 	at org.junit.runners.ParentRunner$2.evaluate(ParentRunner.java:293)
+11-02 20:48:24.627 17949 17972 E TestRunner: 	at org.junit.runners.ParentRunner$3.evaluate(ParentRunner.java:306)
+11-02 20:48:24.627 17949 17972 E TestRunner: 	at org.junit.runners.ParentRunner.run(ParentRunner.java:413)
+11-02 20:48:24.627 17949 17972 E TestRunner: 	at org.junit.runners.Suite.runChild(Suite.java:128)
+11-02 20:48:24.627 17949 17972 E TestRunner: 	at org.junit.runners.Suite.runChild(Suite.java:27)
+11-02 20:48:24.627 17949 17972 E TestRunner: 	at org.junit.runners.ParentRunner$4.run(ParentRunner.java:331)
+11-02 20:48:24.627 17949 17972 E TestRunner: 	at org.junit.runners.ParentRunner$1.schedule(ParentRunner.java:79)
+11-02 20:48:24.627 17949 17972 E TestRunner: 	at org.junit.runners.ParentRunner.runChildren(ParentRunner.java:329)
+11-02 20:48:24.627 17949 17972 E TestRunner: 	at org.junit.runners.ParentRunner.access$100(ParentRunner.java:66)
+11-02 20:48:24.627 17949 17972 E TestRunner: 	at org.junit.runners.ParentRunner$2.evaluate(ParentRunner.java:293)
+11-02 20:48:24.627 17949 17972 E TestRunner: 	at org.junit.runners.ParentRunner$3.evaluate(ParentRunner.java:306)
+11-02 20:48:24.627 17949 17972 E TestRunner: 	at org.junit.runners.ParentRunner.run(ParentRunner.java:413)
+11-02 20:48:24.627 17949 17972 E TestRunner: 	at org.junit.runner.JUnitCore.run(JUnitCore.java:137)
+11-02 20:48:24.627 17949 17972 E TestRunner: 	at org.junit.runner.JUnitCore.run(JUnitCore.java:115)
+11-02 20:48:24.627 17949 17972 E TestRunner: 	at androidx.test.internal.runner.TestExecutor.execute(TestExecutor.java:68)
+11-02 20:48:24.627 17949 17972 E TestRunner: 	at androidx.test.internal.runner.TestExecutor.execute(TestExecutor.java:59)
+11-02 20:48:24.627 17949 17972 E TestRunner: 	at androidx.test.runner.AndroidJUnitRunner.onStart(AndroidJUnitRunner.java:467)
+11-02 20:48:24.627 17949 17972 E TestRunner: 	at android.app.Instrumentation$InstrumentationThread.run(Instrumentation.java:2402)
+11-02 20:48:24.627 17949 17972 E TestRunner: ----- end exception -----
+11-02 20:48:24.628 17949 17972 I TestRunner: finished: videoSleepTimerMustSurviveActivityRecreation(com.example.ymediaplayer.ui.HiddenVideoAuditProbeTest)
+11-02 20:48:24.629 17949 17972 I TestRunner: run finished: 6 tests, 6 failed, 0 ignored
+11-02 20:49:07.684 18645 18665 I TestRunner: run started: 1 tests
+11-02 20:49:07.685 18645 18665 I TestRunner: started: videoSleepTimerMustSurviveActivityRecreation(com.example.ymediaplayer.ui.HiddenVideoAuditProbeTest)
+11-02 20:49:09.697 18645 18665 I HiddenAudit: before timer select: Printing with useUnmergedTree = 'false'
+11-02 20:49:09.697 18645 18665 I HiddenAudit: Node #1 at (l=0.0, t=0.0, r=1080.0, b=2400.0)px
+11-02 20:49:09.697 18645 18665 I HiddenAudit:  |-Node #2 at (l=0.0, t=0.0, r=1080.0, b=2400.0)px
+11-02 20:49:09.697 18645 18665 I HiddenAudit:    IsContainer = 'true'
+11-02 20:49:09.697 18645 18665 I HiddenAudit:    Shape = 'RectangleShape'
+11-02 20:49:09.697 18645 18665 I HiddenAudit:     |-Node #4 at (l=0.0, t=0.0, r=1080.0, b=2400.0)px
+11-02 20:49:09.697 18645 18665 I HiddenAudit:       Shape = 'RectangleShape'
+11-02 20:49:09.697 18645 18665 I HiddenAudit:        |-Node #6 at (l=0.0, t=0.0, r=1080.0, b=2400.0)px
+11-02 20:49:09.697 18645 18665 I HiddenAudit:        | Shape = 'RectangleShape'
+11-02 20:49:09.697 18645 18665 I HiddenAudit:        |-Node #8 at (l=0.0, t=0.0, r=1080.0, b=2400.0)px
+11-02 20:49:09.697 18645 18665 I HiddenAudit:          Shape = 'RectangleShape'
+11-02 20:49:09.697 18645 18665 I HiddenAudit:           |-Node #9 at (l=0.0, t=0.0, r=1080.0, b=2400.0)px
+11-02 20:49:09.697 18645 18665 I HiddenAudit:             MergeDescendants = 'true'
+11-02 20:49:10.139 18645 18665 E TestRunner: failed: videoSleepTimerMustSurviveActivityRecreation(com.example.ymediaplayer.ui.HiddenVideoAuditProbeTest)
+11-02 20:49:10.140 18645 18665 E TestRunner: ----- begin exception -----
+11-02 20:49:10.140 18645 18665 E TestRunner: java.lang.AssertionError: Failed to inject touch input.
+11-02 20:49:10.140 18645 18665 E TestRunner: Reason: Expected exactly '1' node but could not find any node that satisfies: (Text + InputText + EditableText contains 'Sleep Timer' (ignoreCase: false))
+11-02 20:49:10.140 18645 18665 E TestRunner: 
+11-02 20:49:10.140 18645 18665 E TestRunner: 	at androidx.compose.ui.test.SemanticsNodeInteraction.fetchOneOrThrow(SemanticsNodeInteraction.kt:178)
+11-02 20:49:10.140 18645 18665 E TestRunner: 	at androidx.compose.ui.test.SemanticsNodeInteraction.fetchOneOrThrow$default(SemanticsNodeInteraction.kt:150)
+11-02 20:49:10.140 18645 18665 E TestRunner: 	at androidx.compose.ui.test.SemanticsNodeInteraction.fetchSemanticsNode(SemanticsNodeInteraction.kt:84)
+11-02 20:49:10.140 18645 18665 E TestRunner: 	at androidx.compose.ui.test.ActionsKt.performTouchInput(Actions.kt:403)
+11-02 20:49:10.140 18645 18665 E TestRunner: 	at androidx.compose.ui.test.AndroidActions.performClickImpl(Actions.android.kt:23)
+11-02 20:49:10.140 18645 18665 E TestRunner: 	at androidx.compose.ui.test.ActionsKt.performClick(Actions.kt:61)
+11-02 20:49:10.140 18645 18665 E TestRunner: 	at com.example.ymediaplayer.ui.HiddenVideoAuditProbeTest.videoSleepTimerMustSurviveActivityRecreation(HiddenVideoAuditProbeTest.kt:82)
+11-02 20:49:10.140 18645 18665 E TestRunner: 	at java.lang.reflect.Method.invoke(Native Method)
+11-02 20:49:10.140 18645 18665 E TestRunner: 	at org.junit.runners.model.FrameworkMethod$1.runReflectiveCall(FrameworkMethod.java:59)
+11-02 20:49:10.140 18645 18665 E TestRunner: 	at org.junit.internal.runners.model.ReflectiveCallable.run(ReflectiveCallable.java:12)
+11-02 20:49:10.140 18645 18665 E TestRunner: 	at org.junit.runners.model.FrameworkMethod.invokeExplosively(FrameworkMethod.java:56)
+11-02 20:49:10.140 18645 18665 E TestRunner: 	at org.junit.internal.runners.statements.InvokeMethod.evaluate(InvokeMethod.java:17)
+11-02 20:49:10.140 18645 18665 E TestRunner: 	at androidx.test.internal.runner.junit4.statement.RunBefores.evaluate(RunBefores.java:80)
+11-02 20:49:10.140 18645 18665 E TestRunner: 	at androidx.test.internal.runner.junit4.statement.RunAfters.evaluate(RunAfters.java:61)
+11-02 20:49:10.140 18645 18665 E TestRunner: 	at androidx.compose.ui.test.junit4.AndroidComposeTestRule$apply$testWithDisposal$1.evaluate(AndroidComposeTestRule.android.kt:426)
+11-02 20:49:10.140 18645 18665 E TestRunner: 	at androidx.compose.ui.test.junit4.AndroidComposeTestRule$apply$1$evaluate$1.invokeSuspend(AndroidComposeTestRule.android.kt:448)
+11-02 20:49:10.140 18645 18665 E TestRunner: 	at androidx.compose.ui.test.junit4.AndroidComposeTestRule$apply$1$evaluate$1.invoke(AndroidComposeTestRule.android.kt:8)
+11-02 20:49:10.140 18645 18665 E TestRunner: 	at androidx.compose.ui.test.junit4.AndroidComposeTestRule$apply$1$evaluate$1.invoke(AndroidComposeTestRule.android.kt:4)
+11-02 20:49:10.140 18645 18665 E TestRunner: 	at androidx.compose.ui.test.AndroidComposeUiTestEnvironment$runTest$1$1$1$1$1.invokeSuspend(ComposeUiTest.android.kt:689)
+11-02 20:49:10.140 18645 18665 E TestRunner: 	at androidx.compose.ui.test.AndroidComposeUiTestEnvironment$runTest$1$1$1$1$1.invoke(ComposeUiTest.android.kt:8)
+11-02 20:49:10.140 18645 18665 E TestRunner: 	at androidx.compose.ui.test.AndroidComposeUiTestEnvironment$runTest$1$1$1$1$1.invoke(ComposeUiTest.android.kt:2)
+11-02 20:49:10.140 18645 18665 E TestRunner: 	at androidx.compose.ui.test.EspressoLink.withStrategy(EspressoLink.android.kt:69)
+11-02 20:49:10.140 18645 18665 E TestRunner: 	at androidx.compose.ui.test.AndroidComposeUiTestEnvironment$runTest$1$1.invokeSuspend(ComposeUiTest.android.kt:686)
+11-02 20:49:10.140 18645 18665 E TestRunner: 	at androidx.compose.ui.test.AndroidComposeUiTestEnvironment$runTest$1$1.invoke(ComposeUiTest.android.kt:8)
+11-02 20:49:10.140 18645 18665 E TestRunner: 	at androidx.compose.ui.test.AndroidComposeUiTestEnvironment$runTest$1$1.invoke(ComposeUiTest.android.kt:4)
+11-02 20:49:10.140 18645 18665 E TestRunner: 	at kotlinx.coroutines.test.TestBuildersKt__TestBuildersKt$runTest$2$1$1.invokeSuspend(TestBuilders.kt:317)
+11-02 20:49:10.140 18645 18665 E TestRunner: 	at kotlin.coroutines.jvm.internal.BaseContinuationImpl.resumeWith(ContinuationImpl.kt:34)
+11-02 20:49:10.140 18645 18665 E TestRunner: 	at kotlinx.coroutines.DispatchedTask.run(DispatchedTask.kt:100)
+11-02 20:49:10.140 18645 18665 E TestRunner: 	at kotlinx.coroutines.test.TestDispatcher.processEvent$kotlinx_coroutines_test(TestDispatcher.kt:24)
+11-02 20:49:10.140 18645 18665 E TestRunner: 	at kotlinx.coroutines.test.TestCoroutineScheduler.tryRunNextTaskUnless$kotlinx_coroutines_test(TestCoroutineScheduler.kt:99)
+11-02 20:49:10.140 18645 18665 E TestRunner: 	at kotlinx.coroutines.test.TestBuildersKt__TestBuildersKt$runTest$2$1$workRunner$1.invokeSuspend(TestBuilders.kt:326)
+11-02 20:49:10.140 18645 18665 E TestRunner: 	at kotlin.coroutines.jvm.internal.BaseContinuationImpl.resumeWith(ContinuationImpl.kt:34)
+11-02 20:49:10.140 18645 18665 E TestRunner: 	at kotlinx.coroutines.DispatchedTask.run(DispatchedTask.kt:100)
+11-02 20:49:10.140 18645 18665 E TestRunner: 	at kotlinx.coroutines.EventLoopImplBase.processNextEvent(EventLoop.common.kt:263)
+11-02 20:49:10.140 18645 18665 E TestRunner: 	at kotlinx.coroutines.BlockingCoroutine.joinBlocking(Builders.kt:94)
+11-02 20:49:10.140 18645 18665 E TestRunner: 	at kotlinx.coroutines.BuildersKt__BuildersKt.runBlocking(Builders.kt:70)
+11-02 20:49:10.140 18645 18665 E TestRunner: 	at kotlinx.coroutines.BuildersKt.runBlocking(dex-id-7e891886282f657a0c2e7600c286f69a4e2f90c4:1)
+11-02 20:49:10.140 18645 18665 E TestRunner: 	at kotlinx.coroutines.BuildersKt__BuildersKt.runBlocking$default(Builders.kt:48)
+11-02 20:49:10.141 18645 18665 E TestRunner: 	at kotlinx.coroutines.BuildersKt.runBlocking$default(dex-id-7e891886282f657a0c2e7600c286f69a4e2f90c4:1)
+11-02 20:49:10.141 18645 18665 E TestRunner: 	at kotlinx.coroutines.test.TestBuildersJvmKt.createTestResult(TestBuildersJvm.kt:10)
+11-02 20:49:10.141 18645 18665 E TestRunner: 	at kotlinx.coroutines.test.TestBuildersKt__TestBuildersKt.runTest-8Mi8wO0(TestBuilders.kt:309)
+11-02 20:49:10.141 18645 18665 E TestRunner: 	at kotlinx.coroutines.test.TestBuildersKt.runTest-8Mi8wO0(dex-id-7e6b3808279efd3cb39bf2dfa1a45ff99919b721:1)
+11-02 20:49:10.141 18645 18665 E TestRunner: 	at kotlinx.coroutines.test.TestBuildersKt__TestBuildersKt.runTest-8Mi8wO0(TestBuilders.kt:167)
+11-02 20:49:10.141 18645 18665 E TestRunner: 	at kotlinx.coroutines.test.TestBuildersKt.runTest-8Mi8wO0(dex-id-7e6b3808279efd3cb39bf2dfa1a45ff99919b721:1)
+11-02 20:49:10.141 18645 18665 E TestRunner: 	at androidx.compose.ui.test.AndroidComposeUiTestEnvironment.runTest(ComposeUiTest.android.kt:665)
+11-02 20:49:10.141 18645 18665 E TestRunner: 	at androidx.compose.ui.test.junit4.AndroidComposeTestRule$apply$1.evaluate(AndroidComposeTestRule.android.kt:447)
+11-02 20:49:10.141 18645 18665 E TestRunner: 	at org.junit.runners.ParentRunner$3.evaluate(ParentRunner.java:306)
+11-02 20:49:10.141 18645 18665 E TestRunner: 	at org.junit.runners.BlockJUnit4ClassRunner$1.evaluate(BlockJUnit4ClassRunner.java:100)
+11-02 20:49:10.141 18645 18665 E TestRunner: 	at org.junit.runners.ParentRunner.runLeaf(ParentRunner.java:366)
+11-02 20:49:10.141 18645 18665 E TestRunner: 	at org.junit.runners.BlockJUnit4ClassRunner.runChild(BlockJUnit4ClassRunner.java:103)
+11-02 20:49:10.141 18645 18665 E TestRunner: 	at org.junit.runners.BlockJUnit4ClassRunner.runChild(BlockJUnit4ClassRunner.java:63)
+11-02 20:49:10.141 18645 18665 E TestRunner: 	at org.junit.runners.ParentRunner$4.run(ParentRunner.java:331)
+11-02 20:49:10.141 18645 18665 E TestRunner: 	at org.junit.runners.ParentRunner$1.schedule(ParentRunner.java:79)
+11-02 20:49:10.141 18645 18665 E TestRunner: 	at org.junit.runners.ParentRunner.runChildren(ParentRunner.java:329)
+11-02 20:49:10.141 18645 18665 E TestRunner: 	at org.junit.runners.ParentRunner.access$100(ParentRunner.java:66)
+11-02 20:49:10.141 18645 18665 E TestRunner: 	at org.junit.runners.ParentRunner$2.evaluate(ParentRunner.java:293)
+11-02 20:49:10.141 18645 18665 E TestRunner: 	at org.junit.runners.ParentRunner$3.evaluate(ParentRunner.java:306)
+11-02 20:49:10.141 18645 18665 E TestRunner: 	at org.junit.runners.ParentRunner.run(ParentRunner.java:413)
+11-02 20:49:10.141 18645 18665 E TestRunner: 	at org.junit.runners.Suite.runChild(Suite.java:128)
+11-02 20:49:10.141 18645 18665 E TestRunner: 	at org.junit.runners.Suite.runChild(Suite.java:27)
+11-02 20:49:10.141 18645 18665 E TestRunner: 	at org.junit.runners.ParentRunner$4.run(ParentRunner.java:331)
+11-02 20:49:10.141 18645 18665 E TestRunner: 	at org.junit.runners.ParentRunner$1.schedule(ParentRunner.java:79)
+11-02 20:49:10.141 18645 18665 E TestRunner: 	at org.junit.runners.ParentRunner.runChildren(ParentRunner.java:329)
+11-02 20:49:10.141 18645 18665 E TestRunner: 	at org.junit.runners.ParentRunner.access$100(ParentRunner.java:66)
+11-02 20:49:10.141 18645 18665 E TestRunner: 	at org.junit.runners.ParentRunner$2.evaluate(ParentRunner.java:293)
+11-02 20:49:10.141 18645 18665 E TestRunner: 	at org.junit.runners.ParentRunner$3.evaluate(ParentRunner.java:306)
+11-02 20:49:10.141 18645 18665 E TestRunner: 	at org.junit.runners.ParentRunner.run(ParentRunner.java:413)
+11-02 20:49:10.141 18645 18665 E TestRunner: 	at org.junit.runner.JUnitCore.run(JUnitCore.java:137)
+11-02 20:49:10.141 18645 18665 E TestRunner: 	at org.junit.runner.JUnitCore.run(JUnitCore.java:115)
+11-02 20:49:10.141 18645 18665 E TestRunner: 	at androidx.test.internal.runner.TestExecutor.execute(TestExecutor.java:68)
+11-02 20:49:10.141 18645 18665 E TestRunner: 	at androidx.test.internal.runner.TestExecutor.execute(TestExecutor.java:59)
+11-02 20:49:10.141 18645 18665 E TestRunner: 	at androidx.test.runner.AndroidJUnitRunner.onStart(AndroidJUnitRunner.java:467)
+11-02 20:49:10.141 18645 18665 E TestRunner: 	at android.app.Instrumentation$InstrumentationThread.run(Instrumentation.java:2402)
+11-02 20:49:10.141 18645 18665 E TestRunner: ----- end exception -----
+11-02 20:49:10.142 18645 18665 I TestRunner: finished: videoSleepTimerMustSurviveActivityRecreation(com.example.ymediaplayer.ui.HiddenVideoAuditProbeTest)
+11-02 20:49:10.145 18645 18665 I TestRunner: run finished: 1 tests, 1 failed, 0 ignored
+11-02 20:49:47.123 18871 18890 I TestRunner: run started: 1 tests
+11-02 20:49:47.126 18871 18890 I TestRunner: started: videoSleepTimerMustSurviveActivityRecreation(com.example.ymediaplayer.ui.HiddenVideoAuditProbeTest)
+11-02 20:49:49.063 18871 18890 I HiddenAudit: before timer select: Printing with useUnmergedTree = 'false'
+11-02 20:49:49.063 18871 18890 I HiddenAudit: Node #1 at (l=0.0, t=0.0, r=1080.0, b=2400.0)px
+11-02 20:49:49.063 18871 18890 I HiddenAudit:  |-Node #2 at (l=0.0, t=0.0, r=1080.0, b=2400.0)px
+11-02 20:49:49.063 18871 18890 I HiddenAudit:    IsContainer = 'true'
+11-02 20:49:49.063 18871 18890 I HiddenAudit:    Shape = 'RectangleShape'
+11-02 20:49:49.063 18871 18890 I HiddenAudit:     |-Node #4 at (l=0.0, t=0.0, r=1080.0, b=2400.0)px
+11-02 20:49:49.063 18871 18890 I HiddenAudit:       Shape = 'RectangleShape'
+11-02 20:49:49.063 18871 18890 I HiddenAudit:        |-Node #6 at (l=0.0, t=0.0, r=1080.0, b=2400.0)px
+11-02 20:49:49.063 18871 18890 I HiddenAudit:        | Shape = 'RectangleShape'
+11-02 20:49:49.063 18871 18890 I HiddenAudit:        |-Node #8 at (l=0.0, t=0.0, r=1080.0, b=2400.0)px
+11-02 20:49:49.063 18871 18890 I HiddenAudit:        | Shape = 'RectangleShape'
+11-02 20:49:49.063 18871 18890 I HiddenAudit:        |  |-Node #9 at (l=0.0, t=0.0, r=1080.0, b=2400.0)px
+11-02 20:49:49.063 18871 18890 I HiddenAudit:        |    MergeDescendants = 'true'
+11-02 20:49:49.063 18871 18890 I HiddenAudit:        |-Node #10 at (l=0.0, t=0.0, r=1080.0, b=2400.0)px
+11-02 20:49:49.063 18871 18890 I HiddenAudit:           |-Node #12 at (l=0.0, t=0.0, r=1080.0, b=336.0)px
+11-02 20:49:49.063 18871 18890 I HiddenAudit:           | Shape = 'RectangleShape'
+11-02 20:49:49.063 18871 18890 I HiddenAudit:           |-Node #13 at (l=0.0, t=1794.0, r=1080.0, b=2400.0)px
+11-02 20:49:49.063 18871 18890 I HiddenAudit:           | Shape = 'RectangleShape'
+11-02 20:49:49.063 18871 18890 I HiddenAudit:           |-Node #17 at (l=47.0, t=157.0, r=141.0, b=251.0)px
+11-02 20:49:49.063 18871 18890 I HiddenAudit:           | ContentDescription = '[Back, Back]'
+11-02 20:49:49.063 18871 18890 I HiddenAudit:           | Focused = 'false'
+11-02 20:49:49.063 18871 18890 I HiddenAudit:           | Role = 'Button'
+11-02 20:49:49.063 18871 18890 I HiddenAudit:           | Shape = 'RoundedCornerShape(topStart = CornerSize(size = 50.0%), topEnd = CornerSize(size = 50.0%), bottomEnd = CornerSize(size = 50.0%), bottomStart = CornerSize(size = 50.0%))'
+11-02 20:49:49.063 18871 18890 I HiddenAudit:           | Actions = [OnClick, OnLongClick, RequestFocus]
+11-02 20:49:49.063 18871 18890 I HiddenAudit:           | MergeDescendants = 'true'
+11-02 20:49:49.063 18871 18890 I HiddenAudit:           |-Node #22 at (l=174.0, t=138.0, r=381.0, b=204.0)px
+11-02 20:49:49.063 18871 18890 I HiddenAudit:           | Text = '[QA_Hidden_Video]'
+11-02 20:49:49.063 18871 18890 I HiddenAudit:           | Actions = [ClearTextSubstitution, GetTextLayoutResult, SetTextSubstitution, ShowTextSubstitution]
+11-02 20:49:49.063 18871 18890 I HiddenAudit:           |-Node #23 at (l=174.0, t=204.0, r=244.0, b=270.0)px
+11-02 20:49:49.063 18871 18890 I HiddenAudit:           | Text = '[360p]'
+11-02 20:49:49.063 18871 18890 I HiddenAudit:           | Actions = [ClearTextSubstitution, GetTextLayoutResult, SetTextSubstitution, ShowTextSubstitution]
+11-02 20:49:49.063 18871 18890 I HiddenAudit:           |-Node #25 at (l=411.0, t=157.0, r=505.0, b=251.0)px
+11-02 20:49:49.063 18871 18890 I HiddenAudit:           | ContentDescription = '[Playlist, Playlist]'
+11-02 20:49:49.063 18871 18890 I HiddenAudit:           | Focused = 'false'
+11-02 20:49:49.063 18871 18890 I HiddenAudit:           | Role = 'Button'
+11-02 20:49:49.063 18871 18890 I HiddenAudit:           | Shape = 'RoundedCornerShape(topStart = CornerSize(size = 50.0%), topEnd = CornerSize(size = 50.0%), bottomEnd = CornerSize(size = 50.0%), bottomStart = CornerSize(size = 50.0%))'
+11-02 20:49:49.063 18871 18890 I HiddenAudit:           | Actions = [OnClick, OnLongClick, RequestFocus]
+11-02 20:49:49.063 18871 18890 I HiddenAudit:           | MergeDescendants = 'true'
+11-02 20:49:49.063 18871 18890 I HiddenAudit:           |-Node #27 at (l=554.0, t=157.0, r=604.0, b=251.0)px
+11-02 20:49:49.063 18871 18890 I HiddenAudit:           | Shape = 'RoundedCornerShape(topStart = CornerSize(size = 50.0%), topEnd = CornerSize(size = 50.0%), bottomEnd = CornerSize(size = 50.0%), bottomStart = CornerSize(size = 50.0%))'
+11-02 20:49:49.063 18871 18890 I HiddenAudit:           |  |-Node #28 at (l=554.0, t=179.0, r=604.0, b=229.0)px
+11-02 20:49:49.063 18871 18890 I HiddenAudit:           |    ContentDescription = '[Playback speed]'
+11-02 20:49:49.063 18871 18890 I HiddenAudit:           |    Role = 'Image'
+11-02 20:49:49.063 18871 18890 I HiddenAudit:           |-Node #29 at (l=653.0, t=157.0, r=747.0, b=251.0)px
+11-02 20:49:49.063 18871 18890 I HiddenAudit:           | ContentDescription = '[Audio tracks, Audio track]'
+11-02 20:49:49.063 18871 18890 I HiddenAudit:           | Focused = 'false'
+11-02 20:49:49.063 18871 18890 I HiddenAudit:           | Role = 'Button'
+11-02 20:49:49.063 18871 18890 I HiddenAudit:           | Shape = 'RoundedCornerShape(topStart = CornerSize(size = 50.0%), topEnd = CornerSize(size = 50.0%), bottomEnd = CornerSize(size = 50.0%), bottomStart = CornerSize(size = 50.0%))'
+11-02 20:49:49.063 18871 18890 I HiddenAudit:           | Actions = [OnClick, OnLongClick, RequestFocus]
+11-02 20:49:49.063 18871 18890 I HiddenAudit:           | MergeDescendants = 'true'
+11-02 20:49:49.063 18871 18890 I HiddenAudit:           |-Node #31 at (l=796.0, t=157.0, r=890.0, b=251.0)px
+11-02 20:49:49.063 18871 18890 I HiddenAudit:           | ContentDescription = '[Subtitles, Subtitles]'
+11-02 20:49:49.063 18871 18890 I HiddenAudit:           | Focused = 'false'
+11-02 20:49:49.063 18871 18890 I HiddenAudit:           | Role = 'Button'
+11-02 20:49:49.063 18871 18890 I HiddenAudit:           | Shape = 'RoundedCornerShape(topStart = CornerSize(size = 50.0%), topEnd = CornerSize(size = 50.0%), bottomEnd = CornerSize(size = 50.0%), bottomStart = CornerSize(size = 50.0%))'
+11-02 20:49:49.063 18871 18890 I HiddenAudit:           | Actions = [OnClick, OnLongClick, RequestFocus]
+11-02 20:49:49.063 18871 18890 I HiddenAudit:           | MergeDescendants = 'true'
+11-02 20:49:49.063 18871 18890 I HiddenAudit:           |-Node #33 at (l=939.0, t=157.0, r=1033.0, b=251.0)px
+11-02 20:49:49.063 18871 18890 I HiddenAudit:           | ContentDescription = '[Close options, More]'
+11-02 20:49:49.063 18871 18890 I HiddenAudit:           | Focused = 'false'
+11-02 20:49:49.063 18871 18890 I HiddenAudit:           | Role = 'Button'
+11-02 20:49:49.063 18871 18890 I HiddenAudit:           | Shape = 'RoundedCornerShape(topStart = CornerSize(size = 50.0%), topEnd = CornerSize(size = 50.0%), bottomEnd = CornerSize(size = 50.0%), bottomStart = CornerSize(size = 50.0%))'
+11-02 20:49:49.063 18871 18890 I HiddenAudit:           | Actions = [OnClick, OnLongClick, RequestFocus]
+11-02 20:49:49.063 18871 18890 I HiddenAudit:           | MergeDescendants = 'true'
+11-02 20:49:49.063 18871 18890 I HiddenAudit:           |-Node #66 at (l=606.0, t=281.0, r=1052.0, b=1596.0)px
+11-02 20:49:49.063 18871 18890 I HiddenAudit:           |  |-Node #67 at (l=606.0, t=303.0, r=1052.0, b=1596.0)px
+11-02 20:49:49.063 18871 18890 I HiddenAudit:           |    IsTraversalGroup = 'true'
+11-02 20:49:49.063 18871 18890 I HiddenAudit:           |    Shape = 'androidx.compose.foundation.VerticalScrollableClipShape@217563'
+11-02 20:49:49.063 18871 18890 I HiddenAudit:           |    VerticalScrollAxisRange = 'ScrollAxisRange(value=0.0, maxValue=198.0, reverseScrolling=false)'
+11-02 20:49:49.063 18871 18890 I HiddenAudit:           |    Actions = [ScrollBy, ScrollByOffset]
+11-02 20:49:49.063 18871 18890 I HiddenAudit:           |     |-Node #68 at (l=606.0, t=303.0, r=1052.0, b=402.0)px
+11-02 20:49:49.063 18871 18890 I HiddenAudit:           |     | ContentDescription = '[Auto ON]'
+11-02 20:49:49.063 18871 18890 I HiddenAudit:           |     | Focused = 'false'
+11-02 20:49:49.063 18871 18890 I HiddenAudit:           |     | Shape = 'RoundedCornerShape(topStart = CornerSize(size = 12.0.dp), topEnd = CornerSize(size = 12.0.dp), bottomEnd = CornerSize(size = 12.0.dp), bottomStart = CornerSize(size = 12.0.dp))'
+11-02 20:49:49.063 18871 18890 I HiddenAudit:           |     | Text = '[Auto ON]'
+11-02 20:49:49.063 18871 18890 I HiddenAudit:           |     | Actions = [ClearTextSubstitution, GetTextLayoutResult, OnClick, RequestFocus, SetTextSubstitution, ShowTextSubstitution]
+11-02 20:49:49.063 18871 18890 I HiddenAudit:           |     | MergeDescendants = 'true'
+11-02 20:49:49.063 18871 18890 I HiddenAudit:           |     |-Node #73 at (l=606.0, t=419.0, r=1052.0, b=518.0)px
+11-02 20:49:49.063 18871 18890 I HiddenAudit:           |     | ContentDescription = '[Sleep Timer]'
+11-02 20:49:49.063 18871 18890 I HiddenAudit:           |     | Focused = 'false'
+11-02 20:49:49.063 18871 18890 I HiddenAudit:           |     | Shape = 'RoundedCornerShape(topStart = CornerSize(size = 12.0.dp), topEnd = CornerSize(size = 12.0.dp), bottomEnd = CornerSize(size = 12.0.dp), bottomStart = CornerSize(size = 12.0.dp))'
+11-02 20:49:49.063 18871 18890 I HiddenAudit:           |     | Text = '[Sleep Timer]'
+11-02 20:49:49.063 18871 18890 I HiddenAudit:           |     | Actions = [ClearTextSubstitution, GetTextLayoutResult, OnClick, RequestFocus, SetTextSubstitution, ShowTextSubstitution]
+11-02 20:49:49.063 18871 18890 I HiddenAudit:           |     | MergeDescendants = 'true'
+11-02 20:49:49.063 18871 18890 I HiddenAudit:           |     |-Node #77 at (l=606.0, t=535.0, r=1052.0, b=634.0)px
+11-02 20:49:49.063 18871 18890 I HiddenAudit:           |     | ContentDescription = '[Night Mode]'
+11-02 20:49:49.063 18871 18890 I HiddenAudit:           |     | Focused = 'false'
+11-02 20:49:49.063 18871 18890 I HiddenAudit:           |     | Shape = 'RoundedCornerShape(topStart = CornerSize(size = 12.0.dp), topEnd = CornerSize(size = 12.0.dp), bottomEnd = CornerSize(size = 12.0.dp), bottomStart = CornerSize(size = 12.0.dp))'
+11-02 20:49:49.063 18871 18890 I HiddenAudit:           |     | Text = '[Night Mode]'
+11-02 20:49:49.063 18871 18890 I HiddenAudit:           |     | Actions = [ClearTextSubstitution, GetTextLayoutResult, OnClick, RequestFocus, SetTextSubstitution, ShowTextSubstitution]
+11-02 20:49:49.063 18871 18890 I HiddenAudit:           |     | MergeDescendants = 'true'
+11-02 20:49:49.063 18871 18890 I HiddenAudit:           |     |-Node #81 at (l=606.0, t=651.0, r=1052.0, b=750.0)px
+11-02 20:49:49.063 18871 18890 I HiddenAudit:           |     | ContentDescription = '[Ambient ON]'
+11-02 20:49:49.063 18871 18890 I HiddenAudit:           |     | Focused = 'false'
+11-02 20:49:49.063 18871 18890 I HiddenAudit:           |     | Shape = 'RoundedCornerShape(topStart = CornerSize(size = 12.0.dp), topEnd = CornerSize(size = 12.0.dp), bottomEnd = CornerSize(size = 12.0.dp), bottomStart = CornerSize(size = 12.0.dp))'
+11-02 20:49:49.063 18871 18890 I HiddenAudit:           |     | Text = '[Ambient ON]'
+11-02 20:49:49.063 18871 18890 I HiddenAudit:           |     | Actions = [ClearTextSubstitution, GetTextLayoutResult, OnClick, OnLongClick, RequestFocus, SetTextSubstitution, ShowTextSubstitution]
+11-02 20:49:49.063 18871 18890 I HiddenAudit:           |     | MergeDescendants = 'true'
+11-02 20:49:49.063 18871 18890 I HiddenAudit:           |     |-Node #86 at (l=606.0, t=767.0, r=1052.0, b=866.0)px
+11-02 20:49:49.063 18871 18890 I HiddenAudit:           |     | ContentDescription = '[Pure White]'
+11-02 20:49:49.063 18871 18890 I HiddenAudit:           |     | Focused = 'false'
+11-02 20:49:49.063 18871 18890 I HiddenAudit:           |     | Shape = 'RoundedCornerShape(topStart = CornerSize(size = 12.0.dp), topEnd = CornerSize(size = 12.0.dp), bottomEnd = CornerSize(size = 12.0.dp), bottomStart = CornerSize(size = 12.0.dp))'
+11-02 20:49:49.063 18871 18890 I HiddenAudit:           |     | Text = '[Pure White]'
+11-02 20:49:49.063 18871 18890 I HiddenAudit:           |     | Actions = [ClearTextSubstitution, GetTextLayoutResult, OnClick, OnLongClick, RequestFocus, SetTextSubstitution, ShowTextSubstitution]
+11-02 20:49:49.063 18871 18890 I HiddenAudit:           |     | MergeDescendants = 'true'
+11-02 20:49:49.063 18871 18890 I HiddenAudit:           |     |-Node #91 at (l=606.0, t=883.0, r=1052.0, b=982.0)px
+11-02 20:49:49.063 18871 18890 I HiddenAudit:           |     | ContentDescription = '[Equalizer]'
+11-02 20:49:49.063 18871 18890 I HiddenAudit:           |     | Focused = 'false'
+11-02 20:49:49.063 18871 18890 I HiddenAudit:           |     | Shape = 'RoundedCornerShape(topStart = CornerSize(size = 12.0.dp), topEnd = CornerSize(size = 12.0.dp), bottomEnd = CornerSize(size = 12.0.dp), bottomStart = CornerSize(size = 12.0.dp))'
+11-02 20:49:49.063 18871 18890 I HiddenAudit:           |     | Text = '[Equalizer]'
+11-02 20:49:49.063 18871 18890 I HiddenAudit:           |     | Actions = [ClearTextSubstitution, GetTextLayoutResult, OnClick, RequestFocus, SetTextSubstitution, ShowTextSubstitution]
+11-02 20:49:49.063 18871 18890 I HiddenAudit:           |     | MergeDescendants = 'true'
+11-02 20:49:49.063 18871 18890 I HiddenAudit:           |     |-Node #95 at (l=606.0, t=999.0, r=1052.0, b=1098.0)px
+11-02 20:49:49.063 18871 18890 I HiddenAudit:           |     | ContentDescription = '[Subtitles]'
+11-02 20:49:49.063 18871 18890 I HiddenAudit:           |     | Focused = 'false'
+11-02 20:49:49.063 18871 18890 I HiddenAudit:           |     | Shape = 'RoundedCornerShape(topStart = CornerSize(size = 12.0.dp), topEnd = CornerSize(size = 12.0.dp), bottomEnd = CornerSize(size = 12.0.dp), bottomStart = CornerSize(size = 12.0.dp))'
+11-02 20:49:49.063 18871 18890 I HiddenAudit:           |     | Text = '[Subtitles]'
+11-02 20:49:49.063 18871 18890 I HiddenAudit:           |     | Actions = [ClearTextSubstitution, GetTextLayoutResult, OnClick, RequestFocus, SetTextSubstitution, ShowTextSubstitution]
+11-02 20:49:49.063 18871 18890 I HiddenAudit:           |     | MergeDescendants = 'true'
+11-02 20:49:49.063 18871 18890 I HiddenAudit:           |     |-Node #99 at (l=606.0, t=1115.0, r=1052.0, b=1214.0)px
+11-02 20:49:49.063 18871 18890 I HiddenAudit:           |     | ContentDescription = '[A-B Loop]'
+11-02 20:49:49.063 18871 18890 I HiddenAudit:           |     | Focused = 'false'
+11-02 20:49:49.063 18871 18890 I HiddenAudit:           |     | Shape = 'RoundedCornerShape(topStart = CornerSize(size = 12.0.dp), topEnd = CornerSize(size = 12.0.dp), bottomEnd = CornerSize(size = 12.0.dp), bottomStart = CornerSize(size = 12.0.dp))'
+11-02 20:49:49.063 18871 18890 I HiddenAudit:           |     | Text = '[A-B Loop]'
+11-02 20:49:49.063 18871 18890 I HiddenAudit:           |     | Actions = [ClearTextSubstitution, GetTextLayoutResult, OnClick, RequestFocus, SetTextSubstitution, ShowTextSubstitution]
+11-02 20:49:49.063 18871 18890 I HiddenAudit:           |     | MergeDescendants = 'true'
+11-02 20:49:49.063 18871 18890 I HiddenAudit:           |     |-Node #103 at (l=606.0, t=1231.0, r=1052.0, b=1330.0)px
+11-02 20:49:49.063 18871 18890 I HiddenAudit:           |     | ContentDescription = '[Bookmark]'
+11-02 20:49:49.063 18871 18890 I HiddenAudit:           |     | Focused = 'false'
+11-02 20:49:49.063 18871 18890 I HiddenAudit:           |     | Shape = 'RoundedCornerShape(topStart = CornerSize(size = 12.0.dp), topEnd = CornerSize(size = 12.0.dp), bottomEnd = CornerSize(size = 12.0.dp), bottomStart = CornerSize(size = 12.0.dp))'
+11-02 20:49:49.063 18871 18890 I HiddenAudit:           |     | Text = '[Bookmark]'
+11-02 20:49:49.063 18871 18890 I HiddenAudit:           |     | Actions = [ClearTextSubstitution, GetTextLayoutResult, OnClick, RequestFocus, SetTextSubstitution, ShowTextSubstitution]
+11-02 20:49:49.063 18871 18890 I HiddenAudit:           |     | MergeDescendants = 'true'
+11-02 20:49:49.063 18871 18890 I HiddenAudit:           |     |-Node #107 at (l=606.0, t=1347.0, r=1052.0, b=1446.0)px
+11-02 20:49:49.063 18871 18890 I HiddenAudit:           |     | ContentDescription = '[Media Info]'
+11-02 20:49:49.063 18871 18890 I HiddenAudit:           |     | Focused = 'false'
+11-02 20:49:49.063 18871 18890 I HiddenAudit:           |     | Shape = 'RoundedCornerShape(topStart = CornerSize(size = 12.0.dp), topEnd = CornerSize(size = 12.0.dp), bottomEnd = CornerSize(size = 12.0.dp), bottomStart = CornerSize(size = 12.0.dp))'
+11-02 20:49:49.063 18871 18890 I HiddenAudit:           |     | Text = '[Media Info]'
+11-02 20:49:49.063 18871 18890 I HiddenAudit:           |     | Actions = [ClearTextSubstitution, GetTextLayoutResult, OnClick, RequestFocus, SetTextSubstitution, ShowTextSubstitution]
+11-02 20:49:49.063 18871 18890 I HiddenAudit:           |     | MergeDescendants = 'true'
+11-02 20:49:49.063 18871 18890 I HiddenAudit:           |     |-Node #111 at (l=606.0, t=1463.0, r=1052.0, b=1562.0)px
+11-02 20:49:49.063 18871 18890 I HiddenAudit:           |     | ContentDescription = '[Share]'
+11-02 20:49:49.063 18871 18890 I HiddenAudit:           |     | Focused = 'false'
+11-02 20:49:49.063 18871 18890 I HiddenAudit:           |     | Shape = 'RoundedCornerShape(topStart = CornerSize(size = 12.0.dp), topEnd = CornerSize(size = 12.0.dp), bottomEnd = CornerSize(size = 12.0.dp), bottomStart = CornerSize(size = 12.0.dp))'
+11-02 20:49:49.063 18871 18890 I HiddenAudit:           |     | Text = '[Share]'
+11-02 20:49:49.063 18871 18890 I HiddenAudit:           |     | Actions = [ClearTextSubstitution, GetTextLayoutResult, OnClick, RequestFocus, SetTextSubstitution, ShowTextSubstitution]
+11-02 20:49:49.063 18871 18890 I HiddenAudit:           |     | MergeDescendants = 'true'
+11-02 20:49:49.063 18871 18890 I HiddenAudit:           |     |-Node #115 at (l=606.0, t=1579.0, r=1052.0, b=1678.0)px
+11-02 20:49:49.063 18871 18890 I HiddenAudit:           |     | ContentDescription = '[Delete]'
+11-02 20:49:49.063 18871 18890 I HiddenAudit:           |     | Focused = 'false'
+11-02 20:49:49.063 18871 18890 I HiddenAudit:           |     | Shape = 'RoundedCornerShape(topStart = CornerSize(size = 12.0.dp), topEnd = CornerSize(size = 12.0.dp), bottomEnd = CornerSize(size = 12.0.dp), bottomStart = CornerSize(size = 12.0.dp))'
+11-02 20:49:49.063 18871 18890 I HiddenAudit:           |     | Text = '[Delete]'
+11-02 20:49:49.063 18871 18890 I HiddenAudit:           |     | Actions = [ClearTextSubstitution, GetTextLayoutResult, OnClick, RequestFocus, SetTextSubstitution, ShowTextSubstitution]
+11-02 20:49:49.063 18871 18890 I HiddenAudit:           |     | MergeDescendants = 'true'
+11-02 20:49:49.063 18871 18890 I HiddenAudit:           |     |-Node #119 at (l=606.0, t=1695.0, r=1052.0, b=1794.0)px
+11-02 20:49:49.063 18871 18890 I HiddenAudit:           |       ContentDescription = '[Settings]'
+11-02 20:49:49.063 18871 18890 I HiddenAudit:           |       Focused = 'false'
+11-02 20:49:49.063 18871 18890 I HiddenAudit:           |       Shape = 'RoundedCornerShape(topStart = CornerSize(size = 12.0.dp), topEnd = CornerSize(size = 12.0.dp), bottomEnd = CornerSize(size = 12.0.dp), bottomStart = CornerSize(size = 12.0.dp))'
+11-02 20:49:49.063 18871 18890 I HiddenAudit:           |       Text = '[Settings]'
+11-02 20:49:49.063 18871 18890 I HiddenAudit:           |       Actions = [ClearTextSubstitution, GetTextLayoutResult, OnClick, RequestFocus, SetTextSubstitution, ShowTextSubstitution]
+11-02 20:49:49.063 18871 18890 I HiddenAudit:           |       MergeDescendants = 'true'
+11-02 20:49:49.063 18871 18890 I HiddenAudit:           |-Node #36 at (l=256.0, t=1134.0, r=388.0, b=1266.0)px
+11-02 20:49:49.063 18871 18890 I HiddenAudit:           | ContentDescription = '[Previous video, Previous video]'
+11-02 20:49:49.063 18871 18890 I HiddenAudit:           | Role = 'Button'
+11-02 20:49:49.063 18871 18890 I HiddenAudit:           | Shape = 'RoundedCornerShape(topStart = CornerSize(size = 50.0%), topEnd = CornerSize(size = 50.0%), bottomEnd = CornerSize(size = 50.0%), bottomStart = CornerSize(size = 50.0%))'
+11-02 20:49:49.063 18871 18890 I HiddenAudit:           | [Disabled]
+11-02 20:49:49.063 18871 18890 I HiddenAudit:           | Actions = [OnClick, OnLongClick]
+11-02 20:49:49.063 18871 18890 I HiddenAudit:           | MergeDescendants = 'true'
+11-02 20:49:49.063 18871 18890 I HiddenAudit:           |-Node #38 at (l=449.0, t=1109.0, r=631.0, b=1291.0)px
+11-02 20:49:49.063 18871 18890 I HiddenAudit:           | Shape = 'RoundedCornerShape(topStart = CornerSize(size = 50.0%), topEnd = CornerSize(size = 50.0%), bottomEnd = CornerSize(size = 50.0%), bottomStart = CornerSize(size = 50.0%))'
+11-02 20:49:49.063 18871 18890 I HiddenAudit:           |  |-Node #39 at (l=485.0, t=1145.0, r=595.0, b=1255.0)px
+11-02 20:49:49.063 18871 18890 I HiddenAudit:           |    ContentDescription = '[Play/Pause]'
+11-02 20:49:49.063 18871 18890 I HiddenAudit:           |    Role = 'Image'
+11-02 20:49:49.063 18871 18890 I HiddenAudit:           |-Node #40 at (l=692.0, t=1134.0, r=824.0, b=1266.0)px
+11-02 20:49:49.063 18871 18890 I HiddenAudit:           | ContentDescription = '[Next video, Next video]'
+11-02 20:49:49.063 18871 18890 I HiddenAudit:           | Role = 'Button'
+11-02 20:49:49.063 18871 18890 I HiddenAudit:           | Shape = 'RoundedCornerShape(topStart = CornerSize(size = 50.0%), topEnd = CornerSize(size = 50.0%), bottomEnd = CornerSize(size = 50.0%), bottomStart = CornerSize(size = 50.0%))'
+11-02 20:49:49.063 18871 18890 I HiddenAudit:           | [Disabled]
+11-02 20:49:49.063 18871 18890 I HiddenAudit:           | Actions = [OnClick, OnLongClick]
+11-02 20:49:49.063 18871 18890 I HiddenAudit:           | MergeDescendants = 'true'
+11-02 20:49:49.063 18871 18890 I HiddenAudit:           |-Node #44 at (l=39.0, t=1859.0, r=303.0, b=1925.0)px
+11-02 20:49:49.063 18871 18890 I HiddenAudit:           | Text = '[00:00 / 00:30]'
+11-02 20:49:49.063 18871 18890 I HiddenAudit:           | Actions = [ClearTextSubstitution, GetTextLayoutResult, SetTextSubstitution, ShowTextSubstitution]
+11-02 20:49:49.063 18871 18890 I HiddenAudit:           |-Node #46 at (l=926.0, t=1843.0, r=1025.0, b=1942.0)px
+11-02 20:49:49.063 18871 18890 I HiddenAudit:           | ContentDescription = '[Enhanced mode, Enhanced mode]'
+11-02 20:49:49.063 18871 18890 I HiddenAudit:           | Focused = 'false'
+11-02 20:49:49.063 18871 18890 I HiddenAudit:           | Role = 'Button'
+11-02 20:49:49.063 18871 18890 I HiddenAudit:           | Shape = 'RoundedCornerShape(topStart = CornerSize(size = 50.0%), topEnd = CornerSize(size = 50.0%), bottomEnd = CornerSize(size = 50.0%), bottomStart = CornerSize(size = 50.0%))'
+11-02 20:49:49.063 18871 18890 I HiddenAudit:           | Actions = [OnClick, OnLongClick, RequestFocus]
+11-02 20:49:49.063 18871 18890 I HiddenAudit:           | MergeDescendants = 'true'
+11-02 20:49:49.063 18871 18890 I HiddenAudit:           |-Node #60 at (l=6.0, t=1985.0, r=1074.0, b=2029.0)px
+11-02 20:49:49.063 18871 18890 I HiddenAudit:           | Focused = 'false'
+11-02 20:49:49.063 18871 18890 I HiddenAudit:           | ProgressBarRangeInfo = 'ProgressBarRangeInfo(current=107.0, range=0.0..30000.0, steps=0)'
+11-02 20:49:49.063 18871 18890 I HiddenAudit:           | StateDescription = '107.0'
+11-02 20:49:49.063 18871 18890 I HiddenAudit:           | Actions = [RequestFocus, SetProgress]
+11-02 20:49:49.063 18871 18890 I HiddenAudit:           | MergeDescendants = 'true'
+11-02 20:49:49.063 18871 18890 I HiddenAudit:           |-Node #50 at (l=28.0, t=2090.0, r=1052.0, b=2234.0)px
+11-02 20:49:49.063 18871 18890 I HiddenAudit:             HorizontalScrollAxisRange = 'ScrollAxisRange(value=0.0, maxValue=0.0, reverseScrolling=false)'
+11-02 20:49:49.063 18871 18890 I HiddenAudit:             IsTraversalGroup = 'true'
+11-02 20:49:49.063 18871 18890 I HiddenAudit:             Shape = 'androidx.compose.foundation.HorizontalScrollableClipShape@d955560'
+11-02 20:49:49.063 18871 18890 I HiddenAudit:             Actions = [ScrollBy, ScrollByOffset]
+11-02 20:49:49.063 18871 18890 I HiddenAudit:              |-Node #51 at (l=142.0, t=2104.0, r=258.0, b=2220.0)px
+11-02 20:49:49.063 18871 18890 I HiddenAudit:              | ContentDescription = '[Lock controls, Lock controls]'
+11-02 20:49:49.063 18871 18890 I HiddenAudit:              | Focused = 'false'
+11-02 20:49:49.063 18871 18890 I HiddenAudit:              | Role = 'Button'
+11-02 20:49:49.063 18871 18890 I HiddenAudit:              | Shape = 'RoundedCornerShape(topStart = CornerSize(size = 50.0%), topEnd = CornerSize(size = 50.0%), bottomEnd = CornerSize(size = 50.0%), bottomStart = CornerSize(size = 50.0%))'
+11-02 20:49:49.063 18871 18890 I HiddenAudit:              | Actions = [OnClick, OnLongClick, RequestFocus]
+11-02 20:49:49.063 18871 18890 I HiddenAudit:              | MergeDescendants = 'true'
+11-02 20:49:49.063 18871 18890 I HiddenAudit:              |-Node #53 at (l=369.0, t=2104.0, r=485.0, b=2220.0)px
+11-02 20:49:49.063 18871 18890 I HiddenAudit:              | ContentDescription = '[Aspect ratio, Aspect ratio]'
+11-02 20:49:49.063 18871 18890 I HiddenAudit:              | Focused = 'false'
+11-02 20:49:49.063 18871 18890 I HiddenAudit:              | Role = 'Button'
+11-02 20:49:49.063 18871 18890 I HiddenAudit:              | Shape = 'RoundedCornerShape(topStart = CornerSize(size = 50.0%), topEnd = CornerSize(size = 50.0%), bottomEnd = CornerSize(size = 50.0%), bottomStart = CornerSize(size = 50.0%))'
+11-02 20:49:49.063 18871 18890 I HiddenAudit:              | Actions = [OnClick, OnLongClick, RequestFocus]
+11-02 20:49:49.063 18871 18890 I HiddenAudit:              | MergeDescendants = 'true'
+11-02 20:49:49.063 18871 18890 I HiddenAudit:              |-Node #55 at (l=595.0, t=2104.0, r=711.0, b=2220.0)px
+11-02 20:49:49.063 18871 18890 I HiddenAudit:              | ContentDescription = '[Picture-in-Picture, PiP]'
+11-02 20:49:49.063 18871 18890 I HiddenAudit:              | Focused = 'false'
+11-02 20:49:49.063 18871 18890 I HiddenAudit:              | Role = 'Button'
+11-02 20:49:49.063 18871 18890 I HiddenAudit:              | Shape = 'RoundedCornerShape(topStart = CornerSize(size = 50.0%), topEnd = CornerSize(size = 50.0%), bottomEnd = CornerSize(size = 50.0%), bottomStart = CornerSize(size = 50.0%))'
+11-02 20:49:49.063 18871 18890 I HiddenAudit:              | Actions = [OnClick, OnLongClick, RequestFocus]
+11-02 20:49:49.063 18871 18890 I HiddenAudit:              | MergeDescendants = 'true'
+11-02 20:49:49.063 18871 18890 I HiddenAudit:              |-Node #57 at (l=822.0, t=2104.0, r=938.0, b=2220.0)px
+11-02 20:49:49.063 18871 18890 I HiddenAudit:                ContentDescription = '[Rotate screen, Rotate Screen]'
+11-02 20:49:49.063 18871 18890 I HiddenAudit:                Focused = 'false'
+11-02 20:49:49.063 18871 18890 I HiddenAudit:                Role = 'Button'
+11-02 20:49:49.063 18871 18890 I HiddenAudit:                Shape = 'RoundedCornerShape(topStart = CornerSize(size = 50.0%), topEnd = CornerSize(size = 50.0%), bottomEnd = CornerSize(size = 50.0%), bottomStart = CornerSize(size = 50.0%))'
+11-02 20:49:49.063 18871 18890 I HiddenAudit:                Actions = [OnClick, OnLongClick, RequestFocus]
+11-02 20:49:49.063 18871 18890 I HiddenAudit:                MergeDescendants = 'true'
+11-02 20:49:50.153 18871 18890 E TestRunner: failed: videoSleepTimerMustSurviveActivityRecreation(com.example.ymediaplayer.ui.HiddenVideoAuditProbeTest)
+11-02 20:49:50.154 18871 18890 E TestRunner: ----- begin exception -----
+11-02 20:49:50.154 18871 18890 E TestRunner: java.lang.AssertionError: Failed: assertExists.
+11-02 20:49:50.154 18871 18890 E TestRunner: Reason: Expected exactly '1' node but could not find any node that satisfies: (Text + InputText + EditableText contains '15m' (ignoreCase: false))
+11-02 20:49:50.154 18871 18890 E TestRunner: 
+11-02 20:49:50.154 18871 18890 E TestRunner: 	at androidx.compose.ui.test.SemanticsNodeInteraction.fetchOneOrThrow(SemanticsNodeInteraction.kt:178)
+11-02 20:49:50.154 18871 18890 E TestRunner: 	at androidx.compose.ui.test.SemanticsNodeInteraction.fetchOneOrThrow$default(SemanticsNodeInteraction.kt:150)
+11-02 20:49:50.154 18871 18890 E TestRunner: 	at androidx.compose.ui.test.SemanticsNodeInteraction.assertExists(SemanticsNodeInteraction.kt:125)
+11-02 20:49:50.154 18871 18890 E TestRunner: 	at androidx.compose.ui.test.SemanticsNodeInteraction.assertExists$default(SemanticsNodeInteraction.kt:124)
+11-02 20:49:50.154 18871 18890 E TestRunner: 	at com.example.ymediaplayer.ui.HiddenVideoAuditProbeTest.videoSleepTimerMustSurviveActivityRecreation(HiddenVideoAuditProbeTest.kt:85)
+11-02 20:49:50.154 18871 18890 E TestRunner: 	at java.lang.reflect.Method.invoke(Native Method)
+11-02 20:49:50.154 18871 18890 E TestRunner: 	at org.junit.runners.model.FrameworkMethod$1.runReflectiveCall(FrameworkMethod.java:59)
+11-02 20:49:50.154 18871 18890 E TestRunner: 	at org.junit.internal.runners.model.ReflectiveCallable.run(ReflectiveCallable.java:12)
+11-02 20:49:50.154 18871 18890 E TestRunner: 	at org.junit.runners.model.FrameworkMethod.invokeExplosively(FrameworkMethod.java:56)
+11-02 20:49:50.154 18871 18890 E TestRunner: 	at org.junit.internal.runners.statements.InvokeMethod.evaluate(InvokeMethod.java:17)
+11-02 20:49:50.154 18871 18890 E TestRunner: 	at androidx.test.internal.runner.junit4.statement.RunBefores.evaluate(RunBefores.java:80)
+11-02 20:49:50.154 18871 18890 E TestRunner: 	at androidx.test.internal.runner.junit4.statement.RunAfters.evaluate(RunAfters.java:61)
+11-02 20:49:50.154 18871 18890 E TestRunner: 	at androidx.compose.ui.test.junit4.AndroidComposeTestRule$apply$testWithDisposal$1.evaluate(AndroidComposeTestRule.android.kt:426)
+11-02 20:49:50.154 18871 18890 E TestRunner: 	at androidx.compose.ui.test.junit4.AndroidComposeTestRule$apply$1$evaluate$1.invokeSuspend(AndroidComposeTestRule.android.kt:448)
+11-02 20:49:50.154 18871 18890 E TestRunner: 	at androidx.compose.ui.test.junit4.AndroidComposeTestRule$apply$1$evaluate$1.invoke(AndroidComposeTestRule.android.kt:8)
+11-02 20:49:50.154 18871 18890 E TestRunner: 	at androidx.compose.ui.test.junit4.AndroidComposeTestRule$apply$1$evaluate$1.invoke(AndroidComposeTestRule.android.kt:4)
+11-02 20:49:50.154 18871 18890 E TestRunner: 	at androidx.compose.ui.test.AndroidComposeUiTestEnvironment$runTest$1$1$1$1$1.invokeSuspend(ComposeUiTest.android.kt:689)
+11-02 20:49:50.154 18871 18890 E TestRunner: 	at androidx.compose.ui.test.AndroidComposeUiTestEnvironment$runTest$1$1$1$1$1.invoke(ComposeUiTest.android.kt:8)
+11-02 20:49:50.154 18871 18890 E TestRunner: 	at androidx.compose.ui.test.AndroidComposeUiTestEnvironment$runTest$1$1$1$1$1.invoke(ComposeUiTest.android.kt:2)
+11-02 20:49:50.154 18871 18890 E TestRunner: 	at androidx.compose.ui.test.EspressoLink.withStrategy(EspressoLink.android.kt:69)
+11-02 20:49:50.154 18871 18890 E TestRunner: 	at androidx.compose.ui.test.AndroidComposeUiTestEnvironment$runTest$1$1.invokeSuspend(ComposeUiTest.android.kt:686)
+11-02 20:49:50.154 18871 18890 E TestRunner: 	at androidx.compose.ui.test.AndroidComposeUiTestEnvironment$runTest$1$1.invoke(ComposeUiTest.android.kt:8)
+11-02 20:49:50.154 18871 18890 E TestRunner: 	at androidx.compose.ui.test.AndroidComposeUiTestEnvironment$runTest$1$1.invoke(ComposeUiTest.android.kt:4)
+11-02 20:49:50.154 18871 18890 E TestRunner: 	at kotlinx.coroutines.test.TestBuildersKt__TestBuildersKt$runTest$2$1$1.invokeSuspend(TestBuilders.kt:317)
+11-02 20:49:50.154 18871 18890 E TestRunner: 	at kotlin.coroutines.jvm.internal.BaseContinuationImpl.resumeWith(ContinuationImpl.kt:34)
+11-02 20:49:50.154 18871 18890 E TestRunner: 	at kotlinx.coroutines.DispatchedTask.run(DispatchedTask.kt:100)
+11-02 20:49:50.154 18871 18890 E TestRunner: 	at kotlinx.coroutines.test.TestDispatcher.processEvent$kotlinx_coroutines_test(TestDispatcher.kt:24)
+11-02 20:49:50.154 18871 18890 E TestRunner: 	at kotlinx.coroutines.test.TestCoroutineScheduler.tryRunNextTaskUnless$kotlinx_coroutines_test(TestCoroutineScheduler.kt:99)
+11-02 20:49:50.154 18871 18890 E TestRunner: 	at kotlinx.coroutines.test.TestBuildersKt__TestBuildersKt$runTest$2$1$workRunner$1.invokeSuspend(TestBuilders.kt:326)
+11-02 20:49:50.154 18871 18890 E TestRunner: 	at kotlin.coroutines.jvm.internal.BaseContinuationImpl.resumeWith(ContinuationImpl.kt:34)
+11-02 20:49:50.154 18871 18890 E TestRunner: 	at kotlinx.coroutines.DispatchedTask.run(DispatchedTask.kt:100)
+11-02 20:49:50.154 18871 18890 E TestRunner: 	at kotlinx.coroutines.EventLoopImplBase.processNextEvent(EventLoop.common.kt:263)
+11-02 20:49:50.154 18871 18890 E TestRunner: 	at kotlinx.coroutines.BlockingCoroutine.joinBlocking(Builders.kt:94)
+11-02 20:49:50.154 18871 18890 E TestRunner: 	at kotlinx.coroutines.BuildersKt__BuildersKt.runBlocking(Builders.kt:70)
+11-02 20:49:50.154 18871 18890 E TestRunner: 	at kotlinx.coroutines.BuildersKt.runBlocking(dex-id-7e891886282f657a0c2e7600c286f69a4e2f90c4:1)
+11-02 20:49:50.154 18871 18890 E TestRunner: 	at kotlinx.coroutines.BuildersKt__BuildersKt.runBlocking$default(Builders.kt:48)
+11-02 20:49:50.154 18871 18890 E TestRunner: 	at kotlinx.coroutines.BuildersKt.runBlocking$default(dex-id-7e891886282f657a0c2e7600c286f69a4e2f90c4:1)
+11-02 20:49:50.154 18871 18890 E TestRunner: 	at kotlinx.coroutines.test.TestBuildersJvmKt.createTestResult(TestBuildersJvm.kt:10)
+11-02 20:49:50.155 18871 18890 E TestRunner: 	at kotlinx.coroutines.test.TestBuildersKt__TestBuildersKt.runTest-8Mi8wO0(TestBuilders.kt:309)
+11-02 20:49:50.155 18871 18890 E TestRunner: 	at kotlinx.coroutines.test.TestBuildersKt.runTest-8Mi8wO0(dex-id-7e6b3808279efd3cb39bf2dfa1a45ff99919b721:1)
+11-02 20:49:50.155 18871 18890 E TestRunner: 	at kotlinx.coroutines.test.TestBuildersKt__TestBuildersKt.runTest-8Mi8wO0(TestBuilders.kt:167)
+11-02 20:49:50.155 18871 18890 E TestRunner: 	at kotlinx.coroutines.test.TestBuildersKt.runTest-8Mi8wO0(dex-id-7e6b3808279efd3cb39bf2dfa1a45ff99919b721:1)
+11-02 20:49:50.155 18871 18890 E TestRunner: 	at androidx.compose.ui.test.AndroidComposeUiTestEnvironment.runTest(ComposeUiTest.android.kt:665)
+11-02 20:49:50.155 18871 18890 E TestRunner: 	at androidx.compose.ui.test.junit4.AndroidComposeTestRule$apply$1.evaluate(AndroidComposeTestRule.android.kt:447)
+11-02 20:49:50.155 18871 18890 E TestRunner: 	at org.junit.runners.ParentRunner$3.evaluate(ParentRunner.java:306)
+11-02 20:49:50.155 18871 18890 E TestRunner: 	at org.junit.runners.BlockJUnit4ClassRunner$1.evaluate(BlockJUnit4ClassRunner.java:100)
+11-02 20:49:50.155 18871 18890 E TestRunner: 	at org.junit.runners.ParentRunner.runLeaf(ParentRunner.java:366)
+11-02 20:49:50.155 18871 18890 E TestRunner: 	at org.junit.runners.BlockJUnit4ClassRunner.runChild(BlockJUnit4ClassRunner.java:103)
+11-02 20:49:50.155 18871 18890 E TestRunner: 	at org.junit.runners.BlockJUnit4ClassRunner.runChild(BlockJUnit4ClassRunner.java:63)
+11-02 20:49:50.155 18871 18890 E TestRunner: 	at org.junit.runners.ParentRunner$4.run(ParentRunner.java:331)
+11-02 20:49:50.155 18871 18890 E TestRunner: 	at org.junit.runners.ParentRunner$1.schedule(ParentRunner.java:79)
+11-02 20:49:50.155 18871 18890 E TestRunner: 	at org.junit.runners.ParentRunner.runChildren(ParentRunner.java:329)
+11-02 20:49:50.155 18871 18890 E TestRunner: 	at org.junit.runners.ParentRunner.access$100(ParentRunner.java:66)
+11-02 20:49:50.155 18871 18890 E TestRunner: 	at org.junit.runners.ParentRunner$2.evaluate(ParentRunner.java:293)
+11-02 20:49:50.155 18871 18890 E TestRunner: 	at org.junit.runners.ParentRunner$3.evaluate(ParentRunner.java:306)
+11-02 20:49:50.155 18871 18890 E TestRunner: 	at org.junit.runners.ParentRunner.run(ParentRunner.java:413)
+11-02 20:49:50.155 18871 18890 E TestRunner: 	at org.junit.runners.Suite.runChild(Suite.java:128)
+11-02 20:49:50.155 18871 18890 E TestRunner: 	at org.junit.runners.Suite.runChild(Suite.java:27)
+11-02 20:49:50.155 18871 18890 E TestRunner: 	at org.junit.runners.ParentRunner$4.run(ParentRunner.java:331)
+11-02 20:49:50.155 18871 18890 E TestRunner: 	at org.junit.runners.ParentRunner$1.schedule(ParentRunner.java:79)
+11-02 20:49:50.155 18871 18890 E TestRunner: 	at org.junit.runners.ParentRunner.runChildren(ParentRunner.java:329)
+11-02 20:49:50.155 18871 18890 E TestRunner: 	at org.junit.runners.ParentRunner.access$100(ParentRunner.java:66)
+11-02 20:49:50.155 18871 18890 E TestRunner: 	at org.junit.runners.ParentRunner$2.evaluate(ParentRunner.java:293)
+11-02 20:49:50.155 18871 18890 E TestRunner: 	at org.junit.runners.ParentRunner$3.evaluate(ParentRunner.java:306)
+11-02 20:49:50.155 18871 18890 E TestRunner: 	at org.junit.runners.ParentRunner.run(ParentRunner.java:413)
+11-02 20:49:50.155 18871 18890 E TestRunner: 	at org.junit.runner.JUnitCore.run(JUnitCore.java:137)
+11-02 20:49:50.155 18871 18890 E TestRunner: 	at org.junit.runner.JUnitCore.run(JUnitCore.java:115)
+11-02 20:49:50.155 18871 18890 E TestRunner: 	at androidx.test.internal.runner.TestExecutor.execute(TestExecutor.java:68)
+11-02 20:49:50.155 18871 18890 E TestRunner: 	at androidx.test.internal.runner.TestExecutor.execute(TestExecutor.java:59)
+11-02 20:49:50.155 18871 18890 E TestRunner: 	at androidx.test.runner.AndroidJUnitRunner.onStart(AndroidJUnitRunner.java:467)
+11-02 20:49:50.155 18871 18890 E TestRunner: 	at android.app.Instrumentation$InstrumentationThread.run(Instrumentation.java:2402)
+11-02 20:49:50.155 18871 18890 E TestRunner: ----- end exception -----
+11-02 20:49:50.156 18871 18890 I TestRunner: finished: videoSleepTimerMustSurviveActivityRecreation(com.example.ymediaplayer.ui.HiddenVideoAuditProbeTest)
+11-02 20:49:50.158 18871 18890 I TestRunner: run finished: 1 tests, 1 failed, 0 ignored
+11-02 20:50:35.677 19124 19144 I TestRunner: run started: 7 tests
+11-02 20:50:35.678 19124 19144 I TestRunner: started: extendingFadingSleepTimerMustRestoreVolume(com.example.ymediaplayer.ui.HiddenMusicAuditProbeTest)
+11-02 20:50:38.778 19124 19124 I HiddenAudit: extended timer volume=0.747
+11-02 20:50:39.512 19124 19144 E TestRunner: failed: extendingFadingSleepTimerMustRestoreVolume(com.example.ymediaplayer.ui.HiddenMusicAuditProbeTest)
+11-02 20:50:39.513 19124 19144 E TestRunner: ----- begin exception -----
+11-02 20:50:39.513 19124 19144 E TestRunner: java.lang.AssertionError: Extending timer must stop old fade expected:<1.0> but was:<0.747>
+11-02 20:50:39.513 19124 19144 E TestRunner: 	at org.junit.Assert.fail(Assert.java:89)
+11-02 20:50:39.513 19124 19144 E TestRunner: 	at org.junit.Assert.failNotEquals(Assert.java:835)
+11-02 20:50:39.513 19124 19144 E TestRunner: 	at org.junit.Assert.assertEquals(Assert.java:577)
+11-02 20:50:39.513 19124 19144 E TestRunner: 	at com.example.ymediaplayer.ui.HiddenMusicAuditProbeTest.extendingFadingSleepTimerMustRestoreVolume$lambda$3(HiddenMusicAuditProbeTest.kt:105)
+11-02 20:50:39.513 19124 19144 E TestRunner: 	at com.example.ymediaplayer.ui.HiddenMusicAuditProbeTest$$ExternalSyntheticLambda19.invoke(D8$$SyntheticClass:0)
+11-02 20:50:39.513 19124 19144 E TestRunner: 	at com.example.ymediaplayer.ui.HiddenMusicAuditProbeTest.main$lambda$0(HiddenMusicAuditProbeTest.kt:28)
+11-02 20:50:39.513 19124 19144 E TestRunner: 	at com.example.ymediaplayer.ui.HiddenMusicAuditProbeTest$$ExternalSyntheticLambda11.run(D8$$SyntheticClass:0)
+11-02 20:50:39.513 19124 19144 E TestRunner: 	at java.util.concurrent.Executors$RunnableAdapter.call(Executors.java:520)
+11-02 20:50:39.513 19124 19144 E TestRunner: 	at java.util.concurrent.FutureTask.run(FutureTask.java:328)
+11-02 20:50:39.513 19124 19144 E TestRunner: 	at android.app.Instrumentation$SyncRunnable.run(Instrumentation.java:2420)
+11-02 20:50:39.513 19124 19144 E TestRunner: 	at android.os.Handler.handleCallback(Handler.java:1013)
+11-02 20:50:39.513 19124 19144 E TestRunner: 	at android.os.Handler.dispatchMessage(Handler.java:101)
+11-02 20:50:39.513 19124 19144 E TestRunner: 	at android.os.Looper.loopOnce(Looper.java:226)
+11-02 20:50:39.513 19124 19144 E TestRunner: 	at android.os.Looper.loop(Looper.java:328)
+11-02 20:50:39.513 19124 19144 E TestRunner: 	at android.app.ActivityThread.main(ActivityThread.java:9220)
+11-02 20:50:39.513 19124 19144 E TestRunner: 	at java.lang.reflect.Method.invoke(Native Method)
+11-02 20:50:39.513 19124 19144 E TestRunner: 	at com.android.internal.os.RuntimeInit$MethodAndArgsCaller.run(RuntimeInit.java:586)
+11-02 20:50:39.513 19124 19144 E TestRunner: 	at com.android.internal.os.ZygoteInit.main(ZygoteInit.java:1099)
+11-02 20:50:39.513 19124 19144 E TestRunner: ----- end exception -----
+11-02 20:50:39.514 19124 19144 I TestRunner: finished: extendingFadingSleepTimerMustRestoreVolume(com.example.ymediaplayer.ui.HiddenMusicAuditProbeTest)
+11-02 20:50:39.515 19124 19144 I TestRunner: started: cancellingFadingSleepTimerMustRestoreVolume(com.example.ymediaplayer.ui.HiddenMusicAuditProbeTest)
+11-02 20:50:41.204 19124 19124 I HiddenAudit: cancel fade before=0.7488 after=0.7488
+11-02 20:50:41.588 19124 19144 E TestRunner: failed: cancellingFadingSleepTimerMustRestoreVolume(com.example.ymediaplayer.ui.HiddenMusicAuditProbeTest)
+11-02 20:50:41.589 19124 19144 E TestRunner: ----- begin exception -----
+11-02 20:50:41.589 19124 19144 E TestRunner: java.lang.AssertionError: Cancel must restore pre-fade volume expected:<1.0> but was:<0.7488>
+11-02 20:50:41.589 19124 19144 E TestRunner: 	at org.junit.Assert.fail(Assert.java:89)
+11-02 20:50:41.589 19124 19144 E TestRunner: 	at org.junit.Assert.failNotEquals(Assert.java:835)
+11-02 20:50:41.589 19124 19144 E TestRunner: 	at org.junit.Assert.assertEquals(Assert.java:577)
+11-02 20:50:41.589 19124 19144 E TestRunner: 	at com.example.ymediaplayer.ui.HiddenMusicAuditProbeTest.cancellingFadingSleepTimerMustRestoreVolume$lambda$2(HiddenMusicAuditProbeTest.kt:95)
+11-02 20:50:41.589 19124 19144 E TestRunner: 	at com.example.ymediaplayer.ui.HiddenMusicAuditProbeTest$$ExternalSyntheticLambda14.invoke(D8$$SyntheticClass:0)
+11-02 20:50:41.589 19124 19144 E TestRunner: 	at com.example.ymediaplayer.ui.HiddenMusicAuditProbeTest.main$lambda$0(HiddenMusicAuditProbeTest.kt:28)
+11-02 20:50:41.589 19124 19144 E TestRunner: 	at com.example.ymediaplayer.ui.HiddenMusicAuditProbeTest$$ExternalSyntheticLambda11.run(D8$$SyntheticClass:0)
+11-02 20:50:41.589 19124 19144 E TestRunner: 	at java.util.concurrent.Executors$RunnableAdapter.call(Executors.java:520)
+11-02 20:50:41.589 19124 19144 E TestRunner: 	at java.util.concurrent.FutureTask.run(FutureTask.java:328)
+11-02 20:50:41.589 19124 19144 E TestRunner: 	at android.app.Instrumentation$SyncRunnable.run(Instrumentation.java:2420)
+11-02 20:50:41.589 19124 19144 E TestRunner: 	at android.os.Handler.handleCallback(Handler.java:1013)
+11-02 20:50:41.589 19124 19144 E TestRunner: 	at android.os.Handler.dispatchMessage(Handler.java:101)
+11-02 20:50:41.589 19124 19144 E TestRunner: 	at android.os.Looper.loopOnce(Looper.java:226)
+11-02 20:50:41.589 19124 19144 E TestRunner: 	at android.os.Looper.loop(Looper.java:328)
+11-02 20:50:41.589 19124 19144 E TestRunner: 	at android.app.ActivityThread.main(ActivityThread.java:9220)
+11-02 20:50:41.589 19124 19144 E TestRunner: 	at java.lang.reflect.Method.invoke(Native Method)
+11-02 20:50:41.589 19124 19144 E TestRunner: 	at com.android.internal.os.RuntimeInit$MethodAndArgsCaller.run(RuntimeInit.java:586)
+11-02 20:50:41.589 19124 19144 E TestRunner: 	at com.android.internal.os.ZygoteInit.main(ZygoteInit.java:1099)
+11-02 20:50:41.589 19124 19144 E TestRunner: ----- end exception -----
+11-02 20:50:41.591 19124 19144 I TestRunner: finished: cancellingFadingSleepTimerMustRestoreVolume(com.example.ymediaplayer.ui.HiddenMusicAuditProbeTest)
+11-02 20:50:41.593 19124 19144 I TestRunner: started: enqueueCurrentSongMustNotCreateDuplicateQueueKeys(com.example.ymediaplayer.ui.HiddenMusicAuditProbeTest)
+11-02 20:50:43.141 19124 19124 I HiddenAudit: play current next queue keys=[queue_990001, queue_990001, queue_990002, queue_990003]
+11-02 20:50:43.542 19124 19144 E TestRunner: failed: enqueueCurrentSongMustNotCreateDuplicateQueueKeys(com.example.ymediaplayer.ui.HiddenMusicAuditProbeTest)
+11-02 20:50:43.543 19124 19144 E TestRunner: ----- begin exception -----
+11-02 20:50:43.543 19124 19144 E TestRunner: java.lang.AssertionError: Queue UI uses song id as LazyColumn key; it must remain unique expected:<4> but was:<3>
+11-02 20:50:43.543 19124 19144 E TestRunner: 	at org.junit.Assert.fail(Assert.java:89)
+11-02 20:50:43.543 19124 19144 E TestRunner: 	at org.junit.Assert.failNotEquals(Assert.java:835)
+11-02 20:50:43.543 19124 19144 E TestRunner: 	at org.junit.Assert.assertEquals(Assert.java:120)
+11-02 20:50:43.543 19124 19144 E TestRunner: 	at com.example.ymediaplayer.ui.HiddenMusicAuditProbeTest.enqueueCurrentSongMustNotCreateDuplicateQueueKeys$lambda$0(HiddenMusicAuditProbeTest.kt:124)
+11-02 20:50:43.543 19124 19144 E TestRunner: 	at com.example.ymediaplayer.ui.HiddenMusicAuditProbeTest$$ExternalSyntheticLambda10.invoke(D8$$SyntheticClass:0)
+11-02 20:50:43.543 19124 19144 E TestRunner: 	at com.example.ymediaplayer.ui.HiddenMusicAuditProbeTest.main$lambda$0(HiddenMusicAuditProbeTest.kt:28)
+11-02 20:50:43.543 19124 19144 E TestRunner: 	at com.example.ymediaplayer.ui.HiddenMusicAuditProbeTest$$ExternalSyntheticLambda11.run(D8$$SyntheticClass:0)
+11-02 20:50:43.543 19124 19144 E TestRunner: 	at java.util.concurrent.Executors$RunnableAdapter.call(Executors.java:520)
+11-02 20:50:43.543 19124 19144 E TestRunner: 	at java.util.concurrent.FutureTask.run(FutureTask.java:328)
+11-02 20:50:43.543 19124 19144 E TestRunner: 	at android.app.Instrumentation$SyncRunnable.run(Instrumentation.java:2420)
+11-02 20:50:43.543 19124 19144 E TestRunner: 	at android.os.Handler.handleCallback(Handler.java:1013)
+11-02 20:50:43.543 19124 19144 E TestRunner: 	at android.os.Handler.dispatchMessage(Handler.java:101)
+11-02 20:50:43.543 19124 19144 E TestRunner: 	at android.os.Looper.loopOnce(Looper.java:226)
+11-02 20:50:43.543 19124 19144 E TestRunner: 	at android.os.Looper.loop(Looper.java:328)
+11-02 20:50:43.543 19124 19144 E TestRunner: 	at android.app.ActivityThread.main(ActivityThread.java:9220)
+11-02 20:50:43.543 19124 19144 E TestRunner: 	at java.lang.reflect.Method.invoke(Native Method)
+11-02 20:50:43.543 19124 19144 E TestRunner: 	at com.android.internal.os.RuntimeInit$MethodAndArgsCaller.run(RuntimeInit.java:586)
+11-02 20:50:43.543 19124 19144 E TestRunner: 	at com.android.internal.os.ZygoteInit.main(ZygoteInit.java:1099)
+11-02 20:50:43.543 19124 19144 E TestRunner: ----- end exception -----
+11-02 20:50:43.547 19124 19144 I TestRunner: finished: enqueueCurrentSongMustNotCreateDuplicateQueueKeys(com.example.ymediaplayer.ui.HiddenMusicAuditProbeTest)
+11-02 20:50:43.549 19124 19144 I TestRunner: started: queueReorderingMustChangeTheActualNextTrack(com.example.ymediaplayer.ui.HiddenMusicAuditProbeTest)
+11-02 20:50:54.740 19124 19144 E TestRunner: failed: queueReorderingMustChangeTheActualNextTrack(com.example.ymediaplayer.ui.HiddenMusicAuditProbeTest)
+11-02 20:50:54.740 19124 19144 E TestRunner: ----- begin exception -----
+11-02 20:50:54.740 19124 19144 E TestRunner: java.lang.IllegalStateException: Timed out awaiting playback condition
+11-02 20:50:54.740 19124 19144 E TestRunner: 	at com.example.ymediaplayer.ui.HiddenMusicAuditProbeTest.waitFor(HiddenMusicAuditProbeTest.kt:37)
+11-02 20:50:54.740 19124 19144 E TestRunner: 	at com.example.ymediaplayer.ui.HiddenMusicAuditProbeTest.setup(HiddenMusicAuditProbeTest.kt:62)
+11-02 20:50:54.740 19124 19144 E TestRunner: 	at java.lang.reflect.Method.invoke(Native Method)
+11-02 20:50:54.740 19124 19144 E TestRunner: 	at org.junit.runners.model.FrameworkMethod$1.runReflectiveCall(FrameworkMethod.java:59)
+11-02 20:50:54.740 19124 19144 E TestRunner: 	at org.junit.internal.runners.model.ReflectiveCallable.run(ReflectiveCallable.java:12)
+11-02 20:50:54.740 19124 19144 E TestRunner: 	at org.junit.runners.model.FrameworkMethod.invokeExplosively(FrameworkMethod.java:56)
+11-02 20:50:54.740 19124 19144 E TestRunner: 	at androidx.test.internal.runner.junit4.statement.RunBefores.evaluate(RunBefores.java:76)
+11-02 20:50:54.740 19124 19144 E TestRunner: 	at androidx.test.internal.runner.junit4.statement.RunAfters.evaluate(RunAfters.java:61)
+11-02 20:50:54.740 19124 19144 E TestRunner: 	at org.junit.runners.ParentRunner$3.evaluate(ParentRunner.java:306)
+11-02 20:50:54.740 19124 19144 E TestRunner: 	at org.junit.runners.BlockJUnit4ClassRunner$1.evaluate(BlockJUnit4ClassRunner.java:100)
+11-02 20:50:54.740 19124 19144 E TestRunner: 	at org.junit.runners.ParentRunner.runLeaf(ParentRunner.java:366)
+11-02 20:50:54.740 19124 19144 E TestRunner: 	at org.junit.runners.BlockJUnit4ClassRunner.runChild(BlockJUnit4ClassRunner.java:103)
+11-02 20:50:54.740 19124 19144 E TestRunner: 	at org.junit.runners.BlockJUnit4ClassRunner.runChild(BlockJUnit4ClassRunner.java:63)
+11-02 20:50:54.740 19124 19144 E TestRunner: 	at org.junit.runners.ParentRunner$4.run(ParentRunner.java:331)
+11-02 20:50:54.740 19124 19144 E TestRunner: 	at org.junit.runners.ParentRunner$1.schedule(ParentRunner.java:79)
+11-02 20:50:54.740 19124 19144 E TestRunner: 	at org.junit.runners.ParentRunner.runChildren(ParentRunner.java:329)
+11-02 20:50:54.740 19124 19144 E TestRunner: 	at org.junit.runners.ParentRunner.access$100(ParentRunner.java:66)
+11-02 20:50:54.740 19124 19144 E TestRunner: 	at org.junit.runners.ParentRunner$2.evaluate(ParentRunner.java:293)
+11-02 20:50:54.740 19124 19144 E TestRunner: 	at org.junit.runners.ParentRunner$3.evaluate(ParentRunner.java:306)
+11-02 20:50:54.740 19124 19144 E TestRunner: 	at org.junit.runners.ParentRunner.run(ParentRunner.java:413)
+11-02 20:50:54.740 19124 19144 E TestRunner: 	at org.junit.runners.Suite.runChild(Suite.java:128)
+11-02 20:50:54.740 19124 19144 E TestRunner: 	at org.junit.runners.Suite.runChild(Suite.java:27)
+11-02 20:50:54.740 19124 19144 E TestRunner: 	at org.junit.runners.ParentRunner$4.run(ParentRunner.java:331)
+11-02 20:50:54.740 19124 19144 E TestRunner: 	at org.junit.runners.ParentRunner$1.schedule(ParentRunner.java:79)
+11-02 20:50:54.740 19124 19144 E TestRunner: 	at org.junit.runners.ParentRunner.runChildren(ParentRunner.java:329)
+11-02 20:50:54.740 19124 19144 E TestRunner: 	at org.junit.runners.ParentRunner.access$100(ParentRunner.java:66)
+11-02 20:50:54.740 19124 19144 E TestRunner: 	at org.junit.runners.ParentRunner$2.evaluate(ParentRunner.java:293)
+11-02 20:50:54.740 19124 19144 E TestRunner: 	at org.junit.runners.ParentRunner$3.evaluate(ParentRunner.java:306)
+11-02 20:50:54.740 19124 19144 E TestRunner: 	at org.junit.runners.ParentRunner.run(ParentRunner.java:413)
+11-02 20:50:54.740 19124 19144 E TestRunner: 	at org.junit.runner.JUnitCore.run(JUnitCore.java:137)
+11-02 20:50:54.740 19124 19144 E TestRunner: 	at org.junit.runner.JUnitCore.run(JUnitCore.java:115)
+11-02 20:50:54.740 19124 19144 E TestRunner: 	at androidx.test.internal.runner.TestExecutor.execute(TestExecutor.java:68)
+11-02 20:50:54.740 19124 19144 E TestRunner: 	at androidx.test.internal.runner.TestExecutor.execute(TestExecutor.java:59)
+11-02 20:50:54.740 19124 19144 E TestRunner: 	at androidx.test.runner.AndroidJUnitRunner.onStart(AndroidJUnitRunner.java:467)
+11-02 20:50:54.740 19124 19144 E TestRunner: 	at android.app.Instrumentation$InstrumentationThread.run(Instrumentation.java:2402)
+11-02 20:50:54.740 19124 19144 E TestRunner: ----- end exception -----
+11-02 20:50:54.741 19124 19144 I TestRunner: finished: queueReorderingMustChangeTheActualNextTrack(com.example.ymediaplayer.ui.HiddenMusicAuditProbeTest)
+11-02 20:50:54.742 19124 19144 I TestRunner: started: repeatOffMustNotWrapAtEndOfQueue(com.example.ymediaplayer.ui.HiddenMusicAuditProbeTest)
+11-02 20:50:57.692 19124 19124 I HiddenAudit: end with repeat OFF current=QA_1 playing=true
+11-02 20:51:36.267 19639 19658 I TestRunner: run started: 1 tests
+11-02 20:51:36.268 19639 19658 I TestRunner: started: videoSleepTimerMustSurviveActivityRecreation(com.example.ymediaplayer.ui.HiddenVideoAuditProbeTest)

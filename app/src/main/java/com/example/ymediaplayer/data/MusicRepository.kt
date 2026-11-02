@@ -159,6 +159,17 @@ class MusicRepository(private val context: Context) {
                 val path = if (pathColumn >= 0) cursor.getString(pathColumn).orEmpty() else ""
                 val relPath = if (relPathColumn >= 0) cursor.getString(relPathColumn).orEmpty() else ""
 
+                // Ignore corrupt or 0-byte audio entries
+                if (duration <= 0L && size <= 0L) continue
+
+                // Filter out ghost entries where the file no longer exists on disk
+                if (path.isNotBlank()) {
+                    val file = java.io.File(path)
+                    if (!file.exists() || (size <= 0L && file.length() <= 0L)) {
+                        continue
+                    }
+                }
+
                 val contentUri: Uri = ContentUris.withAppendedId(
                     MediaStore.Audio.Media.EXTERNAL_CONTENT_URI,
                     id
@@ -183,8 +194,92 @@ class MusicRepository(private val context: Context) {
         } catch (_: SecurityException) {
             return@withContext emptyList()
         }
-        memoryCachedMusic = musicList
+        val deduplicated = deduplicateMusicItems(musicList)
+        memoryCachedMusic = deduplicated
         lastFetchTime = now
-        musicList
+        deduplicated
     }
+}
+
+/**
+ * Deduplicates music items across MediaStore duplicate IDs, identical file paths/symlinks,
+ * and identical audio tracks copied across multiple storage locations.
+ * When duplicates exist, retains the highest quality/best tagged version.
+ */
+fun deduplicateMusicItems(items: List<MusicItem>): List<MusicItem> {
+    if (items.size <= 1) return items
+
+    val result = ArrayList<MusicItem>(items.size)
+    val seenIds = HashSet<Long>()
+    val seenPaths = HashSet<String>()
+
+    for (item in items) {
+        if (!seenIds.add(item.id)) continue
+
+        val normPath = if (item.path.isNotBlank()) {
+            try {
+                java.io.File(item.path).canonicalPath.lowercase()
+            } catch (_: Exception) {
+                item.path.trim().lowercase()
+            }
+        } else item.uri.toString()
+
+        if (!seenPaths.add(normPath)) continue
+
+        val normTitle = item.title.trim().lowercase()
+        val normArtist = item.artist.trim().lowercase()
+        val durationSec = item.duration / 1000L
+
+        val isGenericTitle = normTitle.isBlank() ||
+            normTitle == "unknown track" ||
+            normTitle == "unknown" ||
+            normTitle.matches(Regex("^track\\s*\\d*$", RegexOption.IGNORE_CASE)) ||
+            normTitle.matches(Regex("^audio\\s*\\d*$", RegexOption.IGNORE_CASE))
+
+        val existingIndex = result.indexOfFirst { existing ->
+            val exTitle = existing.title.trim().lowercase()
+            val exArtist = existing.artist.trim().lowercase()
+            val exDurationSec = existing.duration / 1000L
+
+            if (!isGenericTitle && normArtist != "unknown artist" && exArtist != "unknown artist") {
+                // Known title and known artist: match title and artist with duration within 2 seconds
+                exTitle == normTitle && exArtist == normArtist && kotlin.math.abs(exDurationSec - durationSec) <= 2
+            } else if (!isGenericTitle) {
+                // Known title with unknown artist: match title and (same file size or duration within 1 sec)
+                exTitle == normTitle && (
+                    (item.size > 0 && item.size == existing.size) ||
+                    (durationSec > 0 && kotlin.math.abs(exDurationSec - durationSec) <= 1)
+                )
+            } else {
+                // Generic title: match exact filename and size and duration
+                val itemFile = item.path.substringAfterLast('/', "").lowercase()
+                val exFile = existing.path.substringAfterLast('/', "").lowercase()
+                itemFile.isNotBlank() && itemFile == exFile && item.size > 0 && item.size == existing.size &&
+                    kotlin.math.abs(exDurationSec - durationSec) <= 1
+            }
+        }
+
+        if (existingIndex >= 0) {
+            val existing = result[existingIndex]
+            if (rateSongQuality(item) > rateSongQuality(existing)) {
+                result[existingIndex] = item
+            }
+        } else {
+            result.add(item)
+        }
+    }
+    return result
+}
+
+private fun rateSongQuality(item: MusicItem): Int {
+    var score = 0
+    if (item.artist != "Unknown Artist" && item.artist.isNotBlank()) score += 10
+    if (item.album != "Unknown Album" && item.album.isNotBlank()) score += 5
+    if (item.albumId > 0) score += 5
+    val lowerPath = item.path.lowercase()
+    if (lowerPath.contains("/music/") || lowerPath.contains("/audio/")) score += 20
+    if (lowerPath.contains("/download/")) score += 5
+    if (lowerPath.contains("whatsapp") || lowerPath.contains("telegram")) score -= 10
+    if (item.size > 1_000_000L) score += (item.size / 1_000_000L).coerceAtMost(20).toInt()
+    return score
 }

@@ -15,14 +15,15 @@ val signingProperties = Properties().apply {
 }
 
 android {
+    testBuildType = providers.gradleProperty("qaTestBuildType").getOrElse("debug")
     namespace = "com.example.ymediaplayer"
     compileSdk = 37
     defaultConfig {
         applicationId = "com.example.ymediaplayer"
         minSdk = 24
         targetSdk = 37
-        versionCode = 40
-        versionName = "2.8"
+        versionCode = 41
+        versionName = "2.8.1"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         ndk {
             abiFilters += listOf("arm64-v8a")
@@ -40,6 +41,13 @@ android {
     }
     buildTypes {
         debug { applicationIdSuffix = ".debug" }
+        // Device QA can update the regular app without installing a second player.
+        create("qa") {
+            initWith(getByName("debug"))
+            applicationIdSuffix = null
+            signingConfig = signingConfigs.getByName("release")
+            matchingFallbacks += listOf("debug")
+        }
         release {
             isMinifyEnabled = true
             isShrinkResources = true
@@ -124,6 +132,7 @@ dependencies {
   // Instrumented tests
   androidTestImplementation(libs.androidx.compose.ui.test.junit4)
   debugImplementation(libs.androidx.compose.ui.test.manifest)
+  add("qaImplementation", libs.androidx.compose.ui.test.manifest)
 
   // Local tests: jUnit, coroutines, Android runner
   testImplementation(libs.junit)
