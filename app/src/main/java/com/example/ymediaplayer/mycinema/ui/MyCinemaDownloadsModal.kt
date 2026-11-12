@@ -71,32 +71,40 @@ fun MyCinemaDownloadsModal(
         onDismiss()
     }
 
-    // Scan downloaded files on disk
-    LaunchedEffect(refreshTrigger, downloadsMap) {
-        val dir = TorrentEngine.getDownloadDir(context)
-        val files = mutableListOf<DownloadedFileItem>()
-        val inProgressPaths = activeDownloads.mapNotNull { it.savePath }.toSet()
-        val inProgressIds = activeDownloads.map { it.id.lowercase() }.toSet()
-        if (dir.exists() && dir.isDirectory) {
-            dir.walkTopDown().filter { file ->
-                file.isFile && file.length() > 0 && isVideoFile(file.name) &&
-                TorrentEngine.getActiveTorrent(file.absolutePath) == null &&
-                !inProgressPaths.contains(file.absolutePath) &&
-                !inProgressIds.any { file.name.lowercase().contains(it) }
-            }.forEach { file ->
-                val sizeStr = formatFileSize(file.length())
-                val dateStr = SimpleDateFormat("dd MMM, hh:mm a", Locale.getDefault()).format(Date(file.lastModified()))
-                files.add(
-                    DownloadedFileItem(
-                        file = file,
-                        name = file.nameWithoutExtension,
-                        sizeFormatted = sizeStr,
-                        dateFormatted = dateStr
+    // Scan downloaded files on disk (off Main thread, keyed on structural changes instead of 400ms ticks)
+    val downloadsScanKey = remember(downloadsMap) {
+        downloadsMap.values
+            .sortedBy { it.id }
+            .joinToString("|") { "${it.id}:${it.status}:${it.savePath.orEmpty()}" }
+    }
+    LaunchedEffect(refreshTrigger, downloadsScanKey) {
+        val sortedFiles = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+            val dir = TorrentEngine.getDownloadDir(context)
+            val files = mutableListOf<DownloadedFileItem>()
+            val inProgressPaths = activeDownloads.mapNotNull { it.savePath }.toSet()
+            val inProgressIds = activeDownloads.map { it.id.lowercase() }.toSet()
+            if (dir.exists() && dir.isDirectory) {
+                dir.walkTopDown().filter { file ->
+                    file.isFile && file.length() > 0 && isVideoFile(file.name) &&
+                    TorrentEngine.getActiveTorrent(file.absolutePath) == null &&
+                    !inProgressPaths.contains(file.absolutePath) &&
+                    !inProgressIds.any { file.name.lowercase().contains(it) }
+                }.forEach { file ->
+                    val sizeStr = formatFileSize(file.length())
+                    val dateStr = SimpleDateFormat("dd MMM, hh:mm a", Locale.getDefault()).format(Date(file.lastModified()))
+                    files.add(
+                        DownloadedFileItem(
+                            file = file,
+                            name = file.nameWithoutExtension,
+                            sizeFormatted = sizeStr,
+                            dateFormatted = dateStr
+                        )
                     )
-                )
+                }
             }
+            files.sortedByDescending { it.file.lastModified() }
         }
-        downloadedFiles = files.sortedByDescending { it.file.lastModified() }
+        downloadedFiles = sortedFiles
     }
 
     ModalBottomSheet(

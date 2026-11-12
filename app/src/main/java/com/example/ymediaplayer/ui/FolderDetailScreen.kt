@@ -314,14 +314,9 @@ fun FolderDetailScreen(
                             // Back Button
                             IconButton(
                                 onClick = onBack,
-                                modifier = Modifier
-                                    .size(38.dp)
-                                    .then(if (c.isMatte) Modifier else Modifier.shadow(6.dp, CircleShape, ambientColor = c.cardShadowColor, spotColor = c.cardShadowColor))
-                                    .clip(CircleShape)
-                                    .background(if (c.isMatte) SolidColor(c.cardBgElevated) else Brush.verticalGradient(listOf(c.cardBgElevated, c.cardBg)))
-                                    .border(1.2.dp, if (c.isMatte) androidx.compose.ui.graphics.SolidColor(c.glassBorder) else Brush.verticalGradient(listOf(c.cardBorderHighlight, c.glassBorder, c.cardBorderShadow)), CircleShape)
+                                modifier = Modifier.size(38.dp)
                             ) {
-                                Icon(Icons.AutoMirrored.Rounded.ArrowBack, contentDescription = "Back", tint = c.textPrimary, modifier = Modifier.size(20.dp))
+                                Icon(Icons.AutoMirrored.Rounded.ArrowBack, contentDescription = "Back", tint = c.textPrimary, modifier = Modifier.size(22.dp))
                             }
 
                             Spacer(Modifier.width(12.dp))
@@ -418,14 +413,9 @@ fun FolderDetailScreen(
                                     // Search Icon
                                     IconButton(
                                         onClick = { isSearching = true },
-                                        modifier = Modifier
-                                            .size(38.dp)
-                                            .then(if (c.isMatte) Modifier else Modifier.shadow(6.dp, CircleShape, ambientColor = c.cardShadowColor, spotColor = c.cardShadowColor))
-                                            .clip(CircleShape)
-                                            .background(if (c.isMatte) SolidColor(c.cardBgElevated) else Brush.verticalGradient(listOf(c.cardBgElevated, c.cardBg)))
-                                            .border(1.2.dp, if (c.isMatte) androidx.compose.ui.graphics.SolidColor(c.glassBorder) else Brush.verticalGradient(listOf(c.cardBorderHighlight, c.glassBorder, c.cardBorderShadow)), CircleShape)
+                                        modifier = Modifier.size(38.dp)
                                     ) {
-                                        Icon(Icons.Filled.Search, contentDescription = "Search", tint = c.textPrimary, modifier = Modifier.size(19.dp))
+                                        Icon(Icons.Filled.Search, contentDescription = "Search", tint = c.textPrimary, modifier = Modifier.size(21.dp))
                                     }
 
                                     // Media View Switcher Button & Dropdown
@@ -441,14 +431,9 @@ fun FolderDetailScreen(
                                     Box {
                                         IconButton(
                                             onClick = { showSortMenu = true },
-                                            modifier = Modifier
-                                                .size(38.dp)
-                                                .then(if (c.isMatte) Modifier else Modifier.shadow(6.dp, CircleShape, ambientColor = c.cardShadowColor, spotColor = c.cardShadowColor))
-                                                .clip(CircleShape)
-                                                .background(if (c.isMatte) SolidColor(c.cardBgElevated) else Brush.verticalGradient(listOf(c.cardBgElevated, c.cardBg)))
-                                                .border(1.2.dp, if (c.isMatte) androidx.compose.ui.graphics.SolidColor(c.glassBorder) else Brush.verticalGradient(listOf(c.cardBorderHighlight, c.glassBorder, c.cardBorderShadow)), CircleShape)
+                                            modifier = Modifier.size(38.dp)
                                         ) {
-                                            Icon(Icons.AutoMirrored.Rounded.Sort, contentDescription = "Sort", tint = c.textPrimary, modifier = Modifier.size(19.dp))
+                                            Icon(Icons.AutoMirrored.Rounded.Sort, contentDescription = "Sort", tint = c.textPrimary, modifier = Modifier.size(21.dp))
                                         }
 
                                         DropdownMenu(

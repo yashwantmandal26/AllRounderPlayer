@@ -65,14 +65,16 @@ class TorrentScraperClient {
     fun searchSourcesFlow(
         imdbId: String,
         fallbackTitle: String,
-        isSeries: Boolean
+        isSeries: Boolean,
+        season: Int? = null,
+        episode: Int? = null
     ): Flow<List<TorrentSource>> = flow {
         if (imdbId.isBlank() || !imdbId.startsWith("tt", ignoreCase = true)) {
             emit(emptyList())
             return@flow
         }
 
-        val cacheKey = "$imdbId:$isSeries"
+        val cacheKey = if (isSeries) "$imdbId:series:${season ?: 0}:${episode ?: 0}" else "$imdbId:movie"
         sourcesCache[cacheKey]?.let { (timestamp, cached) ->
             if (System.currentTimeMillis() - timestamp < CACHE_TTL_MS && cached.isNotEmpty()) {
                 emit(cached)
@@ -84,11 +86,11 @@ class TorrentScraperClient {
 
         coroutineScope {
             val scrapers = listOf<suspend () -> List<TorrentSource>>(
-                { fetchTorrentioSources(imdbId, fallbackTitle, isSeries, isHindiSpecific = false) },
-                { fetchTorrentioSources(imdbId, fallbackTitle, isSeries, isHindiSpecific = true) },
+                { fetchTorrentioSources(imdbId, fallbackTitle, isSeries, isHindiSpecific = false, season = season, episode = episode) },
+                { fetchTorrentioSources(imdbId, fallbackTitle, isSeries, isHindiSpecific = true, season = season, episode = episode) },
                 { if (!isSeries) fetchYtsSources(imdbId, fallbackTitle) else emptyList() },
-                { withTimeoutOrNull(3500L) { fetchMediaFusionSources(imdbId, fallbackTitle, isSeries) } ?: emptyList() },
-                { if (isSeries) withTimeoutOrNull(3500L) { fetchEztvSources(imdbId) } ?: emptyList() else emptyList() }
+                { withTimeoutOrNull(3500L) { fetchMediaFusionSources(imdbId, fallbackTitle, isSeries, season = season, episode = episode) } ?: emptyList() },
+                { if (isSeries) withTimeoutOrNull(3500L) { fetchEztvSources(imdbId, season = season, episode = episode) } ?: emptyList() else emptyList() }
             )
 
             val channel = Channel<List<TorrentSource>>(Channel.UNLIMITED)
@@ -135,13 +137,15 @@ class TorrentScraperClient {
     suspend fun fetchAllSources(
         imdbId: String,
         fallbackTitle: String,
-        isSeries: Boolean
+        isSeries: Boolean,
+        season: Int? = null,
+        episode: Int? = null
     ): List<TorrentSource> = withContext(Dispatchers.IO) {
         if (imdbId.isBlank() || !imdbId.startsWith("tt", ignoreCase = true)) {
             return@withContext emptyList()
         }
 
-        val cacheKey = "$imdbId:$isSeries"
+        val cacheKey = if (isSeries) "$imdbId:series:${season ?: 0}:${episode ?: 0}" else "$imdbId:movie"
         sourcesCache[cacheKey]?.let { (timestamp, cached) ->
             if (System.currentTimeMillis() - timestamp < CACHE_TTL_MS && cached.isNotEmpty()) {
                 return@withContext cached
@@ -150,18 +154,18 @@ class TorrentScraperClient {
 
         // Fast scrapers run concurrently, slow scrapers capped at 3500ms
         val deferredResults = listOf(
-            async { fetchTorrentioSources(imdbId, fallbackTitle, isSeries, isHindiSpecific = false) },
-            async { fetchTorrentioSources(imdbId, fallbackTitle, isSeries, isHindiSpecific = true) },
+            async { fetchTorrentioSources(imdbId, fallbackTitle, isSeries, isHindiSpecific = false, season = season, episode = episode) },
+            async { fetchTorrentioSources(imdbId, fallbackTitle, isSeries, isHindiSpecific = true, season = season, episode = episode) },
             async {
                 withTimeoutOrNull(3500L) {
-                    fetchMediaFusionSources(imdbId, fallbackTitle, isSeries)
+                    fetchMediaFusionSources(imdbId, fallbackTitle, isSeries, season = season, episode = episode)
                 } ?: emptyList()
             },
             async { if (!isSeries) fetchYtsSources(imdbId, fallbackTitle) else emptyList() },
             async {
                 if (isSeries) {
                     withTimeoutOrNull(3500L) {
-                        fetchEztvSources(imdbId)
+                        fetchEztvSources(imdbId, season = season, episode = episode)
                     } ?: emptyList()
                 } else emptyList()
             }
@@ -190,7 +194,8 @@ class TorrentScraperClient {
 
     private fun extractInfoHash(magnet: String): String? {
         val match = Regex("xt=urn:btih:([a-zA-Z0-9]+)", RegexOption.IGNORE_CASE).find(magnet)
-        return match?.groupValues?.getOrNull(1)?.lowercase()
+        val raw = match?.groupValues?.getOrNull(1) ?: return null
+        return com.example.ymediaplayer.mycinema.service.TorrentEngine.normalizeInfoHash(raw) ?: raw.lowercase()
     }
 
     private fun buildMagnet(infoHash: String, title: String): String {
@@ -207,11 +212,15 @@ class TorrentScraperClient {
         imdbId: String,
         fallbackTitle: String,
         isSeries: Boolean,
-        isHindiSpecific: Boolean
+        isHindiSpecific: Boolean,
+        season: Int? = null,
+        episode: Int? = null
     ): List<TorrentSource> = withContext(Dispatchers.IO) {
         try {
             val endpoint = if (isSeries) "series" else "movie"
-            val idParam = if (isSeries && !imdbId.contains(":")) "$imdbId:1:1" else imdbId
+            val targetS = season ?: 1
+            val targetE = episode ?: 1
+            val idParam = if (isSeries && !imdbId.contains(":")) "$imdbId:$targetS:$targetE" else imdbId
             val baseUrl = if (isHindiSpecific) {
                 "https://torrentio.strem.fun/sort=seeders|language=hindi/stream/$endpoint/$idParam.json"
             } else {
@@ -224,7 +233,14 @@ class TorrentScraperClient {
                 val body = response.body?.string() ?: return@withContext emptyList()
                 val root = JSONObject(body)
                 val streams = root.optJSONArray("streams") ?: return@withContext emptyList()
-                parseStreams(streams, fallbackTitle, if (isHindiSpecific) "Torrentio Hindi" else "Torrentio", isHindiSpecific)
+                parseStreams(
+                    streams = streams,
+                    fallbackTitle = fallbackTitle,
+                    provider = if (isHindiSpecific) "Torrentio Hindi" else "Torrentio",
+                    forceHindi = isHindiSpecific,
+                    requestedSeason = if (isSeries) season else null,
+                    requestedEpisode = if (isSeries) episode else null
+                )
             }
         } catch (e: Exception) {
             if (e is CancellationException) throw e
@@ -236,11 +252,15 @@ class TorrentScraperClient {
     private suspend fun fetchMediaFusionSources(
         imdbId: String,
         fallbackTitle: String,
-        isSeries: Boolean
+        isSeries: Boolean,
+        season: Int? = null,
+        episode: Int? = null
     ): List<TorrentSource> = withContext(Dispatchers.IO) {
         try {
             val endpoint = if (isSeries) "series" else "movie"
-            val idParam = if (isSeries && !imdbId.contains(":")) "$imdbId:1:1" else imdbId
+            val targetS = season ?: 1
+            val targetE = episode ?: 1
+            val idParam = if (isSeries && !imdbId.contains(":")) "$imdbId:$targetS:$targetE" else imdbId
             val url = "https://mediafusion.elfhosted.com/stream/$endpoint/$idParam.json"
             val request = Request.Builder().url(url).build()
             httpClient.newCall(request).execute().use { response ->
@@ -248,7 +268,14 @@ class TorrentScraperClient {
                 val body = response.body?.string() ?: return@withContext emptyList()
                 val root = JSONObject(body)
                 val streams = root.optJSONArray("streams") ?: return@withContext emptyList()
-                parseStreams(streams, fallbackTitle, "MediaFusion", false)
+                parseStreams(
+                    streams = streams,
+                    fallbackTitle = fallbackTitle,
+                    provider = "MediaFusion",
+                    forceHindi = false,
+                    requestedSeason = if (isSeries) season else null,
+                    requestedEpisode = if (isSeries) episode else null
+                )
             }
         } catch (e: Exception) {
             if (e is CancellationException) throw e
@@ -261,7 +288,9 @@ class TorrentScraperClient {
         streams: JSONArray,
         fallbackTitle: String,
         provider: String,
-        forceHindi: Boolean
+        forceHindi: Boolean,
+        requestedSeason: Int? = null,
+        requestedEpisode: Int? = null
     ): List<TorrentSource> {
         val list = mutableListOf<TorrentSource>()
 
@@ -288,11 +317,24 @@ class TorrentScraperClient {
             val sizeStr = if (sizeMatch.find()) "${sizeMatch.group(1)} ${sizeMatch.group(2)!!.uppercase()}" else "—"
 
             // Clean title
-            val lines = rawTitle.split("\n").filter { it.isNotBlank() }
-            var cleanTitle = lines.firstOrNull { !it.contains("💾") && !it.contains("👤") && !it.contains("⚙️") }
-                ?: rawTitle.lines().firstOrNull() ?: fallbackTitle
-            cleanTitle = cleanTitle.replace(Regex("💾.*|👤.*|⚙️.*"), "").trim()
+            val titleLines = rawTitle.split("\n")
+                .map { it.replace(Regex("💾.*|👤.*|⚙️.*"), "").trim() }
+                .filter { it.isNotBlank() }
+            var cleanTitle = titleLines.firstOrNull() ?: fallbackTitle
             if (cleanTitle.isBlank()) cleanTitle = fallbackTitle
+
+            val primaryParsed = TorrentEpisodeParser.parse(cleanTitle)
+            val parsedInfo = if (primaryParsed.seasons.isEmpty() && primaryParsed.primaryEpisode == null && titleLines.size > 1) {
+                val combined = titleLines.joinToString(" ")
+                val secondary = TorrentEpisodeParser.parse(combined)
+                if (primaryParsed.isPack && !secondary.isPack) {
+                    secondary.copy(isPack = true)
+                } else {
+                    secondary
+                }
+            } else {
+                primaryParsed
+            }
 
             val isHindi = forceHindi || HINDI_REGEX.matcher(fullText).find()
             val isTamil = TAMIL_REGEX.matcher(fullText).find()
@@ -305,27 +347,39 @@ class TorrentScraperClient {
             val isHevc = HEVC_REGEX.matcher(fullText).find()
             val magnet = buildMagnet(infoHash, cleanTitle)
 
-            list.add(
-                TorrentSource(
-                    title = cleanTitle,
-                    quality = quality,
-                    size = sizeStr,
-                    magnet = magnet,
-                    seeds = seeds,
-                    peers = (seeds * 0.2).toInt(),
-                    type = "web",
-                    provider = provider,
-                    isHindi = isHindi,
-                    isTamil = isTamil,
-                    isTelugu = isTelugu,
-                    isKannada = isKannada,
-                    isBengali = isBengali,
-                    isMalayalam = isMalayalam,
-                    isEnglish = isEnglish,
-                    isKorean = isKorean,
-                    isHevc = isHevc
-                )
+            val source = TorrentSource(
+                title = cleanTitle,
+                quality = quality,
+                size = sizeStr,
+                magnet = magnet,
+                seeds = seeds,
+                peers = (seeds * 0.2).toInt(),
+                type = "web",
+                provider = provider,
+                isHindi = isHindi,
+                isTamil = isTamil,
+                isTelugu = isTelugu,
+                isKannada = isKannada,
+                isBengali = isBengali,
+                isMalayalam = isMalayalam,
+                isEnglish = isEnglish,
+                isKorean = isKorean,
+                isHevc = isHevc,
+                parsedSeason = parsedInfo.primarySeason,
+                parsedEpisode = parsedInfo.primaryEpisode,
+                parsedEpisodeEnd = parsedInfo.episodeEnd,
+                parsedSeasons = parsedInfo.seasons,
+                isSeasonPack = parsedInfo.isPack,
+                isCompleteSeries = parsedInfo.isCompleteSeries
             )
+
+            if (requestedSeason != null && requestedEpisode != null) {
+                if (!TorrentEpisodeParser.matchesRequestedEpisode(source, requestedSeason, requestedEpisode, allowUntagged = true)) {
+                    continue
+                }
+            }
+
+            list.add(source)
         }
         return list
     }
@@ -399,43 +453,54 @@ class TorrentScraperClient {
         emptyList()
     }
 
-    private suspend fun fetchEztvSources(imdbId: String): List<TorrentSource> = withContext(Dispatchers.IO) {
+    private suspend fun fetchEztvSources(
+        imdbId: String,
+        season: Int? = null,
+        episode: Int? = null
+    ): List<TorrentSource> = withContext(Dispatchers.IO) {
         val numericId = imdbId.removePrefix("tt").substringBefore(":")
         val mirrors = listOf("eztvx.to", "eztv.re", "eztv.tf")
         for (domain in mirrors) {
             try {
-                val url = "https://$domain/api/get-torrents?imdb_id=$numericId&limit=100&page=1"
-                val request = Request.Builder().url(url).build()
-                val sources = httpClient.newCall(request).execute().use { response ->
-                    if (!response.isSuccessful) return@use null
-                    val body = response.body?.string() ?: return@use null
-                    val root = JSONObject(body)
-                    val torrents = root.optJSONArray("torrents") ?: return@use null
+                val collected = mutableListOf<TorrentSource>()
+                var respondedOk = false
+                for (page in 1..2) {
+                    val url = "https://$domain/api/get-torrents?imdb_id=$numericId&limit=100&page=$page"
+                    val request = Request.Builder().url(url).build()
+                    val pageResult = httpClient.newCall(request).execute().use { response ->
+                        if (!response.isSuccessful) return@use null
+                        val body = response.body?.string() ?: return@use null
+                        val root = JSONObject(body)
+                        val torrents = root.optJSONArray("torrents") ?: return@use Pair(emptyList<TorrentSource>(), false)
+                        val totalCount = root.optInt("torrents_count", torrents.length())
 
-                    val list = mutableListOf<TorrentSource>()
-                    for (j in 0 until torrents.length()) {
-                        val t = torrents.getJSONObject(j)
-                        val magnet = t.optString("magnet_url")
-                        val seeds = t.optInt("seeds", 0)
-                        if (magnet.isBlank() || seeds == 0) continue
+                        val list = mutableListOf<TorrentSource>()
+                        for (j in 0 until torrents.length()) {
+                            val t = torrents.getJSONObject(j)
+                            val magnet = t.optString("magnet_url")
+                            val seeds = t.optInt("seeds", 0)
+                            if (magnet.isBlank() || seeds == 0) continue
 
-                        val rawTitle = t.optString("title", "Episode")
-                        val qualityMatch = QUALITY_REGEX.matcher(rawTitle)
-                        val quality = if (qualityMatch.find()) qualityMatch.group(1)!!.uppercase() else "720P"
+                            val rawTitle = t.optString("title", "Episode")
+                            val jsonSeason = t.optString("season", "").toIntOrNull()?.takeIf { it > 0 }
+                            val jsonEpisode = t.optString("episode", "").toIntOrNull()?.takeIf { it > 0 }
+                            val parsedInfo = TorrentEpisodeParser.parse(rawTitle, jsonSeason, jsonEpisode)
 
-                        val sizeBytes = t.optLong("size_bytes", 0L)
-                        val sizeStr = formatBytes(sizeBytes)
-                        val isHindi = HINDI_REGEX.matcher(rawTitle).find()
-                        val isTamil = TAMIL_REGEX.matcher(rawTitle).find()
-                        val isTelugu = TELUGU_REGEX.matcher(rawTitle).find()
-                        val isKannada = KANNADA_REGEX.matcher(rawTitle).find()
-                        val isBengali = BENGALI_REGEX.matcher(rawTitle).find()
-                        val isMalayalam = MALAYALAM_REGEX.matcher(rawTitle).find()
-                        val isKorean = KOREAN_REGEX.matcher(rawTitle).find()
-                        val isHevc = HEVC_REGEX.matcher(rawTitle).find()
+                            val qualityMatch = QUALITY_REGEX.matcher(rawTitle)
+                            val quality = if (qualityMatch.find()) qualityMatch.group(1)!!.uppercase() else "720P"
 
-                        list.add(
-                            TorrentSource(
+                            val sizeBytes = t.optLong("size_bytes", 0L)
+                            val sizeStr = formatBytes(sizeBytes)
+                            val isHindi = HINDI_REGEX.matcher(rawTitle).find()
+                            val isTamil = TAMIL_REGEX.matcher(rawTitle).find()
+                            val isTelugu = TELUGU_REGEX.matcher(rawTitle).find()
+                            val isKannada = KANNADA_REGEX.matcher(rawTitle).find()
+                            val isBengali = BENGALI_REGEX.matcher(rawTitle).find()
+                            val isMalayalam = MALAYALAM_REGEX.matcher(rawTitle).find()
+                            val isKorean = KOREAN_REGEX.matcher(rawTitle).find()
+                            val isHevc = HEVC_REGEX.matcher(rawTitle).find()
+
+                            val source = TorrentSource(
                                 title = rawTitle,
                                 quality = quality,
                                 size = sizeStr,
@@ -453,14 +518,36 @@ class TorrentScraperClient {
                                 isMalayalam = isMalayalam,
                                 isEnglish = true,
                                 isKorean = isKorean,
-                                isHevc = isHevc
+                                isHevc = isHevc,
+                                parsedSeason = parsedInfo.primarySeason,
+                                parsedEpisode = parsedInfo.primaryEpisode,
+                                parsedEpisodeEnd = parsedInfo.episodeEnd,
+                                parsedSeasons = parsedInfo.seasons,
+                                isSeasonPack = parsedInfo.isPack,
+                                isCompleteSeries = parsedInfo.isCompleteSeries
                             )
-                        )
+
+                            if (season != null && episode != null) {
+                                if (!TorrentEpisodeParser.matchesRequestedEpisode(source, season, episode, allowUntagged = false)) {
+                                    continue
+                                }
+                            }
+                            list.add(source)
+                        }
+                        val hasMore = totalCount > page * 100 && torrents.length() >= 100
+                        Pair(list, hasMore)
+                    } ?: break
+
+                    respondedOk = true
+                    collected.addAll(pageResult.first)
+                    if (collected.isNotEmpty() || !pageResult.second || season == null || episode == null) {
+                        break
                     }
-                    list
                 }
-                if (!sources.isNullOrEmpty()) return@withContext sources
-            } catch (_: Exception) { }
+                if (respondedOk) return@withContext collected
+            } catch (e: Exception) {
+                if (e is CancellationException) throw e
+            }
         }
         emptyList()
     }

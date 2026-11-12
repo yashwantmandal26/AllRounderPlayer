@@ -424,8 +424,8 @@ class MusicService : MediaSessionService() {
         fun playSong(item: MusicItem) {
             isMiniPlayerDismissed.value = false
             com.example.ymediaplayer.player.VideoPlaybackManager.player?.let { vPlayer ->
-                if (vPlayer.isPlaying) {
-                    vPlayer.pause()
+                if (vPlayer.isPlaying || vPlayer.playWhenReady) {
+                    com.example.ymediaplayer.player.VideoPlaybackManager.manualPause()
                 }
             }
             val context = serviceInstance?.applicationContext ?: com.example.ymediaplayer.YMediaApplication.instance
@@ -504,8 +504,8 @@ class MusicService : MediaSessionService() {
                     isMusicPlaying.value = false
                 } else {
                     com.example.ymediaplayer.player.VideoPlaybackManager.player?.let { vPlayer ->
-                        if (vPlayer.isPlaying) {
-                            vPlayer.pause()
+                        if (vPlayer.isPlaying || vPlayer.playWhenReady) {
+                            com.example.ymediaplayer.player.VideoPlaybackManager.manualPause()
                         }
                     }
                     if (player.playbackState == Player.STATE_ENDED) {

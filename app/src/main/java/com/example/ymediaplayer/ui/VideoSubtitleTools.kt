@@ -13,6 +13,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
@@ -27,6 +28,7 @@ import androidx.media3.common.text.Cue
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.ui.PlayerView
 import com.example.ymediaplayer.data.AppPreferences
+import com.example.ymediaplayer.theme.LocalThemeController
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
@@ -118,6 +120,8 @@ internal fun rememberVideoSubtitles(url: String, player: ExoPlayer, view: Player
 internal fun VideoSubtitleTools(state: VideoSubtitleState, view: PlayerView, design: Int,
     onSeek: (Long) -> Unit, onDismiss: () -> Unit) {
     val context = LocalContext.current
+    val themeController = LocalThemeController.current
+    val dynamicAccentColor = themeController.colorTheme.primaryAccent.toArgb()
     val prefs = state.prefs
     var query by remember { mutableStateOf("") }
     var fontSize by remember { mutableFloatStateOf(prefs.getSubtitleFontSize().toFloat()) }
@@ -145,7 +149,7 @@ internal fun VideoSubtitleTools(state: VideoSubtitleState, view: PlayerView, des
                     AppSlider(
                         value = fontSize,
                         onValueChange = {
-                            fontSize = it; prefs.setSubtitleFontSize(it.toInt()); applySubtitleDesign(view, design, prefs)
+                            fontSize = it; prefs.setSubtitleFontSize(it.toInt()); applySubtitleDesign(view, design, prefs, dynamicAccentColor)
                         },
                         valueRange = 12f..36f,
                         modifier = Modifier.semantics { contentDescription = "Subtitle text size" },
@@ -155,7 +159,7 @@ internal fun VideoSubtitleTools(state: VideoSubtitleState, view: PlayerView, des
                     AppSlider(
                         value = position,
                         onValueChange = {
-                            position = it; prefs.setSubtitleBottomPadding(it); applySubtitleDesign(view, design, prefs)
+                            position = it; prefs.setSubtitleBottomPadding(it); applySubtitleDesign(view, design, prefs, dynamicAccentColor)
                         },
                         valueRange = 0f..0.4f,
                         modifier = Modifier.semantics { contentDescription = "Subtitle vertical position" },

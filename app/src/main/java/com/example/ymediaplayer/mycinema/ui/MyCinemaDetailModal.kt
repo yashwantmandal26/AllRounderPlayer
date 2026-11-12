@@ -87,7 +87,7 @@ fun MyCinemaDetailModal(
     val context = LocalContext.current
     val c = LocalAppColors.current
     val appPreferences = remember(context) { com.example.ymediaplayer.data.AppPreferences(context) }
-    val itemKey = remember(item.id, item.mediaType) { "${item.mediaType}_${item.id}" }
+    val itemKey = remember(item.id, item.isSeries) { "${if (item.isSeries) "tv" else "movie"}_${item.id}" }
     var currentDate by remember { mutableStateOf(currentCinemaDateIso()) }
 
     LaunchedEffect(Unit) {
@@ -97,12 +97,12 @@ fun MyCinemaDetailModal(
         }
     }
 
-    var isOverviewExpanded by remember { mutableStateOf(false) }
-    var isBookmarked by remember { mutableStateOf(appPreferences.isCinemaWatchlisted(itemKey)) }
-    var isFavorite by remember { mutableStateOf(appPreferences.isCinemaFavorite(itemKey)) }
-    var youtubeTrailerKey by remember { mutableStateOf<String?>(null) }
-    var extendedInfo by remember(item.id) { mutableStateOf<CinemaExtendedInfo?>(null) }
-    var isLoadingExtended by remember(item.id) { mutableStateOf(true) }
+    var isOverviewExpanded by remember(itemKey) { mutableStateOf(false) }
+    var isBookmarked by remember(itemKey) { mutableStateOf(appPreferences.isCinemaWatchlisted(item)) }
+    var isFavorite by remember(itemKey) { mutableStateOf(appPreferences.isCinemaFavorite(item)) }
+    var youtubeTrailerKey by remember(itemKey) { mutableStateOf<String?>(null) }
+    var extendedInfo by remember(itemKey) { mutableStateOf<CinemaExtendedInfo?>(null) }
+    var isLoadingExtended by remember(itemKey) { mutableStateOf(true) }
 
     val isUnreleased = remember(item, extendedInfo, currentDate) {
         val raw = item.releaseDate ?: item.firstAirDate
@@ -119,11 +119,11 @@ fun MyCinemaDetailModal(
         onDismiss()
     }
 
-    LaunchedEffect(item.id) {
+    LaunchedEffect(itemKey) {
         youtubeTrailerKey = repository.getTrailerYoutubeKey(item.isSeries, item.id)
     }
 
-    LaunchedEffect(item.id) {
+    LaunchedEffect(itemKey) {
         isLoadingExtended = true
         extendedInfo = repository.getCinemaExtendedInfo(item)
         isLoadingExtended = false
@@ -179,17 +179,13 @@ fun MyCinemaDetailModal(
             ) {
                 IconButton(
                     onClick = onDismiss,
-                    modifier = Modifier
-                        .size(40.dp)
-                        .clip(CircleShape)
-                        .background(Color.Black.copy(alpha = 0.65f))
-                        .border(1.dp, Color.White.copy(alpha = 0.15f), CircleShape)
+                    modifier = Modifier.size(40.dp)
                 ) {
                     Icon(
                         Icons.AutoMirrored.Rounded.ArrowBack,
                         contentDescription = "Back",
                         tint = Color.White,
-                        modifier = Modifier.size(20.dp)
+                        modifier = Modifier.size(22.dp)
                     )
                 }
 
@@ -206,17 +202,13 @@ fun MyCinemaDetailModal(
                         }
                         context.startActivity(Intent.createChooser(shareIntent, "Share ${item.displayName}"))
                     },
-                    modifier = Modifier
-                        .size(40.dp)
-                        .clip(CircleShape)
-                        .background(Color.Black.copy(alpha = 0.65f))
-                        .border(1.dp, Color.White.copy(alpha = 0.15f), CircleShape)
+                    modifier = Modifier.size(40.dp)
                 ) {
                     Icon(
                         Icons.Rounded.Share,
                         contentDescription = "Share",
                         tint = Color.White,
-                        modifier = Modifier.size(20.dp)
+                        modifier = Modifier.size(22.dp)
                     )
                 }
             }
@@ -615,14 +607,12 @@ fun MyCinemaDetailModal(
                         seasons = extendedInfo?.seasons ?: emptyList(),
                         repository = repository,
                         onChooseEpisodeSource = { ep ->
-                            val epCode = String.format(java.util.Locale.US, "S%02dE%02d", ep.seasonNumber, ep.episodeNumber)
-                            val epQuery = "${item.displayName} $epCode"
                             onChooseSource(
                                 item.copy(
-                                    title = epQuery,
-                                    name = epQuery,
                                     overview = ep.overview ?: item.overview,
-                                    logoPath = extendedInfo?.logoPath ?: item.logoPath
+                                    logoPath = extendedInfo?.logoPath ?: item.logoPath,
+                                    selectedSeason = ep.seasonNumber,
+                                    selectedEpisode = ep.episodeNumber
                                 )
                             )
                         }
@@ -1165,7 +1155,7 @@ private fun DirectDownloadSitesCard(
                 val result = DownloadSitesManager.resolveDownloadSiteUrl(
                     context = context,
                     siteId = site.id,
-                    title = item.displayName,
+                    title = item.baseDisplayName,
                     year = item.displayYear
                 )
                 if (result.notice != null) {
@@ -2381,12 +2371,12 @@ private fun BrowseTheShowSection(
         }
     }
 
-    var selectedSeasonNumber by remember(displaySeasons) {
+    var selectedSeasonNumber by remember(item.id, displaySeasons) {
         mutableIntStateOf(displaySeasons.firstOrNull()?.seasonNumber ?: 1)
     }
 
-    var episodes by remember { mutableStateOf<List<TmdbEpisodeItem>>(emptyList()) }
-    var isLoadingEpisodes by remember { mutableStateOf(true) }
+    var episodes by remember(item.id) { mutableStateOf<List<TmdbEpisodeItem>>(emptyList()) }
+    var isLoadingEpisodes by remember(item.id) { mutableStateOf(true) }
 
     LaunchedEffect(item.id, selectedSeasonNumber) {
         isLoadingEpisodes = true
@@ -2538,10 +2528,10 @@ private fun EpisodeCardItem(
     val context = LocalContext.current
     val appPrefs = remember { com.example.ymediaplayer.data.AppPreferences(context) }
     val progressVersion = appPrefs.lastProgressUpdate.longValue
-    val isWatched = remember(progressVersion, episode.seasonNumber, episode.episodeNumber) {
+    val isWatched = remember(progressVersion, item.id, episode.seasonNumber, episode.episodeNumber) {
         appPrefs.isEpisodeCompleted(item.id, episode.seasonNumber, episode.episodeNumber)
     }
-    val (progressMs, durationMs) = remember(progressVersion, episode.seasonNumber, episode.episodeNumber) {
+    val (progressMs, durationMs) = remember(progressVersion, item.id, episode.seasonNumber, episode.episodeNumber) {
         appPrefs.getEpisodeProgress(item.id, episode.seasonNumber, episode.episodeNumber)
     }
     val progressFraction = if (durationMs > 0L) (progressMs.toFloat() / durationMs.toFloat()).coerceIn(0f, 1f) else 0f

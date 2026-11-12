@@ -159,16 +159,13 @@ fun StreamBufferingDialog(
 
                         IconButton(
                             onClick = onCancel,
-                            modifier = Modifier
-                                .size(32.dp)
-                                .clip(CircleShape)
-                                .background(Color.White.copy(alpha = 0.08f))
+                            modifier = Modifier.size(32.dp)
                         ) {
                             Icon(
                                 Icons.Rounded.Close,
                                 contentDescription = "Cancel",
-                                tint = Color.White.copy(alpha = 0.8f),
-                                modifier = Modifier.size(16.dp)
+                                tint = Color.White.copy(alpha = 0.85f),
+                                modifier = Modifier.size(18.dp)
                             )
                         }
                     }

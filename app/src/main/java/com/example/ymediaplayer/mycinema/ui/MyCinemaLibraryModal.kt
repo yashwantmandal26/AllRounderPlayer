@@ -46,7 +46,7 @@ fun MyCinemaLibraryModal(
     val context = LocalContext.current
     val appPreferences = remember { AppPreferences(context) }
 
-    var selectedTab by remember { mutableStateOf(initialTab) } // "favorites", "watchlist", or "history"
+    var selectedTab by remember(initialTab) { mutableStateOf(initialTab) } // "favorites", "watchlist", or "history"
     var refreshKey by remember { mutableIntStateOf(0) }
 
     val favorites = remember(refreshKey) { appPreferences.getCinemaFavorites() }
@@ -78,16 +78,13 @@ fun MyCinemaLibraryModal(
             ) {
                 IconButton(
                     onClick = onDismiss,
-                    modifier = Modifier
-                        .size(40.dp)
-                        .clip(CircleShape)
-                        .background(Color.White.copy(alpha = 0.08f))
+                    modifier = Modifier.size(40.dp)
                 ) {
                     Icon(
                         Icons.AutoMirrored.Rounded.ArrowBack,
                         contentDescription = "Back",
                         tint = Color.White,
-                        modifier = Modifier.size(20.dp)
+                        modifier = Modifier.size(22.dp)
                     )
                 }
 
@@ -132,16 +129,13 @@ fun MyCinemaLibraryModal(
 
                 IconButton(
                     onClick = onDismiss,
-                    modifier = Modifier
-                        .size(36.dp)
-                        .clip(CircleShape)
-                        .background(Color.White.copy(alpha = 0.06f))
+                    modifier = Modifier.size(36.dp)
                 ) {
                     Icon(
                         Icons.Rounded.Close,
                         contentDescription = "Close",
-                        tint = Color.White.copy(alpha = 0.8f),
-                        modifier = Modifier.size(18.dp)
+                        tint = Color.White.copy(alpha = 0.85f),
+                        modifier = Modifier.size(20.dp)
                     )
                 }
             }
@@ -377,7 +371,7 @@ fun MyCinemaLibraryModal(
                     verticalArrangement = Arrangement.spacedBy(14.dp),
                     modifier = Modifier.fillMaxSize()
                 ) {
-                    items(currentList, key = { it.id }) { item ->
+                        items(currentList, key = { "${it.mediaType}_${it.id}" }) { item ->
                         SavedCinemaCard(
                             item = item,
                             isWatchlistTab = selectedTab == "watchlist",
@@ -458,14 +452,12 @@ private fun SavedHistoryCard(
                     .align(Alignment.TopEnd)
                     .padding(4.dp)
                     .size(26.dp)
-                    .clip(CircleShape)
-                    .background(Color.Black.copy(alpha = 0.65f))
             ) {
                 Icon(
                     Icons.Rounded.Close,
                     contentDescription = "Remove",
-                    tint = Color.White.copy(alpha = 0.85f),
-                    modifier = Modifier.size(14.dp)
+                    tint = Color.White,
+                    modifier = Modifier.size(15.dp)
                 )
             }
 
@@ -582,14 +574,12 @@ private fun SavedCinemaCard(
                     .align(Alignment.TopEnd)
                     .padding(4.dp)
                     .size(26.dp)
-                    .clip(CircleShape)
-                    .background(Color.Black.copy(alpha = 0.65f))
             ) {
                 Icon(
                     Icons.Rounded.Close,
                     contentDescription = "Remove",
-                    tint = Color.White.copy(alpha = 0.85f),
-                    modifier = Modifier.size(14.dp)
+                    tint = Color.White,
+                    modifier = Modifier.size(15.dp)
                 )
             }
 

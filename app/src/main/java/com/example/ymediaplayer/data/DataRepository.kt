@@ -144,26 +144,66 @@ class AppPreferences(private val prefs: SharedPreferences) {
         return getFavorites().contains(uri)
     }
 
+    private fun cinemaStorageKey(item: TmdbItem): String =
+        "${if (item.isSeries) "tv" else "movie"}_${item.id}"
+
+    private fun findLegacyCinemaMatch(set: Set<String>, item: TmdbItem): String? {
+        val legacyId = item.id.toString()
+        if (!set.contains(legacyId)) return null
+        val str = prefs.getString("cinema_item_$legacyId", null) ?: return legacyId
+        return try {
+            val decoded = cinemaJson.decodeFromString(TmdbItem.serializer(), str)
+            if (decoded.isSeries == item.isSeries) legacyId else null
+        } catch (_: Exception) {
+            legacyId
+        }
+    }
+
     // MYCinema Watchlist & Favorites
+    fun isCinemaWatchlisted(item: TmdbItem): Boolean {
+        val set = prefs.getStringSet("cinema_watchlist", emptySet()) ?: emptySet()
+        return set.contains(cinemaStorageKey(item)) || findLegacyCinemaMatch(set, item) != null
+    }
+
     fun isCinemaWatchlisted(id: String): Boolean {
         val set = prefs.getStringSet("cinema_watchlist", emptySet()) ?: emptySet()
-        return set.contains(id)
+        if (set.contains(id)) return true
+        val legacyNumeric = id.substringAfterLast("_")
+        if (legacyNumeric != id && set.contains(legacyNumeric)) {
+            val wantSeries = id.startsWith("tv_", ignoreCase = true) || id.startsWith("series_", ignoreCase = true)
+            val str = prefs.getString("cinema_item_$legacyNumeric", null) ?: return true
+            return try {
+                cinemaJson.decodeFromString(TmdbItem.serializer(), str).isSeries == wantSeries
+            } catch (_: Exception) {
+                true
+            }
+        }
+        return false
     }
 
     fun toggleCinemaWatchlist(item: TmdbItem): Boolean {
-        val id = item.id.toString()
+        val key = cinemaStorageKey(item)
         val set = (prefs.getStringSet("cinema_watchlist", emptySet()) ?: emptySet()).toMutableSet()
-        val newState = if (set.contains(id)) {
-            set.remove(id)
-            if (!isCinemaFavorite(id)) {
-                prefs.edit().remove("cinema_item_$id").apply()
+        val legacyMatch = findLegacyCinemaMatch(set, item)
+        val isCurrentlySaved = set.contains(key) || legacyMatch != null
+        val newState = if (isCurrentlySaved) {
+            set.remove(key)
+            if (!isCinemaFavorite(key)) {
+                prefs.edit().remove("cinema_item_$key").apply()
+            }
+            if (legacyMatch != null) {
+                set.remove(legacyMatch)
+                if (!isCinemaFavorite(legacyMatch)) {
+                    prefs.edit().remove("cinema_item_$legacyMatch").apply()
+                }
             }
             false
         } else {
-            set.add(id)
+            set.add(key)
             try {
-                val jsonStr = cinemaJson.encodeToString(TmdbItem.serializer(), item)
-                prefs.edit().putString("cinema_item_$id", jsonStr).apply()
+                val cleanItem = item.copy(selectedSeason = null, selectedEpisode = null)
+                val jsonStr = cinemaJson.encodeToString(TmdbItem.serializer(), cleanItem)
+                prefs.edit().putString("cinema_item_$key", jsonStr).apply()
             } catch (_: Exception) {}
             true
         }
@@ -192,28 +232,53 @@ class AppPreferences(private val prefs: SharedPreferences) {
         return ids.mapNotNull { id ->
             val str = prefs.getString("cinema_item_$id", null) ?: return@mapNotNull null
             try { cinemaJson.decodeFromString(TmdbItem.serializer(), str) } catch (_: Exception) { null }
-        }
+        }.distinctBy { cinemaStorageKey(it) }
+    }
+
+    fun isCinemaFavorite(item: TmdbItem): Boolean {
+        val set = prefs.getStringSet("cinema_favorites", emptySet()) ?: emptySet()
+        return set.contains(cinemaStorageKey(item)) || findLegacyCinemaMatch(set, item) != null
     }
 
     fun isCinemaFavorite(id: String): Boolean {
         val set = prefs.getStringSet("cinema_favorites", emptySet()) ?: emptySet()
-        return set.contains(id)
+        if (set.contains(id)) return true
+        val legacyNumeric = id.substringAfterLast("_")
+        if (legacyNumeric != id && set.contains(legacyNumeric)) {
+            val wantSeries = id.startsWith("tv_", ignoreCase = true) || id.startsWith("series_", ignoreCase = true)
+            val str = prefs.getString("cinema_item_$legacyNumeric", null) ?: return true
+            return try {
+                cinemaJson.decodeFromString(TmdbItem.serializer(), str).isSeries == wantSeries
+            } catch (_: Exception) {
+                true
+            }
+        }
+        return false
     }
 
     fun toggleCinemaFavorite(item: TmdbItem): Boolean {
-        val id = item.id.toString()
+        val key = cinemaStorageKey(item)
         val set = (prefs.getStringSet("cinema_favorites", emptySet()) ?: emptySet()).toMutableSet()
-        val newState = if (set.contains(id)) {
-            set.remove(id)
-            if (!isCinemaWatchlisted(id)) {
-                prefs.edit().remove("cinema_item_$id").apply()
+        val legacyMatch = findLegacyCinemaMatch(set, item)
+        val isCurrentlySaved = set.contains(key) || legacyMatch != null
+        val newState = if (isCurrentlySaved) {
+            set.remove(key)
+            if (!isCinemaWatchlisted(key)) {
+                prefs.edit().remove("cinema_item_$key").apply()
+            }
+            if (legacyMatch != null) {
+                set.remove(legacyMatch)
+                if (!isCinemaWatchlisted(legacyMatch)) {
+                    prefs.edit().remove("cinema_item_$legacyMatch").apply()
+                }
             }
             false
         } else {
-            set.add(id)
+            set.add(key)
             try {
-                val jsonStr = cinemaJson.encodeToString(TmdbItem.serializer(), item)
-                prefs.edit().putString("cinema_item_$id", jsonStr).apply()
+                val cleanItem = item.copy(selectedSeason = null, selectedEpisode = null)
+                val jsonStr = cinemaJson.encodeToString(TmdbItem.serializer(), cleanItem)
+                prefs.edit().putString("cinema_item_$key", jsonStr).apply()
             } catch (_: Exception) {}
             true
         }
@@ -242,7 +307,7 @@ class AppPreferences(private val prefs: SharedPreferences) {
         return ids.mapNotNull { id ->
             val str = prefs.getString("cinema_item_$id", null) ?: return@mapNotNull null
             try { cinemaJson.decodeFromString(TmdbItem.serializer(), str) } catch (_: Exception) { null }
-        }
+        }.distinctBy { cinemaStorageKey(it) }
     }
 
     // ─── Completed Cinema Downloads Tracking ───────────────────────────────────
@@ -407,11 +472,21 @@ class AppPreferences(private val prefs: SharedPreferences) {
     }
 
     fun getSubtitleDesign(): Int {
-        return prefs.getInt("subtitle_design", 0)
+        if (!prefs.getBoolean("subtitle_design_dynamic_v1", false)) {
+            prefs.edit()
+                .putInt("subtitle_design", 3)
+                .putBoolean("subtitle_design_dynamic_v1", true)
+                .apply()
+            return 3
+        }
+        return prefs.getInt("subtitle_design", 3)
     }
 
     fun saveSubtitleDesign(design: Int) {
-        prefs.edit().putInt("subtitle_design", design).apply()
+        prefs.edit()
+            .putInt("subtitle_design", design)
+            .putBoolean("subtitle_design_dynamic_v1", true)
+            .apply()
     }
 
     fun isSignatureViewEnabled(): Boolean {
@@ -893,7 +968,7 @@ class AppPreferences(private val prefs: SharedPreferences) {
     fun getSubtitleColor(): Long = prefs.getLong("sub_color", 0xFFFFFFFFL)
     fun setSubtitleColor(color: Long) { prefs.edit().putLong("sub_color", color).apply() }
 
-    fun isSubtitleBackgroundEnabled(): Boolean = prefs.getBoolean("sub_bg_enabled", true)
+    fun isSubtitleBackgroundEnabled(): Boolean = prefs.getBoolean("sub_bg_enabled", false)
     fun setSubtitleBackgroundEnabled(enabled: Boolean) { prefs.edit().putBoolean("sub_bg_enabled", enabled).apply() }
 
     fun getSubtitleBackgroundStyle(): Int = prefs.getInt("sub_bg_style", 0) // 0: Semi-transparent Black, 1: Solid Black, 2: Frosted Dark Glass, 3: Slate Blue, 4: Warm Amber

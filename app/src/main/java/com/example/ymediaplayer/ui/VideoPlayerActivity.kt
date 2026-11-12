@@ -33,6 +33,10 @@ class VideoPlayerActivity : ComponentActivity() {
         const val EXTRA_BACKDROP_URL = "EXTRA_BACKDROP_URL"
         const val EXTRA_LOGO_URL = "EXTRA_LOGO_URL"
         const val EXTRA_IS_STREAMING = "EXTRA_IS_STREAMING"
+        const val EXTRA_CINEMA_SHOW_ID = "EXTRA_CINEMA_SHOW_ID"
+        const val EXTRA_CINEMA_SEASON = "EXTRA_CINEMA_SEASON"
+        const val EXTRA_CINEMA_EPISODE = "EXTRA_CINEMA_EPISODE"
+        const val EXTRA_CINEMA_IS_SERIES = "EXTRA_CINEMA_IS_SERIES"
         var onUserLeaveHintListener: (() -> Unit)? = null
     }
 
@@ -44,6 +48,10 @@ class VideoPlayerActivity : ComponentActivity() {
     private var streamPosterUrl by mutableStateOf("")
     private var streamBackdropUrl by mutableStateOf("")
     private var streamLogoUrl by mutableStateOf("")
+    private var cinemaShowId by mutableIntStateOf(0)
+    private var cinemaSeason by mutableIntStateOf(0)
+    private var cinemaEpisode by mutableIntStateOf(0)
+    private var cinemaIsSeries by mutableStateOf(false)
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -60,6 +68,10 @@ class VideoPlayerActivity : ComponentActivity() {
         streamPosterUrl = savedInstanceState?.getString(EXTRA_POSTER_URL) ?: intent.getStringExtra(EXTRA_POSTER_URL) ?: ""
         streamBackdropUrl = savedInstanceState?.getString(EXTRA_BACKDROP_URL) ?: intent.getStringExtra(EXTRA_BACKDROP_URL) ?: ""
         streamLogoUrl = savedInstanceState?.getString(EXTRA_LOGO_URL) ?: intent.getStringExtra(EXTRA_LOGO_URL) ?: ""
+        cinemaShowId = savedInstanceState?.getInt(EXTRA_CINEMA_SHOW_ID) ?: intent.getIntExtra(EXTRA_CINEMA_SHOW_ID, 0)
+        cinemaSeason = savedInstanceState?.getInt(EXTRA_CINEMA_SEASON) ?: intent.getIntExtra(EXTRA_CINEMA_SEASON, 0)
+        cinemaEpisode = savedInstanceState?.getInt(EXTRA_CINEMA_EPISODE) ?: intent.getIntExtra(EXTRA_CINEMA_EPISODE, 0)
+        cinemaIsSeries = savedInstanceState?.getBoolean(EXTRA_CINEMA_IS_SERIES) ?: intent.getBooleanExtra(EXTRA_CINEMA_IS_SERIES, false)
 
         val prefs = com.example.ymediaplayer.data.AppPreferences(this)
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
@@ -87,6 +99,10 @@ class VideoPlayerActivity : ComponentActivity() {
                                 streamPosterUrl = streamPosterUrl,
                                 streamBackdropUrl = streamBackdropUrl,
                                 streamLogoUrl = streamLogoUrl,
+                                cinemaShowId = cinemaShowId,
+                                cinemaSeason = cinemaSeason,
+                                cinemaEpisode = cinemaEpisode,
+                                cinemaIsSeries = cinemaIsSeries,
                                 onBack = { finish() },
                                 onOpenSettings = {
                                     val intent = Intent(this@VideoPlayerActivity, MainActivity::class.java).apply {
@@ -137,6 +153,14 @@ class VideoPlayerActivity : ComponentActivity() {
         val newUrl = intent.getStringExtra(EXTRA_VIDEO_URL)
         val newHash = intent.getStringExtra(EXTRA_TORRENT_HASH)
         val newStream = intent.getBooleanExtra(EXTRA_IS_STREAMING, false)
+        val oldStreamHash = streamTorrentHash
+        if (isStreaming && !oldStreamHash.isNullOrBlank() && (!newStream || !oldStreamHash.equals(newHash, ignoreCase = true))) {
+            com.example.ymediaplayer.mycinema.service.TorrentEngine.cleanupStream(this, oldStreamHash)
+        }
+        cinemaShowId = intent.getIntExtra(EXTRA_CINEMA_SHOW_ID, 0)
+        cinemaSeason = intent.getIntExtra(EXTRA_CINEMA_SEASON, 0)
+        cinemaEpisode = intent.getIntExtra(EXTRA_CINEMA_EPISODE, 0)
+        cinemaIsSeries = intent.getBooleanExtra(EXTRA_CINEMA_IS_SERIES, false)
         if (newStream && !newHash.isNullOrBlank()) {
             streamTorrentHash = newHash
             isStreaming = true
@@ -184,7 +208,7 @@ class VideoPlayerActivity : ComponentActivity() {
             player?.let { p ->
                 try {
                     p.volume = 0f
-                    p.pause()
+                    com.example.ymediaplayer.player.VideoPlaybackManager.manualPause()
                     p.stop()
                 } catch (_: Exception) {}
             }
@@ -197,10 +221,24 @@ class VideoPlayerActivity : ComponentActivity() {
     override fun onSaveInstanceState(outState: Bundle) {
         val manager = com.example.ymediaplayer.player.VideoPlaybackManager
         outState.putString(EXTRA_VIDEO_URL, manager.currentVideoUrl.value ?: currentUrl)
+        outState.putString(EXTRA_TORRENT_HASH, streamTorrentHash)
+        outState.putBoolean(EXTRA_IS_STREAMING, isStreaming)
+        outState.putString(EXTRA_VIDEO_TITLE, streamTitle)
+        outState.putString(EXTRA_POSTER_URL, streamPosterUrl)
+        outState.putString(EXTRA_BACKDROP_URL, streamBackdropUrl)
+        outState.putString(EXTRA_LOGO_URL, streamLogoUrl)
+        outState.putInt(EXTRA_CINEMA_SHOW_ID, cinemaShowId)
+        outState.putInt(EXTRA_CINEMA_SEASON, cinemaSeason)
+        outState.putInt(EXTRA_CINEMA_EPISODE, cinemaEpisode)
+        outState.putBoolean(EXTRA_CINEMA_IS_SERIES, cinemaIsSeries)
         manager.player?.let { player ->
             val prefs = com.example.ymediaplayer.data.AppPreferences(this)
+            val dur = player.duration.coerceAtLeast(0L)
             prefs.saveVideoProgress(manager.currentVideoUrl.value ?: currentUrl,
-                player.currentPosition, player.duration.coerceAtLeast(0L))
+                player.currentPosition, dur)
+            if (cinemaShowId > 0 && cinemaIsSeries && cinemaSeason > 0 && cinemaEpisode > 0 && player.currentPosition > 1000L) {
+                prefs.saveEpisodeProgress(cinemaShowId, cinemaSeason, cinemaEpisode, player.currentPosition, dur)
+            }
         }
         super.onSaveInstanceState(outState)
     }
@@ -213,7 +251,7 @@ class VideoPlayerActivity : ComponentActivity() {
         val player = com.example.ymediaplayer.player.VideoPlaybackManager.player
 
         if (!isPip && !isBg) {
-            player?.pause()
+            com.example.ymediaplayer.player.VideoPlaybackManager.manualPause()
             com.example.ymediaplayer.service.VideoPlaybackService.stopService(this)
         } else if (player != null && player.isPlaying) {
             com.example.ymediaplayer.service.VideoPlaybackService.startService(this)
@@ -229,12 +267,14 @@ class VideoPlayerActivity : ComponentActivity() {
     override fun onDestroy() {
         super.onDestroy()
         onUserLeaveHintListener = null
-        if (isStreaming && !streamTorrentHash.isNullOrBlank()) {
-            com.example.ymediaplayer.mycinema.service.TorrentEngine.cleanupStream(this, streamTorrentHash!!)
-        }
-        if (!isChangingConfigurations && !com.example.ymediaplayer.player.VideoPlaybackManager.isMiniPlayerActive.value) {
-            com.example.ymediaplayer.service.VideoPlaybackService.stopService(this)
-            com.example.ymediaplayer.player.VideoPlaybackManager.releasePlayer()
+        if (!isChangingConfigurations) {
+            if (isStreaming && !streamTorrentHash.isNullOrBlank()) {
+                com.example.ymediaplayer.mycinema.service.TorrentEngine.cleanupStream(this, streamTorrentHash!!)
+            }
+            if (!com.example.ymediaplayer.player.VideoPlaybackManager.isMiniPlayerActive.value) {
+                com.example.ymediaplayer.service.VideoPlaybackService.stopService(this)
+                com.example.ymediaplayer.player.VideoPlaybackManager.releasePlayer()
+            }
         }
     }
 }

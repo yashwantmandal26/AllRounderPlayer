@@ -453,8 +453,6 @@ fun VideoGridItem2(
                         .align(Alignment.TopEnd)
                         .padding(4.dp)
                         .size(28.dp)
-                        .clip(CircleShape)
-                        .background(Color.Black.copy(alpha = 0.45f))
                         .clickable { onFavoriteToggle() },
                     contentAlignment = Alignment.Center
                 ) {
@@ -462,7 +460,7 @@ fun VideoGridItem2(
                         if (isFavorite) Icons.Rounded.Favorite else Icons.Rounded.FavoriteBorder,
                         contentDescription = null,
                         tint = if (isFavorite) Color(0xFFFF4D6D) else Color.White,
-                        modifier = Modifier.size(15.dp)
+                        modifier = Modifier.size(16.dp)
                     )
                 }
             }
@@ -729,14 +727,10 @@ fun VideoLargeCard(
             Box(
                 modifier = Modifier
                     .align(Alignment.Center)
-                    .size(54.dp)
-                    .shadow(10.dp, CircleShape, ambientColor = c.accentBlue, spotColor = c.accentBlue)
-                    .clip(CircleShape)
-                    .background(Brush.radialGradient(listOf(c.accentBlue.copy(alpha = 0.95f), c.accentBlue.copy(alpha = 0.75f))))
-                    .border(1.5.dp, Color.White.copy(alpha = 0.5f), CircleShape),
+                    .size(54.dp),
                 contentAlignment = Alignment.Center
             ) {
-                Icon(Icons.Rounded.PlayArrow, contentDescription = "Play", tint = Color.White, modifier = Modifier.size(30.dp))
+                Icon(Icons.Rounded.PlayArrow, contentDescription = "Play", tint = Color.White, modifier = Modifier.size(34.dp))
             }
 
             // Top Bar: Selection / Category / Favorite
@@ -778,9 +772,6 @@ fun VideoLargeCard(
                     Box(
                         modifier = Modifier
                             .size(36.dp)
-                            .clip(CircleShape)
-                            .background(Color.Black.copy(alpha = 0.55f))
-                            .border(0.8.dp, Color.White.copy(alpha = 0.25f), CircleShape)
                             .clickable { onFavoriteToggle() },
                         contentAlignment = Alignment.Center
                     ) {
@@ -788,7 +779,7 @@ fun VideoLargeCard(
                             if (isFavorite) Icons.Rounded.Favorite else Icons.Rounded.FavoriteBorder,
                             contentDescription = null,
                             tint = if (isFavorite) Color(0xFFFF4D6D) else Color.White,
-                            modifier = Modifier.size(18.dp)
+                            modifier = Modifier.size(19.dp)
                         )
                     }
                 }
@@ -892,18 +883,13 @@ fun MediaViewSwitcherMenu(
             onViewTypeSelected(nextType)
             android.widget.Toast.makeText(context, nextType.displayName, android.widget.Toast.LENGTH_SHORT).show()
         },
-        modifier = modifier
-            .size(38.dp)
-            .then(if (c.isMatte) Modifier else Modifier.shadow(6.dp, CircleShape, ambientColor = c.cardShadowColor, spotColor = c.cardShadowColor))
-            .clip(CircleShape)
-            .background(if (c.isMatte) SolidColor(c.cardBgElevated) else Brush.verticalGradient(listOf(c.cardBgElevated, c.cardBg)))
-            .border(1.2.dp, if (c.isMatte) androidx.compose.ui.graphics.SolidColor(c.glassBorder) else Brush.verticalGradient(listOf(c.cardBorderHighlight, c.glassBorder, c.cardBorderShadow)), CircleShape)
+        modifier = modifier.size(38.dp)
     ) {
         Icon(
             getIconForMediaViewType(currentViewType),
             contentDescription = "Switch View: ${currentViewType.displayName}",
             tint = if (!c.isDark) c.textPrimary else c.accentBlue,
-            modifier = Modifier.size(19.dp)
+            modifier = Modifier.size(21.dp)
         )
     }
 }

@@ -2,6 +2,7 @@ package com.example.ymediaplayer.mycinema.service
 
 import android.content.Context
 import android.os.Environment
+import com.example.ymediaplayer.mycinema.data.TorrentEpisodeParser
 import com.example.ymediaplayer.mycinema.data.TorrentSource
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -248,6 +249,45 @@ object TorrentEngine {
     }
 
     private val selectedFileIndices = java.util.concurrent.ConcurrentHashMap<String, Int>()
+    private val targetEpisodes = java.util.concurrent.ConcurrentHashMap<String, Pair<Int, Int>>()
+
+    fun setTargetEpisode(hash: String, season: Int, episode: Int) {
+        val cleanHash = normalizeInfoHash(hash) ?: return
+        targetEpisodes[cleanHash] = Pair(season, episode)
+        val sha1 = try { Sha1Hash.parseHex(cleanHash) } catch (_: Throwable) { return }
+        val handle = sessionManager?.find(sha1) ?: return
+        if (handle.isValid && handle.torrentFile() != null) {
+            val isStream = _downloads.value[cleanHash]?.isStream ?: false
+            applyTorrentFilePriorities(handle, isStream)
+        }
+    }
+
+    fun findEpisodeFileIndex(files: FileStorage, season: Int, episode: Int): Int {
+        val numFiles = files.numFiles()
+        if (numFiles <= 0) return -1
+        var exactSeasonEpIndex = -1
+        var exactSeasonEpSize = -1L
+        var fallbackEpIndex = -1
+        var fallbackEpSize = -1L
+
+        for (i in 0 until numFiles) {
+            val path = files.filePath(i)
+            val ext = path.substringAfterLast(".", "").lowercase()
+            if (ext !in VIDEO_EXTENSIONS) continue
+            val size = files.fileSize(i)
+            val (parsedS, parsedE) = TorrentEpisodeParser.parseFileEpisode(path)
+            if (parsedE == episode) {
+                if (parsedS == season && size > exactSeasonEpSize) {
+                    exactSeasonEpSize = size
+                    exactSeasonEpIndex = i
+                } else if (parsedS == null && size > fallbackEpSize) {
+                    fallbackEpSize = size
+                    fallbackEpIndex = i
+                }
+            }
+        }
+        return if (exactSeasonEpIndex >= 0) exactSeasonEpIndex else fallbackEpIndex
+    }
 
     fun setSelectedFileIndex(hash: String, fileIndex: Int) {
         val cleanHash = normalizeInfoHash(hash) ?: return
@@ -272,11 +312,31 @@ object TorrentEngine {
         if (customIdx != null && customIdx in 0 until files.numFiles()) {
             return customIdx
         }
+        val targetEp = targetEpisodes[hash]
+        if (targetEp != null) {
+            val epIdx = findEpisodeFileIndex(files, targetEp.first, targetEp.second)
+            if (epIdx >= 0) return epIdx
+        }
+        return findMainVideoFileIndex(files)
+    }
+
+    private fun resolveTargetFileIndex(hash: String, files: FileStorage): Int {
+        val cleanHash = normalizeInfoHash(hash) ?: hash.lowercase().trim()
+        val customIdx = selectedFileIndices[cleanHash]
+        if (customIdx != null && customIdx in 0 until files.numFiles()) {
+            return customIdx
+        }
+        val targetEp = targetEpisodes[cleanHash]
+        if (targetEp != null) {
+            val epIdx = findEpisodeFileIndex(files, targetEp.first, targetEp.second)
+            if (epIdx >= 0) return epIdx
+        }
         return findMainVideoFileIndex(files)
     }
 
     fun getTorrentFiles(hash: String): List<TorrentFileInfo> {
-        val sha1 = try { Sha1Hash.parseHex(hash.lowercase().trim()) } catch (_: Throwable) { return emptyList() }
+        val cleanHash = normalizeInfoHash(hash) ?: return emptyList()
+        val sha1 = try { Sha1Hash.parseHex(cleanHash) } catch (_: Throwable) { return emptyList() }
         val handle = sessionManager?.find(sha1) ?: return emptyList()
         if (!handle.isValid) return emptyList()
         val tf = handle.torrentFile() ?: return emptyList()
@@ -420,9 +480,10 @@ object TorrentEngine {
 
     fun cleanupStream(context: Context, hash: String) {
         try {
-            val state = _downloads.value[hash]
-            val filePath = state?.savePath ?: getFilePath(context, hash)
-            cancel(hash)
+            val cleanHash = normalizeInfoHash(hash) ?: hash.lowercase().trim()
+            val state = _downloads.value[cleanHash]
+            val filePath = state?.savePath ?: getFilePath(context, cleanHash)
+            cancel(cleanHash)
             if (filePath != null) {
                 val file = File(filePath)
                 if (file.exists() && file.absolutePath.contains("stream_cache")) {
@@ -494,7 +555,7 @@ object TorrentEngine {
                             val hash = handle.infoHash().toHex().lowercase()
                             val torrentFile = handle.torrentFile()
                             val targetFile = if (torrentFile != null && torrentFile.numFiles() > 0) {
-                                val mainIdx = findMainVideoFileIndex(torrentFile.files())
+                                val mainIdx = getTargetVideoFileIndex(handle)
                                 val relPath = torrentFile.files().filePath(if (mainIdx >= 0) mainIdx else 0)
                                 sanitizePath(context, relPath)
                             } else null
@@ -686,7 +747,8 @@ object TorrentEngine {
 
     fun setSequential(hash: String, sequential: Boolean) {
         try {
-            val sha1 = Sha1Hash.parseHex(hash)
+            val cleanHash = normalizeInfoHash(hash) ?: return
+            val sha1 = Sha1Hash.parseHex(cleanHash)
             val handle = sessionManager?.find(sha1)
             if (handle != null && handle.isValid) {
                 if (sequential) {
@@ -694,19 +756,22 @@ object TorrentEngine {
                 } else {
                     handle.unsetFlags(TorrentFlags.SEQUENTIAL_DOWNLOAD)
                 }
-                updateState(hash) { it.copy(isSequential = sequential) }
+                updateState(cleanHash) { it.copy(isSequential = sequential) }
             }
         } catch (_: Exception) {}
     }
 
     fun cancel(hash: String) {
         try {
-            val sha1 = Sha1Hash.parseHex(hash)
+            val cleanHash = normalizeInfoHash(hash) ?: hash.lowercase().trim()
+            selectedFileIndices.remove(cleanHash)
+            targetEpisodes.remove(cleanHash)
+            val sha1 = Sha1Hash.parseHex(cleanHash)
             val handle = sessionManager?.find(sha1)
             if (handle != null) {
                 sessionManager?.remove(handle)
             }
-            _downloads.value = _downloads.value - hash
+            _downloads.value = _downloads.value - cleanHash
         } catch (_: Exception) {}
     }
 
@@ -736,14 +801,15 @@ object TorrentEngine {
     }
 
     fun getFilePath(context: Context, hash: String): String? {
-        val sha1 = try { Sha1Hash.parseHex(hash) } catch (_: Exception) { return null }
+        val cleanHash = normalizeInfoHash(hash) ?: return null
+        val sha1 = try { Sha1Hash.parseHex(cleanHash) } catch (_: Exception) { return null }
         val handle = sessionManager?.find(sha1) ?: return null
         val torrentFile = handle.torrentFile() ?: return null
         val files = torrentFile.files() ?: return null
         if (files.numFiles() > 0) {
-            val targetIdx = getSelectedFileIndex(hash) ?: findMainVideoFileIndex(files)
+            val targetIdx = resolveTargetFileIndex(cleanHash, files)
             val relPath = files.filePath(if (targetIdx >= 0) targetIdx else 0)
-            val isStream = _downloads.value[hash]?.isStream ?: false
+            val isStream = _downloads.value[cleanHash]?.isStream ?: false
             val primaryDir = if (isStream) getStreamCacheDir(context) else getDownloadDir(context)
             val secondaryDir = if (isStream) getDownloadDir(context) else getStreamCacheDir(context)
 
@@ -786,7 +852,8 @@ object TorrentEngine {
 
     fun getDownloadedBytes(hash: String): Long {
         return try {
-            val sha1 = Sha1Hash.parseHex(hash)
+            val cleanHash = normalizeInfoHash(hash) ?: return 0L
+            val sha1 = Sha1Hash.parseHex(cleanHash)
             val handle = sessionManager?.find(sha1) ?: return 0L
             if (!handle.isValid) return 0L
             handle.status().totalDone()
@@ -795,7 +862,8 @@ object TorrentEngine {
 
     fun getTotalWantedBytes(hash: String): Long {
         return try {
-            val sha1 = Sha1Hash.parseHex(hash)
+            val cleanHash = normalizeInfoHash(hash) ?: return 0L
+            val sha1 = Sha1Hash.parseHex(cleanHash)
             val handle = sessionManager?.find(sha1) ?: return 0L
             if (!handle.isValid) return 0L
             handle.status().totalWanted()
@@ -813,18 +881,20 @@ object TorrentEngine {
     }
 
     fun isStreamTorrent(hash: String): Boolean {
-        return _downloads.value[hash]?.isStream == true
+        val cleanHash = normalizeInfoHash(hash) ?: hash.lowercase().trim()
+        return _downloads.value[cleanHash]?.isStream == true
     }
 
     fun getPieceForFileOffset(hash: String, fileOffset: Long): Int? {
-        val sha1 = try { Sha1Hash.parseHex(hash) } catch (_: Exception) { return null }
+        val cleanHash = normalizeInfoHash(hash) ?: return null
+        val sha1 = try { Sha1Hash.parseHex(cleanHash) } catch (_: Exception) { return null }
         val handle = sessionManager?.find(sha1) ?: return null
         if (!handle.isValid) return null
         val tf = handle.torrentFile() ?: return null
         val files = tf.files() ?: return null
         val numFiles = files.numFiles()
         if (numFiles <= 0) return null
-        val targetIdx = getSelectedFileIndex(hash) ?: findMainVideoFileIndex(files)
+        val targetIdx = resolveTargetFileIndex(cleanHash, files)
         val fileIdx = if (targetIdx >= 0) targetIdx else 0
         val baseOffset = try { files.fileOffset(fileIdx) } catch (_: Exception) { 0L }
         val pieceLength = tf.pieceLength()
@@ -885,12 +955,13 @@ object TorrentEngine {
     }
 
     fun getAvailableDownloadedBytesFrom(hash: String, fromOffset: Long): Long {
-        val sha1 = try { Sha1Hash.parseHex(hash) } catch (_: Exception) { return 0L }
+        val cleanHash = normalizeInfoHash(hash) ?: return 0L
+        val sha1 = try { Sha1Hash.parseHex(cleanHash) } catch (_: Exception) { return 0L }
         val handle = sessionManager?.find(sha1) ?: return 0L
         if (!handle.isValid) return 0L
         val tf = handle.torrentFile() ?: return 0L
         val files = tf.files() ?: return 0L
-        val targetIdx = getSelectedFileIndex(hash) ?: findMainVideoFileIndex(files)
+        val targetIdx = resolveTargetFileIndex(cleanHash, files)
         val fileIdx = if (targetIdx >= 0) targetIdx else 0
         val baseOffset = try { files.fileOffset(fileIdx) } catch (_: Exception) { 0L }
         val fileSize = files.fileSize(fileIdx)
@@ -970,7 +1041,9 @@ object TorrentEngine {
         val targetNorm = targetFile.absolutePath.replace("\\", "/").lowercase()
 
         for ((hash, state) in _downloads.value) {
-            if (state.status == TorrentDownloadState.Status.FINISHED) continue
+            if (state.status == TorrentDownloadState.Status.FINISHED ||
+                state.status == TorrentDownloadState.Status.ERROR
+            ) continue
             val savePathNorm = state.savePath?.replace("\\", "/")?.lowercase()
             if (savePathNorm != null && (savePathNorm == targetNorm || targetNorm.endsWith(savePathNorm) || savePathNorm.endsWith(targetNorm))) {
                 return hash
@@ -1073,14 +1146,15 @@ object TorrentEngine {
     }
 
     fun getMainFileSize(hash: String): Long? {
-        val sha1 = try { Sha1Hash.parseHex(hash) } catch (_: Exception) { return null }
+        val cleanHash = normalizeInfoHash(hash) ?: return null
+        val sha1 = try { Sha1Hash.parseHex(cleanHash) } catch (_: Exception) { return null }
         val handle = sessionManager?.find(sha1) ?: return null
         if (!handle.isValid) return null
         val tf = handle.torrentFile() ?: return null
         val files = tf.files() ?: return null
         val numFiles = files.numFiles()
         if (numFiles <= 0) return null
-        val targetIdx = getSelectedFileIndex(hash) ?: findMainVideoFileIndex(files)
+        val targetIdx = resolveTargetFileIndex(cleanHash, files)
         val fileIdx = if (targetIdx >= 0) targetIdx else 0
         return try { files.fileSize(fileIdx) } catch (_: Exception) { null }
     }
@@ -1099,12 +1173,13 @@ object TorrentEngine {
     }
 
     fun getDownloadedRanges(hash: String): List<ClosedFloatingPointRange<Float>> {
-        val state = _downloads.value[hash]
+        val cleanHash = normalizeInfoHash(hash) ?: return emptyList()
+        val state = _downloads.value[cleanHash]
         if (state != null && (state.status == TorrentDownloadState.Status.FINISHED || state.progress >= 0.999f)) {
             return listOf(0f..1f)
         }
         val sm = sessionManager ?: return emptyList()
-        val sha1 = try { Sha1Hash.parseHex(hash) } catch (_: Exception) { return emptyList() }
+        val sha1 = try { Sha1Hash.parseHex(cleanHash) } catch (_: Exception) { return emptyList() }
         val handle = sm.find(sha1) ?: return emptyList()
         if (!handle.isValid) return emptyList()
         val range = getMainFilePieceRange(handle) ?: return emptyList()

@@ -192,7 +192,11 @@ class MyCinemaRepository(
     }
 
     fun getSourcesFlow(item: TmdbItem): Flow<List<TorrentSource>> = flow {
-        val cacheKey = "${if (item.isSeries) "series" else "movie"}_${item.id}"
+        val cacheKey = if (item.isSeries) {
+            "series_${item.id}_s${item.selectedSeason ?: 0}_e${item.selectedEpisode ?: 0}"
+        } else {
+            "movie_${item.id}"
+        }
         sourcesCache[cacheKey]?.let {
             emit(it)
             return@flow
@@ -204,7 +208,13 @@ class MyCinemaRepository(
             return@flow
         }
 
-        scraperClient.searchSourcesFlow(imdbId, item.displayName, item.isSeries).collect { progressiveList ->
+        scraperClient.searchSourcesFlow(
+            imdbId = imdbId,
+            fallbackTitle = item.baseDisplayName,
+            isSeries = item.isSeries,
+            season = item.selectedSeason,
+            episode = item.selectedEpisode
+        ).collect { progressiveList ->
             if (progressiveList.isNotEmpty()) {
                 sourcesCache[cacheKey] = progressiveList
             }
@@ -213,13 +223,23 @@ class MyCinemaRepository(
     }
 
     suspend fun getSources(item: TmdbItem): List<TorrentSource> = withContext(Dispatchers.IO) {
-        val cacheKey = "${if (item.isSeries) "series" else "movie"}_${item.id}"
+        val cacheKey = if (item.isSeries) {
+            "series_${item.id}_s${item.selectedSeason ?: 0}_e${item.selectedEpisode ?: 0}"
+        } else {
+            "movie_${item.id}"
+        }
         sourcesCache[cacheKey]?.let { return@withContext it }
 
         val imdbId = tmdbClient.getImdbIdForTmdb(item.isSeries, item.id)
         if (imdbId.isBlank()) return@withContext emptyList()
 
-        val sources = scraperClient.fetchAllSources(imdbId, item.displayName, item.isSeries)
+        val sources = scraperClient.fetchAllSources(
+            imdbId = imdbId,
+            fallbackTitle = item.baseDisplayName,
+            isSeries = item.isSeries,
+            season = item.selectedSeason,
+            episode = item.selectedEpisode
+        )
         if (sources.isNotEmpty()) {
             sourcesCache[cacheKey] = sources
         }

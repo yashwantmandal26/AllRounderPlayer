@@ -14,8 +14,15 @@ class PreferencesRegressionTest {
         assertTrue("Reset All should restore HDR=true", prefs.isHdrEnabled())
     }
     @Test fun resetRestoresSubtitleBackgroundDefault() {
-        prefs.setSubtitleBackgroundEnabled(false); prefs.resetAllSettingsToDefaults()
-        assertTrue("Reset All should restore subtitle background=true", prefs.isSubtitleBackgroundEnabled())
+        prefs.setSubtitleBackgroundEnabled(true); prefs.resetAllSettingsToDefaults()
+        assertFalse("Reset All should restore subtitle background=false", prefs.isSubtitleBackgroundEnabled())
+    }
+    @Test fun resetAndDefaultSubtitleDesignSelectsDynamicCaption() {
+        assertEquals("Fresh preferences should default to Dynamic Caption (3)", 3, prefs.getSubtitleDesign())
+        prefs.saveSubtitleDesign(0)
+        assertEquals("Manual subtitle style choice should persist", 0, prefs.getSubtitleDesign())
+        prefs.resetAllSettingsToDefaults()
+        assertEquals("Reset All should restore Dynamic Caption (3)", 3, prefs.getSubtitleDesign())
     }
     @Test fun resetRestoresCallPlaybackDefault() {
         prefs.setPlayDuringCallsEnabled(false); prefs.resetAllSettingsToDefaults()

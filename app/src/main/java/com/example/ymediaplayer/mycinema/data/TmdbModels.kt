@@ -93,13 +93,29 @@ data class TmdbItem(
     @SerialName("vote_average") val voteAverage: Double = 0.0,
     val ottPlatformHint: String? = null,
     val logoPath: String? = null,
-    @SerialName("genre_ids") val genreIds: List<Int> = emptyList()
+    @SerialName("genre_ids") val genreIds: List<Int> = emptyList(),
+    val selectedSeason: Int? = null,
+    val selectedEpisode: Int? = null
 ) {
     val genreNames: List<String>
         get() = genreIds.mapNotNull { tmdbGenreMap[it] }
 
     val displayName: String
         get() = (title ?: name ?: "Untitled").trim()
+
+    val baseDisplayName: String
+        get() = displayName.replace(Regex("""\s+[Ss]\d{1,2}[Ee]\d{1,3}$"""), "").trim()
+
+    val episodeCodeTag: String?
+        get() = if (selectedSeason != null && selectedEpisode != null) {
+            String.format(java.util.Locale.US, "S%02dE%02d", selectedSeason, selectedEpisode)
+        } else null
+
+    val displayNameWithEpisode: String
+        get() {
+            val tag = episodeCodeTag ?: return displayName
+            return if (displayName.contains(tag, ignoreCase = true)) displayName else "$displayName $tag"
+        }
 
     val displayYear: String
         get() = (releaseDate ?: firstAirDate ?: "").take(4)

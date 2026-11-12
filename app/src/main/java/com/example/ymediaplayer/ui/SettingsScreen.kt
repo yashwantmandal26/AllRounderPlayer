@@ -276,16 +276,13 @@ fun SettingsScreen(
                     ) {
                         IconButton(
                             onClick = onBack,
-                            modifier = Modifier
-                                .size(40.dp)
-                                .clip(CircleShape)
-                                .background(if (c.isMatte) c.cardBgElevated else Color.White.copy(alpha = 0.08f))
+                            modifier = Modifier.size(40.dp)
                         ) {
                             Icon(
                                 Icons.AutoMirrored.Rounded.ArrowBack,
                                 contentDescription = "Back",
                                 tint = c.textPrimary,
-                                modifier = Modifier.size(20.dp)
+                                modifier = Modifier.size(22.dp)
                             )
                         }
 
@@ -580,28 +577,19 @@ fun SettingsScreen(
                             val detectedUpdate = UpdateManager.availableUpdate.value
                             val cardAccent = if (detectedUpdate != null) Color(0xFF10B981) else primaryAccent
 
-                            Box(
-                                modifier = Modifier
-                                    .size(46.dp)
-                                    .clip(CircleShape)
-                                    .background(cardAccent.copy(alpha = 0.18f))
-                                    .border(1.dp, cardAccent.copy(alpha = 0.45f), CircleShape),
-                                contentAlignment = Alignment.Center
-                            ) {
-                                if (isCheckingUpdates) {
-                                    CircularProgressIndicator(
-                                        modifier = Modifier.size(22.dp),
-                                        color = cardAccent,
-                                        strokeWidth = 2.5.dp
-                                    )
-                                } else {
-                                    Icon(
-                                        imageVector = Icons.Rounded.SystemUpdate,
-                                        contentDescription = "Check for Updates",
-                                        tint = cardAccent,
-                                        modifier = Modifier.size(24.dp)
-                                    )
-                                }
+                            if (isCheckingUpdates) {
+                                CircularProgressIndicator(
+                                    modifier = Modifier.size(24.dp),
+                                    color = cardAccent,
+                                    strokeWidth = 2.5.dp
+                                )
+                            } else {
+                                Icon(
+                                    imageVector = Icons.Rounded.SystemUpdate,
+                                    contentDescription = "Check for Updates",
+                                    tint = cardAccent,
+                                    modifier = Modifier.size(26.dp)
+                                )
                             }
 
                             Spacer(Modifier.width(14.dp))
@@ -2445,15 +2433,7 @@ private fun SettingsCategorySection(
             verticalAlignment = Alignment.CenterVertically,
             modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp)
         ) {
-            Box(
-                modifier = Modifier
-                    .size(34.dp)
-                    .clip(CircleShape)
-                    .background(accentColor.copy(alpha = 0.16f)),
-                contentAlignment = Alignment.Center
-            ) {
-                Icon(icon, contentDescription = null, tint = accentColor, modifier = Modifier.size(18.dp))
-            }
+            Icon(icon, contentDescription = null, tint = accentColor, modifier = Modifier.size(20.dp))
             Spacer(Modifier.width(12.dp))
             Text(
                 text = title,
@@ -2585,11 +2565,6 @@ private fun SettingsHeaderCard(
     } else {
         Modifier.background(Brush.linearGradient(listOf(primaryAccent.copy(0.18f), secondaryAccent.copy(0.08f), c.cardBg)))
     }
-    val iconBgModifier = if (c.isMatte) {
-        Modifier.background(primaryAccent)
-    } else {
-        Modifier.background(Brush.linearGradient(listOf(primaryAccent, secondaryAccent)))
-    }
     val borderModifier = if (c.isMatte) {
         Modifier.border(1.2.dp, c.glassBorder, RoundedCornerShape(cornerRadius))
     } else {
@@ -2611,16 +2586,8 @@ private fun SettingsHeaderCard(
             .padding(18.dp)
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            Box(
-                modifier = Modifier
-                    .size(48.dp)
-                    .clip(CircleShape)
-                    .then(iconBgModifier),
-                contentAlignment = Alignment.Center
-            ) {
-                Icon(Icons.Rounded.Tune, contentDescription = null, tint = Color.White, modifier = Modifier.size(26.dp))
-            }
-            Spacer(Modifier.width(16.dp))
+            Icon(Icons.Rounded.Tune, contentDescription = null, tint = primaryAccent, modifier = Modifier.size(28.dp))
+            Spacer(Modifier.width(14.dp))
             Column {
                 Text(
                     text = "Preferences & Tuning",

@@ -95,7 +95,7 @@ object VideoPlaybackManager {
                 val remaining = (deadline - SystemClock.elapsedRealtime()).coerceAtLeast(0L)
                 sleepTimerSecondsRemaining.intValue = ((remaining + 999L) / 1000L).toInt()
                 if (remaining == 0L) {
-                    player?.pause()
+                    manualPause()
                     break
                 }
                 delay(minOf(remaining, 250L))
@@ -115,6 +115,9 @@ object VideoPlaybackManager {
         private set
     var isManuallyResumedDuringCall = false
         private set
+    @Volatile
+    var isManuallyPaused = false
+        private set
     private var audioManager: AudioManager? = null
     private var audioFocusRequest: AudioFocusRequest? = null
 
@@ -122,29 +125,33 @@ object VideoPlaybackManager {
         when (focusChange) {
             AudioManager.AUDIOFOCUS_LOSS_TRANSIENT,
             AudioManager.AUDIOFOCUS_LOSS_TRANSIENT_CAN_DUCK -> {
-                // Incoming call or transient system interruption: pause if playing
-                if (!isManuallyResumedDuringCall) {
+                // Incoming call or transient system interruption: pause only if actively playing and not manually paused
+                if (!isManuallyResumedDuringCall && !isManuallyPaused) {
                     player?.let { p ->
                         if (p.isPlaying) {
                             isPausedByCall = true
+                            p.playWhenReady = false
                             p.pause()
+                            isPlaying.value = false
                         }
                     }
                 }
             }
             AudioManager.AUDIOFOCUS_LOSS -> {
-                if (!isManuallyResumedDuringCall) {
+                if (!isManuallyResumedDuringCall && !isManuallyPaused) {
                     player?.let { p ->
                         if (p.isPlaying) {
                             isPausedByCall = true
+                            p.playWhenReady = false
                             p.pause()
+                            isPlaying.value = false
                         }
                     }
                 }
             }
             AudioManager.AUDIOFOCUS_GAIN -> {
-                // Call finished or focus regained
-                if (isPausedByCall) {
+                // Call finished or focus regained: resume only if paused by call AND not manually paused by user
+                if (isPausedByCall && !isManuallyPaused) {
                     isPausedByCall = false
                     isManuallyResumedDuringCall = false
                     player?.play()
@@ -193,6 +200,7 @@ object VideoPlaybackManager {
     }
 
     fun manualPlay() {
+        isManuallyPaused = false
         isManuallyResumedDuringCall = true
         isPausedByCall = false
         val p = player ?: return
@@ -201,15 +209,26 @@ object VideoPlaybackManager {
         }
         p.play()
         isPlaying.value = true
+        try {
+            com.example.ymediaplayer.service.VideoPlaybackService.notifyPlayerUpdated()
+        } catch (_: Exception) {}
     }
 
     fun manualPause() {
-        val p = player ?: return
-        p.pause()
-        p.playWhenReady = false
+        isManuallyPaused = true
+        recoveryJob?.cancel()
+        recoveryJob = null
         isPausedByCall = false
         isManuallyResumedDuringCall = false
+        val p = player
+        if (p != null) {
+            p.playWhenReady = false
+            p.pause()
+        }
         isPlaying.value = false
+        try {
+            com.example.ymediaplayer.service.VideoPlaybackService.notifyPlayerUpdated()
+        } catch (_: Exception) {}
     }
 
     private var playerListener: Player.Listener? = null
@@ -388,13 +407,16 @@ object VideoPlaybackManager {
             else -> "Playback interrupted; retrying"
         }
         recoveryJob?.cancel()
+        if (isManuallyPaused) return
         recoveryJob = managerScope.launch {
             delay(PlaybackRecoveryPolicy.retryDelayMs(attempt))
-            if (player !== targetPlayer) return@launch
+            if (player !== targetPlayer || isManuallyPaused) return@launch
             runCatching {
                 targetPlayer.seekTo(resumePosition)
                 targetPlayer.prepare()
-                targetPlayer.playWhenReady = true
+                if (!isManuallyPaused) {
+                    targetPlayer.playWhenReady = true
+                }
             }.onFailure {
                 recordDiagnostic(context, "retry_failed", it.message ?: it.javaClass.simpleName)
             }
@@ -496,6 +518,7 @@ object VideoPlaybackManager {
 
         // Release existing player if switching to a new video
         releasePlayer(clearSleepTimer = false)
+        isManuallyPaused = false
 
         val applicationContext = context.applicationContext
         configuredSubtitlesEnabled = subtitlesEnabled
@@ -581,7 +604,7 @@ object VideoPlaybackManager {
                     .setContentType(C.AUDIO_CONTENT_TYPE_MOVIE)
                     .setUsage(C.USAGE_MEDIA)
                     .build(),
-                /* handleAudioFocus = */ handleAudioFocus
+                /* handleAudioFocus = */ false
             )
             .setHandleAudioBecomingNoisy(appPreferences.isPauseOnHeadsetDisconnect())
             .setVideoScalingMode(C.VIDEO_SCALING_MODE_SCALE_TO_FIT)
@@ -737,15 +760,10 @@ object VideoPlaybackManager {
     fun togglePlayPause() {
         val p = player ?: return
         if (p.isPlaying || p.playWhenReady) {
-            p.pause()
-            p.playWhenReady = false
-            isPausedByCall = false
-            isManuallyResumedDuringCall = false
-            isPlaying.value = false
+            manualPause()
         } else {
             com.example.ymediaplayer.service.MusicService.pauseMusic()
             manualPlay()
-            isPlaying.value = true
         }
     }
 
@@ -784,6 +802,7 @@ object VideoPlaybackManager {
             } catch (_: Exception) {}
         }
         player = null
+        isManuallyPaused = false
         isPlaying.value = false
         currentAudioSessionId.value = 0
     }

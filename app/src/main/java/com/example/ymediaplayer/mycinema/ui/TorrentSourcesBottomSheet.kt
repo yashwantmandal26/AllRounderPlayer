@@ -42,6 +42,7 @@ import com.example.ymediaplayer.R
 import com.example.ymediaplayer.mycinema.data.DownloadSite
 import com.example.ymediaplayer.mycinema.data.DownloadSitesManager
 import com.example.ymediaplayer.mycinema.data.TmdbItem
+import com.example.ymediaplayer.mycinema.data.TorrentEpisodeParser
 import kotlinx.coroutines.launch
 import com.example.ymediaplayer.mycinema.data.TorrentSource
 import com.example.ymediaplayer.mycinema.service.TorrentDownloadState
@@ -104,7 +105,7 @@ fun TorrentSourcesBottomSheet(
                 val result = DownloadSitesManager.resolveDownloadSiteUrl(
                     context = context,
                     siteId = site.id,
-                    title = item.displayName,
+                    title = item.baseDisplayName,
                     year = item.displayYear
                 )
                 if (result.notice != null) {
@@ -121,13 +122,12 @@ fun TorrentSourcesBottomSheet(
 
     var selectedLangFilter by remember { mutableStateOf("All") } // "All", "Hindi", "Korean", "Tamil", "Telugu", "Malayalam", "Kannada", "Bangla", "English", "Dual"
     var selectedQualityFilter by remember { mutableStateOf("All") } // "All", "2160p", "1080p", "720p"
-    var selectedSeasonFilter by remember { mutableStateOf("All") } // "All", "Packs", "S1", "S2", "S3"...
+    var selectedSeasonFilter by remember(item.id, item.selectedSeason, item.selectedEpisode) { mutableStateOf("All") } // "All", "Packs", "S1", "S2"...
     var selectedSortOption by remember { mutableStateOf("SPEED") } // "SPEED", "SIZE", "QUALITY"
 
     val isSeriesItem = remember(item, sources) {
         item.isSeries || sources.any {
-            val t = it.title.lowercase()
-            t.contains(Regex("""s\d{1,2}|season\s*\d{1,2}|pack|batch"""))
+            TorrentEpisodeParser.detectedSeasons(it).isNotEmpty() || TorrentEpisodeParser.isPackSource(it)
         }
     }
 
@@ -145,22 +145,19 @@ fun TorrentSourcesBottomSheet(
     val q720Count = remember(sources) { sources.count { it.normalizedQuality == "720p" } }
 
     val packsCount = remember(sources) {
-        sources.count {
-            val t = it.title.lowercase()
-            t.contains("pack") || t.contains("complete") || t.contains("batch") || t.contains("s01-") || t.contains("season 1-")
-        }
+        sources.count { TorrentEpisodeParser.isPackSource(it) }
     }
 
-    val seasonCounts = remember(sources) {
-        (1..8).associateWith { s ->
-            val sPad = String.format(java.util.Locale.US, "s%02d", s)
-            val sText = "season $s"
-            val sDot = "season.$s"
-            val sShort = "s$s"
-            sources.count {
-                val t = it.title.lowercase()
-                t.contains(sPad) || t.contains("$sShort ") || t.contains("$sShort.") || t.contains(sText) || t.contains(sDot)
-            }
+    val availableSeasons = remember(sources) {
+        sources.flatMap { TorrentEpisodeParser.detectedSeasons(it) }
+            .filter { it > 0 }
+            .distinct()
+            .sorted()
+    }
+
+    val seasonCounts = remember(sources, availableSeasons) {
+        availableSeasons.associateWith { s ->
+            sources.count { TorrentEpisodeParser.matchesSeason(it, s) }
         }
     }
 
@@ -186,19 +183,10 @@ fun TorrentSourcesBottomSheet(
             }
             val seasonMatch = when (selectedSeasonFilter) {
                 "All" -> true
-                "Packs" -> {
-                    val t = source.title.lowercase()
-                    t.contains("pack") || t.contains("complete") || t.contains("batch") || t.contains("s01-") || t.contains("season 1-")
-                }
+                "Packs" -> TorrentEpisodeParser.isPackSource(source)
                 else -> {
-                    val sNum = selectedSeasonFilter.removePrefix("S").toIntOrNull() ?: 1
-                    val sPad = String.format(java.util.Locale.US, "s%02d", sNum)
-                    val sText = "season $sNum"
-                    val sDot = "season.$sNum"
-                    val sShort = "s$sNum"
-                    val t = source.title.lowercase()
-                    t.contains(sPad) || t.contains("$sShort ") || t.contains("$sShort.") || t.contains(sText) || t.contains(sDot) ||
-                    (t.contains("complete") || t.contains("pack"))
+                    val sNum = selectedSeasonFilter.removePrefix("S").toIntOrNull()
+                    if (sNum != null) TorrentEpisodeParser.matchesSeason(source, sNum) else true
                 }
             }
             langMatch && qualityMatch && seasonMatch
@@ -227,7 +215,7 @@ fun TorrentSourcesBottomSheet(
             ) {
                 AsyncImage(
                     model = item.fullPosterUrl,
-                    contentDescription = item.displayName,
+                    contentDescription = item.baseDisplayName,
                     contentScale = ContentScale.Crop,
                     modifier = Modifier
                         .size(width = 46.dp, height = 64.dp)
@@ -239,7 +227,7 @@ fun TorrentSourcesBottomSheet(
 
                 Column(modifier = Modifier.weight(1f)) {
                     Text(
-                        text = item.displayName,
+                        text = item.displayNameWithEpisode,
                         color = c.textPrimary,
                         fontSize = 17.sp,
                         fontWeight = FontWeight.Bold,
@@ -247,8 +235,9 @@ fun TorrentSourcesBottomSheet(
                         overflow = TextOverflow.Ellipsis
                     )
                     Spacer(Modifier.height(2.dp))
+                    val epPrefix = item.episodeCodeTag?.let { "$it • " } ?: ""
                     Text(
-                        text = "${item.displayYear} • ${if (isLoading && sources.isEmpty()) "Searching fastest scrapers..." else if (isLoading) "Found ${sources.size} • Searching more..." else "${sources.size} sources available"}",
+                        text = "${item.displayYear}${if (item.displayYear.isNotBlank()) " • " else ""}$epPrefix${if (isLoading && sources.isEmpty()) "Searching fastest scrapers..." else if (isLoading) "Found ${sources.size} • Searching more..." else "${sources.size} sources available"}",
                         color = c.textSecondary,
                         fontSize = 12.5.sp
                     )
@@ -256,16 +245,13 @@ fun TorrentSourcesBottomSheet(
 
                 IconButton(
                     onClick = onDismiss,
-                    modifier = Modifier
-                        .size(36.dp)
-                        .clip(CircleShape)
-                        .background(c.glassBg)
+                    modifier = Modifier.size(36.dp)
                 ) {
                     Icon(
                         Icons.Rounded.Close,
                         contentDescription = "Close",
                         tint = c.textSecondary,
-                        modifier = Modifier.size(18.dp)
+                        modifier = Modifier.size(20.dp)
                     )
                 }
             }
@@ -447,16 +433,26 @@ fun TorrentSourcesBottomSheet(
                             )
                         }
                     }
-                    for (s in 1..8) {
+                    for (s in availableSeasons) {
                         val count = seasonCounts[s] ?: 0
-                        if (count > 0 || (s <= 2 && sources.isEmpty())) {
+                        if (count > 0) {
                             item {
                                 QualityFilterPill(
-                                    label = "S$s (${if (count > 0) count else "—"})",
+                                    label = "S$s ($count)",
                                     isSelected = selectedSeasonFilter == "S$s",
                                     onClick = { selectedSeasonFilter = if (selectedSeasonFilter == "S$s") "All" else "S$s" }
                                 )
                             }
+                        }
+                    }
+                    if (availableSeasons.isEmpty() && sources.isEmpty()) {
+                        val placeholderSeason = item.selectedSeason ?: 1
+                        item {
+                            QualityFilterPill(
+                                label = "S$placeholderSeason (—)",
+                                isSelected = false,
+                                onClick = {}
+                            )
                         }
                     }
                 }
@@ -604,19 +600,35 @@ fun TorrentSourcesBottomSheet(
                     verticalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
                     items(filteredSources, key = { it.magnet }) { source ->
+                        val registerTargetEpisode = {
+                            val reqS = item.selectedSeason
+                            val reqE = item.selectedEpisode
+                            if (reqS != null && reqE != null) {
+                                val rawHash = Regex("xt=urn:btih:([a-zA-Z0-9]+)", RegexOption.IGNORE_CASE)
+                                    .find(source.magnet)?.groupValues?.getOrNull(1)
+                                val normHash = rawHash?.let(TorrentEngine::normalizeInfoHash)
+                                if (normHash != null) {
+                                    TorrentEngine.setTargetEpisode(normHash, reqS, reqE)
+                                }
+                            }
+                        }
                         TorrentSourceCard(
                             source = source,
                             onStreamClick = {
-                                if (isPackSource(source.title)) {
+                                if (TorrentEpisodeParser.isPackSource(source)) {
                                     packSourceForEpisodePicker = source
                                 } else {
+                                    registerTargetEpisode()
                                     onStreamClick(source)
                                 }
                             },
                             onPackClick = {
                                 packSourceForEpisodePicker = source
                             },
-                            onDownloadClick = { onDownloadClick(source) },
+                            onDownloadClick = {
+                                registerTargetEpisode()
+                                onDownloadClick(source)
+                            },
                             onCopyMagnet = {
                                 val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
                                 clipboard.setPrimaryClip(ClipData.newPlainText("Magnet", source.magnet))
@@ -722,7 +734,7 @@ private fun TorrentSourceCard(
     onOpenExternal: () -> Unit
 ) {
     val c = LocalAppColors.current
-    val isPack = isPackSource(source.title)
+    val isPack = TorrentEpisodeParser.isPackSource(source)
 
     val qualityBadgeColor = when (source.normalizedQuality) {
         "2160p" -> Color(0xFFFFB300) // Gold / Amber
@@ -1353,12 +1365,7 @@ fun DownloadSitesFooter(
     }
 }
 
-fun isPackSource(title: String): Boolean {
-    val t = title.lowercase()
-    return t.contains("pack") || t.contains("complete") || t.contains("batch") ||
-            t.contains("s01-") || t.contains("season 1-") || t.contains("s01 -") ||
-            t.contains("seasons") || t.contains("s1-") || t.contains("season 1 ")
-}
+fun isPackSource(title: String): Boolean = TorrentEpisodeParser.isPackSource(title)
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -1394,22 +1401,33 @@ private fun PackEpisodePickerBottomSheet(
             return@LaunchedEffect
         }
 
-        val startedHash = TorrentEngine.startStream(context, source, item.displayName)
+        val startedHash = TorrentEngine.startStream(context, source, item.displayNameWithEpisode)
         if (startedHash == null) {
             metadataTimedOut = true
             return@LaunchedEffect
         }
 
+        val reqSeason = item.selectedSeason
+        val reqEpisode = item.selectedEpisode
         for (attempt in 1..50) {
             kotlinx.coroutines.delay(600)
             secondsWaiting = attempt
             val files = TorrentEngine.getVideoFiles(startedHash)
             if (files.isNotEmpty()) {
                 videoFiles = files.sortedWith(
-                    compareBy<TorrentEngine.TorrentFileInfo> {
-                        val epNum = Regex("""[Ee](\d{1,2})""").find(it.name)?.groupValues?.get(1)?.toIntOrNull() ?: 999
-                        epNum
-                    }.thenBy { it.name }
+                    compareBy<TorrentEngine.TorrentFileInfo>(
+                        { f ->
+                            val (s, e) = TorrentEpisodeParser.parseFileEpisode(f.path)
+                            when {
+                                reqSeason != null && reqEpisode != null && (s == reqSeason || s == null) && e == reqEpisode -> 0
+                                reqSeason != null && s == reqSeason -> 1
+                                else -> 2
+                            }
+                        },
+                        { f -> TorrentEpisodeParser.parseFileEpisode(f.path).first ?: Int.MAX_VALUE },
+                        { f -> TorrentEpisodeParser.parseFileEpisode(f.path).second ?: Int.MAX_VALUE },
+                        { f -> f.name }
+                    )
                 )
                 return@LaunchedEffect
             }
@@ -1520,14 +1538,13 @@ private fun PackEpisodePickerBottomSheet(
                         .fillMaxWidth()
                         .heightIn(max = if (isLandscape) 200.dp else 420.dp)
                 ) {
-                    items(videoFiles) { f ->
-                        val sMatch = Regex("""(?i)[Ss](\d{1,2})[Ee](\d{1,2})""").find(f.name)
-                        val xMatch = Regex("""(?i)(\d{1,2})x(\d{1,2})""").find(f.name)
-                        val epMatch = Regex("""(?i)(?:ep|episode)\.?\s*(\d{1,2})""").find(f.name)
+                    items(videoFiles, key = { it.index }) { f ->
+                        val (parsedS, parsedE) = TorrentEpisodeParser.parseFileEpisode(f.path)
+                        val isRequestedEpisode = item.selectedSeason != null && item.selectedEpisode != null &&
+                            (parsedS == item.selectedSeason || parsedS == null) && parsedE == item.selectedEpisode
                         val epLabel = when {
-                            sMatch != null -> "S${sMatch.groupValues[1]} E${sMatch.groupValues[2]}"
-                            xMatch != null -> "S${xMatch.groupValues[1]} E${xMatch.groupValues[2]}"
-                            epMatch != null -> "EP ${epMatch.groupValues[1].padStart(2, '0')}"
+                            parsedS != null && parsedE != null -> String.format(java.util.Locale.US, "S%02d E%02d", parsedS, parsedE)
+                            parsedE != null -> String.format(java.util.Locale.US, "EP %02d", parsedE)
                             else -> "Episode ${f.index + 1}"
                         }
 
@@ -1537,8 +1554,11 @@ private fun PackEpisodePickerBottomSheet(
                                 onSelectEpisode(source, f)
                             },
                             shape = RoundedCornerShape(12.dp),
-                            color = Color(0xFF171926),
-                            border = BorderStroke(1.dp, Color.White.copy(alpha = 0.08f)),
+                            color = if (isRequestedEpisode) Color(0xFF1F1A14) else Color(0xFF171926),
+                            border = BorderStroke(
+                                if (isRequestedEpisode) 1.5.dp else 1.dp,
+                                if (isRequestedEpisode) Color(0xFFFF9E00).copy(alpha = 0.7f) else Color.White.copy(alpha = 0.08f)
+                            ),
                             modifier = Modifier.fillMaxWidth()
                         ) {
                             Row(

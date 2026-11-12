@@ -865,14 +865,9 @@ fun MusicScreen(
                 ) {
                     IconButton(
                         onClick = { selectedArtist = null },
-                        modifier = Modifier
-                            .size(38.dp)
-                            .shadow(elevation = if (c.isMatte && c.isDark) 0.dp else 4.dp, shape = CircleShape, ambientColor = c.cardShadowColor, spotColor = c.cardShadowColor)
-                            .clip(CircleShape)
-                            .background((if (c.isMatte && c.isDark) androidx.compose.ui.graphics.SolidColor(c.cardBg) else Brush.verticalGradient(listOf(c.cardBgElevated, c.cardBg))))
-                            .border(1.2.dp, (if (c.isMatte && c.isDark) androidx.compose.ui.graphics.SolidColor(c.glassBorder) else Brush.verticalGradient(listOf(c.cardBorderHighlight, c.cardBorderShadow))), CircleShape)
+                        modifier = Modifier.size(38.dp)
                     ) {
-                        Icon(Icons.AutoMirrored.Rounded.ArrowBack, contentDescription = "Back", tint = c.textPrimary, modifier = Modifier.size(20.dp))
+                        Icon(Icons.AutoMirrored.Rounded.ArrowBack, contentDescription = "Back", tint = c.textPrimary, modifier = Modifier.size(22.dp))
                     }
                     Spacer(Modifier.width(12.dp))
                     Column(modifier = Modifier.weight(1f)) {
@@ -892,14 +887,9 @@ fun MusicScreen(
                 ) {
                     IconButton(
                         onClick = { selectedAlbum = null },
-                        modifier = Modifier
-                            .size(38.dp)
-                            .shadow(elevation = if (c.isMatte && c.isDark) 0.dp else 4.dp, shape = CircleShape, ambientColor = c.cardShadowColor, spotColor = c.cardShadowColor)
-                            .clip(CircleShape)
-                            .background((if (c.isMatte && c.isDark) androidx.compose.ui.graphics.SolidColor(c.cardBg) else Brush.verticalGradient(listOf(c.cardBgElevated, c.cardBg))))
-                            .border(1.2.dp, (if (c.isMatte && c.isDark) androidx.compose.ui.graphics.SolidColor(c.glassBorder) else Brush.verticalGradient(listOf(c.cardBorderHighlight, c.cardBorderShadow))), CircleShape)
+                        modifier = Modifier.size(38.dp)
                     ) {
-                        Icon(Icons.AutoMirrored.Rounded.ArrowBack, contentDescription = "Back", tint = c.textPrimary, modifier = Modifier.size(20.dp))
+                        Icon(Icons.AutoMirrored.Rounded.ArrowBack, contentDescription = "Back", tint = c.textPrimary, modifier = Modifier.size(22.dp))
                     }
                     Spacer(Modifier.width(12.dp))
                     Column(modifier = Modifier.weight(1f)) {
@@ -3876,14 +3866,9 @@ private fun MiniPlayer(
                 }
                 IconButton(
                     onClick = onPrev,
-                    modifier = Modifier
-                        .size(34.dp)
-                        .shadow(if (c.isMatte && c.isDark) 0.dp else 3.dp, CircleShape)
-                        .clip(CircleShape)
-                        .background((if (c.isMatte && c.isDark) androidx.compose.ui.graphics.SolidColor(c.cardBg) else Brush.verticalGradient(listOf(c.cardBgElevated, c.cardBg))))
-                        .border(1.dp, (if (c.isMatte && c.isDark) androidx.compose.ui.graphics.SolidColor(c.glassBorder) else Brush.verticalGradient(listOf(c.cardBorderHighlight, c.cardBorderShadow))), CircleShape)
+                    modifier = Modifier.size(34.dp)
                 ) {
-                    Icon(Icons.Rounded.SkipPrevious, "Previous", tint = Color.White, modifier = Modifier.size(20.dp))
+                    Icon(Icons.Rounded.SkipPrevious, "Previous", tint = c.textPrimary, modifier = Modifier.size(22.dp))
                 }
                 Spacer(Modifier.width(4.dp))
                 IconButton(
@@ -3904,18 +3889,13 @@ private fun MiniPlayer(
                 Spacer(Modifier.width(4.dp))
                 IconButton(
                     onClick = onNext,
-                    modifier = Modifier
-                        .size(34.dp)
-                        .shadow(if (c.isMatte && c.isDark) 0.dp else 3.dp, CircleShape)
-                        .clip(CircleShape)
-                        .background((if (c.isMatte && c.isDark) androidx.compose.ui.graphics.SolidColor(c.cardBg) else Brush.verticalGradient(listOf(c.cardBgElevated, c.cardBg))))
-                        .border(1.dp, (if (c.isMatte && c.isDark) androidx.compose.ui.graphics.SolidColor(c.glassBorder) else Brush.verticalGradient(listOf(c.cardBorderHighlight, c.cardBorderShadow))), CircleShape)
+                    modifier = Modifier.size(34.dp)
                 ) {
                     Icon(
                         Icons.Rounded.SkipNext,
                         contentDescription = "Next",
-                        tint = Color.White,
-                        modifier = Modifier.size(20.dp)
+                        tint = c.textPrimary,
+                        modifier = Modifier.size(22.dp)
                     )
                 }
             }
@@ -5478,21 +5458,12 @@ fun FullScreenMusicPlayer(
                             MusicSoundMode.VOCAL_BOOST -> Icons.Rounded.RecordVoiceOver
                             MusicSoundMode.SPATIAL_3D -> Icons.Rounded.SpatialAudio
                         }
-                        Box(
-                            contentAlignment = Alignment.Center,
-                            modifier = Modifier
-                                .size(36.dp)
-                                .clip(CircleShape)
-                                .background(c.accentBlue.copy(alpha = if (c.isDark) 0.12f else 0.10f))
-                                .border(1.dp, c.accentBlue.copy(alpha = 0.35f), CircleShape)
-                        ) {
-                            Icon(
-                                imageVector = icon,
-                                contentDescription = soundMode.displayName,
-                                tint = c.accentBlue,
-                                modifier = Modifier.size(20.dp)
-                            )
-                        }
+                        Icon(
+                            imageVector = icon,
+                            contentDescription = soundMode.displayName,
+                            tint = c.accentBlue,
+                            modifier = Modifier.size(22.dp)
+                        )
                     }
                     Spacer(Modifier.height(2.dp))
                     Text(
@@ -5861,22 +5832,12 @@ private fun MusicVerticalGestureBar(
 
             Spacer(Modifier.height(5.dp))
 
-            // Bottom Circular Icon Badge in Accent Color
-            Box(
-                modifier = Modifier
-                    .size(28.dp)
-                    .clip(CircleShape)
-                    .background(if (c.isDark) accentColor.copy(alpha = 0.18f) else accentColor.copy(alpha = 0.12f))
-                    .border(1.dp, accentColor.copy(alpha = 0.40f), CircleShape),
-                contentAlignment = Alignment.Center
-            ) {
-                Icon(
-                    imageVector = icon,
-                    contentDescription = null,
-                    tint = accentColor,
-                    modifier = Modifier.size(16.dp)
-                )
-            }
+            Icon(
+                imageVector = icon,
+                contentDescription = null,
+                tint = accentColor,
+                modifier = Modifier.size(18.dp)
+            )
         }
     }
 }
@@ -6772,21 +6733,12 @@ private fun ActionMenuItem(
             .padding(horizontal = 10.dp, vertical = 10.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        Box(
-            modifier = Modifier
-                .size(40.dp)
-                .clip(CircleShape)
-                .background(c.glassBg)
-                .border(0.8.dp, c.glassBorder, CircleShape),
-            contentAlignment = Alignment.Center
-        ) {
-            Icon(
-                icon,
-                contentDescription = null,
-                tint = tint ?: c.accentBlue,
-                modifier = Modifier.size(20.dp)
-            )
-        }
+        Icon(
+            icon,
+            contentDescription = null,
+            tint = tint ?: c.accentBlue,
+            modifier = Modifier.size(22.dp)
+        )
         Spacer(Modifier.width(14.dp))
         Column(modifier = Modifier.weight(1f)) {
             Text(title, color = c.textPrimary, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)

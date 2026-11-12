@@ -4,8 +4,8 @@
 [![Kotlin](https://img.shields.io/badge/Kotlin-2.0+-blue.svg)](https://kotlinlang.org/)
 [![Jetpack Compose](https://img.shields.io/badge/UI-Jetpack%20Compose-4285F4.svg)](https://developer.android.com/jetpack/compose)
 [![Media3 ExoPlayer](https://img.shields.io/badge/Player-Media3%20ExoPlayer-orange.svg)](https://developer.android.com/media/media3)
-[![Release](https://img.shields.io/badge/Release-v2.8-blueviolet.svg)](https://github.com/yashwantmandal26/AllRounderPlayer/releases/tag/v2.8)
-[![Download APK](https://img.shields.io/badge/Download-APK%20v2.8-success.svg)](https://github.com/yashwantmandal26/AllRounderPlayer/releases/download/v2.8/app-release.apk)
+[![Release](https://img.shields.io/badge/Release-v2.8.2-blueviolet.svg)](https://github.com/yashwantmandal26/AllRounderPlayer/releases/tag/v2.8.2)
+[![Download APK](https://img.shields.io/badge/Download-APK%20v2.8.2-success.svg)](https://github.com/yashwantmandal26/AllRounderPlayer/releases/download/v2.8.2/app-release.apk)
 
 **AllRounderPlayer** is a modern, high-performance, and beautifully crafted Android media player app built with 100% Jetpack Compose and Media3 (ExoPlayer). It provides an all-in-one cinematic video playback and rich audio streaming experience with fluid animations, intuitive gestures, and glassmorphic UI aesthetics.
 

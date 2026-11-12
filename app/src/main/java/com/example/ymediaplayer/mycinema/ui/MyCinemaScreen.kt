@@ -71,7 +71,8 @@ internal fun cleanMovieFileName(rawName: String): String {
     name = name.replace(Regex("(?i)^(www\\.[a-zA-Z0-9.-]+\\s*[-_]?\\s*|\\[[^\\]]+\\]\\s*)"), "")
     name = name.replace(Regex("(?i)\\[[^\\]]+\\]"), "")
     name = name.replace(".", " ").replace("_", " ").replace("-", " ")
-    // Strip codec, resolution, and trailing quality tags
+    // Strip season/episode tags, codec, resolution, and trailing quality tags
+    name = name.replace(Regex("(?i)\\b(s\\d{1,2}[._\\s-]*e\\d{1,3}|s\\d{1,2}|season[._\\s-]*\\d{1,2}|\\d{1,2}x\\d{1,3})\\b.*"), "")
     name = name.replace(Regex("(?i)\\b(1080p|720p|4k|2160p|480p|bluray|blu-ray|web-?dl|webrip|hdr|hdr10|hevc|x264|x265|h264|h265|aac|ddp|ac3|dts|yify|yts|proper|repack|dvdrip|brrip|bdrip|remux|hindi|tamil|telugu|dual\\s*audio)\\b.*"), "")
     name = name.replace(Regex("\\b(19\\d\\d|20\\d\\d)\\b.*"), "")
     return name.trim()
@@ -135,8 +136,11 @@ fun MyCinemaScreen(
             isLoadingGenreRecommendations = false
         } else {
             isLoadingGenreRecommendations = true
-            genreRecommendations = repository.getMediaByGenre(g)
-            isLoadingGenreRecommendations = false
+            try {
+                genreRecommendations = repository.getMediaByGenre(g)
+            } finally {
+                isLoadingGenreRecommendations = false
+            }
         }
     }
 
@@ -179,8 +183,13 @@ fun MyCinemaScreen(
         }
     }
 
-    // Scan offline downloaded movies
-    LaunchedEffect(refreshTrigger, cinemaDownloadsMap, localOfflineRefreshTrigger) {
+    // Scan offline downloaded movies (keyed on status/path changes, not 400ms speed ticks)
+    val offlineScanKey = remember(cinemaDownloadsMap) {
+        cinemaDownloadsMap.values
+            .sortedBy { it.id }
+            .joinToString("|") { "${it.id}:${it.status}:${it.savePath.orEmpty()}" }
+    }
+    LaunchedEffect(refreshTrigger, offlineScanKey, localOfflineRefreshTrigger) {
         kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
             val list = mutableListOf<OfflineCinemaMovie>()
             val downloadDir = com.example.ymediaplayer.mycinema.service.TorrentEngine.getDownloadDir(context)
@@ -854,16 +863,20 @@ fun MyCinemaScreen(
                         isLoadingSources = true
                         sourcesSearchJob?.cancel()
                         sourcesSearchJob = coroutineScope.launch {
-                            repository.getSourcesFlow(targetItem).collect { progressiveSources ->
-                                itemSources = progressiveSources
+                            try {
+                                repository.getSourcesFlow(targetItem).collect { progressiveSources ->
+                                    itemSources = progressiveSources
+                                }
+                            } finally {
+                                isLoadingSources = false
                             }
-                            isLoadingSources = false
                         }
                     },
                     onOpenMovie = { prevMovie ->
                         activeDetailItem = prevMovie
                     },
                     onGenreClick = { clickedGenre ->
+                        searchQuery = ""
                         selectedGenreFilter = clickedGenre
                         activeDetailItem = null
                     }
@@ -1233,17 +1246,14 @@ private fun OfflineMovieCinemaCard(
             Box(
                 modifier = Modifier
                     .align(Alignment.Center)
-                    .size(32.dp)
-                    .clip(CircleShape)
-                    .background(Color.Black.copy(alpha = 0.65f))
-                    .border(1.dp, Color.White.copy(alpha = 0.4f), CircleShape),
+                    .size(32.dp),
                 contentAlignment = Alignment.Center
             ) {
                 Icon(
                     Icons.Rounded.PlayArrow,
                     contentDescription = "Play",
                     tint = Color.White,
-                    modifier = Modifier.size(20.dp)
+                    modifier = Modifier.size(24.dp)
                 )
             }
 
@@ -1489,10 +1499,7 @@ private fun OfflineActionRow(
         verticalAlignment = Alignment.CenterVertically
     ) {
         Box(
-            modifier = Modifier
-                .size(38.dp)
-                .clip(CircleShape)
-                .background(iconColor.copy(alpha = 0.14f)),
+            modifier = Modifier.size(32.dp),
             contentAlignment = Alignment.Center
         ) {
             Icon(

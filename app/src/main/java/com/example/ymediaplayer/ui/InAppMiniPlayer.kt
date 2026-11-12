@@ -186,9 +186,6 @@ fun InAppMiniPlayer(
             Box(
                 modifier = Modifier
                     .size(48.dp)
-                    .clip(CircleShape)
-                    .background(Color.Black.copy(alpha = 0.65f))
-                    .border(0.8.dp, Color.White.copy(alpha = 0.35f), CircleShape)
                     .clickable { onClose() },
                 contentAlignment = Alignment.Center
             ) {
@@ -196,7 +193,7 @@ fun InAppMiniPlayer(
                     imageVector = Icons.Rounded.Close,
                     contentDescription = "Close Miniplayer",
                     tint = Color.White,
-                    modifier = Modifier.size(15.dp)
+                    modifier = Modifier.size(18.dp)
                 )
             }
             }
@@ -212,9 +209,6 @@ fun InAppMiniPlayer(
             Box(
                 modifier = Modifier
                     .size(48.dp)
-                    .clip(CircleShape)
-                    .background(Color.Black.copy(alpha = 0.65f))
-                    .border(1.2.dp, primaryAccent, CircleShape)
                     .clickable {
                         VideoPlaybackManager.togglePlayPause()
                         controlsInteractionKey++
@@ -225,7 +219,7 @@ fun InAppMiniPlayer(
                     imageVector = if (isPlaying) Icons.Rounded.Pause else Icons.Rounded.PlayArrow,
                     contentDescription = if (isPlaying) "Pause" else "Play",
                     tint = Color.White,
-                    modifier = Modifier.size(22.dp)
+                    modifier = Modifier.size(28.dp)
                 )
             }
         }

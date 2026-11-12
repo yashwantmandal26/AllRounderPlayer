@@ -315,20 +315,12 @@ fun MusicMiniPlayerPill(
                 },
                 modifier = Modifier.size(34.dp)
             ) {
-                Box(
-                    modifier = Modifier
-                        .size(26.dp)
-                        .clip(CircleShape)
-                        .background(Color.White.copy(alpha = 0.16f)),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Icon(
-                        imageVector = Icons.Rounded.Close,
-                        contentDescription = "Close Player",
-                        tint = Color.White,
-                        modifier = Modifier.size(16.dp)
-                    )
-                }
+                Icon(
+                    imageVector = Icons.Rounded.Close,
+                    contentDescription = "Close Player",
+                    tint = Color.White,
+                    modifier = Modifier.size(18.dp)
+                )
             }
         }
     }

@@ -325,7 +325,7 @@ class TmdbApiClient(
                     imdbId = root.optString("imdb_id").trim()
                 }
                 if (imdbId.startsWith("tt", ignoreCase = true)) {
-                    imdbIdCache["$isSeries:$id"] = imdbId
+                    imdbIdCache["${if (isSeries) "tv" else "movie"}_$id"] = imdbId
                 }
                 val imdbRating = if (imdbId.startsWith("tt", ignoreCase = true)) {
                     fetchCinemetaImdbRating(isSeries, imdbId)

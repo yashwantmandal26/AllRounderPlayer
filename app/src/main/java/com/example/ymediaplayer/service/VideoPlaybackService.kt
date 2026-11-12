@@ -25,11 +25,16 @@ import com.example.ymediaplayer.ui.VideoPlayerActivity
 import com.example.ymediaplayer.util.MediaArtworkHelper
 import com.google.common.util.concurrent.Futures
 import com.google.common.util.concurrent.ListenableFuture
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import java.io.File
 
 class VideoPlaybackService : MediaSessionService() {
 
     private var mediaSession: MediaSession? = null
+    private var cachedArtworkKey: String? = null
+    private var cachedArtworkBitmap: android.graphics.Bitmap? = null
+    private var loadingArtworkKey: String? = null
 
     companion object {
         const val VIDEO_NOTIFICATION_CHANNEL_ID = "video_playback_channel"
@@ -165,6 +170,14 @@ class VideoPlaybackService : MediaSessionService() {
 
             override fun pause() {
                 VideoPlaybackManager.manualPause()
+            }
+
+            override fun setPlayWhenReady(playWhenReady: Boolean) {
+                if (playWhenReady) {
+                    VideoPlaybackManager.manualPlay()
+                } else {
+                    VideoPlaybackManager.manualPause()
+                }
             }
 
             override fun seekToNext() {
@@ -398,17 +411,33 @@ class VideoPlaybackService : MediaSessionService() {
         builder.addAction(android.R.drawable.ic_media_next, "Next", nextPendingIntent)
         builder.addAction(R.drawable.ic_notif_forward_10, "Forward 10s", forwardPendingIntent)
 
-        // High quality large artwork (Movie poster or video keyframe)
-        try {
-            val poster = VideoPlaybackManager.currentPosterUrl.value
-            val uri = if (currentUrl.isNotBlank()) {
-                if (currentUrl.startsWith("/")) Uri.fromFile(File(currentUrl)) else Uri.parse(currentUrl)
-            } else null
-            val bmp = MediaArtworkHelper.getVideoThumbnailBitmap(this, uri, poster)
-            if (bmp != null) {
-                builder.setLargeIcon(bmp)
+        // Cached artwork (resolved asynchronously on IO thread so pause/play notifications never stall main thread)
+        val poster = VideoPlaybackManager.currentPosterUrl.value
+        val artworkKey = "$currentUrl|${poster.orEmpty()}"
+        if (cachedArtworkKey == artworkKey) {
+            cachedArtworkBitmap?.let { builder.setLargeIcon(it) }
+        } else if (loadingArtworkKey != artworkKey && (currentUrl.isNotBlank() || !poster.isNullOrBlank())) {
+            loadingArtworkKey = artworkKey
+            val appCtx = applicationContext
+            kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.IO).launch {
+                val bmp = try {
+                    val uri = if (currentUrl.isNotBlank()) {
+                        if (currentUrl.startsWith("/")) Uri.fromFile(File(currentUrl)) else Uri.parse(currentUrl)
+                    } else null
+                    MediaArtworkHelper.getVideoThumbnailBitmap(appCtx, uri, poster)
+                } catch (_: Throwable) { null }
+                kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
+                    if (loadingArtworkKey == artworkKey) {
+                        cachedArtworkKey = artworkKey
+                        cachedArtworkBitmap = bmp
+                        loadingArtworkKey = null
+                        if (bmp != null && serviceInstance === this@VideoPlaybackService && VideoPlaybackManager.player != null) {
+                            updateForegroundNotification()
+                        }
+                    }
+                }
             }
-        } catch (_: Throwable) {}
+        }
 
         return builder.build()
     }
@@ -440,13 +469,13 @@ class VideoPlaybackService : MediaSessionService() {
                 VideoPlaybackManager.onPlayNextAction?.invoke()
             }
             ACTION_STOP -> {
+                VideoPlaybackManager.manualPause()
                 stopService(this)
-                VideoPlaybackManager.player?.pause()
                 return START_NOT_STICKY
             }
         }
         updateForegroundNotification()
-        return START_STICKY
+        return START_NOT_STICKY
     }
 
     override fun onGetSession(controllerInfo: MediaSession.ControllerInfo): MediaSession? {

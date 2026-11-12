@@ -961,22 +961,34 @@ fun FolderListScreen(
                                     context.startActivity(movieIntent)
                                 },
                                 onStreamSource = { item, source ->
-                                    val hash = TorrentEngine.startStream(context, source, item.displayName)
+                                    val displayTitle = item.displayNameWithEpisode
+                                    val cleanTitle = item.baseDisplayName
+                                    val hash = TorrentEngine.startStream(context, source, displayTitle)
                                     if (hash != null) {
                                         if (!item.fullPosterUrl.isNullOrBlank()) {
-                                            appPreferences.saveCinemaPoster(item.displayName, item.fullPosterUrl)
+                                            appPreferences.saveCinemaPoster(cleanTitle, item.fullPosterUrl)
+                                            appPreferences.saveCinemaPoster(displayTitle, item.fullPosterUrl)
                                             appPreferences.saveCinemaPoster(hash, item.fullPosterUrl)
                                         }
-                                        appPreferences.saveCinemaWatchHistory(item)
+                                        appPreferences.saveCinemaWatchHistory(
+                                            item.copy(
+                                                title = if (!item.isSeries) cleanTitle else item.title,
+                                                name = if (item.isSeries) cleanTitle else item.name
+                                            )
+                                        )
                                         val streamIntent = Intent(context, com.example.ymediaplayer.ui.VideoPlayerActivity::class.java).apply {
                                             flags = Intent.FLAG_ACTIVITY_REORDER_TO_FRONT or Intent.FLAG_ACTIVITY_SINGLE_TOP
                                             putExtra(com.example.ymediaplayer.ui.VideoPlayerActivity.EXTRA_VIDEO_URL, TorrentEngine.getFilePath(context, hash) ?: "")
-                                            putExtra(com.example.ymediaplayer.ui.VideoPlayerActivity.EXTRA_VIDEO_TITLE, item.displayName)
+                                            putExtra(com.example.ymediaplayer.ui.VideoPlayerActivity.EXTRA_VIDEO_TITLE, displayTitle)
                                             putExtra(com.example.ymediaplayer.ui.VideoPlayerActivity.EXTRA_POSTER_URL, item.fullPosterUrl ?: "")
                                             putExtra(com.example.ymediaplayer.ui.VideoPlayerActivity.EXTRA_BACKDROP_URL, item.fullBackdropUrl ?: "")
                                             putExtra(com.example.ymediaplayer.ui.VideoPlayerActivity.EXTRA_LOGO_URL, item.fullLogoUrl ?: "")
                                             putExtra(com.example.ymediaplayer.ui.VideoPlayerActivity.EXTRA_TORRENT_HASH, hash)
                                             putExtra(com.example.ymediaplayer.ui.VideoPlayerActivity.EXTRA_IS_STREAMING, true)
+                                            putExtra(com.example.ymediaplayer.ui.VideoPlayerActivity.EXTRA_CINEMA_SHOW_ID, item.id)
+                                            putExtra(com.example.ymediaplayer.ui.VideoPlayerActivity.EXTRA_CINEMA_SEASON, item.selectedSeason ?: 0)
+                                            putExtra(com.example.ymediaplayer.ui.VideoPlayerActivity.EXTRA_CINEMA_EPISODE, item.selectedEpisode ?: 0)
+                                            putExtra(com.example.ymediaplayer.ui.VideoPlayerActivity.EXTRA_CINEMA_IS_SERIES, item.isSeries)
                                         }
                                         context.startActivity(streamIntent)
                                     } else {
@@ -984,14 +996,17 @@ fun FolderListScreen(
                                     }
                                 },
                                 onDownloadSource = { item, source ->
-                                    val hash = TorrentEngine.startDownload(context, source, item.displayName, isSequential = false)
+                                    val displayTitle = item.displayNameWithEpisode
+                                    val cleanTitle = item.baseDisplayName
+                                    val hash = TorrentEngine.startDownload(context, source, displayTitle, isSequential = false)
                                     if (hash != null) {
                                         if (!item.fullPosterUrl.isNullOrBlank()) {
-                                            appPreferences.saveCinemaPoster(item.displayName, item.fullPosterUrl)
+                                            appPreferences.saveCinemaPoster(cleanTitle, item.fullPosterUrl)
+                                            appPreferences.saveCinemaPoster(displayTitle, item.fullPosterUrl)
                                             appPreferences.saveCinemaPoster(hash, item.fullPosterUrl)
                                         }
-                                        TorrentDownloadService.start(context, hash, item.displayName)
-                                        android.widget.Toast.makeText(context, "Download started: ${item.displayName}", android.widget.Toast.LENGTH_SHORT).show()
+                                        TorrentDownloadService.start(context, hash, displayTitle)
+                                        android.widget.Toast.makeText(context, "Download started: $displayTitle", android.widget.Toast.LENGTH_SHORT).show()
                                     } else {
                                         android.widget.Toast.makeText(context, "Failed to start download", android.widget.Toast.LENGTH_SHORT).show()
                                     }
