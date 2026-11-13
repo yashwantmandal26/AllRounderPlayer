@@ -115,8 +115,8 @@ class MusicRepository(private val context: Context) {
         }.toTypedArray()
 
         val sortOrder = "${MediaStore.Audio.Media.TITLE} ASC"
-        // High-performance indexed selection: uses B-tree index on IS_MUSIC and MIME_TYPE instead of full table scans
-        val selection = "(${MediaStore.Audio.Media.IS_MUSIC} != 0 OR ${MediaStore.Audio.Media.MIME_TYPE} LIKE 'audio/%') AND ${MediaStore.Audio.Media.DURATION} >= 1000"
+        // High-performance indexed selection: also include partially corrupted / un-indexed audio files (duration=0) with valid file size
+        val selection = "(${MediaStore.Audio.Media.IS_MUSIC} != 0 OR ${MediaStore.Audio.Media.MIME_TYPE} LIKE 'audio/%') AND (${MediaStore.Audio.Media.DURATION} >= 1000 OR (${MediaStore.Audio.Media.DURATION} = 0 AND ${MediaStore.Audio.Media.SIZE} >= 16384))"
 
         try {
         context.contentResolver.query(

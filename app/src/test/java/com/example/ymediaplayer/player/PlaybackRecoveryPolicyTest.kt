@@ -21,10 +21,11 @@ class PlaybackRecoveryPolicyTest {
     }
 
     @Test
-    fun audioDecoderFailureCanContinueWithVideoOnly() {
+    fun audioDecoderFailureCanContinueWithVideoOnlyThenFallsBack() {
         val code = PlaybackException.ERROR_CODE_DECODING_FAILED
         assertEquals(RecoveryAction.SAFE_MODE_RETRY, PlaybackRecoveryPolicy.actionFor(code, 0, true))
         assertEquals(RecoveryAction.DISABLE_AUDIO_RETRY, PlaybackRecoveryPolicy.actionFor(code, 1, true))
+        assertEquals(RecoveryAction.COMPATIBILITY_FALLBACK, PlaybackRecoveryPolicy.actionFor(code, 2, true))
     }
 
     @Test

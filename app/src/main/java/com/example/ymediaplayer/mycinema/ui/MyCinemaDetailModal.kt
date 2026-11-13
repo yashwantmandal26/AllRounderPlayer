@@ -2182,24 +2182,29 @@ private fun ZoomableGalleryPage(
         }
     }
 
-    Box(
+    BoxWithConstraints(
         modifier = Modifier
             .fillMaxSize()
             .pointerInput(Unit) {
                 detectTapGestures(
-                    onDoubleTap = {
-                        scale = if (scale > 1.2f) {
-                            offset = Offset.Zero
-                            onZoomStateChanged(false)
-                            1f
-                        } else {
-                            onZoomStateChanged(true)
-                            2.5f
+                    onDoubleTap = { tapOffset ->
+                        val targetScale = if (scale > 1.2f) 1f else 2.5f
+                        scale = targetScale
+                        offset = if (targetScale == 1f) Offset.Zero else {
+                            val centerX = size.width / 2f
+                            val centerY = size.height / 2f
+                            val maxOffX = (size.width * (targetScale - 1f) / 2f).coerceAtLeast(0f)
+                            val maxOffY = (size.height * (targetScale - 1f) / 2f).coerceAtLeast(0f)
+                            Offset(
+                                ((centerX - tapOffset.x) * (targetScale - 1f)).coerceIn(-maxOffX, maxOffX),
+                                ((centerY - tapOffset.y) * (targetScale - 1f)).coerceIn(-maxOffY, maxOffY)
+                            )
                         }
+                        onZoomStateChanged(targetScale > 1.05f)
                     }
                 )
             }
-            .pointerInput(scale) {
+            .pointerInput(Unit) {
                 awaitEachGesture {
                     awaitFirstDown(requireUnconsumed = false)
                     do {
@@ -2207,15 +2212,15 @@ private fun ZoomableGalleryPage(
                         val pointerCount = event.changes.size
 
                         if (pointerCount > 1) {
-                            // Two fingers: Pinch-to-zoom & pan
+                            // Two fingers: Pinch-to-zoom & pan smoothly
                             val zoomChange = event.calculateZoom()
                             val panChange = event.calculatePan()
-                            val newScale = (scale * zoomChange).coerceIn(1f, 4.5f)
+                            val newScale = (scale * zoomChange).coerceIn(1f, 5.0f)
                             scale = newScale
                             onZoomStateChanged(newScale > 1.05f)
 
-                            val maxOffsetX = (newScale - 1f) * 600f
-                            val maxOffsetY = (newScale - 1f) * 900f
+                            val maxOffsetX = (size.width * (newScale - 1f) / 2f).coerceAtLeast(0f)
+                            val maxOffsetY = (size.height * (newScale - 1f) / 2f).coerceAtLeast(0f)
                             val newOffset = offset + panChange
                             offset = Offset(
                                 newOffset.x.coerceIn(-maxOffsetX, maxOffsetX),
@@ -2225,8 +2230,8 @@ private fun ZoomableGalleryPage(
                         } else if (scale > 1.05f) {
                             // Single finger while zoomed in: pan around the photo
                             val panChange = event.calculatePan()
-                            val maxOffsetX = (scale - 1f) * 600f
-                            val maxOffsetY = (scale - 1f) * 900f
+                            val maxOffsetX = (size.width * (scale - 1f) / 2f).coerceAtLeast(0f)
+                            val maxOffsetY = (size.height * (scale - 1f) / 2f).coerceAtLeast(0f)
                             val newOffset = offset + panChange
                             offset = Offset(
                                 newOffset.x.coerceIn(-maxOffsetX, maxOffsetX),
@@ -2236,6 +2241,12 @@ private fun ZoomableGalleryPage(
                         }
                         // When scale <= 1.05f and single finger: DO NOT CONSUME. Allow HorizontalPager to swipe smoothly!
                     } while (event.changes.any { it.pressed })
+
+                    if (scale <= 1.05f) {
+                        scale = 1f
+                        offset = Offset.Zero
+                        onZoomStateChanged(false)
+                    }
                 }
             },
         contentAlignment = Alignment.Center

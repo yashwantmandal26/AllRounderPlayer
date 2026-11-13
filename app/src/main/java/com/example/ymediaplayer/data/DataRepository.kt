@@ -544,14 +544,21 @@ class AppPreferences(private val prefs: SharedPreferences) {
         return getMusicFavorites().contains(uri)
     }
 
-    // Music Artwork Mode: "VINYL", "CARD", "SONIC_REACTOR", "CASSETTE", "CYBER_ORB"
+    // Music Artwork Mode: "VINYL", "CARD", "SONIC_REACTOR", "CASSETTE", "CYBER_ORB", "WAVE", "ECLIPSE"
     fun getMusicArtworkStyle(): String {
         val style = prefs.getString("music_artwork_style", "VINYL") ?: "VINYL"
-        return if (style == "WAVE") "SONIC_REACTOR" else style
+        return when (style.uppercase()) {
+            "VINYL", "CARD", "SONIC_REACTOR", "CASSETTE", "CYBER_ORB", "WAVE", "ECLIPSE" -> style.uppercase()
+            else -> "VINYL"
+        }
     }
 
     fun setMusicArtworkStyle(style: String) {
-        val validStyle = if (style == "WAVE") "SONIC_REACTOR" else style
+        val normalized = style.uppercase()
+        val validStyle = when (normalized) {
+            "VINYL", "CARD", "SONIC_REACTOR", "CASSETTE", "CYBER_ORB", "WAVE", "ECLIPSE" -> normalized
+            else -> "VINYL"
+        }
         prefs.edit().putString("music_artwork_style", validStyle).apply()
     }
 

@@ -121,21 +121,15 @@ internal fun VideoSeekPreview(
                 }
             }
 
-            Spacer(Modifier.height(4.dp))
+            Spacer(Modifier.height(5.dp))
 
             Text(
                 text = formatTime(positionMs),
                 color = Color.White,
                 fontSize = 13.sp,
                 fontWeight = FontWeight.Bold,
-                fontFamily = FontFamily.Monospace
-            )
-
-            Text(
-                text = "Drag up for finer seeking",
-                color = Color.White.copy(alpha = 0.70f),
-                fontSize = 10.sp,
-                fontWeight = FontWeight.Normal
+                fontFamily = FontFamily.Monospace,
+                modifier = Modifier.padding(bottom = 2.dp)
             )
         }
 

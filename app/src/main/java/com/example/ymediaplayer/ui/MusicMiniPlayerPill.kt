@@ -218,21 +218,21 @@ fun MusicMiniPlayerPill(
                     ) {
                         val infiniteTransition = rememberInfiniteTransition(label = "nowPlayingBars")
                         val bar1 by infiniteTransition.animateFloat(
-                            initialValue = 0.25f,
-                            targetValue = 1f,
-                            animationSpec = infiniteRepeatable(tween(350, easing = LinearEasing), RepeatMode.Reverse),
+                            initialValue = 0.28f,
+                            targetValue = 0.92f,
+                            animationSpec = infiniteRepeatable(tween(520, easing = FastOutSlowInEasing), RepeatMode.Reverse),
                             label = "b1"
                         )
                         val bar2 by infiniteTransition.animateFloat(
-                            initialValue = 0.5f,
-                            targetValue = 0.15f,
-                            animationSpec = infiniteRepeatable(tween(450, easing = LinearEasing), RepeatMode.Reverse),
+                            initialValue = 0.58f,
+                            targetValue = 0.22f,
+                            animationSpec = infiniteRepeatable(tween(640, easing = FastOutSlowInEasing), RepeatMode.Reverse),
                             label = "b2"
                         )
                         val bar3 by infiniteTransition.animateFloat(
-                            initialValue = 0.2f,
-                            targetValue = 0.9f,
-                            animationSpec = infiniteRepeatable(tween(300, easing = LinearEasing), RepeatMode.Reverse),
+                            initialValue = 0.24f,
+                            targetValue = 0.86f,
+                            animationSpec = infiniteRepeatable(tween(460, easing = FastOutSlowInEasing), RepeatMode.Reverse),
                             label = "b3"
                         )
 

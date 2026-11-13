@@ -110,6 +110,8 @@ object VideoPlaybackManager {
 
     var onPlayNextAction: (() -> Unit)? = null
     var onPlayPrevAction: (() -> Unit)? = null
+    internal var onFallbackPause: (() -> Unit)? = null
+    internal var onFallbackPlay: (() -> Boolean)? = null
 
     var isPausedByCall = false
         private set
@@ -123,9 +125,8 @@ object VideoPlaybackManager {
 
     private val audioFocusChangeListener = AudioManager.OnAudioFocusChangeListener { focusChange ->
         when (focusChange) {
-            AudioManager.AUDIOFOCUS_LOSS_TRANSIENT,
-            AudioManager.AUDIOFOCUS_LOSS_TRANSIENT_CAN_DUCK -> {
-                // Incoming call or transient system interruption: pause only if actively playing and not manually paused
+            AudioManager.AUDIOFOCUS_LOSS_TRANSIENT -> {
+                // Incoming phone call or non-duckable transient interruption: pause only if actively playing and not manually paused
                 if (!isManuallyResumedDuringCall && !isManuallyPaused) {
                     player?.let { p ->
                         if (p.isPlaying) {
@@ -136,6 +137,10 @@ object VideoPlaybackManager {
                         }
                     }
                 }
+            }
+            AudioManager.AUDIOFOCUS_LOSS_TRANSIENT_CAN_DUCK -> {
+                // Transient duckable event (e.g. system volume ticks, touch feedback, notification sounds):
+                // Never pause the video; maintain uninterrupted playback with zero freezing.
             }
             AudioManager.AUDIOFOCUS_LOSS -> {
                 if (!isManuallyResumedDuringCall && !isManuallyPaused) {
@@ -203,6 +208,13 @@ object VideoPlaybackManager {
         isManuallyPaused = false
         isManuallyResumedDuringCall = true
         isPausedByCall = false
+        if (onFallbackPlay?.invoke() == true) {
+            isPlaying.value = true
+            try {
+                com.example.ymediaplayer.service.VideoPlaybackService.notifyPlayerUpdated()
+            } catch (_: Exception) {}
+            return
+        }
         val p = player ?: return
         if (p.playbackState == Player.STATE_ENDED) {
             p.seekTo(0L)
@@ -220,6 +232,7 @@ object VideoPlaybackManager {
         recoveryJob = null
         isPausedByCall = false
         isManuallyResumedDuringCall = false
+        onFallbackPause?.invoke()
         val p = player
         if (p != null) {
             p.playWhenReady = false
@@ -301,7 +314,13 @@ object VideoPlaybackManager {
         val extractorsFactory = DefaultExtractorsFactory()
             .setConstantBitrateSeekingEnabled(true)
             .setConstantBitrateSeekingAlwaysEnabled(true)
-            .setTsExtractorTimestampSearchBytes(5 * 1024 * 1024)
+            .setMp3ExtractorFlags(androidx.media3.extractor.mp3.Mp3Extractor.FLAG_ENABLE_CONSTANT_BITRATE_SEEKING)
+            .setAdtsExtractorFlags(androidx.media3.extractor.ts.AdtsExtractor.FLAG_ENABLE_CONSTANT_BITRATE_SEEKING)
+            .setTsExtractorFlags(
+                androidx.media3.extractor.ts.DefaultTsPayloadReaderFactory.FLAG_ALLOW_NON_IDR_KEYFRAMES or
+                    androidx.media3.extractor.ts.DefaultTsPayloadReaderFactory.FLAG_DETECT_ACCESS_UNITS
+            )
+            .setTsExtractorTimestampSearchBytes(8 * 1024 * 1024)
         return DefaultMediaSourceFactory(dataSourceFactory, extractorsFactory)
             .setLoadErrorHandlingPolicy(DefaultLoadErrorHandlingPolicy(5))
     }
@@ -385,12 +404,17 @@ object VideoPlaybackManager {
         disableAudio: Boolean
     ) {
         val attempt = recoveryAttempt++
-        if (attempt >= 4) {
-            recoveryMessage.value = "Cannot play video: this file appears to be incomplete or corrupted."
-            isPlaying.value = false
+        if (attempt >= 3) {
+            triggerCompatibilityFallback(context, targetPlayer, "ExoPlayer recovery exhausted after $attempt attempts")
             return
         }
-        val resumePosition = if (attempt >= 2) 0L else targetPlayer.currentPosition.coerceAtLeast(0L)
+        val currentPos = targetPlayer.currentPosition.coerceAtLeast(0L)
+        val totalDur = targetPlayer.duration.coerceAtLeast(0L)
+        val resumePosition = when {
+            attempt >= 2 -> 0L
+            attempt == 1 && currentPos > 0L && (totalDur <= 0L || currentPos + 5_000L < totalDur) -> currentPos + 5_000L
+            else -> currentPos
+        }
         if (safe) {
             safeModeActive.value = true
             targetPlayer.setSeekParameters(SeekParameters.CLOSEST_SYNC)
@@ -402,6 +426,7 @@ object VideoPlaybackManager {
         }
         recoveryMessage.value = when {
             disableAudio -> "Damaged audio track skipped; continuing video"
+            attempt == 1 && resumePosition > currentPos -> "Skipping damaged segment; continuing playback"
             attempt >= 2 -> "Compatibility mode: playing from beginning"
             safe -> "Compatibility mode enabled; recovering playback"
             else -> "Playback interrupted; retrying"
@@ -421,6 +446,31 @@ object VideoPlaybackManager {
                 recordDiagnostic(context, "retry_failed", it.message ?: it.javaClass.simpleName)
             }
         }
+    }
+
+    private fun triggerCompatibilityFallback(
+        context: Context,
+        targetPlayer: ExoPlayer,
+        reason: String
+    ) {
+        val uri = targetPlayer.currentMediaItem?.localConfiguration?.uri?.toString()
+            ?: currentVideoUrl.value
+        if (uri.isNullOrBlank()) {
+            recoveryMessage.value = "Cannot play video: media source is unavailable."
+            isPlaying.value = false
+            return
+        }
+        recoveryJob?.cancel()
+        recoveryJob = null
+        targetPlayer.pause()
+        recoveryMessage.value = "Switched to extended compatibility engine"
+        compatibilityFallbackRequest.value = CompatibilityFallbackRequest(
+            uri = uri,
+            title = currentVideoTitle.value ?: "Video",
+            positionMs = targetPlayer.currentPosition.coerceAtLeast(0L),
+            reason = reason
+        )
+        recordDiagnostic(context, "compatibility_fallback", reason)
     }
 
     private fun requestCompatibilityFallback(
@@ -451,29 +501,13 @@ object VideoPlaybackManager {
         val exoError = error as? ExoPlaybackException
         val audioFailed = exoError?.rendererFormat?.sampleMimeType?.startsWith("audio/") == true ||
             exoError?.rendererName?.contains("audio", ignoreCase = true) == true
-        if (audioFailed) {
+        if (audioFailed && recoveryAttempt <= 1) {
             scheduleRetry(context, targetPlayer, safe = true, disableAudio = true)
             return
         }
 
-        // For local / downloaded files, do NOT pause or switch to compatibility player.
-        // Instead, retry in safe mode to keep the user in the original player with all controls.
-        val isOffline = !uri.startsWith("http://") && !uri.startsWith("https://")
-        if (isOffline) {
-            scheduleRetry(context, targetPlayer, safe = true, disableAudio = false)
-            return
-        }
-
-        targetPlayer.pause()
         val reason = "${error.errorCodeName}: ${error.message.orEmpty()}".trim()
-        recoveryMessage.value = "Opening extended compatibility player"
-        compatibilityFallbackRequest.value = CompatibilityFallbackRequest(
-            uri = uri,
-            title = currentVideoTitle.value ?: "Video",
-            positionMs = targetPlayer.currentPosition.coerceAtLeast(0L),
-            reason = reason
-        )
-        recordDiagnostic(context, "compatibility_fallback", reason)
+        triggerCompatibilityFallback(context, targetPlayer, reason)
     }
 
     private fun friendlyError(error: PlaybackException): String = when (error.errorCode) {
@@ -497,9 +531,6 @@ object VideoPlaybackManager {
         preferredSubLang: String = "",
         subtitlesEnabled: Boolean = true
     ): ExoPlayer {
-        // Stop/pause background music playback immediately when video starts
-        com.example.ymediaplayer.service.MusicService.pauseMusic()
-
         try {
             val avail = androidx.media3.decoder.ffmpeg.FfmpegLibrary.isAvailable()
             val ver = androidx.media3.decoder.ffmpeg.FfmpegLibrary.getVersion()
@@ -511,8 +542,10 @@ object VideoPlaybackManager {
 
         val current = player
         if (current != null && currentVideoUrl.value == url) {
-            currentVideoTitle.value = title
-            isPlaying.value = current.isPlaying
+            android.os.Handler(android.os.Looper.getMainLooper()).post {
+                currentVideoTitle.value = title
+                isPlaying.value = current.isPlaying
+            }
             return current
         }
 
@@ -721,10 +754,12 @@ object VideoPlaybackManager {
         playerListener = listener
 
         player = newPlayer
-        currentVideoUrl.value = url
-        currentVideoTitle.value = title
-        isPlaying.value = newPlayer.isPlaying
-        currentAudioSessionId.value = newPlayer.audioSessionId
+        android.os.Handler(android.os.Looper.getMainLooper()).post {
+            currentVideoUrl.value = url
+            currentVideoTitle.value = title
+            isPlaying.value = newPlayer.isPlaying
+            currentAudioSessionId.value = newPlayer.audioSessionId
+        }
 
         if (handleAudioFocus) requestVideoAudioFocus(context)
         recordDiagnostic(

@@ -157,7 +157,7 @@ class MainActivity : ComponentActivity() {
             openSettingsTrigger.value = true
         }
         if (intent.getBooleanExtra("open_update_dialog", false)) {
-            com.example.ymediaplayer.update.UpdateManager.showUpdateDialog.value = true
+            com.example.ymediaplayer.update.UpdateManager.openUpdateDialog()
         }
         val videoUrlExtra = intent.getStringExtra(EXTRA_OPEN_VIDEO_URL)
         if (!videoUrlExtra.isNullOrEmpty()) {
@@ -199,7 +199,7 @@ class MainActivity : ComponentActivity() {
             openSettingsTrigger.value = true
         }
         if (intent?.getBooleanExtra("open_update_dialog", false) == true) {
-            com.example.ymediaplayer.update.UpdateManager.showUpdateDialog.value = true
+            com.example.ymediaplayer.update.UpdateManager.openUpdateDialog()
         }
         val videoUrlExtra = intent?.getStringExtra(EXTRA_OPEN_VIDEO_URL)
         if (!videoUrlExtra.isNullOrEmpty()) {
@@ -275,9 +275,13 @@ fun MainApp(
     val insetsController = window?.let { WindowCompat.getInsetsController(it, it.decorView) }
     val appColors = com.example.ymediaplayer.theme.LocalAppColors.current
     val appPreferences = remember { com.example.ymediaplayer.data.AppPreferences(context) }
+    val lifecycleState by androidx.lifecycle.compose.LocalLifecycleOwner.current.lifecycle.currentStateAsState()
 
-    LaunchedEffect(Unit) {
-        com.example.ymediaplayer.update.UpdateManager.checkForUpdates(context, appPreferences, isManual = false)
+    LaunchedEffect(lifecycleState) {
+        if (lifecycleState == androidx.lifecycle.Lifecycle.State.RESUMED) {
+            kotlinx.coroutines.delay(350L)
+            com.example.ymediaplayer.update.UpdateManager.checkForUpdates(context, appPreferences, isManual = false)
+        }
     }
 
     LaunchedEffect(MainActivity.openMusicTrigger.value) {
@@ -291,6 +295,9 @@ fun MainApp(
     LaunchedEffect(MainActivity.openVideoUrl.value) {
         val target = MainActivity.openVideoUrl.value
         if (!target.isNullOrEmpty()) {
+            com.example.ymediaplayer.service.MusicService.pauseMusic()
+            com.example.ymediaplayer.ui.VideoPlayerActivity.finishPipIfActive()
+            com.example.ymediaplayer.player.VideoPlaybackManager.releasePlayer()
             com.example.ymediaplayer.data.VideoRepository.getVideoDimensions(target)?.let { (w, h) ->
                 VideoPlaybackManager.setInitialDimensions(w, h)
             }
@@ -369,6 +376,9 @@ fun MainApp(
                                 backStack.add(FolderDetail(id, name))
                             },
                             onVideoClick = { uri -> 
+                                com.example.ymediaplayer.service.MusicService.pauseMusic()
+                                com.example.ymediaplayer.ui.VideoPlayerActivity.finishPipIfActive()
+                                com.example.ymediaplayer.player.VideoPlaybackManager.releasePlayer()
                                 com.example.ymediaplayer.data.VideoRepository.getVideoDimensions(uri)?.let { (w, h) ->
                                     VideoPlaybackManager.setInitialDimensions(w, h)
                                 }
@@ -409,6 +419,9 @@ fun MainApp(
                         folderName = navKey.folderName,
                         onBack = { if (backStack.size > 1) backStack.removeLastOrNull() },
                         onVideoClick = { uri ->
+                            com.example.ymediaplayer.service.MusicService.pauseMusic()
+                            com.example.ymediaplayer.ui.VideoPlayerActivity.finishPipIfActive()
+                            com.example.ymediaplayer.player.VideoPlaybackManager.releasePlayer()
                             com.example.ymediaplayer.data.VideoRepository.getVideoDimensions(uri)?.let { (w, h) ->
                                 VideoPlaybackManager.setInitialDimensions(w, h)
                             }

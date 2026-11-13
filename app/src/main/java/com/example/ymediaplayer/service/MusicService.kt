@@ -12,14 +12,29 @@ import android.graphics.BitmapFactory
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
+import android.os.Handler
+import android.os.ParcelFileDescriptor
+import android.os.SystemClock
 import androidx.core.content.ContextCompat
 import androidx.media3.common.AudioAttributes
 import androidx.media3.common.C
 import androidx.media3.common.ForwardingPlayer
 import androidx.media3.common.MediaItem
 import androidx.media3.common.MediaMetadata
+import androidx.media3.common.PlaybackException
+import androidx.media3.common.PlaybackParameters
 import androidx.media3.common.Player
+import androidx.media3.datasource.DefaultDataSource
+import androidx.media3.exoplayer.DefaultRenderersFactory
 import androidx.media3.exoplayer.ExoPlayer
+import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
+import androidx.media3.exoplayer.upstream.DefaultLoadErrorHandlingPolicy
+import androidx.media3.extractor.DefaultExtractorsFactory
+import androidx.media3.extractor.mp3.Mp3Extractor
+import androidx.media3.extractor.ts.AdtsExtractor
+import org.videolan.libvlc.LibVLC
+import org.videolan.libvlc.Media
+import org.videolan.libvlc.MediaPlayer as VlcMediaPlayer
 import androidx.media3.session.CommandButton
 import androidx.media3.session.DefaultMediaNotificationProvider
 import com.example.ymediaplayer.util.MediaArtworkHelper
@@ -52,6 +67,16 @@ class MusicService : MediaSessionService() {
     private var equalizer: Equalizer? = null
     private var bassBoost: BassBoost? = null
     private var virtualizer: Virtualizer? = null
+    private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
+    private val mainHandler by lazy { Handler(android.os.Looper.getMainLooper()) }
+    private var audioRecoveryAttempt = 0
+    private var audioRecoveryJob: Job? = null
+    private var lastReadyAtMs = 0L
+
+    private var vlcLib: LibVLC? = null
+    private var vlcAudioPlayer: VlcMediaPlayer? = null
+    private var vlcMedia: Media? = null
+    private var vlcPfd: ParcelFileDescriptor? = null
 
     companion object {
         const val EXTRA_OPEN_MUSIC_PLAYER = "EXTRA_OPEN_MUSIC_PLAYER"
@@ -217,6 +242,46 @@ class MusicService : MediaSessionService() {
         var totalTracksSize: androidx.compose.runtime.MutableLongState =
             androidx.compose.runtime.mutableLongStateOf(0L)
 
+        // Compatibility fallback telemetry & bridge (activated only when ExoPlayer+FFmpeg cannot parse a heavily damaged track)
+        var isUsingFallbackEngine: androidx.compose.runtime.MutableState<Boolean> =
+            androidx.compose.runtime.mutableStateOf(false)
+        var fallbackDurationMs: androidx.compose.runtime.MutableLongState =
+            androidx.compose.runtime.mutableLongStateOf(0L)
+        var fallbackPositionMs: androidx.compose.runtime.MutableLongState =
+            androidx.compose.runtime.mutableLongStateOf(0L)
+        var playbackStatusMessage: androidx.compose.runtime.MutableState<String?> =
+            androidx.compose.runtime.mutableStateOf(null)
+
+        fun getPlaybackPositionMs(): Long = if (isUsingFallbackEngine.value) {
+            fallbackPositionMs.longValue.coerceAtLeast(0L)
+        } else {
+            playerInstance?.currentPosition?.coerceAtLeast(0L) ?: 0L
+        }
+
+        fun getPlaybackDurationMs(): Long = if (isUsingFallbackEngine.value) {
+            fallbackDurationMs.longValue.coerceAtLeast(0L)
+        } else {
+            playerInstance?.duration?.coerceAtLeast(0L) ?: 0L
+        }
+
+        fun seekToPosition(positionMs: Long) {
+            val target = positionMs.coerceAtLeast(0L)
+            if (isUsingFallbackEngine.value) {
+                serviceInstance?.seekVlcFallback(target)
+                return
+            }
+            playerInstance?.seekTo(target)
+        }
+
+        fun setPlaybackParameters(speed: Float, pitch: Float = 1f) {
+            val safeSpeed = speed.coerceIn(0.25f, 4.0f)
+            if (isUsingFallbackEngine.value) {
+                serviceInstance?.setVlcFallbackRate(safeSpeed)
+                return
+            }
+            playerInstance?.playbackParameters = PlaybackParameters(safeSpeed, pitch.coerceIn(0.5f, 2.0f))
+        }
+
         var currentMusicItem: androidx.compose.runtime.MutableState<MusicItem?> =
             androidx.compose.runtime.mutableStateOf(null)
         val activeQueue = androidx.compose.runtime.mutableStateOf<List<MusicItem>>(emptyList())
@@ -319,19 +384,28 @@ class MusicService : MediaSessionService() {
                     sleepTimerSecondsRemaining.intValue = ((remaining + 999) / 1000).toInt()
                     if (fadeOut && remaining <= 20_000L && remaining > 0L) {
                         val factor = (remaining / 20_000f).coerceIn(0.05f, 1f)
-                        playerInstance?.let { player ->
-                            if (sleepFadePlayer !== player ||
-                                kotlin.math.abs(player.volume - sleepFadeAppliedVolume) >= 0.001f) {
-                                sleepFadePlayer = player
-                                sleepFadeOriginalVolume = player.volume
+                        if (isUsingFallbackEngine.value) {
+                            serviceInstance?.setVlcFallbackVolumeFactor(factor)
+                        } else {
+                            playerInstance?.let { player ->
+                                if (sleepFadePlayer !== player ||
+                                    kotlin.math.abs(player.volume - sleepFadeAppliedVolume) >= 0.001f) {
+                                    sleepFadePlayer = player
+                                    sleepFadeOriginalVolume = player.volume
+                                }
+                                sleepFadeAppliedVolume = sleepFadeOriginalVolume * factor
+                                player.volume = sleepFadeAppliedVolume
                             }
-                            sleepFadeAppliedVolume = sleepFadeOriginalVolume * factor
-                            player.volume = sleepFadeAppliedVolume
                         }
                     }
                     if (remaining == 0L) {
-                        playerInstance?.pause()
-                        restoreSleepFadeVolume()
+                        if (isUsingFallbackEngine.value) {
+                            serviceInstance?.pauseVlcFallback()
+                            serviceInstance?.setVlcFallbackVolumeFactor(1f)
+                        } else {
+                            playerInstance?.pause()
+                            restoreSleepFadeVolume()
+                        }
                         sleepDeadlineMs = 0L
                         break
                     }
@@ -375,6 +449,12 @@ class MusicService : MediaSessionService() {
         }
 
         fun pauseMusic() {
+            if (isUsingFallbackEngine.value) {
+                serviceInstance?.pauseVlcFallback()
+                onPauseAction?.invoke()
+                isMusicPlaying.value = false
+                return
+            }
             playerInstance?.let {
                 fadeOutAndPause(it) {
                     onPauseAction?.invoke()
@@ -388,6 +468,7 @@ class MusicService : MediaSessionService() {
 
         fun stopMusic() {
             fadeJob?.cancel()
+            serviceInstance?.stopVlcFallback()
             playerInstance?.let {
                 it.stop()
                 it.volume = 1f
@@ -399,6 +480,7 @@ class MusicService : MediaSessionService() {
         fun stopAndDismiss() {
             isMiniPlayerDismissed.value = true
             fadeJob?.cancel()
+            serviceInstance?.stopVlcFallback()
             playerInstance?.let {
                 it.playWhenReady = false
                 it.stop()
@@ -423,6 +505,8 @@ class MusicService : MediaSessionService() {
 
         fun playSong(item: MusicItem) {
             isMiniPlayerDismissed.value = false
+            serviceInstance?.stopVlcFallback()
+            serviceInstance?.resetRecoveryState()
             com.example.ymediaplayer.player.VideoPlaybackManager.player?.let { vPlayer ->
                 if (vPlayer.isPlaying || vPlayer.playWhenReady) {
                     com.example.ymediaplayer.player.VideoPlaybackManager.manualPause()
@@ -496,6 +580,18 @@ class MusicService : MediaSessionService() {
         }
 
         fun togglePlayPause() {
+            if (isUsingFallbackEngine.value) {
+                val svc = serviceInstance
+                if (svc != null) {
+                    if (isMusicPlaying.value) {
+                        svc.pauseVlcFallback()
+                    } else {
+                        com.example.ymediaplayer.player.VideoPlaybackManager.manualPause()
+                        svc.playVlcFallback()
+                    }
+                    return
+                }
+            }
             val player = playerInstance
             if (player != null) {
                 if (player.isPlaying) {
@@ -503,11 +599,7 @@ class MusicService : MediaSessionService() {
                     player.volume = 1f
                     isMusicPlaying.value = false
                 } else {
-                    com.example.ymediaplayer.player.VideoPlaybackManager.player?.let { vPlayer ->
-                        if (vPlayer.isPlaying || vPlayer.playWhenReady) {
-                            com.example.ymediaplayer.player.VideoPlaybackManager.manualPause()
-                        }
-                    }
+                    com.example.ymediaplayer.player.VideoPlaybackManager.manualPause()
                     if (player.playbackState == Player.STATE_ENDED) {
                         player.seekTo(0L)
                     }
@@ -522,6 +614,10 @@ class MusicService : MediaSessionService() {
 
         fun playNext() {
             isMiniPlayerDismissed.value = false
+            if (isUsingFallbackEngine.value) {
+                serviceInstance?.stopVlcFallback()
+                serviceInstance?.resetRecoveryState()
+            }
             val player = playerInstance ?: return
             if (player.hasNextMediaItem()) player.seekToNextMediaItem()
             else if (player.mediaItemCount > 0) player.seekTo(0, 0L)
@@ -530,6 +626,14 @@ class MusicService : MediaSessionService() {
 
         fun playPrevious() {
             isMiniPlayerDismissed.value = false
+            val pos = getPlaybackPositionMs()
+            if (isUsingFallbackEngine.value && pos <= 3000L) {
+                serviceInstance?.stopVlcFallback()
+                serviceInstance?.resetRecoveryState()
+            } else if (isUsingFallbackEngine.value && pos > 3000L) {
+                seekToPosition(0L)
+                return
+            }
             val player = playerInstance ?: return
             if (player.currentPosition > 3000L) player.seekTo(0L)
             else if (player.hasPreviousMediaItem()) player.seekToPreviousMediaItem()
@@ -560,7 +664,7 @@ class MusicService : MediaSessionService() {
         ensureForegroundNotification()
 
         val audioVisualizerProcessor = AudioVisualizerProcessor()
-        val renderersFactory = object : androidx.media3.exoplayer.DefaultRenderersFactory(this) {
+        val renderersFactory = object : DefaultRenderersFactory(this) {
             override fun buildAudioSink(
                 context: Context,
                 enableFloatOutput: Boolean,
@@ -572,8 +676,39 @@ class MusicService : MediaSessionService() {
                     .setAudioProcessors(arrayOf(audioVisualizerProcessor))
                     .build()
             }
+
+            override fun buildAudioRenderers(
+                context: Context,
+                extensionRendererMode: Int,
+                mediaCodecSelector: androidx.media3.exoplayer.mediacodec.MediaCodecSelector,
+                enableDecoderFallback: Boolean,
+                audioSink: androidx.media3.exoplayer.audio.AudioSink,
+                eventHandler: Handler,
+                eventListener: androidx.media3.exoplayer.audio.AudioRendererEventListener,
+                out: java.util.ArrayList<androidx.media3.exoplayer.Renderer>
+            ) {
+                // Inject FfmpegAudioRenderer for FLAC, ALAC, OPUS, AC3, E-AC3, DTS, WMA, APE, Musepack
+                try {
+                    val ffmpegRenderer = androidx.media3.decoder.ffmpeg.FfmpegAudioRenderer(
+                        eventHandler, eventListener, audioSink
+                    )
+                    out.add(ffmpegRenderer)
+                } catch (t: Throwable) {
+                    android.util.Log.w("MusicService", "Could not inject FfmpegAudioRenderer: ${t.message}")
+                }
+                super.buildAudioRenderers(
+                    context,
+                    DefaultRenderersFactory.EXTENSION_RENDERER_MODE_OFF,
+                    mediaCodecSelector,
+                    enableDecoderFallback,
+                    audioSink,
+                    eventHandler,
+                    eventListener,
+                    out
+                )
+            }
         }.apply {
-            setExtensionRendererMode(androidx.media3.exoplayer.DefaultRenderersFactory.EXTENSION_RENDERER_MODE_OFF)
+            setExtensionRendererMode(DefaultRenderersFactory.EXTENSION_RENDERER_MODE_PREFER)
             setEnableDecoderFallback(true)
             setEnableAudioTrackPlaybackParams(true)
         }
@@ -593,7 +728,19 @@ class MusicService : MediaSessionService() {
             .setPrioritizeTimeOverSizeThresholds(true)
             .build()
 
+        val extractorsFactory = DefaultExtractorsFactory()
+            .setConstantBitrateSeekingEnabled(true)
+            .setConstantBitrateSeekingAlwaysEnabled(true)
+            .setMp3ExtractorFlags(Mp3Extractor.FLAG_ENABLE_CONSTANT_BITRATE_SEEKING)
+            .setAdtsExtractorFlags(AdtsExtractor.FLAG_ENABLE_CONSTANT_BITRATE_SEEKING)
+            .setTsExtractorTimestampSearchBytes(8 * 1024 * 1024)
+        val mediaSourceFactory = DefaultMediaSourceFactory(
+            DefaultDataSource.Factory(this),
+            extractorsFactory
+        ).setLoadErrorHandlingPolicy(DefaultLoadErrorHandlingPolicy(5))
+
         val player = ExoPlayer.Builder(this, renderersFactory)
+            .setMediaSourceFactory(mediaSourceFactory)
             .setLoadControl(loadControl)
             .setWakeMode(C.WAKE_MODE_LOCAL)
             .setAudioAttributes(
@@ -636,16 +783,22 @@ class MusicService : MediaSessionService() {
                 }
             }
             override fun onIsPlayingChanged(isPlaying: Boolean) {
-                isMusicPlaying.value = isPlaying
+                if (!isUsingFallbackEngine.value) {
+                    isMusicPlaying.value = isPlaying
+                }
                 if (isPlaying) recordPlayedItem(player.currentMediaItem)
-                if (!isPlaying) {
+                if (!isPlaying && !isUsingFallbackEngine.value) {
                     AudioReactor.reset()
                 }
                 updateForegroundNotification()
             }
             override fun onPlaybackStateChanged(playbackState: Int) {
-                if (playbackState == Player.STATE_ENDED ||
-                    playbackState == Player.STATE_IDLE) {
+                if (playbackState == Player.STATE_READY) {
+                    lastReadyAtMs = SystemClock.elapsedRealtime()
+                    playbackStatusMessage.value = null
+                }
+                if ((playbackState == Player.STATE_ENDED ||
+                        playbackState == Player.STATE_IDLE) && !isUsingFallbackEngine.value) {
                     AudioReactor.reset()
                 }
                 // Media3 advances/repeats the timeline itself. STATE_ENDED with
@@ -660,6 +813,8 @@ class MusicService : MediaSessionService() {
                 AudioReactor.reset()
             }
             override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
+                stopVlcFallback()
+                resetRecoveryState()
                 AudioReactor.reset()
                 if (mediaItem != null) {
                     val mediaId = mediaItem.mediaId
@@ -684,6 +839,9 @@ class MusicService : MediaSessionService() {
                 }
                 updateSessionCustomLayout()
                 updateForegroundNotification()
+            }
+            override fun onPlayerError(error: PlaybackException) {
+                handleAudioPlaybackError(player, error)
             }
         })
 
@@ -796,20 +954,40 @@ class MusicService : MediaSessionService() {
 
         val forwardingPlayer = object : ForwardingPlayer(player) {
             override fun play() {
+                if (isUsingFallbackEngine.value) {
+                    playVlcFallback()
+                    return
+                }
                 player.volume = 1f
                 player.play()
             }
 
             override fun pause() {
+                if (isUsingFallbackEngine.value) {
+                    pauseVlcFallback()
+                    return
+                }
                 player.pause()
                 player.volume = 1f
             }
 
             override fun setPlayWhenReady(playWhenReady: Boolean) {
+                if (isUsingFallbackEngine.value) {
+                    if (playWhenReady) playVlcFallback() else pauseVlcFallback()
+                    return
+                }
                 if (playWhenReady) {
                     player.volume = 1f
                 }
                 super.setPlayWhenReady(playWhenReady)
+            }
+
+            override fun seekTo(positionMs: Long) {
+                if (isUsingFallbackEngine.value) {
+                    seekVlcFallback(positionMs)
+                    return
+                }
+                super.seekTo(positionMs)
             }
 
             override fun isCommandAvailable(command: Int): Boolean {
@@ -870,7 +1048,7 @@ class MusicService : MediaSessionService() {
     private fun buildMediaNotification(): android.app.Notification {
         val title = nowPlayingTitle.value.ifEmpty { "Music Playback" }
         val artist = nowPlayingArtist.value.ifEmpty { "AllRounder Player" }
-        val isPlaying = playerInstance?.isPlaying == true
+        val isPlaying = if (isUsingFallbackEngine.value) isMusicPlaying.value else (playerInstance?.isPlaying == true)
 
         // Activity intent when notification body is tapped
         val activityIntent = Intent(this, MainActivity::class.java).apply {
@@ -960,7 +1138,8 @@ class MusicService : MediaSessionService() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             try {
                 val notification = buildMediaNotification()
-                if (playerInstance?.isPlaying == true) {
+                val activelyPlaying = if (isUsingFallbackEngine.value) isMusicPlaying.value else (playerInstance?.isPlaying == true)
+                if (activelyPlaying) {
                     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
                         startForeground(
                             MUSIC_NOTIFICATION_ID,
@@ -1029,14 +1208,14 @@ class MusicService : MediaSessionService() {
                 return START_NOT_STICKY
             }
             CUSTOM_ACTION_REWIND -> {
-                playerInstance?.let { p ->
-                    p.seekTo((p.currentPosition - 10_000L).coerceAtLeast(0L))
-                }
+                val curPos = getPlaybackPositionMs()
+                seekToPosition((curPos - 10_000L).coerceAtLeast(0L))
             }
             CUSTOM_ACTION_FORWARD -> {
-                playerInstance?.let { p ->
-                    p.seekTo((p.currentPosition + 10_000L).coerceAtMost(p.duration.coerceAtLeast(0L)))
-                }
+                val curPos = getPlaybackPositionMs()
+                val curDur = getPlaybackDurationMs()
+                val target = if (curDur > 0L) (curPos + 10_000L).coerceAtMost(curDur) else (curPos + 10_000L)
+                seekToPosition(target)
             }
         }
         updateForegroundNotification()
@@ -1119,6 +1298,9 @@ class MusicService : MediaSessionService() {
 
     override fun onDestroy() {
         setSleepTimer(0)
+        audioRecoveryJob?.cancel()
+        audioRecoveryJob = null
+        stopVlcFallback()
         serviceInstance = null
         playerInstance = null
         releaseAudioEffects()
@@ -1132,6 +1314,226 @@ class MusicService : MediaSessionService() {
             mediaSession = null
         }
         super.onDestroy()
+    }
+
+    internal fun resetRecoveryState() {
+        audioRecoveryJob?.cancel()
+        audioRecoveryJob = null
+        audioRecoveryAttempt = 0
+        lastReadyAtMs = 0L
+        playbackStatusMessage.value = null
+    }
+
+    private fun handleAudioPlaybackError(player: ExoPlayer, error: PlaybackException) {
+        if (player !== playerInstance || isUsingFallbackEngine.value) return
+        val now = SystemClock.elapsedRealtime()
+        if (lastReadyAtMs > 0L && now - lastReadyAtMs >= 20_000L) {
+            audioRecoveryAttempt = 0
+        }
+        val attempt = audioRecoveryAttempt++
+        android.util.Log.w("MusicService", "Audio error (attempt=$attempt, code=${error.errorCodeName}): ${error.message}")
+
+        val currentUri = player.currentMediaItem?.localConfiguration?.uri ?: currentMusicItem.value?.uri
+        if (attempt >= 3 ||
+            error.errorCode == PlaybackException.ERROR_CODE_PARSING_CONTAINER_UNSUPPORTED ||
+            error.errorCode == PlaybackException.ERROR_CODE_DECODING_FORMAT_UNSUPPORTED
+        ) {
+            if (currentUri != null) {
+                val resumeMs = player.currentPosition.coerceAtLeast(0L)
+                startVlcAudioFallback(player, currentUri, resumeMs)
+            } else {
+                playbackStatusMessage.value = "Unable to open this audio track"
+                isMusicPlaying.value = false
+            }
+            return
+        }
+
+        val currentPos = player.currentPosition.coerceAtLeast(0L)
+        val totalDur = player.duration.coerceAtLeast(0L)
+        val targetPos = when {
+            attempt == 1 && (totalDur <= 0L || currentPos + 4_000L < totalDur) -> currentPos + 4_000L
+            attempt >= 2 -> 0L
+            else -> currentPos
+        }
+        playbackStatusMessage.value = if (attempt == 1 && targetPos > currentPos) {
+            "Skipping damaged audio frame..."
+        } else {
+            "Recovering audio playback..."
+        }
+
+        audioRecoveryJob?.cancel()
+        audioRecoveryJob = serviceScope.launch {
+            delay(when (attempt) { 0 -> 350L; 1 -> 650L; else -> 900L })
+            if (player !== playerInstance || isUsingFallbackEngine.value) return@launch
+            runCatching {
+                player.seekTo(targetPos)
+                player.prepare()
+                player.volume = 1f
+                player.playWhenReady = true
+            }.onFailure {
+                if (currentUri != null) {
+                    startVlcAudioFallback(player, currentUri, targetPos)
+                }
+            }
+        }
+    }
+
+    private fun startVlcAudioFallback(exoPlayer: ExoPlayer, uri: Uri, startPosMs: Long) {
+        audioRecoveryJob?.cancel()
+        audioRecoveryJob = null
+        try {
+            exoPlayer.playWhenReady = false
+            exoPlayer.pause()
+            exoPlayer.stop()
+        } catch (_: Exception) {}
+
+        stopVlcFallback(clearPlaylistFlag = false)
+
+        try {
+            val lib = LibVLC(
+                applicationContext,
+                arrayListOf(
+                    "--no-video",
+                    "--file-caching=1500",
+                    "--network-caching=2500",
+                    "--avcodec-corrupted",
+                    "--avcodec-error-resilience=1",
+                    "--no-video-title-show"
+                )
+            )
+            vlcLib = lib
+            val mp = VlcMediaPlayer(lib)
+            vlcAudioPlayer = mp
+
+            val pfd = if (uri.scheme == "content") {
+                try { contentResolver.openFileDescriptor(uri, "r") } catch (_: Exception) { null }
+            } else null
+            vlcPfd = pfd
+
+            val media = (if (pfd != null) Media(lib, pfd.fileDescriptor) else Media(lib, uri)).apply {
+                addOption(":no-video")
+                addOption(":avcodec-corrupted")
+                addOption(":file-caching=1500")
+            }
+            vlcMedia = media
+            mp.media = media
+            isUsingFallbackEngine.value = true
+            fallbackDurationMs.longValue = currentMusicItem.value?.duration?.coerceAtLeast(0L) ?: 0L
+            fallbackPositionMs.longValue = startPosMs.coerceAtLeast(0L)
+            playbackStatusMessage.value = "Playing in compatibility engine"
+
+            var appliedStartSeek = startPosMs <= 0L
+            mp.setEventListener { event ->
+                mainHandler.post {
+                    if (vlcAudioPlayer !== mp) return@post
+                    when (event.type) {
+                        VlcMediaPlayer.Event.Playing -> {
+                            isMusicPlaying.value = true
+                            playbackStatusMessage.value = null
+                            val len = mp.length
+                            if (len > 0L) fallbackDurationMs.longValue = len
+                            if (!appliedStartSeek && startPosMs > 0L && mp.isSeekable) {
+                                appliedStartSeek = true
+                                mp.time = startPosMs
+                            }
+                            updateForegroundNotification()
+                        }
+                        VlcMediaPlayer.Event.Paused -> {
+                            isMusicPlaying.value = false
+                            updateForegroundNotification()
+                        }
+                        VlcMediaPlayer.Event.LengthChanged -> {
+                            val len = mp.length
+                            if (len > 0L) fallbackDurationMs.longValue = len
+                        }
+                        VlcMediaPlayer.Event.TimeChanged -> {
+                            val t = mp.time
+                            if (t >= 0L) fallbackPositionMs.longValue = t
+                        }
+                        VlcMediaPlayer.Event.EndReached -> {
+                            isMusicPlaying.value = false
+                            updateForegroundNotification()
+                            when {
+                                repeatMode.intValue == Player.REPEAT_MODE_ONE -> {
+                                    startVlcAudioFallback(exoPlayer, uri, 0L)
+                                }
+                                currentPlaylist.size > 1 &&
+                                    (repeatMode.intValue == Player.REPEAT_MODE_ALL || isAutoPlayEnabled.value || shuffleEnabled.value) -> {
+                                    playNext()
+                                }
+                            }
+                        }
+                        VlcMediaPlayer.Event.EncounteredError -> {
+                            isMusicPlaying.value = false
+                            playbackStatusMessage.value = "Cannot decode remaining audio data"
+                            updateForegroundNotification()
+                        }
+                    }
+                }
+            }
+            mp.play()
+        } catch (t: Throwable) {
+            android.util.Log.e("MusicService", "LibVLC audio fallback failed", t)
+            stopVlcFallback()
+            playbackStatusMessage.value = "Unable to play this audio file"
+            isMusicPlaying.value = false
+        }
+    }
+
+    internal fun playVlcFallback() {
+        val mp = vlcAudioPlayer ?: return
+        mp.volume = 100
+        mp.play()
+        isMusicPlaying.value = true
+        updateForegroundNotification()
+    }
+
+    internal fun pauseVlcFallback() {
+        val mp = vlcAudioPlayer ?: return
+        mp.pause()
+        isMusicPlaying.value = false
+        updateForegroundNotification()
+    }
+
+    internal fun seekVlcFallback(positionMs: Long) {
+        val mp = vlcAudioPlayer ?: return
+        val maxDur = fallbackDurationMs.longValue
+        val clamped = if (maxDur > 0L) positionMs.coerceIn(0L, maxDur) else positionMs.coerceAtLeast(0L)
+        if (mp.isSeekable) {
+            mp.time = clamped
+        }
+        fallbackPositionMs.longValue = clamped
+    }
+
+    internal fun setVlcFallbackRate(speed: Float) {
+        vlcAudioPlayer?.rate = speed.coerceIn(0.25f, 4.0f)
+    }
+
+    internal fun setVlcFallbackVolumeFactor(factor: Float) {
+        vlcAudioPlayer?.volume = (factor * 100f).toInt().coerceIn(0, 100)
+    }
+
+    internal fun stopVlcFallback(clearPlaylistFlag: Boolean = true) {
+        val mp = vlcAudioPlayer
+        vlcAudioPlayer = null
+        if (mp != null) {
+            try {
+                mp.setEventListener(null)
+                mp.stop()
+                mp.release()
+            } catch (_: Exception) {}
+        }
+        try { vlcMedia?.release() } catch (_: Exception) {}
+        vlcMedia = null
+        try { vlcPfd?.close() } catch (_: Exception) {}
+        vlcPfd = null
+        try { vlcLib?.release() } catch (_: Exception) {}
+        vlcLib = null
+        if (clearPlaylistFlag) {
+            isUsingFallbackEngine.value = false
+            fallbackDurationMs.longValue = 0L
+            fallbackPositionMs.longValue = 0L
+        }
     }
 }
 

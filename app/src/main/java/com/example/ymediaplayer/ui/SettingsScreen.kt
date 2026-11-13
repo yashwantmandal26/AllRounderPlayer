@@ -502,7 +502,7 @@ fun SettingsScreen(
             val showMusic = (q.isBlank() && (currentCat == SettingsCategory.ALL || currentCat == SettingsCategory.MUSIC)) ||
                     (q.isNotBlank() && (
                         "Music Player".contains(q, ignoreCase = true) ||
-                        itemMatches("Now Playing Screen Style", "Vinyl Card Sonic Reactor Cassette Cyber Orb Wave") ||
+                        itemMatches("Now Playing Screen Style", "Vinyl Card Sonic Reactor Cassette Cyber Orb Wave Eclipse") ||
                         itemMatches("Show Call Recordings & Voice Notes", "recordings voice whatsapp audio memos") ||
                         itemMatches("Show Ringtones & Short Audio", "ringtones notifications alerts short audio") ||
                         itemMatches("Gapless Playback", "silence songs zero preload") ||
@@ -1528,10 +1528,12 @@ fun SettingsScreen(
                         subtitle = when (musicArtworkStyle) {
                             "VINYL" -> "Retro Vinyl Turntable"
                             "CARD" -> "Modern Album Card"
-                            "SONIC_REACTOR" -> "Sonic Reactor (Audio-Reactive)"
+                            "SONIC_REACTOR" -> "Harmonic Halo"
                             "CASSETTE" -> "Retro Cassette Tape"
-                            "CYBER_ORB" -> "Cyber Neon Orb"
-                            else -> "Modern Album Card"
+                            "CYBER_ORB" -> "Aurora Orb"
+                            "WAVE" -> "Aurora Wave"
+                            "ECLIPSE" -> "Celestial Eclipse"
+                            else -> "Retro Vinyl Turntable"
                         },
                         icon = Icons.Rounded.Album,
                         onClick = { activeDialog = SettingsDialogType.MUSIC_ARTWORK }
@@ -2145,9 +2147,11 @@ fun SettingsScreen(
                 options = listOf(
                     "VINYL" to "Retro Vinyl Turntable",
                     "CARD" to "Modern Album Art Card",
-                    "SONIC_REACTOR" to "Sonic Reactor (Audio-Reactive)",
+                    "SONIC_REACTOR" to "Harmonic Halo",
                     "CASSETTE" to "Retro Cassette Tape",
-                    "CYBER_ORB" to "Cyber Neon Orb",
+                    "CYBER_ORB" to "Aurora Orb",
+                    "WAVE" to "Aurora Wave",
+                    "ECLIPSE" to "Celestial Eclipse",
                 ),
                 selectedKey = musicArtworkStyle,
                 onSelect = {

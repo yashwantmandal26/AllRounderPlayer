@@ -48,14 +48,12 @@ object AudioReactor {
 
     // Running smoothing values
     private val currentBands = FloatArray(NUM_BANDS) { 0f }
+    private val currentWaveform = FloatArray(WAVEFORM_POINTS) { 0f }
     private var smoothedEnergy = 0f
     private var smoothedBass = 0f
-    private var runningBassAverage = 0.05f
-    private var lastBeatTimestamp = 0L
-    private var internalBassPulse = 0f
 
-    // FFT scratch arrays (128-point real FFT)
-    private const val FFT_SIZE = 128
+    // FFT scratch arrays (512-point real FFT for clean low-frequency resolution)
+    private const val FFT_SIZE = 512
     private val fftReal = FloatArray(FFT_SIZE)
     private val fftImag = FloatArray(FFT_SIZE)
     private val magnitudes = FloatArray(FFT_SIZE / 2)
@@ -65,33 +63,49 @@ object AudioReactor {
     }
 
     private var lastCaptureTimestamp = 0L
-    private const val CAPTURE_INTERVAL_MS = 25L // ~40 fps target for smooth visualizer
+    private const val CAPTURE_INTERVAL_MS = 22L // ~45 fps smooth analysis cadence
 
     // Preallocated scratch buffer for async processing
-    private const val MAX_SAMPLE_CACHE = 1024
-    private val sampleCache = ShortArray(MAX_SAMPLE_CACHE)
+    private const val MAX_SAMPLE_CACHE = 2048
+    private val floatSampleCache = FloatArray(MAX_SAMPLE_CACHE)
     @Volatile
     private var isProcessing = false
 
-    // Static singleton logarithmic frequency bins
+    // Logarithmic frequency bins across 512-point FFT (bins 1..255)
     private val BIN_MAP = arrayOf(
         intArrayOf(1),
         intArrayOf(2),
-        intArrayOf(3),
-        intArrayOf(4),
+        intArrayOf(3, 4),
         intArrayOf(5, 6),
-        intArrayOf(7, 8),
-        intArrayOf(9, 10),
-        intArrayOf(11, 13),
-        intArrayOf(14, 17),
-        intArrayOf(18, 22),
-        intArrayOf(23, 27),
-        intArrayOf(28, 33),
-        intArrayOf(34, 40),
-        intArrayOf(41, 48),
-        intArrayOf(49, 56),
-        intArrayOf(57, 63)
+        intArrayOf(7, 8, 9),
+        intArrayOf(10, 11, 12, 13),
+        intArrayOf(14, 15, 16, 17, 18),
+        intArrayOf(19, 20, 21, 22, 23, 24),
+        intArrayOf(25, 26, 28, 30, 32, 34),
+        intArrayOf(35, 37, 39, 42, 45, 48),
+        intArrayOf(49, 53, 57, 61, 65, 69),
+        intArrayOf(70, 75, 80, 86, 92, 98),
+        intArrayOf(99, 106, 113, 121, 129, 137),
+        intArrayOf(138, 147, 156, 166, 176, 186),
+        intArrayOf(187, 196, 205, 214, 223, 232),
+        intArrayOf(233, 238, 243, 248, 252, 255)
     )
+
+    internal fun smoothEma(previous: Float, target: Float, attackAlpha: Float = 0.24f, releaseAlpha: Float = 0.11f): Float {
+        val alpha = if (target > previous) attackAlpha else releaseAlpha
+        return (previous + (target - previous) * alpha).coerceIn(0f, 1f)
+    }
+
+    internal fun spatialSmooth3(values: FloatArray, wrap: Boolean = false): FloatArray {
+        if (values.size < 3) return values.copyOf()
+        val out = FloatArray(values.size)
+        for (i in values.indices) {
+            val prevIdx = if (i == 0) (if (wrap) values.lastIndex else 0) else i - 1
+            val nextIdx = if (i == values.lastIndex) (if (wrap) 0 else values.lastIndex) else i + 1
+            out[i] = values[prevIdx] * 0.2f + values[i] * 0.6f + values[nextIdx] * 0.2f
+        }
+        return out
+    }
 
     fun reset() {
         _energy.floatValue = 0f
@@ -99,12 +113,13 @@ object AudioReactor {
         for (i in 0 until NUM_BANDS) {
             currentBands[i] = 0f
         }
+        for (i in 0 until WAVEFORM_POINTS) {
+            currentWaveform[i] = 0f
+        }
         _bands.value = FloatArray(NUM_BANDS) { 0f }
         _waveformData.value = FloatArray(WAVEFORM_POINTS) { 0f }
         smoothedEnergy = 0f
         smoothedBass = 0f
-        internalBassPulse = 0f
-        runningBassAverage = 0.05f
         lastCaptureTimestamp = 0L
         isProcessing = false
     }
@@ -113,24 +128,35 @@ object AudioReactor {
      * Non-blocking sample capture called from ExoPlayer audio thread.
      * Extracts samples and dispatches analysis to background worker to prevent audio thread starvation.
      */
-    fun onAudioPcmBuffer(buffer: ByteBuffer, channelCount: Int) {
+    fun onAudioPcmBuffer(buffer: ByteBuffer, channelCount: Int, encoding: Int = C.ENCODING_PCM_16BIT) {
         val now = System.currentTimeMillis()
         if (now - lastCaptureTimestamp < CAPTURE_INTERVAL_MS || isProcessing) {
             return
         }
 
         val remaining = buffer.remaining()
-        if (remaining < 4) return
+        val bytesPerSample = if (encoding == C.ENCODING_PCM_FLOAT) 4 else 2
+        if (remaining < bytesPerSample * 2) return
 
-        val shortCount = remaining / 2
-        val samplesToCopy = min(shortCount, MAX_SAMPLE_CACHE)
+        val totalSamples = remaining / bytesPerSample
+        val samplesToCopy = min(totalSamples, MAX_SAMPLE_CACHE)
         if (samplesToCopy <= 0) return
 
         lastCaptureTimestamp = now
 
         val startPos = buffer.position()
-        val shortBuffer = buffer.asShortBuffer()
-        shortBuffer.get(sampleCache, 0, samplesToCopy)
+        val ro = buffer.duplicate().order(ByteOrder.LITTLE_ENDIAN)
+        if (encoding == C.ENCODING_PCM_FLOAT) {
+            val fb = ro.asFloatBuffer()
+            for (i in 0 until samplesToCopy) {
+                floatSampleCache[i] = fb.get().coerceIn(-1f, 1f)
+            }
+        } else {
+            val sb = ro.asShortBuffer()
+            for (i in 0 until samplesToCopy) {
+                floatSampleCache[i] = sb.get().toFloat() / 32768f
+            }
+        }
         buffer.position(startPos)
 
         val channels = max(1, channelCount)
@@ -153,10 +179,10 @@ object AudioReactor {
         var bassSum = 0.0
         var lowPassFilter = 0f
         val waveStep = max(1, monoCount / WAVEFORM_POINTS)
-        val newWave = FloatArray(WAVEFORM_POINTS)
+        val rawWave = FloatArray(WAVEFORM_POINTS)
         var waveIdx = 0
 
-        // Fill FFT buffer with initial mono samples
+        // Fill FFT buffer with initial mono samples (zero-padded cleanly if monoCount < FFT_SIZE)
         val fftSamples = min(monoCount, FFT_SIZE)
         for (i in 0 until FFT_SIZE) {
             if (i < fftSamples) {
@@ -164,7 +190,7 @@ object AudioReactor {
                 val baseIdx = i * channels
                 for (ch in 0 until channels) {
                     if (baseIdx + ch < sampleCount) {
-                        monoVal += sampleCache[baseIdx + ch].toFloat() / 32768f
+                        monoVal += floatSampleCache[baseIdx + ch]
                     }
                 }
                 monoVal /= channels
@@ -175,13 +201,13 @@ object AudioReactor {
             fftImag[i] = 0f
         }
 
-        // Pass over samples for RMS, waveform, and Bass filter
+        // Pass over samples for RMS, smooth waveform, and gentle bass filter
         for (i in 0 until monoCount) {
             var monoVal = 0f
             val baseIdx = i * channels
             for (ch in 0 until channels) {
                 if (baseIdx + ch < sampleCount) {
-                    monoVal += sampleCache[baseIdx + ch].toFloat() / 32768f
+                    monoVal += floatSampleCache[baseIdx + ch]
                 }
             }
             monoVal /= channels
@@ -189,64 +215,63 @@ object AudioReactor {
             val sq = monoVal * monoVal
             sumSquares += sq
 
-            // Simple 1st-order IIR low-pass filter for sub/bass (~180Hz)
-            lowPassFilter += 0.035f * (monoVal - lowPassFilter)
+            // Smooth 1st-order IIR low-pass filter for warm sub/bass (~160Hz)
+            lowPassFilter += 0.032f * (monoVal - lowPassFilter)
             bassSum += lowPassFilter * lowPassFilter
 
             if (i % waveStep == 0 && waveIdx < WAVEFORM_POINTS) {
-                newWave[waveIdx++] = monoVal.coerceIn(-1f, 1f)
+                rawWave[waveIdx++] = monoVal.coerceIn(-1f, 1f)
             }
         }
 
-        // Normalize energy (RMS)
+        // Normalize energy (RMS) with gentle fluid EMA (zero choppy jumps)
         val rms = sqrt(sumSquares / monoCount).toFloat()
-        smoothedEnergy = smoothedEnergy * 0.7f + (rms * 2.6f).coerceIn(0f, 1f) * 0.3f
+        smoothedEnergy = smoothEma(smoothedEnergy, (rms * 2.3f).coerceIn(0f, 1f), attackAlpha = 0.18f, releaseAlpha = 0.08f)
 
-        // Bass Energy & Kick Transient Detection
-        val bassRms = sqrt(bassSum / monoCount).toFloat() * 3.5f
-        smoothedBass = smoothedBass * 0.65f + bassRms.coerceIn(0f, 1f) * 0.35f
+        // Continuous fluid bass envelope without abrupt transient spikes
+        val bassRms = sqrt(bassSum / monoCount).toFloat() * 2.8f
+        smoothedBass = smoothEma(smoothedBass, bassRms.coerceIn(0f, 1f), attackAlpha = 0.20f, releaseAlpha = 0.09f)
 
-        runningBassAverage = runningBassAverage * 0.94f + smoothedBass * 0.06f
-        val now = System.currentTimeMillis()
-        var currentPulse = internalBassPulse * 0.86f // natural spring decay
-
-        // Transient spike threshold for kick drum / heavy bass drop
-        if (smoothedBass > runningBassAverage * 1.32f && smoothedBass > 0.12f && (now - lastBeatTimestamp) > 160L) {
-            currentPulse = (smoothedBass * 1.5f).coerceIn(0.6f, 1.2f)
-            lastBeatTimestamp = now
+        // Smooth waveform temporally and spatially so wave paths flow like silk
+        val spatialWave = spatialSmooth3(rawWave, wrap = false)
+        for (i in 0 until WAVEFORM_POINTS) {
+            currentWaveform[i] = currentWaveform[i] * 0.66f + spatialWave[i] * 0.34f
         }
-        internalBassPulse = currentPulse
 
-        // Perform 128-point FFT
+        // Perform 512-point FFT (scale normalized cleanly against FFT size)
         computeFft(fftReal, fftImag, FFT_SIZE)
 
-        // Map 64 FFT magnitudes into 16 logarithmic frequency bands
+        val normFactor = 6.5f / sqrt(FFT_SIZE.toFloat())
         for (i in 0 until FFT_SIZE / 2) {
             val mag = sqrt(fftReal[i] * fftReal[i] + fftImag[i] * fftImag[i])
-            magnitudes[i] = (mag * 3.8f).coerceIn(0f, 1f)
+            magnitudes[i] = (mag * normFactor).coerceIn(0f, 1f)
         }
 
+        val targetBands = FloatArray(NUM_BANDS)
         for (bandIdx in 0 until NUM_BANDS) {
             val bins = BIN_MAP[bandIdx]
             var sum = 0f
             for (b in bins) {
                 if (b < magnitudes.size) sum += magnitudes[b]
             }
-            val avg = (sum / bins.size) * (1f + bandIdx * 0.05f) // high-freq boost for visual balance
-            val target = avg.coerceIn(0.04f, 1f)
+            val avg = (sum / bins.size) * (0.95f + bandIdx * 0.045f)
+            targetBands[bandIdx] = avg.coerceIn(0.05f, 1f)
+        }
 
-            // Instant attack, smooth gravity decay
-            if (target > currentBands[bandIdx]) {
-                currentBands[bandIdx] = target
-            } else {
-                currentBands[bandIdx] = currentBands[bandIdx] * 0.82f + target * 0.18f
-            }
+        val blendedTargets = spatialSmooth3(targetBands, wrap = false)
+        for (bandIdx in 0 until NUM_BANDS) {
+            currentBands[bandIdx] = smoothEma(
+                previous = currentBands[bandIdx],
+                target = blendedTargets[bandIdx],
+                attackAlpha = 0.24f,
+                releaseAlpha = 0.11f
+            )
         }
 
         _energy.floatValue = smoothedEnergy
-        _bassPulse.floatValue = currentPulse
+        _bassPulse.floatValue = smoothedBass
         _bands.value = currentBands.clone()
-        _waveformData.value = newWave
+        _waveformData.value = currentWaveform.clone()
     }
 
     /**
@@ -309,7 +334,9 @@ object AudioReactor {
 class AudioVisualizerProcessor : BaseAudioProcessor() {
 
     override fun onConfigure(inputAudioFormat: AudioProcessor.AudioFormat): AudioProcessor.AudioFormat {
-        if (inputAudioFormat.encoding != C.ENCODING_PCM_16BIT) {
+        if (inputAudioFormat.encoding != C.ENCODING_PCM_16BIT &&
+            inputAudioFormat.encoding != C.ENCODING_PCM_FLOAT
+        ) {
             return AudioProcessor.AudioFormat.NOT_SET
         }
         return inputAudioFormat
@@ -324,7 +351,7 @@ class AudioVisualizerProcessor : BaseAudioProcessor() {
 
         // Safely peek audio samples in AudioReactor without blocking audio render thread
         try {
-            AudioReactor.onAudioPcmBuffer(inputBuffer, inputAudioFormat.channelCount)
+            AudioReactor.onAudioPcmBuffer(inputBuffer, inputAudioFormat.channelCount, inputAudioFormat.encoding)
         } catch (_: Throwable) {}
 
         // Pass through unmodified to audio output sink

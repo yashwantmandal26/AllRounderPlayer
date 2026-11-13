@@ -108,6 +108,13 @@ class VideoRepository(private val context: Context) {
             memoryCachedFolders = null
             lastCacheTime = 0L
         }
+
+        val SUPPORTED_VIDEO_EXTENSIONS = setOf(
+            "mp4", "mkv", "webm", "avi", "mov", "ts",
+            "m4v", "flv", "wmv", "3gp", "3g2", "mpg",
+            "mpeg", "vob", "m2ts", "mts", "ogv", "asf",
+            "rm", "rmvb", "divx", "f4v"
+        )
     }
 
     /**
@@ -251,13 +258,8 @@ class VideoRepository(private val context: Context) {
             val cinemaDir = if (moviesDir != null) java.io.File(moviesDir, "MYCinema") else null
             if (cinemaDir != null && cinemaDir.exists() && cinemaDir.isDirectory) {
                 cinemaDir.walkTopDown().filter { file ->
-                    file.isFile && file.length() > 0 &&
-                        (file.extension.equals("mp4", true) ||
-                         file.extension.equals("mkv", true) ||
-                         file.extension.equals("webm", true) ||
-                         file.extension.equals("avi", true) ||
-                         file.extension.equals("mov", true) ||
-                         file.extension.equals("ts", true))
+                    val ext = file.extension.lowercase()
+                    file.isFile && file.length() > 0 && ext in SUPPORTED_VIDEO_EXTENSIONS
                 }.forEach { file ->
                     val fileUri = android.net.Uri.fromFile(file)
                     if (videos.none { it.uri.path == file.absolutePath || it.uri == fileUri }) {

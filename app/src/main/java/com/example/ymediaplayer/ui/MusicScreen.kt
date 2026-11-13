@@ -61,9 +61,17 @@ import androidx.compose.ui.draw.scale
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.PathEffect
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.StrokeJoin
+import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.drawscope.rotate
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -512,14 +520,24 @@ fun MusicScreen(
         }
     }
 
-    // Periodic position update (throttled when paused)
+    // Periodic position update (supports both ExoPlayer and LibVLC compatibility engine)
     LaunchedEffect(mediaController) {
         while (true) {
-            val playing = mediaController?.isPlaying == true
+            val usingFallback = MusicService.isUsingFallbackEngine.value
+            val playing = if (usingFallback) MusicService.isMusicPlaying.value else (mediaController?.isPlaying == true)
             isPlaying = playing
-            currentPosition = mediaController?.currentPosition ?: 0L
-            duration = (mediaController?.duration ?: 0L).coerceAtLeast(0L)
+            currentPosition = if (usingFallback) MusicService.getPlaybackPositionMs() else (mediaController?.currentPosition ?: 0L)
+            duration = if (usingFallback) MusicService.getPlaybackDurationMs() else (mediaController?.duration ?: 0L).coerceAtLeast(0L)
             delay(if (playing) 250L else 1000L)
+        }
+    }
+
+    val musicStatusMsg by remember { MusicService.playbackStatusMessage }
+    LaunchedEffect(musicStatusMsg) {
+        val msg = musicStatusMsg
+        if (!msg.isNullOrBlank()) {
+            Toast.makeText(context, msg, Toast.LENGTH_SHORT).show()
+            MusicService.playbackStatusMessage.value = null
         }
     }
 
@@ -556,7 +574,7 @@ fun MusicScreen(
                     if (list.isNotEmpty()) {
                         playNext()
                     } else {
-                        mediaController?.stop()
+                        MusicService.stopMusic()
                         currentlyPlaying = null
                         showFullScreenPlayer = false
                     }
@@ -666,21 +684,20 @@ fun MusicScreen(
         MusicService.onPlayNextAction = playNext
         MusicService.onPlayPrevAction = playPrev
         MusicService.onPauseAction = {
-            mediaController?.pause()
+            if (MusicService.isUsingFallbackEngine.value) {
+                MusicService.pauseMusic()
+            } else {
+                mediaController?.pause()
+            }
         }
         MusicService.onStopAction = {
             currentlyPlaying = null
-            mediaController?.stop()
+            if (!MusicService.isUsingFallbackEngine.value) {
+                mediaController?.stop()
+            }
         }
         MusicService.onTogglePlayPauseAction = {
-            if (mediaController?.isPlaying == true) {
-                mediaController?.pause()
-            } else {
-                com.example.ymediaplayer.player.VideoPlaybackManager.player?.let {
-                    if (it.isPlaying) it.pause()
-                }
-                mediaController?.play()
-            }
+            MusicService.togglePlayPause()
         }
     }
 
@@ -1158,7 +1175,7 @@ fun MusicScreen(
                             },
                             onClick = {
                                 if (!isCurrent) playSongForce(song, artistSongs)
-                                else if (isPlaying) mediaController?.pause() else mediaController?.play()
+                                else MusicService.togglePlayPause()
                             }
                         )
                     }
@@ -1241,7 +1258,7 @@ fun MusicScreen(
                             onMoreClick = { songForContextMenu = song },
                             onClick = {
                                 if (!isCurrent) playSongForce(song, albumSongs)
-                                else if (isPlaying) mediaController?.pause() else mediaController?.play()
+                                else MusicService.togglePlayPause()
                             }
                         )
                     }
@@ -1528,7 +1545,7 @@ fun MusicScreen(
                                     onMoreClick = { songForContextMenu = song },
                                     onClick = {
                                         if (!isCurrent) playSongForce(song)
-                                        else if (isPlaying) mediaController?.pause() else mediaController?.play()
+                                        else MusicService.togglePlayPause()
                                     }
                                 )
                             }
@@ -1552,7 +1569,7 @@ fun MusicScreen(
                                     isPlaying = isPlaying && currentlyPlaying?.id == featured.id,
                                     onPlayToggle = {
                                         if (currentlyPlaying?.id == featured.id) {
-                                            if (isPlaying) mediaController?.pause() else mediaController?.play()
+                                            MusicService.togglePlayPause()
                                         } else {
                                             playSongForce(featured)
                                         }
@@ -1616,7 +1633,7 @@ fun MusicScreen(
                                             isPlaying = isPlaying && currentlyPlaying?.id == song.id,
                                             onClick = {
                                                 if (currentlyPlaying?.id == song.id) {
-                                                    if (isPlaying) mediaController?.pause() else mediaController?.play()
+                                                    MusicService.togglePlayPause()
                                                 } else {
                                                     playSongForce(song)
                                                 }
@@ -1744,7 +1761,7 @@ fun MusicScreen(
                                     onMoreClick = { songForContextMenu = song },
                                     onClick = {
                                         if (!isCurrent) playSongForce(song, allMusicDeviceSongs)
-                                        else if (isPlaying) mediaController?.pause() else mediaController?.play()
+                                        else MusicService.togglePlayPause()
                                     }
                                 )
                             }
@@ -1791,7 +1808,7 @@ fun MusicScreen(
                                                     isPlaying = isPlaying && isCurrent,
                                                     onClick = {
                                                         if (!isCurrent) playSongForce(song)
-                                                        else if (isPlaying) mediaController?.pause() else mediaController?.play()
+                                                        else MusicService.togglePlayPause()
                                                     }
                                                 )
                                             }
@@ -1866,7 +1883,7 @@ fun MusicScreen(
                                     onMoreClick = { songForContextMenu = song },
                                     onClick = {
                                         if (!isCurrent) playSongForce(song)
-                                        else if (isPlaying) mediaController?.pause() else mediaController?.play()
+                                        else MusicService.togglePlayPause()
                                     }
                                 )
                             }
@@ -1901,7 +1918,7 @@ fun MusicScreen(
                                     onMoreClick = { songForContextMenu = song },
                                     onClick = {
                                         if (!isCurrent) playSongForce(song)
-                                        else if (isPlaying) mediaController?.pause() else mediaController?.play()
+                                        else MusicService.togglePlayPause()
                                     }
                                 )
                             }
@@ -1970,7 +1987,7 @@ fun MusicScreen(
                                     onMoreClick = { songForContextMenu = song },
                                     onClick = {
                                         if (!isCurrent) playSongForce(song)
-                                        else if (isPlaying) mediaController?.pause() else mediaController?.play()
+                                        else MusicService.togglePlayPause()
                                     }
                                 )
                             }
@@ -2101,7 +2118,7 @@ fun MusicScreen(
                                 onMoreClick = { songForContextMenu = song },
                                 onClick = {
                                     if (!isCurrent) playSongForce(song)
-                                    else if (isPlaying) mediaController?.pause() else mediaController?.play()
+                                    else MusicService.togglePlayPause()
                                 }
                             )
                         }
@@ -2262,7 +2279,7 @@ fun MusicScreen(
                                     onMoreClick = { songForContextMenu = song },
                                     onClick = {
                                         if (!isCurrent) playSongForce(song)
-                                        else if (isPlaying) mediaController?.pause() else mediaController?.play()
+                                        else MusicService.togglePlayPause()
                                     }
                                 )
                             }
@@ -2489,7 +2506,7 @@ fun MusicScreen(
                                         onMoreClick = { songForContextMenu = song },
                                         onClick = {
                                             if (!isCurrent) playSongForce(song, plSongs)
-                                            else if (isPlaying) mediaController?.pause() else mediaController?.play()
+                                            else MusicService.togglePlayPause()
                                         }
                                     )
                                 }
@@ -2521,7 +2538,7 @@ fun MusicScreen(
                 artist = displayArtist,
                 artUri = displayArt,
                 isPlaying = isPlaying,
-                onPlayPause = { if (isPlaying) mediaController?.pause() else mediaController?.play() },
+                onPlayPause = { MusicService.togglePlayPause() },
                 onNext = playNext,
                 onPrev = playPrev,
                 onClose = {
@@ -2557,15 +2574,24 @@ fun MusicScreen(
                     artworkStyle = artworkStyle,
                     sleepTimerSecondsRemaining = sleepTimerSecondsRemaining,
                     isFavorite = favorites.contains(song.uri.toString()),
-                    onPlayPause = { if (isPlaying) mediaController?.pause() else mediaController?.play() },
-                    onPausePlayback = { mediaController?.pause() },
-                    onResumePlayback = { mediaController?.play() },
+                    onPlayPause = { MusicService.togglePlayPause() },
+                    onPausePlayback = {
+                        if (MusicService.isUsingFallbackEngine.value) MusicService.pauseMusic()
+                        else mediaController?.pause()
+                    },
+                    onResumePlayback = {
+                        if (MusicService.isUsingFallbackEngine.value) {
+                            if (!MusicService.isMusicPlaying.value) MusicService.togglePlayPause()
+                        } else {
+                            mediaController?.play()
+                        }
+                    },
                     onSetPlaybackParameters = { speed, pitch ->
-                        mediaController?.playbackParameters = PlaybackParameters(speed, pitch)
+                        MusicService.setPlaybackParameters(speed, pitch)
                     },
                     onNext = playNext,
                     onPrev = playPrev,
-                    onSeek = { mediaController?.seekTo(it) },
+                    onSeek = { MusicService.seekToPosition(it) },
                     onToggleShuffle = { 
                         view.performHaptic(HapticType.LIGHT)
                         MusicService.setShuffleEnabled(!isShuffle) 
@@ -2579,7 +2605,7 @@ fun MusicScreen(
                         })
                     },
                     onToggleArtworkStyle = {
-                        val styles = listOf("VINYL", "CARD", "SONIC_REACTOR", "CASSETTE", "CYBER_ORB", "WAVE")
+                        val styles = listOf("VINYL", "CARD", "SONIC_REACTOR", "CASSETTE", "CYBER_ORB", "WAVE", "ECLIPSE")
                         val currentIdx = styles.indexOf(artworkStyle.uppercase())
                         val nextIdx = if (currentIdx == -1) 0 else (currentIdx + 1) % styles.size
                         val newStyle = styles[nextIdx]
@@ -2587,10 +2613,12 @@ fun MusicScreen(
                         appPreferences.setMusicArtworkStyle(newStyle)
                         val themeName = when (newStyle) {
                             "VINYL" -> "Vinyl Record"
-                            "CARD" -> "Glass 3D Card"
+                            "CARD" -> "Frosted Studio Card"
                             "SONIC_REACTOR" -> "Sonic Reactor"
-                            "CASSETTE" -> "Retro Cassette"
-                            "CYBER_ORB" -> "Cyber Neon Orb"
+                            "CASSETTE" -> "Studio Cassette"
+                            "CYBER_ORB" -> "Aurora Orb"
+                            "WAVE" -> "Aurora Wave"
+                            "ECLIPSE" -> "Celestial Eclipse"
                             else -> newStyle
                         }
                         showInstantHud(Icons.Rounded.Palette, "Visual Theme", themeName, c.accentBlue)
@@ -2631,9 +2659,12 @@ fun MusicScreen(
                     showVisualStyleDialog = false
                     val themeName = when (newStyle) {
                         "VINYL" -> "Vinyl Record"
-                        "CARD" -> "Glass 3D Card"
-                        "CASSETTE" -> "Retro Cassette"
-                        "CYBER_ORB" -> "Cyber Neon Orb"
+                        "CARD" -> "Frosted Studio Card"
+                        "SONIC_REACTOR" -> "Sonic Reactor"
+                        "CASSETTE" -> "Studio Cassette"
+                        "CYBER_ORB" -> "Aurora Orb"
+                        "WAVE" -> "Aurora Wave"
+                        "ECLIPSE" -> "Celestial Eclipse"
                         else -> newStyle
                     }
                     showInstantHud(Icons.Rounded.Palette, "Visual Theme", themeName, c.accentBlue)
@@ -2675,7 +2706,7 @@ fun MusicScreen(
                 currentSpeed = playbackSpeed,
                 onSelectSpeed = { speed ->
                     playbackSpeed = speed
-                    mediaController?.playbackParameters = PlaybackParameters(speed)
+                    MusicService.setPlaybackParameters(speed, 1f)
                     showSpeedDialog = false
                 },
                 onDismiss = { showSpeedDialog = false }
@@ -2822,7 +2853,7 @@ fun MusicScreen(
                                                 if (list.isNotEmpty()) {
                                                     playNext()
                                                 } else {
-                                                    mediaController?.stop()
+                                                    MusicService.stopMusic()
                                                     currentlyPlaying = null
                                                     showFullScreenPlayer = false
                                                 }
@@ -4028,21 +4059,6 @@ fun FullScreenMusicPlayer(
     var showVolumeBar by remember { mutableStateOf(false) }
     var volumeTouchTrigger by remember { mutableLongStateOf(0L) }
 
-    // ─── Initial Discovery Cue ──────────────────────────────────────────
-    // When user opens this music player screen, display both volume and
-    // brightness sliders for 2.5 seconds, then gracefully fade out.
-    LaunchedEffect(Unit) {
-        showBrightnessBar = true
-        showVolumeBar = true
-        delay(2500L)
-        if (brightnessTouchTrigger == 0L) {
-            showBrightnessBar = false
-        }
-        if (volumeTouchTrigger == 0L) {
-            showVolumeBar = false
-        }
-    }
-
     LaunchedEffect(brightnessTouchTrigger) {
         if (brightnessTouchTrigger > 0L) {
             delay(1800L)
@@ -4070,43 +4086,91 @@ fun FullScreenMusicPlayer(
 
     val effectivePosition = djScrubPosition ?: currentPosition
 
-    // Continuous accumulating rotation without snapping or jump effects
+    // Smooth inertia rotation & native refresh-rate audio interpolation (zero recomposition jitter)
     val spinAngle = remember { Animatable(0f) }
-    LaunchedEffect(isPlaying, isDjScratching) {
-        if (isPlaying && !isDjScratching) {
-            while (true) {
-                spinAngle.animateTo(
-                    targetValue = spinAngle.value + 360f,
-                    animationSpec = tween(14000, easing = LinearEasing)
-                )
-            }
-        }
-    }
-    val rotation = spinAngle.value + manualScratchAngle
-
-    // Real-time Song-Reactive Audio Dynamics (smooth, zero jump effect)
     val liveEnergy by com.example.ymediaplayer.service.AudioReactor.energy
     val liveBass by com.example.ymediaplayer.service.AudioReactor.bassPulse
     val liveBands by com.example.ymediaplayer.service.AudioReactor.bands
     val liveWaveform by com.example.ymediaplayer.service.AudioReactor.waveformData
 
-    val reactiveBass by animateFloatAsState(
-        targetValue = if (isPlaying) liveBass else 0f,
-        animationSpec = tween(180, easing = LinearEasing),
-        label = "reactiveBass"
-    )
+    val currentIsPlayingState by rememberUpdatedState(isPlaying)
+    val currentIsScratchingState by rememberUpdatedState(isDjScratching)
+    val currentStyleState by rememberUpdatedState(artworkStyle.uppercase())
+    val latestBandsState by rememberUpdatedState(liveBands)
+    val latestWaveState by rememberUpdatedState(liveWaveform)
+    val displayBands = remember { FloatArray(com.example.ymediaplayer.service.AudioReactor.NUM_BANDS) { 0.04f } }
+    val displayWave = remember { FloatArray(com.example.ymediaplayer.service.AudioReactor.WAVEFORM_POINTS) { 0f } }
+    var visualPhase by remember { mutableFloatStateOf(0f) }
+    var visualFrameTick by remember { mutableLongStateOf(0L) }
+
+    LaunchedEffect(isPlaying, isDjScratching, artworkStyle) {
+        val frameScope = this
+        var lastFrameNs = 0L
+        var angularVelocity = if (isPlaying && !isDjScratching) 25f else 0f
+        var settledIdleFrames = 0
+        while (true) {
+            val shouldRun = currentIsPlayingState ||
+                angularVelocity > 0.05f ||
+                settledIdleFrames < 28
+            if (!shouldRun) break
+
+            withFrameNanos { frameNs ->
+                val dt = if (lastFrameNs == 0L) 0.016f
+                else ((frameNs - lastFrameNs) / 1_000_000_000f).coerceIn(0.001f, 0.05f)
+                lastFrameNs = frameNs
+
+                if (currentIsScratchingState) {
+                    angularVelocity = 0f
+                } else {
+                    val targetVel = if (currentIsPlayingState) 25f else 0f
+                    val velFactor = 1f - kotlin.math.exp(-3.4f * dt)
+                    angularVelocity += (targetVel - angularVelocity) * velFactor
+                    if (angularVelocity > 0.02f) {
+                        val nextAngle = (spinAngle.value + angularVelocity * dt) % 360000f
+                        frameScope.launch(start = kotlinx.coroutines.CoroutineStart.UNDISPATCHED) {
+                            spinAngle.snapTo(nextAngle)
+                        }
+                    }
+                }
+
+                if (currentIsPlayingState) {
+                    visualPhase = (visualPhase + dt * 0.72f) % (2f * Math.PI.toFloat())
+                    settledIdleFrames = 0
+                } else {
+                    settledIdleFrames++
+                }
+
+                val smoothRate = 1f - kotlin.math.exp(-9.0f * dt)
+                val targetBands = latestBandsState
+                for (i in displayBands.indices) {
+                    val t = if (currentIsPlayingState && i < targetBands.size) targetBands[i] else 0.04f
+                    displayBands[i] = displayBands[i] + (t - displayBands[i]) * smoothRate
+                }
+                val targetWave = latestWaveState
+                for (i in displayWave.indices) {
+                    val t = if (currentIsPlayingState && i < targetWave.size) targetWave[i] else 0f
+                    displayWave[i] = displayWave[i] + (t - displayWave[i]) * smoothRate
+                }
+                if (currentStyleState != "CARD") {
+                    visualFrameTick++
+                }
+            }
+        }
+    }
+
     val reactiveEnergy by animateFloatAsState(
         targetValue = if (isPlaying) liveEnergy else 0f,
-        animationSpec = tween(220, easing = LinearEasing),
+        animationSpec = tween(420, easing = FastOutSlowInEasing),
         label = "reactiveEnergy"
     )
 
-    val ambientGlowAlpha = if (isPlaying) (0.35f + reactiveEnergy * 0.45f).coerceIn(0.2f, 0.85f) else 0.12f
+    // Calm, soft ambient glow (no strobing or disco dance pulse)
+    val ambientGlowAlpha = if (isPlaying) (0.20f + reactiveEnergy * 0.14f).coerceIn(0.18f, 0.34f) else 0.14f
 
     // Turntable Tonearm Angle: 0f (at rest off-platter) -> 26f (sits on record grooves when playing or DJ scratching)
     val tonearmAngle by animateFloatAsState(
         targetValue = if (isPlaying || isDjScratching) 26f else 0f,
-        animationSpec = tween(500, easing = FastOutSlowInEasing),
+        animationSpec = tween(550, easing = FastOutSlowInEasing),
         label = "tonearmAngle"
     )
 
@@ -4250,12 +4314,25 @@ fun FullScreenMusicPlayer(
             )
         }
 
+        val configuration = androidx.compose.ui.platform.LocalConfiguration.current
+        val screenWidthDp = configuration.screenWidthDp
+        val screenHeightDp = configuration.screenHeightDp
+        val isTablet = configuration.smallestScreenWidthDp >= 600 || screenWidthDp >= 600
+
+        val adaptiveSpacerMid = if (screenHeightDp < 700) 10.dp else 18.dp
+        val adaptiveSpacerSmall = if (screenHeightDp < 700) 8.dp else 14.dp
+        val adaptivePlayOuterSize = if (screenHeightDp < 700) 74.dp else 84.dp
+        val adaptivePlayInnerSize = if (screenHeightDp < 700) 66.dp else 76.dp
+        val adaptivePlayIconSize = if (screenHeightDp < 700) 36.dp else 44.dp
+
         Column(
             modifier = Modifier
                 .fillMaxSize()
                 .statusBarsPadding()
                 .navigationBarsPadding()
-                .padding(horizontal = 24.dp, vertical = 12.dp),
+                .padding(horizontal = if (isTablet) 36.dp else 24.dp, vertical = if (screenHeightDp < 700) 6.dp else 12.dp)
+                .widthIn(max = 640.dp)
+                .verticalScroll(rememberScrollState(), enabled = screenHeightDp < 660),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
             // ─── Header: Back, Sleep Timer Pill, Equalizer, Style, More ──────
@@ -4317,6 +4394,7 @@ fun FullScreenMusicPlayer(
                                 "CASSETTE" -> Icons.Rounded.Audiotrack to Color(0xFFFFB703)
                                 "CYBER_ORB" -> Icons.Rounded.Radio to Color(0xFFFF007F)
                                 "WAVE" -> Icons.Rounded.Waves to Color(0xFF00F5D4)
+                                "ECLIPSE" -> Icons.Rounded.Flare to Color(0xFFFFD166)
                                 else -> Icons.Rounded.Palette to c.accentBlue
                             }
                             Icon(
@@ -4350,9 +4428,9 @@ fun FullScreenMusicPlayer(
                 }
             }
 
-            Spacer(Modifier.weight(1f))
+            Spacer(if (screenHeightDp >= 660) Modifier.weight(1f) else Modifier.height(10.dp))
 
-            // ─── Customizable Artwork: 6 Visual Themes with Double-Tap Like ───
+            // ─── Customizable Artwork: 7 Visual Themes with Double-Tap Like ───
             var showHeartBurst by remember { mutableStateOf(false) }
             val heartScale by animateFloatAsState(
                 targetValue = if (showHeartBurst) 1.35f else 0f,
@@ -4392,40 +4470,19 @@ fun FullScreenMusicPlayer(
                         }
                     }
                 ) {
-                // ─── Real-Time Song-Reactive Ambient Glow & Resonance Rings ───
-                // 1. Reactive Bass Glow Halo (smooth color/alpha pulsing, stable dimensions)
+                // Calm, soft ambient backdrop behind artwork (zero pulsing/dance ring effects)
                 Box(
                     modifier = Modifier
-                        .size(310.dp)
+                        .size(308.dp)
                         .clip(CircleShape)
                         .background(
                             Brush.radialGradient(
                                 colors = listOf(
                                     c.accentBlue.copy(alpha = ambientGlowAlpha),
-                                    Color(0xFF00F5D4).copy(alpha = (ambientGlowAlpha * 0.45f * reactiveBass).coerceIn(0f, 0.45f)),
+                                    c.accentBlue.copy(alpha = ambientGlowAlpha * 0.35f),
                                     Color.Transparent
                                 )
                             )
-                        )
-                )
-
-                // 2. Dynamic Audio Sonic Resonance Ring (steady dimension, subtle color pulse)
-                Box(
-                    modifier = Modifier
-                        .size(320.dp)
-                        .clip(CircleShape)
-                        .graphicsLayer { alpha = if (isPlaying) 1f else 0f }
-                        .border(
-                            width = 1.5.dp,
-                            brush = Brush.radialGradient(
-                                listOf(
-                                    Color.Transparent,
-                                    c.accentBlue.copy(alpha = (reactiveBass * 0.5f).coerceIn(0f, 0.6f)),
-                                    Color(0xFF00F5D4).copy(alpha = (reactiveBass * 0.3f).coerceIn(0f, 0.4f)),
-                                    Color.Transparent
-                                )
-                            ),
-                            shape = CircleShape
                         )
                 )
 
@@ -4576,7 +4633,7 @@ fun FullScreenMusicPlayer(
                                                     view.performHaptic(HapticType.LIGHT)
 
                                                     coroutineScope.launch {
-                                                        val currentAngle = rotation
+                                                        val currentAngle = spinAngle.value + manualScratchAngle
                                                         spinAngle.snapTo((currentAngle % 360f + 360f) % 360f)
                                                         manualScratchAngle = 0f
                                                     }
@@ -4630,7 +4687,7 @@ fun FullScreenMusicPlayer(
                                     Box(
                                         modifier = Modifier
                                             .fillMaxSize()
-                                            .graphicsLayer { rotationZ = rotation * 0.4f }
+                                            .graphicsLayer { rotationZ = (spinAngle.value + manualScratchAngle) * 0.4f }
                                             .background(
                                                 Brush.sweepGradient(
                                                     listOf(
@@ -4650,7 +4707,7 @@ fun FullScreenMusicPlayer(
                                             .shadow(if (c.isMatte && c.isDark) 0.dp else 10.dp, CircleShape)
                                             .clip(CircleShape)
                                             .border(2.dp, Color.White.copy(0.25f), CircleShape)
-                                            .graphicsLayer { rotationZ = rotation }
+                                            .graphicsLayer { rotationZ = spinAngle.value + manualScratchAngle }
                                     ) {
                                         MusicAlbumArtImage(
                                             artUri = song.albumArtUri,
@@ -4917,7 +4974,7 @@ fun FullScreenMusicPlayer(
                                                         .size(28.dp)
                                                         .clip(CircleShape)
                                                         .background(Color.White)
-                                                        .graphicsLayer { rotationZ = rotation * 2.5f }
+                                                        .graphicsLayer { rotationZ = (spinAngle.value + manualScratchAngle) * 2.5f }
                                                 ) {
                                                     for (deg in 0 until 3) {
                                                         Box(
@@ -4958,7 +5015,7 @@ fun FullScreenMusicPlayer(
                                                         .size(28.dp)
                                                         .clip(CircleShape)
                                                         .background(Color.White)
-                                                        .graphicsLayer { rotationZ = rotation * 2.5f }
+                                                        .graphicsLayer { rotationZ = (spinAngle.value + manualScratchAngle) * 2.5f }
                                                 ) {
                                                     for (deg in 0 until 3) {
                                                         Box(
@@ -4976,7 +5033,7 @@ fun FullScreenMusicPlayer(
 
                                     Row(
                                         modifier = Modifier
-                                            .width(140.dp)
+                                            .width(148.dp)
                                             .height(24.dp)
                                             .clip(RoundedCornerShape(bottomStart = 8.dp, bottomEnd = 8.dp))
                                             .background(Color(0xFF222226))
@@ -4985,19 +5042,32 @@ fun FullScreenMusicPlayer(
                                         verticalAlignment = Alignment.CenterVertically
                                     ) {
                                         Box(modifier = Modifier.size(6.dp).clip(CircleShape).background(Color(0xFF888890)))
-                                        // Dynamic 5-LED Stereo Level Meter
-                                        Row(horizontalArrangement = Arrangement.spacedBy(3.dp), verticalAlignment = Alignment.CenterVertically) {
-                                            val bands = liveBands
-                                            val ledColors = listOf(Color(0xFF00F5D4), Color(0xFF2EC4B6), Color(0xFFFFB703), Color(0xFFFF7B00), Color(0xFFFF0054))
-                                            val thresholds = listOf(0.10f, 0.25f, 0.42f, 0.62f, 0.82f)
-                                            ledColors.forEachIndexed { idx, ledColor ->
-                                                val bandVal = if (isPlaying && bands.isNotEmpty()) bands[(idx * 2) % bands.size] else 0f
-                                                val isLit = bandVal >= thresholds[idx]
-                                                Box(
-                                                    modifier = Modifier
-                                                        .size(5.dp)
-                                                        .clip(CircleShape)
-                                                        .background(if (isLit) ledColor else ledColor.copy(alpha = 0.20f))
+                                        // Smooth Analog-Style Level Meter (interpolated at frame rate, no harsh blinking)
+                                        Canvas(
+                                            modifier = Modifier
+                                                .width(68.dp)
+                                                .height(6.dp)
+                                        ) {
+                                            visualFrameTick
+                                            val levelColors = listOf(
+                                                Color(0xFF2EC4B6),
+                                                Color(0xFF4CC9F0),
+                                                Color(0xFFFFB703),
+                                                Color(0xFFFF9F1C),
+                                                Color(0xFFE76F51)
+                                            )
+                                            val count = levelColors.size
+                                            val gap = 4.dp.toPx()
+                                            val segW = (size.width - gap * (count - 1)) / count
+                                            val h = size.height
+                                            levelColors.forEachIndexed { idx, col ->
+                                                val bandSample = if (isPlaying) displayBands[(idx * 3) % displayBands.size] else 0.04f
+                                                val normAlpha = ((bandSample - idx * 0.12f) / 0.35f).coerceIn(0.18f, 0.92f)
+                                                drawRoundRect(
+                                                    color = col.copy(alpha = if (isPlaying) normAlpha else 0.16f),
+                                                    topLeft = Offset(idx * (segW + gap), 0f),
+                                                    size = Size(segW, h),
+                                                    cornerRadius = CornerRadius(h / 2f, h / 2f)
                                                 )
                                             }
                                         }
@@ -5007,71 +5077,89 @@ fun FullScreenMusicPlayer(
                             }
                         }
                         "CYBER_ORB" -> {
-                            // 3. Cyber Neon Orb (Smooth dual-rotating holographic rings with orbiting energy sparks)
+                            // 3. Aurora Orb — calm layered glowing halos orbiting steady circular artwork (zero beat bounce / flashing sparks)
+                            val orbSize = if (configuration.screenWidthDp < 360) 246.dp else if (configuration.screenWidthDp < 400) 266.dp else 280.dp
+                            val outerRing = orbSize - 16.dp
+                            val innerRing = orbSize - 50.dp
+                            val auraCanvas = orbSize - 32.dp
+                            val albumSize = if (configuration.screenWidthDp < 360) 156.dp else if (configuration.screenWidthDp < 400) 170.dp else 180.dp
+
                             Box(
-                                modifier = Modifier.size(300.dp),
+                                modifier = Modifier.size(orbSize),
                                 contentAlignment = Alignment.Center
                             ) {
-                                // Outer Neon Ring (Cyan/Purple/Electric Blue)
+                                // Outer soft aurora gradient ring
                                 Box(
                                     modifier = Modifier
-                                        .size(290.dp)
-                                        .graphicsLayer { rotationZ = rotation * 1.4f }
+                                        .size(outerRing)
+                                        .graphicsLayer { rotationZ = (spinAngle.value + manualScratchAngle) * 0.75f }
                                         .clip(CircleShape)
                                         .border(
-                                            2.8.dp,
-                                            Brush.sweepGradient(listOf(c.accentBlue, Color(0xFF00F5D4), Color(0xFF7B2CBF), Color(0xFFFF007F), c.accentBlue)),
+                                            2.4.dp,
+                                            Brush.sweepGradient(
+                                                listOf(
+                                                    c.accentBlue.copy(alpha = 0.85f),
+                                                    Color(0xFF4CC9F0).copy(alpha = 0.65f),
+                                                    Color(0xFF7B2CBF).copy(alpha = 0.55f),
+                                                    Color(0xFF00F5D4).copy(alpha = 0.65f),
+                                                    c.accentBlue.copy(alpha = 0.85f)
+                                                )
+                                            ),
                                             CircleShape
                                         )
                                 )
 
-                                // Inner Counter-Rotating Holographic Ring
+                                // Inner subtle translucent halo ring
                                 Box(
                                     modifier = Modifier
-                                        .size(255.dp)
-                                        .graphicsLayer { rotationZ = -rotation * 1.2f }
+                                        .size(innerRing)
+                                        .graphicsLayer { rotationZ = -(spinAngle.value + manualScratchAngle) * 0.55f }
                                         .clip(CircleShape)
                                         .border(
-                                            1.8.dp,
-                                            Brush.sweepGradient(listOf(Color(0xFFFF007F), Color.Transparent, Color(0xFF00F5D4), Color.Transparent)),
+                                            1.4.dp,
+                                            Brush.sweepGradient(
+                                                listOf(
+                                                    Color(0xFF00F5D4).copy(alpha = 0.45f),
+                                                    Color.Transparent,
+                                                    c.accentBlue.copy(alpha = 0.45f),
+                                                    Color.Transparent
+                                                )
+                                            ),
                                             CircleShape
                                         )
                                 )
 
-                                // Fast-Orbiting Glowing Energy Beads
-                                Canvas(modifier = Modifier.size(290.dp)) {
-                                    if (isPlaying) {
-                                        val center = Offset(size.width / 2f, size.height / 2f)
-                                        val radius = 142.dp.toPx()
-                                        for (sparkIdx in 0 until 4) {
-                                            val sparkAngle = ((rotation * 1.8f + sparkIdx * 90f) * (Math.PI / 180f)).toFloat()
-                                            val sparkX = center.x + radius * kotlin.math.cos(sparkAngle)
-                                            val sparkY = center.y + radius * kotlin.math.sin(sparkAngle)
-                                            drawCircle(
-                                                color = if (sparkIdx % 2 == 0) Color(0xFF00F5D4) else Color(0xFFFF007F),
-                                                radius = 3.5.dp.toPx(),
-                                                center = Offset(sparkX, sparkY)
-                                            )
-                                        }
-                                    }
+                                // Silky breathing aura canvas
+                                Canvas(modifier = Modifier.size(auraCanvas)) {
+                                    visualFrameTick
+                                    val center = Offset(size.width / 2f, size.height / 2f)
+                                    val energyGlow = if (isPlaying) {
+                                        (0.10f + displayBands[1] * 0.14f).coerceIn(0.10f, 0.24f)
+                                    } else 0.08f
+                                    drawCircle(
+                                        brush = Brush.radialGradient(
+                                            colors = listOf(
+                                                c.accentBlue.copy(alpha = energyGlow),
+                                                Color(0xFF4CC9F0).copy(alpha = energyGlow * 0.45f),
+                                                Color.Transparent
+                                            ),
+                                            center = center,
+                                            radius = size.minDimension / 2f
+                                        )
+                                    )
                                 }
 
-                                // Center Album Art with Glowing Rim & Reactive Pulse
-                                val orbScale = if (isPlaying) 1f + (reactiveBass * 0.02f).coerceIn(0f, 0.03f) else 1f
+                                // Steady Centered Album Art (zero bass scale bounce)
                                 Box(
                                     modifier = Modifier
-                                        .size(200.dp)
-                                        .graphicsLayer {
-                                            scaleX = orbScale
-                                            scaleY = orbScale
-                                        }
-                                        .shadow(if (c.isMatte && c.isDark) 0.dp else 32.dp, CircleShape, ambientColor = c.accentBlue, spotColor = Color(0xFF00F5D4))
+                                        .size(albumSize)
+                                        .shadow(if (c.isMatte && c.isDark) 0.dp else 26.dp, CircleShape, ambientColor = c.accentBlue, spotColor = c.accentBlue.copy(alpha = 0.5f))
                                         .clip(CircleShape)
-                                        .border(3.dp, Color.White, CircleShape)
+                                        .border(2.5.dp, Color.White.copy(alpha = 0.85f), CircleShape)
                                 ) {
                                     MusicAlbumArtImage(
                                         artUri = song.albumArtUri,
-                                        iconSize = 64.dp,
+                                        iconSize = 60.dp,
                                         seedText = song.title + song.artist,
                                         modifier = Modifier.fillMaxSize()
                                     )
@@ -5079,109 +5167,347 @@ fun FullScreenMusicPlayer(
                             }
                         }
                         "SONIC_REACTOR" -> {
-                            // 4. Sonic Reactor (High-density 36-ray circular spectrum analyzer + glowing peak tips + dual counter-rotating orbital rings)
+                            // 4. Sonic Arc Reactor — Multi-layered rotating plasma rings, 28 acoustic energy rods, & glowing containment core
+                            val reactorSize = if (configuration.screenWidthDp < 360) 250.dp else if (configuration.screenWidthDp < 400) 268.dp else 282.dp
+                            val albumSize = if (configuration.screenWidthDp < 360) 156.dp else if (configuration.screenWidthDp < 400) 170.dp else 180.dp
+
                             Box(
-                                modifier = Modifier.size(316.dp),
+                                modifier = Modifier.size(reactorSize),
                                 contentAlignment = Alignment.Center
                             ) {
-                                // Outer Concentric Audio-Reactive Resonance Ring
-                                Box(
-                                    modifier = Modifier
-                                        .size(310.dp)
-                                        .graphicsLayer { rotationZ = rotation * 0.4f }
-                                        .clip(CircleShape)
-                                        .border(
-                                            width = 1.8.dp,
+                                Canvas(modifier = Modifier.size(reactorSize)) {
+                                    visualFrameTick
+                                    val center = Offset(size.width / 2f, size.height / 2f)
+                                    val rCore = albumSize.toPx() / 2f
+                                    val rOuter = size.width / 2f - 4.dp.toPx()
+                                    val rMid = (rCore + rOuter) / 2f
+
+                                    // 1. Ambient plasma halo glow reacting to low frequencies
+                                    val bassEnergy = if (isPlaying && displayBands.isNotEmpty()) {
+                                        ((displayBands[0] + displayBands[1] + displayBands[2]) / 3f).coerceIn(0f, 1f)
+                                    } else 0.08f
+
+                                    drawCircle(
+                                        brush = Brush.radialGradient(
+                                            colors = listOf(
+                                                c.accentBlue.copy(alpha = 0.22f + bassEnergy * 0.22f),
+                                                Color(0xFF00F5D4).copy(alpha = 0.12f + bassEnergy * 0.14f),
+                                                Color.Transparent
+                                            ),
+                                            center = center,
+                                            radius = rOuter + 8.dp.toPx()
+                                        ),
+                                        center = center,
+                                        radius = rOuter + 8.dp.toPx()
+                                    )
+
+                                    // 2. 28 Radial Reactor Energy Fuel Rods (Acoustic Emitters)
+                                    val rodCount = 28
+                                    val maxRodLen = (rOuter - rCore - 12.dp.toPx()).coerceAtLeast(10f)
+                                    for (i in 0 until rodCount) {
+                                        val angle = (i.toFloat() / rodCount) * (2f * Math.PI.toFloat()) + (visualPhase * 0.25f)
+                                        val halfIdx = kotlin.math.abs((i.toFloat() / rodCount) * 2f - 1f)
+                                        val bandIdx = (halfIdx * (displayBands.size - 1)).toInt().coerceIn(0, displayBands.lastIndex)
+                                        val bandVal = if (isPlaying) displayBands[bandIdx].coerceIn(0.08f, 1f) else 0.08f
+                                        val rodLen = 4.dp.toPx() + bandVal * maxRodLen
+
+                                        val cosA = kotlin.math.cos(angle)
+                                        val sinA = kotlin.math.sin(angle)
+                                        val startPt = Offset(center.x + (rCore + 4.dp.toPx()) * cosA, center.y + (rCore + 4.dp.toPx()) * sinA)
+                                        val endPt = Offset(center.x + (rCore + 4.dp.toPx() + rodLen) * cosA, center.y + (rCore + 4.dp.toPx() + rodLen) * sinA)
+
+                                        val rodColor = when (i % 4) {
+                                            0 -> Color(0xFF00F5D4) // Neon Mint Cyan
+                                            1 -> c.accentBlue      // Electric Blue
+                                            2 -> Color(0xFF9D4EDD) // Neon Violet
+                                            else -> Color(0xFF4CC9F0) // Sky Blue
+                                        }
+
+                                        drawLine(
+                                            color = rodColor.copy(alpha = if (isPlaying) 0.85f else 0.35f),
+                                            start = startPt,
+                                            end = endPt,
+                                            strokeWidth = 2.8.dp.toPx(),
+                                            cap = StrokeCap.Round
+                                        )
+                                    }
+
+                                    // 3. Stator Arc Segments (Outer Confinement Ring) - Slow Counter-Rotation
+                                    rotate(degrees = -visualPhase * 25f, pivot = center) {
+                                        val segCount = 8
+                                        val segSweep = 360f / segCount
+                                        for (s in 0 until segCount) {
+                                            drawArc(
+                                                brush = Brush.sweepGradient(
+                                                    listOf(
+                                                        c.accentBlue.copy(alpha = 0.85f),
+                                                        Color(0xFF00F5D4).copy(alpha = 0.85f),
+                                                        Color(0xFF7B2CBF).copy(alpha = 0.85f),
+                                                        c.accentBlue.copy(alpha = 0.85f)
+                                                    ),
+                                                    center = center
+                                                ),
+                                                startAngle = s * segSweep + 6f,
+                                                sweepAngle = segSweep - 12f,
+                                                useCenter = false,
+                                                topLeft = Offset(center.x - rOuter, center.y - rOuter),
+                                                size = Size(rOuter * 2f, rOuter * 2f),
+                                                style = Stroke(width = 2.2.dp.toPx(), cap = StrokeCap.Round)
+                                            )
+                                        }
+                                    }
+
+                                    // 4. Middle Magnetic Flux Ring - Clockwise Rotation
+                                    rotate(degrees = visualPhase * 40f, pivot = center) {
+                                        drawCircle(
                                             brush = Brush.sweepGradient(
                                                 listOf(
                                                     Color(0xFF00F5D4),
                                                     c.accentBlue,
-                                                    Color(0xFF7B2CBF),
+                                                    Color(0xFF9D4EDD),
                                                     Color(0xFFFF007F),
-                                                    Color(0xFFFFB703),
                                                     Color(0xFF00F5D4)
-                                                )
+                                                ),
+                                                center = center
                                             ),
-                                            shape = CircleShape
+                                            center = center,
+                                            radius = rMid,
+                                            style = Stroke(
+                                                width = 1.6.dp.toPx(),
+                                                pathEffect = PathEffect.dashPathEffect(floatArrayOf(16f, 12f), 0f)
+                                            ),
+                                            alpha = if (isPlaying) 0.75f else 0.25f
                                         )
-                                )
+                                    }
 
-                                // Inner Counter-Rotating Harmonic Orbit Ring
+                                    // 5. Inner Core Containment Ring hugging the Album Art
+                                    drawCircle(
+                                        color = Color.White.copy(alpha = 0.40f),
+                                        center = center,
+                                        radius = rCore + 1.5.dp.toPx(),
+                                        style = Stroke(width = 1.2.dp.toPx())
+                                    )
+                                }
+
+                                // Centered Circular Album Artwork (Reactor Core)
                                 Box(
                                     modifier = Modifier
-                                        .size(240.dp)
-                                        .graphicsLayer { rotationZ = -rotation * 0.7f }
+                                        .size(albumSize)
+                                        .shadow(if (c.isMatte && c.isDark) 0.dp else 24.dp, CircleShape, ambientColor = c.accentBlue, spotColor = Color(0xFF00F5D4).copy(alpha = 0.5f))
                                         .clip(CircleShape)
                                         .border(
-                                            width = 1.2.dp,
+                                            width = 2.5.dp,
                                             brush = Brush.sweepGradient(
                                                 listOf(
-                                                    Color(0xFFFF007F).copy(alpha = 0.6f),
-                                                    Color.Transparent,
-                                                    Color(0xFF00F5D4).copy(alpha = 0.6f),
-                                                    Color.Transparent
+                                                    Color.White.copy(alpha = 0.9f),
+                                                    Color(0xFF00F5D4),
+                                                    c.accentBlue,
+                                                    Color(0xFF9D4EDD),
+                                                    Color.White.copy(alpha = 0.9f)
                                                 )
                                             ),
                                             shape = CircleShape
                                         )
-                                )
-
-                                // Real-Time Radial Spectrum Rays around Album Artwork
-                                Canvas(modifier = Modifier.size(300.dp)) {
-                                    val center = Offset(size.width / 2f, size.height / 2f)
-                                    val innerRadius = 96.dp.toPx()
-                                    val maxRayLength = 40.dp.toPx()
-                                    val bands = liveBands
-                                    val totalRays = 36
-
-                                    for (rayIdx in 0 until totalRays) {
-                                        val angleRad = (rayIdx.toFloat() / totalRays) * (2 * Math.PI)
-                                        val bandIdx = (rayIdx % bands.size)
-                                        val rawAmp = if (isPlaying) bands[bandIdx] else 0.08f
-                                        val rayLen = maxRayLength * rawAmp.coerceIn(0.08f, 1f)
-
-                                        val cosA = kotlin.math.cos(angleRad).toFloat()
-                                        val sinA = kotlin.math.sin(angleRad).toFloat()
-
-                                        val startX = center.x + innerRadius * cosA
-                                        val startY = center.y + innerRadius * sinA
-                                        val endX = center.x + (innerRadius + rayLen) * cosA
-                                        val endY = center.y + (innerRadius + rayLen) * sinA
-
-                                        val rayFraction = rayIdx.toFloat() / totalRays
-                                        val rayColor = spectrumColor(rayFraction)
-
-                                        drawLine(
-                                            color = rayColor.copy(alpha = if (isPlaying) 0.90f else 0.25f),
-                                            start = Offset(startX, startY),
-                                            end = Offset(endX, endY),
-                                            strokeWidth = 3.5.dp.toPx(),
-                                            cap = androidx.compose.ui.graphics.StrokeCap.Round
-                                        )
-
-                                        // Glowing tip bead at transient peaks
-                                        if (isPlaying && rawAmp > 0.45f) {
-                                            drawCircle(
-                                                color = Color.White.copy(alpha = (rawAmp * 0.9f).coerceIn(0f, 1f)),
-                                                radius = 2.2.dp.toPx(),
-                                                center = Offset(endX, endY)
-                                            )
+                                ) {
+                                    MusicAlbumArtImage(
+                                        artUri = song.albumArtUri,
+                                        iconSize = 58.dp,
+                                        seedText = song.title + song.artist,
+                                        modifier = Modifier.fillMaxSize()
+                                    )
+                                }
+                            }
+                        }
+                        "WAVE" -> {
+                            // 5. Aurora Wave — layered silk waveforms gliding serenely behind steady rounded album art
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .height(308.dp),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Canvas(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .height(145.dp)
+                                        .align(Alignment.BottomCenter)
+                                ) {
+                                    visualFrameTick
+                                    val w = size.width
+                                    val midY = size.height * 0.56f
+                                    val layers = listOf(
+                                        Triple(1.0f, 0f, c.accentBlue.copy(alpha = if (isPlaying) 0.78f else 0.28f)),
+                                        Triple(0.75f, 1.35f, Color(0xFF00F5D4).copy(alpha = if (isPlaying) 0.58f else 0.20f)),
+                                        Triple(0.55f, 2.7f, Color(0xFF4CC9F0).copy(alpha = if (isPlaying) 0.44f else 0.14f))
+                                    )
+                                    layers.forEachIndexed { layerIdx, (ampScale, phaseShift, color) ->
+                                        val ribbon = Path()
+                                        val samples = 48
+                                        var prevX = 0f
+                                        var prevY = midY
+                                        for (s in 0..samples) {
+                                            val t = s.toFloat() / samples
+                                            val x = w * t
+                                            val waveFloatIdx = t * (displayWave.size - 1)
+                                            val wLo = waveFloatIdx.toInt().coerceIn(0, displayWave.lastIndex)
+                                            val wHi = (wLo + 1).coerceIn(0, displayWave.lastIndex)
+                                            val wFrac = waveFloatIdx - wLo
+                                            val rawSample = displayWave[wLo] + (displayWave[wHi] - displayWave[wLo]) * wFrac
+                                            val envelope = kotlin.math.sin(t * Math.PI).toFloat()
+                                            val idleGlide = kotlin.math.sin(t * 2f * Math.PI.toFloat() * 1.6f + visualPhase + phaseShift)
+                                            val y = midY + ((rawSample * 0.55f + idleGlide * 0.35f) * 32.dp.toPx() * ampScale * envelope)
+                                            if (s == 0) {
+                                                ribbon.moveTo(x, y)
+                                            } else {
+                                                val midX = (prevX + x) / 2f
+                                                val mY = (prevY + y) / 2f
+                                                ribbon.quadraticTo(prevX, prevY, midX, mY)
+                                            }
+                                            prevX = x
+                                            prevY = y
                                         }
+                                        ribbon.lineTo(w, midY)
+                                        drawPath(
+                                            path = ribbon,
+                                            color = color,
+                                            style = Stroke(
+                                                width = (2.8f - layerIdx * 0.55f).dp.toPx(),
+                                                cap = StrokeCap.Round,
+                                                join = StrokeJoin.Round
+                                            )
+                                        )
                                     }
                                 }
 
-                                // Center Floating Circular Album Artwork with Bass Pulse
-                                val coreScale = if (isPlaying) 1f + (reactiveBass * 0.025f).coerceIn(0f, 0.035f) else 1f
+                                // Steady Elevated Squircle Artwork framed cleanly above silk waves
                                 Box(
                                     modifier = Modifier
-                                        .size(190.dp)
-                                        .graphicsLayer {
-                                            scaleX = coreScale
-                                            scaleY = coreScale
-                                        }
-                                        .shadow(if (c.isMatte && c.isDark) 0.dp else 32.dp, CircleShape, ambientColor = c.accentBlue, spotColor = Color(0xFF00F5D4))
+                                        .align(Alignment.TopCenter)
+                                        .padding(top = 8.dp)
+                                        .size(214.dp)
+                                        .shadow(if (c.isMatte && c.isDark) 0.dp else 24.dp, RoundedCornerShape(34.dp), ambientColor = Color.Black, spotColor = c.accentBlue.copy(alpha = 0.4f))
+                                        .clip(RoundedCornerShape(34.dp))
+                                        .border(1.8.dp, Color.White.copy(alpha = 0.36f), RoundedCornerShape(34.dp))
+                                ) {
+                                    MusicAlbumArtImage(
+                                        artUri = song.albumArtUri,
+                                        seedText = song.title + song.artist,
+                                        iconSize = 72.dp,
+                                        modifier = Modifier.fillMaxSize()
+                                    )
+                                }
+                            }
+                        }
+                        "ECLIPSE" -> {
+                            // 7. Celestial Eclipse — Coronal radiant solar rays & luminous celestial ring orbiting circular artwork
+                            val eclipseSize = if (configuration.screenWidthDp < 360) 250.dp else if (configuration.screenWidthDp < 400) 268.dp else 282.dp
+                            val albumSize = if (configuration.screenWidthDp < 360) 156.dp else if (configuration.screenWidthDp < 400) 170.dp else 180.dp
+                            val outerRingSize = eclipseSize - 16.dp
+                            Box(
+                                modifier = Modifier.size(eclipseSize),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                // Outer slow-orbiting celestial starlight ring with gradient
+                                Box(
+                                    modifier = Modifier
+                                        .size(outerRingSize)
+                                        .graphicsLayer { rotationZ = (spinAngle.value + manualScratchAngle) * 0.45f }
                                         .clip(CircleShape)
-                                        .border(2.8.dp, Brush.sweepGradient(listOf(Color.White, Color(0xFF00F5D4), Color.White)), CircleShape)
+                                        .border(
+                                            1.8.dp,
+                                            Brush.sweepGradient(
+                                                listOf(
+                                                    Color(0xFFFFD166).copy(alpha = 0.85f),
+                                                    Color(0xFFFF70A6).copy(alpha = 0.55f),
+                                                    Color(0xFF70D6FF).copy(alpha = 0.75f),
+                                                    Color(0xFFE9FF70).copy(alpha = 0.45f),
+                                                    Color(0xFFFFD166).copy(alpha = 0.85f)
+                                                )
+                                            ),
+                                            CircleShape
+                                        )
+                                )
+
+                                // Canvas: 36 smooth coronal rays breathing radially behind the circular disc
+                                Canvas(modifier = Modifier.size(eclipseSize)) {
+                                    visualFrameTick
+                                    val center = Offset(size.width / 2f, size.height / 2f)
+                                    val baseRadius = (albumSize / 2f).toPx() + 3.dp.toPx()
+                                    val maxRayLength = (eclipseSize.toPx() - albumSize.toPx()) * 0.44f
+                                    val rayCount = 36
+                                    val rayStrokeWidth = 2.4.dp.toPx()
+
+                                    for (i in 0 until rayCount) {
+                                        val angle = (i.toFloat() / rayCount) * (2f * Math.PI.toFloat())
+                                        val halfFrac = kotlin.math.abs((i.toFloat() / rayCount) * 2f - 1f)
+                                        val bandIdx = (halfFrac * (displayBands.size - 1)).toInt().coerceIn(0, displayBands.lastIndex)
+                                        val bandVal = displayBands[bandIdx]
+                                        val shimmer = 0.5f + 0.5f * kotlin.math.sin(angle * 2.5f + visualPhase)
+                                        val rayAmp = if (isPlaying) {
+                                            (bandVal * 0.82f + shimmer * 0.18f).coerceIn(0.12f, 1.0f)
+                                        } else 0.10f
+
+                                        val rStart = baseRadius
+                                        val rEnd = baseRadius + rayAmp * maxRayLength
+                                        val cosA = kotlin.math.cos(angle)
+                                        val sinA = kotlin.math.sin(angle)
+
+                                        val start = Offset(center.x + rStart * cosA, center.y + rStart * sinA)
+                                        val end = Offset(center.x + rEnd * cosA, center.y + rEnd * sinA)
+
+                                        val rayColor = when (i % 4) {
+                                            0 -> Color(0xFFFFD166) // Celestial Gold
+                                            1 -> Color(0xFFFF70A6) // Coronal Coral Pink
+                                            2 -> Color(0xFF70D6FF) // Starlight Cyan
+                                            else -> Color(0xFFE9FF70) // Luminous Lime Gold
+                                        }.copy(alpha = if (isPlaying) (0.35f + rayAmp * 0.55f).coerceIn(0.2f, 0.9f) else 0.20f)
+
+                                        drawLine(
+                                            color = rayColor,
+                                            start = start,
+                                            end = end,
+                                            strokeWidth = rayStrokeWidth,
+                                            cap = StrokeCap.Round
+                                        )
+                                    }
+
+                                    // Inner corona soft halo glow
+                                    drawCircle(
+                                        brush = Brush.radialGradient(
+                                            colors = listOf(
+                                                Color(0xFFFFD166).copy(alpha = if (isPlaying) 0.30f else 0.10f),
+                                                Color(0xFF70D6FF).copy(alpha = if (isPlaying) 0.15f else 0.05f),
+                                                Color.Transparent
+                                            ),
+                                            center = center,
+                                            radius = baseRadius + maxRayLength * 0.6f
+                                        )
+                                    )
+                                }
+
+                                // Steady Centered Circular Artwork with Golden Eclipse Border (zero bounce)
+                                Box(
+                                    modifier = Modifier
+                                        .size(albumSize)
+                                        .shadow(
+                                            elevation = if (c.isMatte && c.isDark) 0.dp else 28.dp,
+                                            shape = CircleShape,
+                                            ambientColor = Color(0xFFFFD166),
+                                            spotColor = Color(0xFFFF70A6).copy(alpha = 0.5f)
+                                        )
+                                        .clip(CircleShape)
+                                        .border(
+                                            2.5.dp,
+                                            Brush.sweepGradient(
+                                                listOf(
+                                                    Color(0xFFFFD166),
+                                                    Color(0xFFFF70A6),
+                                                    Color(0xFF70D6FF),
+                                                    Color(0xFFFFD166)
+                                                )
+                                            ),
+                                            CircleShape
+                                        )
                                 ) {
                                     MusicAlbumArtImage(
                                         artUri = song.albumArtUri,
@@ -5193,42 +5519,28 @@ fun FullScreenMusicPlayer(
                             }
                         }
                         else -> {
-                            // 5. High-End 3D Frosted Glass Album Card with Dynamic Reactive Ambient Backlight
-                            val reactiveScale = if (isPlaying) 1f + (reactiveBass * 0.02f).coerceIn(0f, 0.025f) else 1f
+                            // 6. Frosted Studio Card — steady elevated album showcase with subtle ambient light (zero beat scale bounce)
                             Box(
-                                modifier = Modifier
-                                    .size(290.dp)
-                                    .graphicsLayer {
-                                        scaleX = reactiveScale
-                                        scaleY = reactiveScale
-                                    },
+                                modifier = Modifier.size(292.dp),
                                 contentAlignment = Alignment.Center
                             ) {
-                                // Dynamic Sound-Reactive Ambient Backlight Halo
                                 Box(
                                     modifier = Modifier
-                                        .size(310.dp)
-                                        .graphicsLayer { alpha = if (isPlaying) (0.35f + reactiveBass * 0.45f).coerceIn(0.2f, 0.85f) else 0.15f }
-                                        .shadow(36.dp, RoundedCornerShape(36.dp), ambientColor = c.accentBlue, spotColor = Color(0xFF00F5D4))
-                                )
-
-                                Box(
-                                    modifier = Modifier
-                                        .size(285.dp)
+                                        .size(286.dp)
                                         .shadow(
-                                            elevation = 28.dp,
+                                            elevation = if (c.isMatte && c.isDark) 0.dp else 26.dp,
                                             shape = RoundedCornerShape(32.dp),
                                             ambientColor = Color.Black,
-                                            spotColor = c.accentBlue.copy(alpha = 0.45f)
+                                            spotColor = c.accentBlue.copy(alpha = 0.38f)
                                         )
                                         .clip(RoundedCornerShape(32.dp))
                                         .background(c.glassBg)
                                         .border(
-                                            1.8.dp,
+                                            1.6.dp,
                                             Brush.verticalGradient(
                                                 listOf(
-                                                    Color.White.copy(alpha = 0.40f),
-                                                    c.accentBlue.copy(alpha = if (isPlaying) 0.35f else 0.12f),
+                                                    Color.White.copy(alpha = 0.38f),
+                                                    c.accentBlue.copy(alpha = if (isPlaying) 0.32f else 0.14f),
                                                     Color.White.copy(alpha = 0.08f)
                                                 )
                                             ),
@@ -5250,7 +5562,7 @@ fun FullScreenMusicPlayer(
                                             .background(
                                                 Brush.verticalGradient(
                                                     listOf(
-                                                        Color.White.copy(alpha = 0.20f),
+                                                        Color.White.copy(alpha = 0.18f),
                                                         Color.Transparent
                                                     )
                                                 )
@@ -5280,7 +5592,7 @@ fun FullScreenMusicPlayer(
         }
         }
 
-        Spacer(Modifier.height(18.dp))
+        Spacer(Modifier.height(adaptiveSpacerMid))
 
             // ─── Track Info & Heart Favorite ────────────────────────────────
             Row(
@@ -5292,16 +5604,16 @@ fun FullScreenMusicPlayer(
                     Text(
                         song.title,
                         color = if (c.isDark) Color.White else Color(0xFF0F172A),
-                        fontSize = 24.sp,
+                        fontSize = if (screenHeightDp < 700) 20.sp else 24.sp,
                         fontWeight = FontWeight.Bold,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis
                     )
-                    Spacer(Modifier.height(4.dp))
+                    Spacer(Modifier.height(3.dp))
                     Text(
                         song.artist,
                         color = if (c.isDark) Color.White.copy(0.7f) else Color(0xFF64748B),
-                        fontSize = 16.sp,
+                        fontSize = if (screenHeightDp < 700) 14.sp else 16.sp,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis
                     )
@@ -5311,12 +5623,12 @@ fun FullScreenMusicPlayer(
                         if (isFavorite) Icons.Rounded.Favorite else Icons.Rounded.FavoriteBorder,
                         contentDescription = "Favorite",
                         tint = if (isFavorite) Color(0xFFFF4D6D) else (if (c.isDark) Color.White.copy(0.7f) else Color(0xFF94A3B8)),
-                        modifier = Modifier.size(32.dp)
+                        modifier = Modifier.size(if (screenHeightDp < 700) 28.dp else 32.dp)
                     )
                 }
             }
 
-            Spacer(Modifier.height(20.dp))
+            Spacer(Modifier.height(adaptiveSpacerMid))
 
             // ─── Seekbar ────────────────────────────────────────────────────
             MusicSeekBar(
@@ -5326,7 +5638,7 @@ fun FullScreenMusicPlayer(
                 onSeek = onSeek
             )
 
-            Spacer(Modifier.height(14.dp))
+            Spacer(Modifier.height(adaptiveSpacerSmall))
 
             // ─── Playback Controls: Shuffle, Prev, Play/Pause, Next, Repeat ──
             Row(
@@ -5350,24 +5662,24 @@ fun FullScreenMusicPlayer(
                         Icons.Rounded.SkipPrevious,
                         contentDescription = "Previous",
                         tint = if (c.isDark) Color.White else Color(0xFF0F172A),
-                        modifier = Modifier.size(42.dp)
+                        modifier = Modifier.size(if (screenHeightDp < 700) 36.dp else 42.dp)
                     )
                 }
 
-                // Main Radiant Play/Pause Button (Rock solid fixed dimension, zero jump effect)
+                // Main Radiant Play/Pause Button (Adaptive dimension for all screen sizes)
                 Box(
-                    modifier = Modifier.size(84.dp),
+                    modifier = Modifier.size(adaptivePlayOuterSize),
                     contentAlignment = Alignment.Center
                 ) {
                     Box(
                         modifier = Modifier
-                            .size(84.dp)
+                            .size(adaptivePlayOuterSize)
                             .clip(CircleShape)
                             .background(if (isPlaying) c.accentBlue.copy(alpha = 0.22f) else Color.Transparent)
                     )
                     Box(
                         modifier = Modifier
-                            .size(76.dp)
+                            .size(adaptivePlayInnerSize)
                             .shadow(if (c.isMatte && c.isDark) 0.dp else 20.dp, CircleShape, ambientColor = c.accentBlue, spotColor = c.accentBlue)
                             .clip(CircleShape)
                             .background(c.accentBlue)
@@ -5382,7 +5694,7 @@ fun FullScreenMusicPlayer(
                             if (isPlaying) Icons.Rounded.Pause else Icons.Rounded.PlayArrow,
                             contentDescription = "Play/Pause",
                             tint = c.onAccent,
-                            modifier = Modifier.size(44.dp)
+                            modifier = Modifier.size(adaptivePlayIconSize)
                         )
                     }
                 }
@@ -5393,7 +5705,7 @@ fun FullScreenMusicPlayer(
                         Icons.Rounded.SkipNext,
                         contentDescription = "Next",
                         tint = if (c.isDark) Color.White else Color(0xFF0F172A),
-                        modifier = Modifier.size(42.dp)
+                        modifier = Modifier.size(if (screenHeightDp < 700) 36.dp else 42.dp)
                     )
                 }
 
@@ -5410,7 +5722,7 @@ fun FullScreenMusicPlayer(
                 }
             }
 
-            Spacer(Modifier.height(18.dp))
+            Spacer(Modifier.height(adaptiveSpacerMid))
 
             // ─── Utility Bottom Controls: Speed, Autoplay, Sleep Timer, Queue, Share ─────────
             Row(
@@ -5537,12 +5849,12 @@ fun FullScreenMusicPlayer(
         // ─── Brightness Gesture Bar (Left) ──────────────────────────────────
         AnimatedVisibility(
             visible = showBrightnessBar,
-            enter = fadeIn(tween(200)) + slideInHorizontally(initialOffsetX = { -it }, animationSpec = spring(stiffness = Spring.StiffnessMedium, dampingRatio = Spring.DampingRatioMediumBouncy)),
-            exit = fadeOut(tween(240)) + slideOutHorizontally(targetOffsetX = { -it }, animationSpec = tween(220)),
+            enter = fadeIn(tween(160)) + slideInHorizontally(initialOffsetX = { -it }),
+            exit = fadeOut(tween(220)) + slideOutHorizontally(targetOffsetX = { -it }),
             modifier = Modifier
                 .align(Alignment.CenterStart)
-                .offset(y = (-20).dp)
-                .padding(start = 12.dp)
+                .offset(y = (-10).dp)
+                .padding(start = 6.dp)
         ) {
             val brightnessIcon = when {
                 brightnessPct <= 0.05f -> Icons.Rounded.BrightnessLow
@@ -5566,12 +5878,12 @@ fun FullScreenMusicPlayer(
         // ─── Volume Gesture Bar (Right) ─────────────────────────────────────
         AnimatedVisibility(
             visible = showVolumeBar,
-            enter = fadeIn(tween(200)) + slideInHorizontally(initialOffsetX = { it }, animationSpec = spring(stiffness = Spring.StiffnessMedium, dampingRatio = Spring.DampingRatioMediumBouncy)),
-            exit = fadeOut(tween(240)) + slideOutHorizontally(targetOffsetX = { it }, animationSpec = tween(220)),
+            enter = fadeIn(tween(160)) + slideInHorizontally(initialOffsetX = { it }),
+            exit = fadeOut(tween(220)) + slideOutHorizontally(targetOffsetX = { it }),
             modifier = Modifier
                 .align(Alignment.CenterEnd)
-                .offset(y = (-20).dp)
-                .padding(end = 12.dp)
+                .offset(y = (-10).dp)
+                .padding(end = 6.dp)
         ) {
             val volumeIcon = when {
                 volumePct <= 0.001f -> Icons.AutoMirrored.Rounded.VolumeOff
@@ -5652,7 +5964,7 @@ fun FullScreenMusicPlayer(
 }
 
 // ─────────────────────────────────────────────────────────────────
-// MUSIC VERTICAL GESTURE BAR COMPONENT
+// MUSIC VERTICAL GESTURE BAR COMPONENT (Modern Sleek Edge Capsule Pill)
 // ─────────────────────────────────────────────────────────────────
 @Composable
 private fun MusicVerticalGestureBar(
@@ -5663,7 +5975,6 @@ private fun MusicVerticalGestureBar(
     modifier: Modifier = Modifier
 ) {
     val view = androidx.compose.ui.platform.LocalView.current
-    val c = LocalAppColors.current
     val clampedPct = percentage.coerceIn(0f, 1f)
     val animatedPct by animateFloatAsState(
         targetValue = clampedPct,
@@ -5675,11 +5986,6 @@ private fun MusicVerticalGestureBar(
     )
 
     var isPressed by remember { mutableStateOf(false) }
-    val scale by animateFloatAsState(
-        targetValue = if (isPressed) 1.05f else 1.0f,
-        animationSpec = spring(stiffness = Spring.StiffnessMedium, dampingRatio = Spring.DampingRatioMediumBouncy),
-        label = "sliderScale"
-    )
 
     var lastHapticMilestone by remember { mutableIntStateOf(((clampedPct * 100f) / 5f).roundToInt().coerceIn(0, 20)) }
     val updateValueWithHaptic: (Float) -> Unit = { newVal ->
@@ -5687,30 +5993,31 @@ private fun MusicVerticalGestureBar(
         val milestone = ((cl * 100f) / 5f).roundToInt().coerceIn(0, 20)
         if (milestone != lastHapticMilestone) {
             lastHapticMilestone = milestone
-            if (milestone == 0 || milestone == 20) {
+            if (milestone == 0) {
+                view.performHaptic(HapticType.LIGHT)
+            } else if (milestone == 20) {
                 view.performHaptic(HapticType.MEDIUM)
             } else {
-                view.performLevelHaptic(milestone / 20f)
+                view.performLevelHaptic((milestone / 20f).coerceIn(0.05f, 1.0f))
             }
         }
         onValueChange(cl)
     }
 
-    val trackHeight = 150.dp
-    val thumbSize = 14.dp
+    val pillWidth = 22.dp
+    val pillHeight = 140.dp
+    val cornerRadius = 11.dp
 
-    // Generous touch container (44.dp wide, 210.dp tall) - easy to target without visual clutter
+    // Compact touch target (36.dp wide, 150.dp tall) hugging the screen edge
     Box(
         modifier = modifier
-            .width(44.dp)
-            .height(210.dp)
-            .scale(scale)
+            .width(36.dp)
+            .height(150.dp)
             .pointerInput(clampedPct) {
                 awaitEachGesture {
                     val down = awaitFirstDown(requireUnconsumed = false)
                     val downY = down.position.y
-                    val trackTopY = 22.dp.toPx()
-                    val trackHeightPx = trackHeight.toPx()
+                    val barHeight = size.height.toFloat().coerceAtLeast(1f)
                     var hasMoved = false
                     isPressed = true
 
@@ -5722,8 +6029,7 @@ private fun MusicVerticalGestureBar(
                         val currentY = change.position.y
                         if (abs(currentY - downY) > 5f) {
                             hasMoved = true
-                            val clampedTouchY = (currentY - trackTopY).coerceIn(0f, trackHeightPx)
-                            val targetPct = (1f - (clampedTouchY / trackHeightPx)).coerceIn(0f, 1f)
+                            val targetPct = (1f - (currentY / barHeight)).coerceIn(0f, 1f)
                             updateValueWithHaptic(targetPct)
                             change.consume()
                         }
@@ -5732,112 +6038,78 @@ private fun MusicVerticalGestureBar(
 
                     if (!hasMoved) {
                         view.performHaptic(HapticType.TICK)
-                        val clampedTouchY = (downY - trackTopY).coerceIn(0f, trackHeightPx)
-                        val targetPct = (1f - (clampedTouchY / trackHeightPx)).coerceIn(0f, 1f)
+                        val targetPct = (1f - (downY / barHeight)).coerceIn(0f, 1f)
                         updateValueWithHaptic(targetPct)
                     }
                 }
             },
-        contentAlignment = Alignment.TopCenter
+        contentAlignment = Alignment.Center
     ) {
-        Column(
-            horizontalAlignment = Alignment.CenterHorizontally,
-            modifier = Modifier.fillMaxSize()
+        // Main Modern Frosted Capsule Pill
+        Box(
+            modifier = Modifier
+                .width(pillWidth)
+                .height(pillHeight)
+                .shadow(
+                    elevation = if (isPressed) 10.dp else 6.dp,
+                    shape = RoundedCornerShape(cornerRadius),
+                    ambientColor = Color.Black.copy(alpha = 0.5f),
+                    spotColor = accentColor.copy(alpha = 0.4f)
+                )
+                .clip(RoundedCornerShape(cornerRadius))
+                .background(Color(0xDD0D0F18))
+                .border(
+                    width = 1.dp,
+                    brush = Brush.verticalGradient(
+                        listOf(
+                            Color.White.copy(alpha = 0.35f),
+                            accentColor.copy(alpha = 0.40f),
+                            Color.White.copy(alpha = 0.10f)
+                        )
+                    ),
+                    shape = RoundedCornerShape(cornerRadius)
+                )
         ) {
-            // Top Accent Ring Cap
+            // Fluid Track Fill from Bottom
             Box(
                 modifier = Modifier
-                    .size(15.dp)
-                    .clip(CircleShape)
-                    .background(if (c.isDark) Color(0x22FFFFFF) else Color(0x10000000))
-                    .border(1.5.dp, accentColor.copy(alpha = 0.55f), CircleShape),
-                contentAlignment = Alignment.Center
-            ) {
-                Box(
-                    modifier = Modifier
-                        .size(4.dp)
-                        .clip(CircleShape)
-                        .background(accentColor.copy(alpha = 0.85f))
-                )
-            }
-
-            Spacer(Modifier.height(5.dp))
-
-            // Slim Single Bar Track with Circular White Thumb (Clean, No Percent Text)
-            Box(
-                modifier = Modifier
-                    .width(44.dp)
-                    .height(trackHeight),
-                contentAlignment = Alignment.BottomCenter
-            ) {
-                // Inactive Single-Bar Track (Width 3.5.dp)
-                Box(
-                    modifier = Modifier
-                        .width(3.5.dp)
-                        .fillMaxHeight()
-                        .align(Alignment.Center)
-                        .clip(RoundedCornerShape(1.75.dp))
-                        .background(if (c.isDark) Color.White.copy(alpha = 0.18f) else Color.Black.copy(alpha = 0.10f))
-                )
-
-                // Active Track in Accent Color (From Bottom up to animatedPct)
-                Box(
-                    modifier = Modifier
-                        .width(3.5.dp)
-                        .fillMaxHeight(animatedPct)
-                        .align(Alignment.BottomCenter)
-                        .clip(RoundedCornerShape(1.75.dp))
-                        .background(
-                            Brush.verticalGradient(
-                                listOf(
-                                    accentColor.copy(alpha = 0.88f),
-                                    accentColor
-                                )
+                    .fillMaxWidth()
+                    .fillMaxHeight(animatedPct)
+                    .align(Alignment.BottomCenter)
+                    .clip(RoundedCornerShape(bottomStart = cornerRadius, bottomEnd = cornerRadius))
+                    .background(
+                        Brush.verticalGradient(
+                            listOf(
+                                accentColor.copy(alpha = 0.95f),
+                                accentColor
                             )
                         )
+                    )
+            )
+
+            // Centered Indicator Icon inside the Capsule
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(vertical = 8.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.SpaceBetween
+            ) {
+                Text(
+                    text = "${(clampedPct * 100).roundToInt()}",
+                    color = Color.White.copy(alpha = 0.92f),
+                    fontSize = 8.sp,
+                    fontWeight = FontWeight.Bold,
+                    fontFamily = FontFamily.Monospace
                 )
 
-                // Circular White Thumb with Accent Border & Elevation Shadow
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .fillMaxHeight()
-                ) {
-                    val density = androidx.compose.ui.platform.LocalDensity.current
-                    val trackHeightPx = with(density) { trackHeight.toPx() }
-                    val thumbRadiusPx = with(density) { (thumbSize / 2).toPx() }
-
-                    Box(
-                        modifier = Modifier
-                            .align(Alignment.TopCenter)
-                            .offset {
-                                androidx.compose.ui.unit.IntOffset(
-                                    x = 0,
-                                    y = ((trackHeightPx * (1f - animatedPct)) - thumbRadiusPx).roundToInt()
-                                )
-                            }
-                            .size(thumbSize)
-                            .shadow(
-                                elevation = if (isPressed) 8.dp else 4.dp,
-                                shape = CircleShape,
-                                ambientColor = Color.White.copy(alpha = 0.5f),
-                                spotColor = accentColor
-                            )
-                            .clip(CircleShape)
-                            .background(Color.White)
-                            .border(2.5.dp, accentColor, CircleShape)
-                    )
-                }
+                Icon(
+                    imageVector = icon,
+                    contentDescription = null,
+                    tint = if (animatedPct > 0.35f) Color.White else accentColor,
+                    modifier = Modifier.size(13.dp)
+                )
             }
-
-            Spacer(Modifier.height(5.dp))
-
-            Icon(
-                imageVector = icon,
-                contentDescription = null,
-                tint = accentColor,
-                modifier = Modifier.size(18.dp)
-            )
         }
     }
 }
@@ -5853,11 +6125,13 @@ data class VisualStyleOption(
 )
 
 val visualStylesList = listOf(
-    VisualStyleOption("VINYL", "Vinyl Record", "Classic turntable vinyl with realistic tonearm & grooves", Icons.Rounded.Album),
-    VisualStyleOption("CARD", "Glass 3D Card", "Refined 3D frosted glass card with acoustic bass response", Icons.Rounded.CropPortrait),
-    VisualStyleOption("SONIC_REACTOR", "Sonic Reactor", "Audiophile circular spectrum with real-time reactive sound rings", Icons.Rounded.GraphicEq),
-    VisualStyleOption("CASSETTE", "Retro Cassette", "Authentic 80s tape with spinning spools & ribbon", Icons.Rounded.Audiotrack),
-    VisualStyleOption("CYBER_ORB", "Cyber Neon Orb", "Futuristic reactive neon ring pulsing with audio dynamics", Icons.Rounded.Radio),
+    VisualStyleOption("VINYL", "Vinyl Record", "Silky turntable vinyl with smooth inertia & realistic tonearm", Icons.Rounded.Album),
+    VisualStyleOption("CARD", "Frosted Studio Card", "Calm elevated glass album showcase with soft ambient light", Icons.Rounded.CropPortrait),
+    VisualStyleOption("SONIC_REACTOR", "Sonic Reactor", "Futuristic arc reactor core with counter-rotating plasma rings & acoustic rods", Icons.Rounded.GraphicEq),
+    VisualStyleOption("CASSETTE", "Studio Cassette", "Warm analog cassette deck with fluid spools & level glow", Icons.Rounded.Audiotrack),
+    VisualStyleOption("CYBER_ORB", "Aurora Orb", "Serene glowing aurora rings orbiting steady circular artwork", Icons.Rounded.Radio),
+    VisualStyleOption("WAVE", "Aurora Wave", "Layered silk waveform ribbons drifting smoothly behind artwork", Icons.Rounded.Waves),
+    VisualStyleOption("ECLIPSE", "Celestial Eclipse", "Coronal solar rays & luminous celestial ring orbiting circular artwork", Icons.Rounded.Flare),
 )
 
 @Composable
@@ -6932,66 +7206,88 @@ fun BeatVisualizer(
     gapDp: Dp = 3.dp
 ) {
     val rawBands by com.example.ymediaplayer.service.AudioReactor.bands
-    val liveEnergy by com.example.ymediaplayer.service.AudioReactor.energy
+    val latestBands by rememberUpdatedState(rawBands)
+    val latestPlaying by rememberUpdatedState(isPlaying)
+    val smoothBars = remember(barCount) { FloatArray(barCount) { 0.08f } }
+    var barTick by remember { mutableLongStateOf(0L) }
+
+    LaunchedEffect(isPlaying, barCount) {
+        var lastNs = 0L
+        var idleFrames = 0
+        while (true) {
+            if (!latestPlaying && idleFrames >= 24) break
+            withFrameNanos { ns ->
+                val dt = if (lastNs == 0L) 0.016f else ((ns - lastNs) / 1_000_000_000f).coerceIn(0.001f, 0.05f)
+                lastNs = ns
+                val rate = 1f - kotlin.math.exp(-9.5f * dt)
+                val bands = latestBands
+                for (i in 0 until barCount) {
+                    val fraction = if (barCount > 1) i.toFloat() / (barCount - 1) else 0.5f
+                    val floatIdx = fraction * (bands.size - 1)
+                    val lo = floatIdx.toInt().coerceIn(0, bands.lastIndex)
+                    val hi = (lo + 1).coerceIn(0, bands.lastIndex)
+                    val interp = bands[lo] + (bands[hi] - bands[lo]) * (floatIdx - lo)
+                    val target = if (latestPlaying) interp.coerceIn(0.10f, 0.96f) else 0.06f
+                    smoothBars[i] = smoothBars[i] + (target - smoothBars[i]) * rate
+                }
+                if (latestPlaying) idleFrames = 0 else idleFrames++
+                barTick++
+            }
+        }
+    }
 
     val totalHeight = if (withReflection) height * 1.55f else height
+    val totalWidth = (barWidthDp * barCount) + (gapDp * (barCount - 1).coerceAtLeast(0))
 
-    Row(
-        horizontalArrangement = Arrangement.spacedBy(gapDp),
-        verticalAlignment     = Alignment.Bottom,
-        modifier              = Modifier.height(totalHeight)
+    Canvas(
+        modifier = Modifier
+            .width(totalWidth)
+            .height(totalHeight)
     ) {
-        val bandCount = rawBands.size
+        barTick
+        val barWidthPx = barWidthDp.toPx()
+        val gapPx = gapDp.toPx()
+        val mainHeightPx = height.toPx()
+        val corner = CornerRadius(barWidthPx / 2f, barWidthPx / 2f)
+
         for (i in 0 until barCount) {
             val fraction = if (barCount > 1) i.toFloat() / (barCount - 1) else 0.5f
             val barColor = spectrumColor(fraction)
+            val amp = smoothBars[i].coerceIn(0.06f, 1f)
+            val barH = mainHeightPx * amp
+            val x = i * (barWidthPx + gapPx)
+            val topY = mainHeightPx - barH
 
-            val mappedIdx = (fraction * (bandCount - 1)).toInt().coerceIn(0, bandCount - 1)
-            val bandValue = if (isPlaying) rawBands[mappedIdx] else 0.06f
-
-            val animatedScale by animateFloatAsState(
-                targetValue = if (isPlaying) (bandValue * (1f + liveEnergy * 0.3f)).coerceIn(0.14f, 1f) else 0.06f,
-                animationSpec = spring(dampingRatio = 0.72f, stiffness = Spring.StiffnessMediumLow),
-                label = "barScale_$i"
+            drawRoundRect(
+                brush = Brush.verticalGradient(
+                    colors = listOf(
+                        Color.White.copy(alpha = 0.88f),
+                        barColor,
+                        barColor.copy(alpha = 0.72f)
+                    ),
+                    startY = topY,
+                    endY = mainHeightPx
+                ),
+                topLeft = Offset(x, topY),
+                size = Size(barWidthPx, barH),
+                cornerRadius = corner
             )
 
-            val barGradient = Brush.verticalGradient(
-                colors = listOf(
-                    Color.White.copy(alpha = 0.95f),
-                    barColor,
-                    barColor.copy(alpha = 0.7f)
+            if (withReflection) {
+                val reflH = (barH * 0.34f).coerceAtLeast(3.dp.toPx())
+                drawRoundRect(
+                    brush = Brush.verticalGradient(
+                        colors = listOf(
+                            barColor.copy(alpha = 0.26f),
+                            Color.Transparent
+                        ),
+                        startY = mainHeightPx + 2.dp.toPx(),
+                        endY = mainHeightPx + 2.dp.toPx() + reflH
+                    ),
+                    topLeft = Offset(x, mainHeightPx + 2.dp.toPx()),
+                    size = Size(barWidthPx, reflH),
+                    cornerRadius = corner
                 )
-            )
-            val reflectionGradient = Brush.verticalGradient(
-                colors = listOf(
-                    barColor.copy(alpha = 0.30f),
-                    Color.Transparent
-                )
-            )
-
-            Column(
-                horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.Bottom,
-                modifier = Modifier.fillMaxHeight()
-            ) {
-                Box(
-                    modifier = Modifier
-                        .width(barWidthDp)
-                        .fillMaxHeight(animatedScale)
-                        .clip(CircleShape)
-                        .background(barGradient)
-                )
-
-                if (withReflection) {
-                    Box(
-                        modifier = Modifier
-                            .width(barWidthDp)
-                            .fillMaxHeight((animatedScale * 0.35f).coerceAtLeast(0.04f))
-                            .graphicsLayer { scaleY = -1f }
-                            .clip(CircleShape)
-                            .background(reflectionGradient)
-                    )
-                }
             }
         }
     }

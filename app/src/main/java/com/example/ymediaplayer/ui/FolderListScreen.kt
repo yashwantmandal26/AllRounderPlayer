@@ -950,6 +950,9 @@ fun FolderListScreen(
                                     if (dims != null) {
                                         com.example.ymediaplayer.player.VideoPlaybackManager.setInitialDimensions(dims.first, dims.second)
                                     }
+                                    com.example.ymediaplayer.service.MusicService.pauseMusic()
+                                    com.example.ymediaplayer.ui.VideoPlayerActivity.finishPipIfActive()
+                                    com.example.ymediaplayer.player.VideoPlaybackManager.releasePlayer()
                                     val movieIntent = Intent(context, com.example.ymediaplayer.ui.VideoPlayerActivity::class.java).apply {
                                         flags = Intent.FLAG_ACTIVITY_REORDER_TO_FRONT or Intent.FLAG_ACTIVITY_SINGLE_TOP
                                         putExtra(com.example.ymediaplayer.ui.VideoPlayerActivity.EXTRA_VIDEO_URL, movie.file.absolutePath)
@@ -976,6 +979,9 @@ fun FolderListScreen(
                                                 name = if (item.isSeries) cleanTitle else item.name
                                             )
                                         )
+                                        com.example.ymediaplayer.service.MusicService.pauseMusic()
+                                        com.example.ymediaplayer.ui.VideoPlayerActivity.finishPipIfActive()
+                                        com.example.ymediaplayer.player.VideoPlaybackManager.releasePlayer()
                                         val streamIntent = Intent(context, com.example.ymediaplayer.ui.VideoPlayerActivity::class.java).apply {
                                             flags = Intent.FLAG_ACTIVITY_REORDER_TO_FRONT or Intent.FLAG_ACTIVITY_SINGLE_TOP
                                             putExtra(com.example.ymediaplayer.ui.VideoPlayerActivity.EXTRA_VIDEO_URL, TorrentEngine.getFilePath(context, hash) ?: "")
@@ -2226,6 +2232,9 @@ fun FolderListScreen(
                     val activeDl = activeHash?.let { TorrentEngine.downloads.value[it] }
                     if (activeDl != null) {
                         TorrentEngine.setSequential(activeDl.id, true)
+                        com.example.ymediaplayer.service.MusicService.pauseMusic()
+                        com.example.ymediaplayer.ui.VideoPlayerActivity.finishPipIfActive()
+                        com.example.ymediaplayer.player.VideoPlaybackManager.releasePlayer()
                         val streamIntent = Intent(context, com.example.ymediaplayer.ui.VideoPlayerActivity::class.java).apply {
                             flags = Intent.FLAG_ACTIVITY_REORDER_TO_FRONT or Intent.FLAG_ACTIVITY_SINGLE_TOP
                             putExtra(com.example.ymediaplayer.ui.VideoPlayerActivity.EXTRA_VIDEO_URL, videoPath)
@@ -2236,6 +2245,9 @@ fun FolderListScreen(
                         context.startActivity(streamIntent)
                     } else {
                         val fileTitle = java.io.File(videoPath).nameWithoutExtension
+                        com.example.ymediaplayer.service.MusicService.pauseMusic()
+                        com.example.ymediaplayer.ui.VideoPlayerActivity.finishPipIfActive()
+                        com.example.ymediaplayer.player.VideoPlaybackManager.releasePlayer()
                         val playIntent = Intent(context, com.example.ymediaplayer.ui.VideoPlayerActivity::class.java).apply {
                             flags = Intent.FLAG_ACTIVITY_REORDER_TO_FRONT or Intent.FLAG_ACTIVITY_SINGLE_TOP
                             putExtra(com.example.ymediaplayer.ui.VideoPlayerActivity.EXTRA_VIDEO_URL, videoPath)

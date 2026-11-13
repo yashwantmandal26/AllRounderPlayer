@@ -38,6 +38,19 @@ class VideoPlayerActivity : ComponentActivity() {
         const val EXTRA_CINEMA_EPISODE = "EXTRA_CINEMA_EPISODE"
         const val EXTRA_CINEMA_IS_SERIES = "EXTRA_CINEMA_IS_SERIES"
         var onUserLeaveHintListener: (() -> Unit)? = null
+        var activeInstance: java.lang.ref.WeakReference<VideoPlayerActivity>? = null
+
+        fun finishPipIfActive() {
+            try {
+                activeInstance?.get()?.let { act ->
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N && act.isInPictureInPictureMode) {
+                        act.finishAndRemoveTask()
+                    } else if (!act.isFinishing) {
+                        act.finish()
+                    }
+                }
+            } catch (_: Exception) {}
+        }
     }
 
     private var currentUrl by mutableStateOf("")
@@ -54,6 +67,18 @@ class VideoPlayerActivity : ComponentActivity() {
     private var cinemaIsSeries by mutableStateOf(false)
 
     override fun onCreate(savedInstanceState: Bundle?) {
+        // Dismiss any existing PiP or previous player instance so two videos never play at once
+        activeInstance?.get()?.let { oldAct ->
+            if (oldAct != this) {
+                try {
+                    oldAct.finishAndRemoveTask()
+                } catch (_: Exception) {
+                    oldAct.finish()
+                }
+            }
+        }
+        activeInstance = java.lang.ref.WeakReference(this)
+
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
 
@@ -150,6 +175,20 @@ class VideoPlayerActivity : ComponentActivity() {
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         setIntent(intent)
+        // If this activity is currently in Picture-in-Picture and another video was clicked, exit PiP and restart in full screen!
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N && isInPictureInPictureMode) {
+            try {
+                finishAndRemoveTask()
+            } catch (_: Exception) {
+                finish()
+            }
+            val restartIntent = Intent(intent).apply {
+                setClass(this@VideoPlayerActivity, VideoPlayerActivity::class.java)
+                flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
+            }
+            startActivity(restartIntent)
+            return
+        }
         val newUrl = intent.getStringExtra(EXTRA_VIDEO_URL)
         val newHash = intent.getStringExtra(EXTRA_TORRENT_HASH)
         val newStream = intent.getBooleanExtra(EXTRA_IS_STREAMING, false)
@@ -266,6 +305,9 @@ class VideoPlayerActivity : ComponentActivity() {
 
     override fun onDestroy() {
         super.onDestroy()
+        if (activeInstance?.get() == this) {
+            activeInstance = null
+        }
         onUserLeaveHintListener = null
         if (!isChangingConfigurations) {
             if (isStreaming && !streamTorrentHash.isNullOrBlank()) {

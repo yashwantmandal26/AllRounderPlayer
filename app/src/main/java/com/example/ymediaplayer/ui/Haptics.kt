@@ -2,6 +2,7 @@ package com.example.ymediaplayer.ui
 
 import android.content.Context
 import android.os.Build
+import android.os.VibrationAttributes
 import android.os.VibrationEffect
 import android.os.Vibrator
 import android.os.VibratorManager
@@ -76,44 +77,52 @@ fun Context.performHaptic(type: HapticType) {
 }
 
 fun View.performLevelHaptic(level: Float) {
-    if (!AppPreferences(context).isHapticsEnabled()) return
-    val flag = HapticFeedbackConstants.FLAG_IGNORE_VIEW_SETTING
-    val constant = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
-        HapticFeedbackConstants.SEGMENT_TICK
-    } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O_MR1) {
-        HapticFeedbackConstants.TEXT_HANDLE_MOVE
-    } else {
-        HapticFeedbackConstants.CLOCK_TICK
-    }
-    val performed = try { performHapticFeedback(constant, flag) } catch (_: Exception) { false }
-    if (!performed) {
-        context.performLevelHaptic(level)
-    }
+    context.performLevelHaptic(level)
 }
 
 fun Context.performLevelHaptic(level: Float) {
     try {
         if (!AppPreferences(this).isHapticsEnabled()) return
         val clampedLevel = level.coerceIn(0f, 1f)
-        val vibrator: Vibrator? = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+        val vibrator = (if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
             val manager = getSystemService(Context.VIBRATOR_MANAGER_SERVICE) as? VibratorManager
             manager?.defaultVibrator
         } else {
             @Suppress("DEPRECATION")
             getSystemService(Context.VIBRATOR_SERVICE) as? Vibrator
-        }
+        }) ?: return
 
-        if (vibrator != null && vibrator.hasVibrator()) {
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                // Dynamically scale amplitude from 35 (subtle) to 255 (maximum) with level
-                val amplitude = (35 + (clampedLevel * 220f)).toInt().coerceIn(1, 255)
-                val duration = (7L + (clampedLevel * 10f).toLong()).coerceIn(6L, 18L)
-                vibrator.vibrate(VibrationEffect.createOneShot(duration, amplitude))
+        if (!vibrator.hasVibrator()) return
+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            val amplitude = if (vibrator.hasAmplitudeControl()) {
+                // Dynamically scale amplitude from 25 (delicate tactile tick) to 255 (maximum kick)
+                (25 + (clampedLevel * 230f)).toInt().coerceIn(1, 255)
             } else {
-                @Suppress("DEPRECATION")
-                val duration = (8L + (clampedLevel * 16f).toLong()).coerceIn(6L, 24L)
-                vibrator.vibrate(duration)
+                VibrationEffect.DEFAULT_AMPLITUDE
             }
+            // 12ms to 24ms ensures physical motor overcomes inertia while staying crisp and clicky
+            val duration = (12L + (clampedLevel * 12f).toLong()).coerceIn(10L, 26L)
+            val effect = VibrationEffect.createOneShot(duration, amplitude)
+
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                val attrs = VibrationAttributes.Builder()
+                    .setUsage(VibrationAttributes.USAGE_TOUCH)
+                    .build()
+                vibrator.vibrate(effect, attrs)
+            } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                val attrs = android.media.AudioAttributes.Builder()
+                    .setContentType(android.media.AudioAttributes.CONTENT_TYPE_SONIFICATION)
+                    .setUsage(android.media.AudioAttributes.USAGE_ASSISTANCE_SONIFICATION)
+                    .build()
+                vibrator.vibrate(effect, attrs)
+            } else {
+                vibrator.vibrate(effect)
+            }
+        } else {
+            @Suppress("DEPRECATION")
+            val duration = (12L + (clampedLevel * 16f).toLong()).coerceIn(10L, 28L)
+            vibrator.vibrate(duration)
         }
     } catch (_: Exception) {}
 }

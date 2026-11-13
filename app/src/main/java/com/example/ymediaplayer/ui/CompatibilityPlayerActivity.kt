@@ -36,6 +36,7 @@ class CompatibilityPlayerActivity : Activity() {
     private lateinit var status: TextView
     private val handler = Handler(Looper.getMainLooper())
     private var currentMedia: Media? = null
+    private var activePfd: android.os.ParcelFileDescriptor? = null
     private var initialPositionMs = 0L
     private var softwareRetryUsed = false
     private var userSeeking = false
@@ -78,6 +79,8 @@ class CompatibilityPlayerActivity : Activity() {
                 "--live-caching=3000",
                 "--drop-late-frames",
                 "--skip-frames",
+                "--avcodec-corrupted",
+                "--avcodec-error-resilience=1",
                 "--avcodec-skiploopfilter=4",
                 "--no-video-title-show"
             )
@@ -167,12 +170,31 @@ class CompatibilityPlayerActivity : Activity() {
 
     private fun startPlayback(uri: String, forceSoftware: Boolean, startPositionMs: Long) {
         currentMedia?.release()
-        val media = Media(libVlc, Uri.parse(uri)).apply {
+        currentMedia = null
+        try { activePfd?.close() } catch (_: Exception) {}
+        activePfd = null
+
+        val parsedUri = if (uri.startsWith("/")) {
+            Uri.fromFile(java.io.File(uri))
+        } else {
+            Uri.parse(uri)
+        }
+        val pfd = if (parsedUri.scheme == "content") {
+            try {
+                contentResolver.openFileDescriptor(parsedUri, "r")
+            } catch (_: Exception) {
+                null
+            }
+        } else null
+        activePfd = pfd
+
+        val media = (if (pfd != null) Media(libVlc, pfd.fileDescriptor) else Media(libVlc, parsedUri)).apply {
             setHWDecoderEnabled(!forceSoftware, false)
             addOption(":network-caching=3000")
             addOption(":file-caching=1500")
             addOption(":drop-late-frames")
             addOption(":skip-frames")
+            addOption(":avcodec-corrupted")
         }
         currentMedia = media
         vlcPlayer.media = media
@@ -225,6 +247,9 @@ class CompatibilityPlayerActivity : Activity() {
             vlcPlayer.release()
         }
         currentMedia?.release()
+        currentMedia = null
+        try { activePfd?.close() } catch (_: Exception) {}
+        activePfd = null
         if (::libVlc.isInitialized) libVlc.release()
         super.onDestroy()
     }
