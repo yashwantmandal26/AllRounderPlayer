@@ -27,6 +27,11 @@ import com.google.common.util.concurrent.Futures
 import com.google.common.util.concurrent.ListenableFuture
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
 import java.io.File
 
 class VideoPlaybackService : MediaSessionService() {
@@ -35,6 +40,8 @@ class VideoPlaybackService : MediaSessionService() {
     private var cachedArtworkKey: String? = null
     private var cachedArtworkBitmap: android.graphics.Bitmap? = null
     private var loadingArtworkKey: String? = null
+    private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
+    private var artworkJob: Job? = null
 
     companion object {
         const val VIDEO_NOTIFICATION_CHANNEL_ID = "video_playback_channel"
@@ -235,7 +242,8 @@ class VideoPlaybackService : MediaSessionService() {
                         return Futures.immediateFuture(SessionResult(SessionResult.RESULT_SUCCESS))
                     }
                     CUSTOM_ACTION_FORWARD -> {
-                        player.seekTo((player.currentPosition + 10_000L).coerceAtMost(player.duration.coerceAtLeast(0L)))
+                        val target = player.currentPosition + 10_000L
+                        player.seekTo(if (player.duration > 0L) target.coerceAtMost(player.duration) else target)
                         updateForegroundNotification()
                         return Futures.immediateFuture(SessionResult(SessionResult.RESULT_SUCCESS))
                     }
@@ -293,6 +301,7 @@ class VideoPlaybackService : MediaSessionService() {
                 val nm = getSystemService(Context.NOTIFICATION_SERVICE) as? NotificationManager
                 nm?.cancel(VIDEO_NOTIFICATION_ID)
             } catch (_: Exception) {}
+            stopSelf()
             return
         }
 
@@ -419,21 +428,22 @@ class VideoPlaybackService : MediaSessionService() {
         } else if (loadingArtworkKey != artworkKey && (currentUrl.isNotBlank() || !poster.isNullOrBlank())) {
             loadingArtworkKey = artworkKey
             val appCtx = applicationContext
-            kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.IO).launch {
-                val bmp = try {
-                    val uri = if (currentUrl.isNotBlank()) {
-                        if (currentUrl.startsWith("/")) Uri.fromFile(File(currentUrl)) else Uri.parse(currentUrl)
-                    } else null
-                    MediaArtworkHelper.getVideoThumbnailBitmap(appCtx, uri, poster)
-                } catch (_: Throwable) { null }
-                kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
-                    if (loadingArtworkKey == artworkKey) {
-                        cachedArtworkKey = artworkKey
-                        cachedArtworkBitmap = bmp
-                        loadingArtworkKey = null
-                        if (bmp != null && serviceInstance === this@VideoPlaybackService && VideoPlaybackManager.player != null) {
-                            updateForegroundNotification()
-                        }
+            artworkJob?.cancel()
+            artworkJob = serviceScope.launch {
+                val bmp = withContext(Dispatchers.IO) {
+                    try {
+                        val uri = if (currentUrl.isNotBlank()) {
+                            if (currentUrl.startsWith("/")) Uri.fromFile(File(currentUrl)) else Uri.parse(currentUrl)
+                        } else null
+                        MediaArtworkHelper.getVideoThumbnailBitmap(appCtx, uri, poster)
+                    } catch (_: Exception) { null }
+                }
+                if (loadingArtworkKey == artworkKey) {
+                    cachedArtworkKey = artworkKey
+                    cachedArtworkBitmap = bmp
+                    loadingArtworkKey = null
+                    if (bmp != null && serviceInstance === this@VideoPlaybackService && VideoPlaybackManager.player != null) {
+                        updateForegroundNotification()
                     }
                 }
             }
@@ -458,7 +468,8 @@ class VideoPlaybackService : MediaSessionService() {
             ACTION_FORWARD -> {
                 val p = VideoPlaybackManager.player
                 if (p != null) {
-                    val target = (p.currentPosition + 10_000L).coerceAtMost(p.duration.coerceAtLeast(0L))
+                    val requested = p.currentPosition + 10_000L
+                    val target = if (p.duration > 0L) requested.coerceAtMost(p.duration) else requested
                     p.seekTo(target)
                 }
             }
@@ -486,6 +497,9 @@ class VideoPlaybackService : MediaSessionService() {
     }
 
     override fun onDestroy() {
+        serviceScope.cancel()
+        loadingArtworkKey = null
+        cachedArtworkBitmap = null
         serviceInstance = null
         mediaSession?.run {
             release()

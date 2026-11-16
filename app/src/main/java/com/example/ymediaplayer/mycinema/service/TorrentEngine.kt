@@ -8,6 +8,7 @@ import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.update
 import org.libtorrent4j.*
 import org.libtorrent4j.alerts.*
 import java.io.File
@@ -93,14 +94,14 @@ object TorrentEngine {
 
     fun isConnectedToWifi(context: Context): Boolean {
         return try {
-            val cm = context.getSystemService(Context.CONNECTIVITY_SERVICE) as? android.net.ConnectivityManager ?: return true
+            val cm = context.getSystemService(Context.CONNECTIVITY_SERVICE) as? android.net.ConnectivityManager ?: return false
             val network = cm.activeNetwork ?: return false
             val caps = cm.getNetworkCapabilities(network) ?: return false
             caps.hasTransport(android.net.NetworkCapabilities.TRANSPORT_WIFI) ||
             caps.hasTransport(android.net.NetworkCapabilities.TRANSPORT_ETHERNET) ||
             caps.hasCapability(android.net.NetworkCapabilities.NET_CAPABILITY_NOT_METERED)
         } catch (_: Exception) {
-            true
+            false
         }
     }
 
@@ -446,13 +447,13 @@ object TorrentEngine {
     }
 
     fun getDownloadDir(context: Context): File {
-        val publicMovies = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_MOVIES)
-        val dir = if (publicMovies != null && (publicMovies.exists() || publicMovies.mkdirs())) {
-            File(publicMovies, "AllRounderPlayer")
+        val publicDownloads = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS)
+        val dir = if (publicDownloads != null && (publicDownloads.exists() || publicDownloads.mkdirs())) {
+            File(publicDownloads, "AllRounderPlayer Downloads")
         } else {
-            val baseDir = context.getExternalFilesDir(Environment.DIRECTORY_MOVIES)
-                ?: File(context.filesDir, "MYCinema")
-            File(baseDir, "MYCinema")
+            val baseDir = context.getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS)
+                ?: File(context.filesDir, "Downloads")
+            File(baseDir, "AllRounderPlayer Downloads")
         }
         if (!dir.exists()) {
             dir.mkdirs()
@@ -547,7 +548,10 @@ object TorrentEngine {
                                     try { handle.addTracker(AnnounceEntry(tr)) } catch (_: Exception) {}
                                 }
                                 applyTorrentFilePriorities(handle, isStream)
-                                updateState(hash) { it.copy(status = TorrentDownloadState.Status.DOWNLOADING) }
+                                updateState(hash) {
+                                    if (it.status == TorrentDownloadState.Status.PAUSED) it
+                                    else it.copy(status = TorrentDownloadState.Status.DOWNLOADING)
+                                }
                             } catch (_: Exception) {}
                         }
                         is TorrentFinishedAlert -> {
@@ -610,10 +614,11 @@ object TorrentEngine {
         val sm = sessionManager ?: return null
         val saveDir = if (isStream) getStreamCacheDir(context) else getDownloadDir(context)
         val appPrefs = com.example.ymediaplayer.data.AppPreferences(context)
-        if (!isStream && !isSequential && appPrefs.isWifiOnlyDownloadEnabled() && !isConnectedToWifi(context)) {
+        if (!isStream && appPrefs.isWifiOnlyDownloadEnabled() && !isConnectedToWifi(context)) {
             android.os.Handler(android.os.Looper.getMainLooper()).post {
-                android.widget.Toast.makeText(context, "Wi-Fi Only is enabled: Download will proceed on Wi-Fi", android.widget.Toast.LENGTH_LONG).show()
+                android.widget.Toast.makeText(context, "Connect to Wi-Fi to start this download, or disable Wi-Fi Only in settings", android.widget.Toast.LENGTH_LONG).show()
             }
+            return null
         }
 
         startProgressTicker()
@@ -631,7 +636,7 @@ object TorrentEngine {
                 isStream = isStream,
                 status = if (isStream) TorrentDownloadState.Status.STREAMING else TorrentDownloadState.Status.CONNECTING
             )
-            _downloads.value = _downloads.value + (infoHash to initialState)
+            _downloads.update { it + (infoHash to initialState) }
 
             val flags = if (effectiveSequential) TorrentFlags.SEQUENTIAL_DOWNLOAD else TorrentFlags.AUTO_MANAGED
 
@@ -671,8 +676,7 @@ object TorrentEngine {
     @Synchronized
     fun updateProgressTicks() {
         val sm = sessionManager ?: return
-        val currentMap = _downloads.value.toMutableMap()
-        var changed = false
+        val currentMap = _downloads.value
 
         for ((hash, state) in currentMap) {
             if (state.status == TorrentDownloadState.Status.FINISHED ||
@@ -703,20 +707,19 @@ object TorrentEngine {
                     TorrentDownloadState.Status.DOWNLOADING
                 }
 
-                currentMap[hash] = state.copy(
-                    progress = progress,
-                    downloadSpeed = speed,
-                    downloadedBytes = downloaded,
-                    totalBytes = total,
-                    seeds = seeds,
-                    status = newStatus
-                )
-                changed = true
+                updateState(hash) { latest ->
+                    // A native alert or UI action may have paused, finished or
+                    // cancelled this transfer while its native status was read.
+                    if (latest != state) latest else state.copy(
+                        progress = progress,
+                        downloadSpeed = speed,
+                        downloadedBytes = downloaded,
+                        totalBytes = total,
+                        seeds = seeds,
+                        status = newStatus
+                    )
+                }
             } catch (_: Exception) {}
-        }
-
-        if (changed) {
-            _downloads.value = currentMap
         }
     }
 
@@ -735,6 +738,10 @@ object TorrentEngine {
     fun resume(hash: String) {
         try {
             val cleanHash = normalizeInfoHash(hash) ?: return
+            val state = _downloads.value[cleanHash] ?: return
+            val context = com.example.ymediaplayer.YMediaApplication.instance
+            if (!state.isStream && com.example.ymediaplayer.data.AppPreferences(context).isWifiOnlyDownloadEnabled() &&
+                !isConnectedToWifi(context)) return
             val sha1 = Sha1Hash.parseHex(cleanHash)
             val handle = sessionManager?.find(sha1)
             handle?.resume()
@@ -771,7 +778,7 @@ object TorrentEngine {
             if (handle != null) {
                 sessionManager?.remove(handle)
             }
-            _downloads.value = _downloads.value - cleanHash
+            _downloads.update { it - cleanHash }
         } catch (_: Exception) {}
     }
 
@@ -779,17 +786,17 @@ object TorrentEngine {
         return try {
             val streamDir = getStreamCacheDir(context).canonicalFile
             val streamTarget = File(streamDir, relPath).canonicalFile
-            if (streamTarget.path.startsWith(streamDir.path) && streamTarget.exists()) {
+            if (isWithinDirectory(streamDir, streamTarget) && streamTarget.exists()) {
                 return streamTarget.absolutePath
             }
 
             val baseDir = getDownloadDir(context).canonicalFile
             val target = File(baseDir, relPath).canonicalFile
-            if (target.path.startsWith(baseDir.path) && target.exists()) {
+            if (isWithinDirectory(baseDir, target) && target.exists()) {
                 target.absolutePath
-            } else if (streamTarget.path.startsWith(streamDir.path)) {
+            } else if (isWithinDirectory(streamDir, streamTarget)) {
                 streamTarget.absolutePath
-            } else if (target.path.startsWith(baseDir.path)) {
+            } else if (isWithinDirectory(baseDir, target)) {
                 target.absolutePath
             } else {
                 android.util.Log.e("TorrentEngine", "Path traversal blocked: $relPath")
@@ -844,6 +851,25 @@ object TorrentEngine {
                     return foundSecondary.absolutePath
                 }
             } catch (_: Exception) {}
+
+            // Also check legacy storage locations for backward compatibility (e.g. Movies/MYCinema)
+            val legacyDirs = listOfNotNull(
+                context.getExternalFilesDir(Environment.DIRECTORY_MOVIES)?.let { File(it, "MYCinema") },
+                File(context.filesDir, "MYCinema"),
+                Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_MOVIES)?.let { File(it, "AllRounderPlayer") }
+            )
+            for (legacyDir in legacyDirs) {
+                if (legacyDir.exists()) {
+                    val legRel = File(legacyDir, relPath)
+                    if (legRel.exists()) return legRel.absolutePath
+                    val legFlat = File(legacyDir, simpleName)
+                    if (legFlat.exists()) return legFlat.absolutePath
+                    try {
+                        val legFound = legacyDir.walkTopDown().firstOrNull { it.isFile && it.name == simpleName }
+                        if (legFound != null && legFound.exists()) return legFound.absolutePath
+                    } catch (_: Exception) {}
+                }
+            }
 
             return primaryFile.absolutePath
         }
@@ -1216,7 +1242,12 @@ object TorrentEngine {
     }
 
     private fun updateState(hash: String, transform: (TorrentDownloadState) -> TorrentDownloadState) {
-        val current = _downloads.value[hash] ?: return
-        _downloads.value = _downloads.value + (hash to transform(current))
+        _downloads.update { states ->
+            val current = states[hash] ?: return@update states
+            states + (hash to transform(current))
+        }
     }
+
+    internal fun isWithinDirectory(directory: File, target: File): Boolean =
+        target.path.startsWith(directory.path + File.separator)
 }

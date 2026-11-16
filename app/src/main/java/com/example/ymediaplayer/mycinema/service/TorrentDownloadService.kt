@@ -30,15 +30,29 @@ class TorrentDownloadService : Service() {
         const val EXTRA_TITLE = "EXTRA_TITLE"
 
         fun start(context: Context, hash: String, title: String) {
+            sendRequest(context, hash, title, ACTION_START)
+        }
+
+        fun resume(context: Context, hash: String, title: String) {
+            sendRequest(context, hash, title, ACTION_RESUME)
+        }
+
+        private fun sendRequest(context: Context, hash: String, title: String, requestAction: String) {
             val intent = Intent(context, TorrentDownloadService::class.java).apply {
-                action = ACTION_START
+                action = requestAction
                 putExtra(EXTRA_HASH, hash)
                 putExtra(EXTRA_TITLE, title)
             }
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                context.startForegroundService(intent)
-            } else {
-                context.startService(intent)
+            try {
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                    context.startForegroundService(intent)
+                } else {
+                    context.startService(intent)
+                }
+            } catch (e: Exception) {
+                TorrentEngine.pause(hash)
+                android.widget.Toast.makeText(context, "Download paused: ${e.message ?: "background service unavailable"}",
+                    android.widget.Toast.LENGTH_LONG).show()
             }
         }
     }
@@ -51,7 +65,6 @@ class TorrentDownloadService : Service() {
     override fun onCreate() {
         super.onCreate()
         createNotificationChannel()
-        acquireWakeLock()
     }
 
     private fun acquireWakeLock() {
@@ -76,34 +89,32 @@ class TorrentDownloadService : Service() {
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        val action = intent?.action ?: return START_NOT_STICKY
+        val action = intent?.action ?: run { stopSelf(startId); return START_NOT_STICKY }
         val hash = intent.getStringExtra(EXTRA_HASH) ?: ""
         val title = intent.getStringExtra(EXTRA_TITLE) ?: "Movie Download"
 
         when (action) {
-            ACTION_START -> {
+            ACTION_START, ACTION_RESUME -> {
                 acquireWakeLock()
-                startForeground(
-                    NOTIFICATION_ID,
-                    buildInitialNotification(title)
-                )
+                try {
+                    startForeground(NOTIFICATION_ID, buildInitialNotification(title))
+                } catch (_: Exception) {
+                    TorrentEngine.downloads.value.values.filter { it.isActiveDownload }.forEach { TorrentEngine.pause(it.id) }
+                    releaseWakeLock()
+                    stopSelf()
+                    return START_NOT_STICKY
+                }
+                if (action == ACTION_RESUME && hash.isNotBlank()) TorrentEngine.resume(hash)
                 startTicker()
             }
             ACTION_PAUSE -> {
                 if (hash.isNotBlank()) TorrentEngine.pause(hash)
             }
-            ACTION_RESUME -> {
-                if (hash.isNotBlank()) TorrentEngine.resume(hash)
-            }
             ACTION_CANCEL -> {
                 if (hash.isNotBlank()) TorrentEngine.cancel(hash)
-                val remaining = TorrentEngine.downloads.value.values.any {
-                    !it.isStream && (
-                        it.status == TorrentDownloadState.Status.DOWNLOADING ||
-                        it.status == TorrentDownloadState.Status.CONNECTING
-                    )
-                }
+                val remaining = TorrentEngine.downloads.value.values.any { it.isActiveDownload }
                 if (!remaining) {
+                    releaseWakeLock()
                     stopForeground(STOP_FOREGROUND_REMOVE)
                     stopSelf()
                 }
@@ -118,7 +129,13 @@ class TorrentDownloadService : Service() {
         tickerJob = serviceScope.launch {
             while (isActive) {
                 delay(1000)
-                TorrentEngine.updateProgressTicks()
+                withContext(Dispatchers.IO) {
+                    val prefs = com.example.ymediaplayer.data.AppPreferences(this@TorrentDownloadService)
+                    if (prefs.isWifiOnlyDownloadEnabled() && !TorrentEngine.isConnectedToWifi(this@TorrentDownloadService)) {
+                        TorrentEngine.downloads.value.values.filter { it.isActiveDownload }.forEach { TorrentEngine.pause(it.id) }
+                    }
+                    TorrentEngine.updateProgressTicks()
+                }
                 val activeList = TorrentEngine.downloads.value.values.filter { !it.isStream }.toList()
 
                 // Check for any newly finished downloads and notify immediately
@@ -134,27 +151,20 @@ class TorrentDownloadService : Service() {
                     }
                 }
 
-                val downloading = activeList.firstOrNull {
-                    it.status == TorrentDownloadState.Status.DOWNLOADING ||
-                    it.status == TorrentDownloadState.Status.CONNECTING
-                }
+                val downloading = selectDownloadForNotification(activeList)
 
                 if (downloading != null) {
                     val notification = buildProgressNotification(downloading)
                     val manager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
                     manager.notify(NOTIFICATION_ID, notification)
-                } else {
-                    val anyActive = activeList.any {
-                        it.status != TorrentDownloadState.Status.FINISHED &&
-                        it.status != TorrentDownloadState.Status.ERROR
-                    }
-
-                    if (!anyActive && activeList.isNotEmpty()) {
-                        releaseWakeLock()
-                        stopForeground(STOP_FOREGROUND_REMOVE)
-                        stopSelf()
-                        break
-                    }
+                }
+                if (activeList.none { it.isActiveDownload }) {
+                    releaseWakeLock()
+                    // Keep a paused notification with a working Resume action,
+                    // but release the foreground-service budget and CPU lock.
+                    stopForeground(if (downloading != null) STOP_FOREGROUND_DETACH else STOP_FOREGROUND_REMOVE)
+                    stopSelf()
+                    break
                 }
             }
         }
@@ -200,12 +210,11 @@ class TorrentDownloadService : Service() {
             action = toggleAction
             putExtra(EXTRA_HASH, download.id)
         }
-        val togglePending = PendingIntent.getService(
-            this,
-            download.id.hashCode() and 0xFFFF,
-            toggleIntent,
-            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
-        )
+        val togglePending = if (isPaused && Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            PendingIntent.getForegroundService(this, download.id.hashCode(), toggleIntent,
+                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
+        } else PendingIntent.getService(this, download.id.hashCode(), toggleIntent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
 
         // Cancel Action
         val cancelIntent = Intent(this, TorrentDownloadService::class.java).apply {
@@ -222,7 +231,8 @@ class TorrentDownloadService : Service() {
         val speedText = "⬇ ${download.speedFormatted}"
         val sizeText = download.sizeFormatted
         val etaText = download.etaFormatted
-        val shortContent = "$speedText • $sizeText (${download.progressPercent}%)"
+        val shortContent = if (isPaused) "Paused • $sizeText (${download.progressPercent}%)"
+            else "$speedText • $sizeText (${download.progressPercent}%)"
         val subText = "$etaText • ${download.seeds} seeds"
 
         val bigText = "Speed: $speedText (${download.seeds} seeds)\n" +
@@ -237,7 +247,7 @@ class TorrentDownloadService : Service() {
             .setSmallIcon(R.mipmap.ic_launcher)
             .setContentIntent(pendingIntent)
             .setProgress(100, download.progressPercent, false)
-            .setOngoing(true)
+            .setOngoing(!isPaused)
             .setOnlyAlertOnce(true)
             .addAction(
                 if (isPaused) android.R.drawable.ic_media_play else android.R.drawable.ic_media_pause,
@@ -294,6 +304,7 @@ class TorrentDownloadService : Service() {
     }
 
     override fun onDestroy() {
+        TorrentEngine.downloads.value.values.filter { it.isActiveDownload }.forEach { TorrentEngine.pause(it.id) }
         tickerJob?.cancel()
         serviceScope.cancel()
         releaseWakeLock()
@@ -301,4 +312,11 @@ class TorrentDownloadService : Service() {
     }
 
     override fun onBind(intent: Intent?): IBinder? = null
+
+    override fun onTimeout(startId: Int, fgsType: Int) {
+        TorrentEngine.downloads.value.values.filter { it.isActiveDownload }.forEach { TorrentEngine.pause(it.id) }
+        releaseWakeLock()
+        stopForeground(STOP_FOREGROUND_REMOVE)
+        stopSelf()
+    }
 }

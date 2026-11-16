@@ -1,5 +1,14 @@
-﻿$adb = "C:\Users\Yashwant\AppData\Local\Android\Sdk\platform-tools\adb.exe"
-$apk = Join-Path $PSScriptRoot "app-release.apk"
+param(
+    [string]$ApkPath = (Join-Path $PSScriptRoot "app\build\outputs\apk\release\app-release.apk")
+)
+
+$adbCommand = Get-Command adb -ErrorAction SilentlyContinue
+if (-not $adbCommand) {
+    Write-Error "ADB was not found. Add Android SDK platform-tools to PATH."
+    exit 1
+}
+$adb = $adbCommand.Source
+$apk = $ApkPath
 
 if (-not (Test-Path $apk)) {
     Write-Error "APK not found at $apk"
@@ -51,16 +60,15 @@ if (-not $deviceFound) {
 }
 
 Write-Host "`nInstalling $apk on device ($deviceId)..." -ForegroundColor Cyan
-$installResult = & $adb -s $deviceId install -r -d $apk
+$installResult = & $adb -s $deviceId install -r $apk
+$installExitCode = $LASTEXITCODE
 Write-Host $installResult
 
-if ($installResult -match "Success") {
+if ($installExitCode -eq 0 -and $installResult -match "Success") {
     Write-Host "`nLaunching YMedia Player..." -ForegroundColor Green
     & $adb -s $deviceId shell am start -n com.example.ymediaplayer/.MainActivity
     Write-Host "App launched successfully!" -ForegroundColor Green
 } else {
-    Write-Host "Installation failed. Retrying with uninstall first..." -ForegroundColor Yellow
-    & $adb -s $deviceId uninstall com.example.ymediaplayer
-    & $adb -s $deviceId install -r $apk
-    & $adb -s $deviceId shell am start -n com.example.ymediaplayer/.MainActivity
+    Write-Error "Installation failed. Existing app and data were preserved. Check signing compatibility, version and available storage."
+    exit 1
 }

@@ -8,6 +8,19 @@ import org.junit.Before
 import org.junit.Test
 
 class PreferencesAndResumeTest {
+    @Test fun songHapticCalibrationPersistsPerRouteAndResetsIndependently() {
+        assertEquals(-20L, appPreferences.getMusicHapticTuning("speakers").syncMs)
+        appPreferences.setMusicHapticTuning("headphones",
+            com.example.ymediaplayer.player.HapticTuning(strength = 1.2f, syncMs = -60L, textures = false))
+        assertEquals(-60L, appPreferences.getMusicHapticTuning("headphones").syncMs)
+        assertEquals(1.2f, appPreferences.getMusicHapticTuning("headphones").strength, 0f)
+        assertEquals(-20L, appPreferences.getMusicHapticTuning("speakers").syncMs)
+        assertEquals(0L, appPreferences.getVideoHapticTuning("headphones").syncMs)
+        appPreferences.resetAllSettingsToDefaults()
+        assertEquals(-20L, appPreferences.getMusicHapticTuning("headphones").syncMs)
+        assertEquals(1f, appPreferences.getMusicHapticTuning("headphones").strength, 0f)
+    }
+
 
     @Test
     fun speakerAndHeadphoneProfilesStayIndependent() {
@@ -242,7 +255,7 @@ class PreferencesAndResumeTest {
 
     @Test
     fun soundModeSettings_defaultAndToggleWorks() {
-        assertEquals("BALANCED", appPreferences.getMusicSoundMode())
+        assertEquals("ORIGINAL", appPreferences.getMusicSoundMode())
 
         appPreferences.setMusicSoundMode("BASS_PUNCH")
         assertEquals("BASS_PUNCH", appPreferences.getMusicSoundMode())
@@ -251,7 +264,9 @@ class PreferencesAndResumeTest {
         assertEquals("VOCAL_BOOST", appPreferences.getMusicSoundMode())
 
         appPreferences.setMusicSoundMode("SPATIAL_3D")
-        assertEquals("SPATIAL_3D", appPreferences.getMusicSoundMode())
+        assertEquals("LIVE_STAGE", appPreferences.getMusicSoundMode())
+        appPreferences.setMusicSoundMode("BALANCED")
+        assertEquals("ORIGINAL", appPreferences.getMusicSoundMode())
     }
 
     @Test

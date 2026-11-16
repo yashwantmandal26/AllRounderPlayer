@@ -19,6 +19,8 @@ import androidx.compose.animation.core.*
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.ui.text.TextStyle
@@ -73,6 +75,8 @@ fun FolderDetailScreen(
     val appPreferences = remember { AppPreferences(context) }
     val fileManager = remember { FileManager(context) }
     val coroutineScope = rememberCoroutineScope()
+    val libraryFeedback = remember { SnackbarHostState() }
+    val homeSection = VideoHomeSection.fromFolderId(folderId)
 
     val cachedInitialFolder = remember { repository.getCachedFolderByIdSync(folderId) }
     var folder by remember { mutableStateOf(cachedInitialFolder) }
@@ -109,22 +113,37 @@ fun FolderDetailScreen(
     }
 
     // Android 11+ Recycle Bin Permission Launcher
+    var pendingDeletedUris by remember { mutableStateOf<List<android.net.Uri>>(emptyList()) }
     val hasRecycleBin = FileManager.supportsRecycleBin()
     val handleFileOperation = rememberFileOperationHandler(
         onSuccess = {
+            pendingDeletedUris.forEach { appPreferences.clearVideoProgress(it.toString()) }
+            pendingDeletedUris = emptyList()
+            VideoRepository.invalidateCache()
             selectedVideoIds = emptySet()
             deleteVideosConfirm = emptyList()
             renameVideoTarget = null
             refreshTrigger++
         },
-        onFailure = { android.widget.Toast.makeText(context, it, android.widget.Toast.LENGTH_LONG).show() }
+        onFailure = { pendingDeletedUris = emptyList(); android.widget.Toast.makeText(context, it, android.widget.Toast.LENGTH_LONG).show() },
+        onCancelled = { pendingDeletedUris = emptyList() }
     )
+    val requestVideoDeletion: (List<VideoItem>) -> Unit = { videos ->
+        if (appPreferences.isConfirmDeleteEnabled()) {
+            deleteVideosConfirm = videos
+        } else {
+            val uris = videos.map { it.uri }
+            pendingDeletedUris = uris
+            coroutineScope.launch { handleFileOperation(fileManager.deleteVideos(uris)) }
+        }
+    }
 
     // Refresh automatically whenever screen resumes (e.g. returning from video player)
     val lifecycleOwner = LocalLifecycleOwner.current
     DisposableEffect(lifecycleOwner) {
         val observer = LifecycleEventObserver { _, event ->
             if (event == Lifecycle.Event.ON_RESUME) {
+                VideoRepository.invalidateCache()
                 refreshTrigger++
             }
         }
@@ -146,12 +165,70 @@ fun FolderDetailScreen(
             if (folderId == "all_videos") {
                 val allVideos = allFolders.flatMap { it.videos }.distinctBy { it.uri.toString() }
                 VideoFolder(id = "all_videos", name = "All Videos", videos = allVideos)
+            } else if (folderId == "favorites") {
+                val favSet = appPreferences.getFavorites()
+                val favVideos = allFolders.flatMap { it.videos }
+                    .distinctBy { it.uri.toString() }
+                    .filter { favSet.contains(it.uri.toString()) }
+                VideoFolder(id = "favorites", name = "Favorites", videos = favVideos)
             } else if (folderId == "recently_added") {
+                val excludeSec = appPreferences.getExcludeShortClipsSeconds()
+                val hidden = appPreferences.getHiddenHomeVideos(VideoHomeSection.RECENTLY_ADDED)
                 val recentVideos = allFolders.flatMap { it.videos }
                     .distinctBy { it.uri.toString() }
+                    .filter { it.uri.toString() !in hidden && (excludeSec == 0 || it.duration >= excludeSec * 1000L) }
                     .sortedWith(compareByDescending<VideoItem> { it.dateAdded }.thenByDescending { it.id })
-                    .take(50)
-                VideoFolder(id = "recently_added", name = "Recent Added", videos = recentVideos)
+                VideoFolder(id = "recently_added", name = "Recently Added", videos = recentVideos)
+            } else if (folderId == "continue_watching") {
+                val playedUris = appPreferences.getPlayedUris()
+                val playedOrder = playedUris.mapIndexed { index, uri -> uri to index }.toMap()
+                val allVideos = allFolders.flatMap { it.videos }.distinctBy { it.uri.toString() }
+                val allKnownVideos = allVideos.toMutableList()
+                val existingUris = allVideos.map { it.uri.toString() }.toSet()
+                for (uriStr in playedUris) {
+                    if (!existingUris.contains(uriStr)) {
+                        val savedTitle = appPreferences.getSavedVideoTitle(uriStr)
+                        val isMyCinema = savedTitle != null || uriStr.contains("MYCinema", ignoreCase = true) || uriStr.startsWith("http")
+                        if (isMyCinema) {
+                            val title = savedTitle ?: uriStr.substringAfterLast("/").substringBefore("?")
+                            val duration = appPreferences.getVideoDuration(uriStr)
+                            allKnownVideos.add(
+                                VideoItem(
+                                    id = uriStr.hashCode().toLong(),
+                                    uri = android.net.Uri.parse(uriStr),
+                                    title = title,
+                                    duration = duration,
+                                    size = 0L,
+                                    bucketId = "mycinema",
+                                    bucketName = "MYCinema",
+                                    relativePath = "Movies/MYCinema/",
+                                    dateAdded = System.currentTimeMillis() / 1000L
+                                )
+                            )
+                        }
+                    }
+                }
+                val hidden = appPreferences.getHiddenHomeVideos(VideoHomeSection.CONTINUE_WATCHING)
+                val cwVideos = allKnownVideos.filter { video ->
+                    val uriStr = video.uri.toString()
+                    if (uriStr in hidden) return@filter false
+                    if (appPreferences.isCompleted(uriStr)) return@filter false
+                    val progress = appPreferences.getVideoProgress(uriStr)
+                    val duration = if (video.duration > 0L) video.duration else appPreferences.getVideoDuration(uriStr)
+                    if (progress <= 3000L) return@filter false
+                    val isStarted = progress >= 5000L || (duration > 0L && (progress.toFloat() / duration) >= 0.01f)
+                    val isUnfinished = if (duration > 0L) {
+                        val ratio = progress.toFloat() / duration
+                        ratio < 0.95f && progress < (duration - 5000L)
+                    } else {
+                        progress > 0L
+                    }
+                    isStarted && isUnfinished
+                }.sortedWith(
+                    compareByDescending<VideoItem> { appPreferences.getVideoLastPlayedTime(it.uri.toString()) }
+                        .thenBy { playedOrder[it.uri.toString()] ?: Int.MAX_VALUE }
+                )
+                VideoFolder(id = "continue_watching", name = "Continue Watching", videos = cwVideos)
             } else if (folderId == "last_played") {
                 val playedUris = appPreferences.getPlayedUris()
                 val allVideosMap = allFolders.flatMap { it.videos }.distinctBy { it.uri.toString() }.associateBy { it.uri.toString() }
@@ -198,7 +275,11 @@ fun FolderDetailScreen(
         } else {
             rawVideos
         }
-        filtered.sortVideosWithOrder(sortOrder)
+        if ((folderId == "continue_watching" || folderId == "recently_added" || folderId == "last_played") && sortOrder == SortOrder.DATE) {
+            filtered
+        } else {
+            filtered.sortVideosWithOrder(sortOrder)
+        }
     }
 
     val totalFolderSize = remember(rawVideos) { rawVideos.sumOf { it.size } }
@@ -251,6 +332,7 @@ fun FolderDetailScreen(
 
         Scaffold(
             containerColor = Color.Transparent,
+            snackbarHost = { SnackbarHost(libraryFeedback) },
             topBar = {
                 if (inSelectionMode) {
                     // Multi-Select Top Bar
@@ -291,7 +373,7 @@ fun FolderDetailScreen(
                             }
                             IconButton(onClick = {
                                 val items = displayVideos.filter { selectedVideoIds.contains(it.id) }
-                                deleteVideosConfirm = items
+                                requestVideoDeletion(items)
                             }) {
                                 Icon(Icons.Rounded.Delete, contentDescription = "Delete", tint = Color(0xFFE53935))
                             }
@@ -403,7 +485,8 @@ fun FolderDetailScreen(
                                         overflow = TextOverflow.Ellipsis
                                     )
                                     Text(
-                                        "${rawVideos.size} videos · ${formatSize(totalFolderSize)}",
+                                        if (folderId == "continue_watching") "${rawVideos.size} in progress · Tap to resume"
+                                        else "${rawVideos.size} videos · ${formatSize(totalFolderSize)}",
                                         fontSize = 11.5.sp,
                                         color = c.textSecondary
                                     )
@@ -524,17 +607,27 @@ fun FolderDetailScreen(
                             .border(1.2.dp, c.glassBorder, RoundedCornerShape(24.dp))
                             .padding(horizontal = 36.dp, vertical = 28.dp)
                     ) {
-                        Icon(Icons.Rounded.VideoLibrary, contentDescription = null, tint = c.textSecondary, modifier = Modifier.size(56.dp))
+                        Icon(
+                            if (folderId == "continue_watching") Icons.Rounded.PlayCircle else Icons.Rounded.VideoLibrary,
+                            contentDescription = null,
+                            tint = c.textSecondary,
+                            modifier = Modifier.size(56.dp)
+                        )
                         Spacer(Modifier.height(14.dp))
                         Text(
-                            if (searchQuery.isNotEmpty()) "No Matching Videos" else "Folder is Empty",
+                            if (searchQuery.isNotEmpty()) "No Matching Videos"
+                            else if (folderId == "continue_watching") "No Videos in Continue Watching"
+                            else "Folder is Empty",
                             color = c.textPrimary,
                             fontSize = 17.sp,
                             fontWeight = FontWeight.SemiBold
                         )
                         Spacer(Modifier.height(6.dp))
                         Text(
-                            if (searchQuery.isNotEmpty()) "Try a different search keyword" else "No videos found in this folder",
+                            if (searchQuery.isNotEmpty()) "Try a different search keyword"
+                            else if (folderId == "continue_watching") "Videos you start watching will appear here"
+                            else if (folderId == "favorites") "No favorite videos yet. Tap the heart icon in video player to add favorites"
+                            else "No videos found in this folder",
                             color = c.textSecondary,
                             fontSize = 13.sp
                         )
@@ -657,10 +750,10 @@ fun FolderDetailScreen(
             ModalBottomSheet(
                 onDismissRequest = { videoActionTarget = null },
                 sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
-                containerColor = c.dropdownBg,
+                containerColor = c.cardBgElevated,
                 shape = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp)
             ) {
-                Column(modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp).padding(bottom = 32.dp)) {
+                Column(modifier = Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).padding(horizontal = 20.dp).padding(bottom = 32.dp)) {
                     // Header with thumbnail and title
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Box(
@@ -723,6 +816,17 @@ fun FolderDetailScreen(
                         videoInfoTarget = video
                         videoActionTarget = null
                     }
+                    homeSection?.let { section ->
+                        VideoActionItem(Icons.Rounded.PlaylistRemove, "Remove from this list", c.textPrimary) {
+                            val uri = video.uri.toString()
+                            appPreferences.hideHomeVideo(section, uri)
+                            videoActionTarget = null
+                            coroutineScope.launch {
+                                if (libraryFeedback.showSnackbar("Removed from ${section.title}", "Undo", duration = SnackbarDuration.Short)
+                                    == SnackbarResult.ActionPerformed) appPreferences.restoreHomeVideo(section, uri)
+                            }
+                        }
+                    }
                     if (appPreferences.getVideoProgress(video.uri.toString()) > 0) {
                         VideoActionItem(Icons.Rounded.History, "Clear Watch Progress", c.textSecondary) {
                             appPreferences.clearVideoProgress(video.uri.toString())
@@ -735,7 +839,7 @@ fun FolderDetailScreen(
                         videoActionTarget = null
                     }
                     VideoActionItem(Icons.Rounded.Delete, if (hasRecycleBin) "Move to Recycle Bin" else "Delete video", Color(0xFFE53935)) {
-                        deleteVideosConfirm = listOf(video)
+                        requestVideoDeletion(listOf(video))
                         videoActionTarget = null
                     }
                 }
@@ -744,8 +848,9 @@ fun FolderDetailScreen(
 
         // Rename Dialog
         renameVideoTarget?.let { video ->
-            var newName by remember { mutableStateOf(video.title.substringBeforeLast(".")) }
-            val ext = video.title.substringAfterLast(".", "")
+            val fileName = if (video.uri.scheme == "file") java.io.File(requireNotNull(video.uri.path)).name else video.title
+            var newName by remember { mutableStateOf(fileName.substringBeforeLast(".", fileName)) }
+            val ext = fileName.substringAfterLast(".", "")
             AlertDialog(
                 onDismissRequest = { renameVideoTarget = null },
                 containerColor = c.dropdownBg,
@@ -769,7 +874,7 @@ fun FolderDetailScreen(
                     TextButton(onClick = {
                         val finalName = if (ext.isNotEmpty()) "$newName.$ext" else newName
                         coroutineScope.launch {
-                            val result = fileManager.renameVideo(video.id, finalName)
+                            val result = fileManager.renameVideo(video.uri, finalName)
                             handleFileOperation(result)
                         }
                     }) {
@@ -787,6 +892,7 @@ fun FolderDetailScreen(
         // Delete Confirm Dialog (Recycle Bin)
         if (deleteVideosConfirm.isNotEmpty()) {
             val count = deleteVideosConfirm.size
+            val hasRecycleBin = FileManager.supportsRecycleBin(deleteVideosConfirm.map { it.uri })
             AlertDialog(
                 onDismissRequest = { deleteVideosConfirm = emptyList() },
                 containerColor = c.dropdownBg,
@@ -799,15 +905,17 @@ fun FolderDetailScreen(
                 },
                 text = {
                     Text(
-                        if (hasRecycleBin) "Videos will be moved to your device's Recycle Bin where they can be restored for a limited time." else "Your Android version does not support the system Recycle Bin. These videos will be permanently deleted and cannot be restored.",
+                        if (hasRecycleBin) "Videos will be moved to your device's Recycle Bin where they can be restored for a limited time." else "These videos will be permanently deleted and cannot be restored. Some files or Android versions do not support the system Recycle Bin.",
                         color = c.textSecondary,
                         fontSize = 14.sp
                     )
                 },
                 confirmButton = {
                     TextButton(onClick = {
+                        val uris = deleteVideosConfirm.map { it.uri }
+                        deleteVideosConfirm = emptyList()
                         coroutineScope.launch {
-                            val uris = deleteVideosConfirm.map { it.uri }
+                            pendingDeletedUris = uris
                             val result = fileManager.deleteVideos(uris)
                             handleFileOperation(result)
                         }
@@ -826,7 +934,7 @@ fun FolderDetailScreen(
         // Video Info Sheet
         videoInfoTarget?.let { video ->
             LaunchedEffect(video.id) {
-                videoInfoData = fileManager.getVideoInfo(video.id)
+                videoInfoData = fileManager.getVideoInfo(video.uri)
             }
             videoInfoData?.let { info ->
                 ModalBottomSheet(

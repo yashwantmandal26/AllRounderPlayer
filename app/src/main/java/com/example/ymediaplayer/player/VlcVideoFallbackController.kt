@@ -8,6 +8,7 @@ import android.os.Handler
 import android.os.Looper
 import android.os.ParcelFileDescriptor
 import android.util.Log
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -30,6 +31,7 @@ class VlcVideoFallbackController {
     val durationMs = mutableLongStateOf(0L)
     val videoWidth = mutableIntStateOf(0)
     val videoHeight = mutableIntStateOf(0)
+    val videoFps = mutableFloatStateOf(0f)
     val hasEnded = mutableStateOf(false)
     val statusNote = mutableStateOf<String?>(null)
 
@@ -52,8 +54,13 @@ class VlcVideoFallbackController {
         attachedLayout = layout
         vlcPlayer?.let { mp ->
             runCatching {
-                mp.attachViews(layout, null, true, false)
+                mp.attachViews(layout, null, true, true)
                 applyResizeMode(currentResizeMode)
+                if (!mp.isPlaying && !hasEnded.value && activeUriString.isNotBlank()) {
+                    if (attachedLayout != null) {
+                mp.play()
+            }
+                }
             }
         }
     }
@@ -72,23 +79,24 @@ class VlcVideoFallbackController {
         startPositionMs: Long,
         speed: Float,
         isMuted: Boolean,
-        resizeMode: Int
+        resizeMode: Int,
+        forceSoftware: Boolean = true
     ) {
         stopAndReset(keepActiveFlag = true)
         activeUriString = uriString
         currentSpeed = speed.coerceIn(0.25f, 4.0f)
         currentMuted = isMuted
         currentResizeMode = resizeMode
-        softwareRetryUsed = false
+        softwareRetryUsed = forceSoftware
         hasEnded.value = false
-        statusNote.value = "Compatibility engine: recovering stream"
+        statusNote.value = if (forceSoftware) "Software recovery active" else "Compatibility engine: recovering stream"
         isActive.value = true
 
         launchVlcPlayback(
             context = context.applicationContext,
             uriString = uriString,
             startPositionMs = startPositionMs.coerceAtLeast(0L),
-            forceSoftware = false
+            forceSoftware = forceSoftware
         )
     }
 
@@ -111,7 +119,9 @@ class VlcVideoFallbackController {
                     "--avcodec-corrupted",
                     "--avcodec-error-resilience=1",
                     "--avcodec-skiploopfilter=4",
-                    "--no-video-title-show"
+                    "--no-video-title-show",
+                    "--aout=android_audiotrack",
+                    "--audio-resampler=soxr"
                 )
             )
             libVlc = lib
@@ -119,7 +129,10 @@ class VlcVideoFallbackController {
             vlcPlayer = mp
 
             attachedLayout?.let { layout ->
-                runCatching { mp.attachViews(layout, null, true, false) }
+                runCatching {
+                    mp.attachViews(layout, null, true, true)
+                    applyResizeMode(currentResizeMode)
+                }
             }
 
             val parsedUri = if (uriString.startsWith("/")) {
@@ -129,6 +142,9 @@ class VlcVideoFallbackController {
             }
             val pfd = if (parsedUri.scheme == "content") {
                 runCatching { context.contentResolver.openFileDescriptor(parsedUri, "r") }.getOrNull()
+            } else if (parsedUri.scheme == "file") {
+                val f = File(parsedUri.path ?: uriString)
+                runCatching { ParcelFileDescriptor.open(f, ParcelFileDescriptor.MODE_READ_ONLY) }.getOrNull()
             } else null
             activePfd = pfd
 
@@ -139,6 +155,7 @@ class VlcVideoFallbackController {
                 addOption(":drop-late-frames")
                 addOption(":skip-frames")
                 addOption(":avcodec-corrupted")
+                addOption(":aout=android_audiotrack")
             }
             currentMedia = media
             mp.media = media
@@ -165,7 +182,7 @@ class VlcVideoFallbackController {
                                 durationMs.longValue = len
                                 VideoPlaybackManager.duration.value = len
                             }
-                            if (!appliedStartSeek && startPositionMs > 0L && mp.isSeekable) {
+                            if (!appliedStartSeek && startPositionMs > 0L && (mp.isSeekable || len > 0L)) {
                                 appliedStartSeek = true
                                 mp.time = startPositionMs
                             }
@@ -177,7 +194,10 @@ class VlcVideoFallbackController {
                         }
                         VlcMediaPlayer.Event.TimeChanged -> {
                             val t = mp.time
-                            if (t >= 0L) {
+                            if (!appliedStartSeek && startPositionMs > 0L && (mp.isSeekable || mp.length > 0L)) {
+                                appliedStartSeek = true
+                                mp.time = startPositionMs
+                            } else if (t >= 0L) {
                                 positionMs.longValue = t
                                 VideoPlaybackManager.currentPosition.value = t
                             }
@@ -187,6 +207,10 @@ class VlcVideoFallbackController {
                             if (len > 0L) {
                                 durationMs.longValue = len
                                 VideoPlaybackManager.duration.value = len
+                            }
+                            if (!appliedStartSeek && startPositionMs > 0L && (mp.isSeekable || len > 0L)) {
+                                appliedStartSeek = true
+                                mp.time = startPositionMs
                             }
                         }
                         VlcMediaPlayer.Event.Vout -> {
@@ -218,7 +242,9 @@ class VlcVideoFallbackController {
                 }
             }
 
-            mp.play()
+            if (attachedLayout != null) {
+                mp.play()
+            }
         } catch (t: Throwable) {
             Log.e("VlcFallback", "Failed to start in-screen VLC fallback", t)
             isPlaying.value = false
@@ -236,6 +262,12 @@ class VlcVideoFallbackController {
             videoHeight.intValue = h
             VideoPlaybackManager.videoWidth.value = w
             VideoPlaybackManager.videoHeight.value = h
+        }
+        val fps = if (track.frameRateDen > 0) {
+            track.frameRateNum.toFloat() / track.frameRateDen
+        } else 0f
+        if (fps > 0f) {
+            videoFps.floatValue = fps
         }
     }
 
@@ -313,6 +345,7 @@ class VlcVideoFallbackController {
         durationMs.longValue = 0L
         videoWidth.intValue = 0
         videoHeight.intValue = 0
+        videoFps.floatValue = 0f
         hasEnded.value = false
         if (!keepActiveFlag) {
             isActive.value = false

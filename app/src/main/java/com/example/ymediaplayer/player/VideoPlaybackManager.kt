@@ -20,6 +20,7 @@ import androidx.media3.common.MediaItem
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.PlaybackParameters
 import androidx.media3.common.Player
+import androidx.media3.common.Tracks
 import androidx.media3.datasource.DefaultDataSource
 import androidx.media3.datasource.DefaultHttpDataSource
 import androidx.media3.extractor.DefaultExtractorsFactory
@@ -246,6 +247,20 @@ object VideoPlaybackManager {
 
     private var playerListener: Player.Listener? = null
     private var dynamicsProcessor: VideoDynamicsProcessor? = null
+    private var videoHaptics: VideoHaptics? = null
+    fun hasHapticSupport(context: Context? = null): Boolean {
+        if (videoHaptics != null) return videoHaptics?.available == true
+        val vibrator = context?.getSystemService(android.os.Vibrator::class.java)
+        return vibrator?.hasVibrator() == true
+    }
+    fun setHapticsEnabled(enabled: Boolean) { videoHaptics?.setEnabled(enabled) }
+    fun setHapticTuning(strength: Float, offsetMs: Long) { videoHaptics?.setTuning(strength, offsetMs) }
+    internal fun applyHapticTuning(route: String, value: HapticTuning) { videoHaptics?.applyTuningForRoute(route, value) }
+    private val hapticPreviewOwners = mutableSetOf<Any>()
+    fun setHapticPreviewActive(owner: Any, active: Boolean) {
+        if (active) hapticPreviewOwners.add(owner) else hapticPreviewOwners.remove(owner)
+        videoHaptics?.setPreviewSuppressed(hapticPreviewOwners.isNotEmpty())
+    }
     var activePlaylistQueue: List<VideoItem>? = null
     var activeStreamingHash: String? = null
 
@@ -448,7 +463,7 @@ object VideoPlaybackManager {
         }
     }
 
-    private fun triggerCompatibilityFallback(
+    internal fun triggerCompatibilityFallback(
         context: Context,
         targetPlayer: ExoPlayer,
         reason: String
@@ -560,14 +575,19 @@ object VideoPlaybackManager {
 
         val dynamics = VideoDynamicsProcessor()
         dynamicsProcessor = dynamics
+        val haptics = VideoHaptics(applicationContext)
+        haptics.setPreviewSuppressed(hapticPreviewOwners.isNotEmpty())
+        haptics.setEnabled(appPreferences.isVideoHapticsEnabled())
+        videoHaptics = haptics
         val renderersFactory = object : DefaultRenderersFactory(context) {
             override fun buildAudioSink(context: Context, enableFloatOutput: Boolean,
                 enableAudioTrackPlaybackParams: Boolean): androidx.media3.exoplayer.audio.AudioSink {
-                return androidx.media3.exoplayer.audio.DefaultAudioSink.Builder(context)
+                val sink = androidx.media3.exoplayer.audio.DefaultAudioSink.Builder(context)
                     .setEnableFloatOutput(false)
                     .setEnableAudioTrackPlaybackParams(enableAudioTrackPlaybackParams)
                     .setAudioProcessors(arrayOf(dynamics))
                     .build()
+                return HapticAudioSink(sink, haptics)
             }
 
             override fun buildAudioRenderers(
@@ -694,6 +714,14 @@ object VideoPlaybackManager {
             }
 
         val listener = object : Player.Listener {
+            override fun onEvents(player: Player, events: Player.Events) {
+                if (events.containsAny(Player.EVENT_POSITION_DISCONTINUITY,
+                        Player.EVENT_MEDIA_ITEM_TRANSITION, Player.EVENT_PLAYBACK_PARAMETERS_CHANGED,
+                        Player.EVENT_AUDIO_SESSION_ID, Player.EVENT_PLAYER_ERROR)) {
+                    haptics.invalidate()
+                }
+                haptics.setPlaying(player.isPlaying)
+            }
             override fun onIsPlayingChanged(playing: Boolean) {
                 isPlaying.value = playing
                 com.example.ymediaplayer.service.VideoPlaybackService.serviceInstance?.updateForegroundNotification()
@@ -728,6 +756,16 @@ object VideoPlaybackManager {
             override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
                 resetRecoveryForNewItem(applicationContext, mediaItem)
                 com.example.ymediaplayer.service.VideoPlaybackService.serviceInstance?.updateForegroundNotification()
+            }
+
+            override fun onTracksChanged(tracks: Tracks) {
+                val videoGroups = tracks.groups.filter { it.type == C.TRACK_TYPE_VIDEO }
+                if (videoGroups.isNotEmpty()) {
+                    val hasSupportedVideo = videoGroups.any { it.isSupported && it.isSelected }
+                    if (!hasSupportedVideo && compatibilityFallbackRequest.value == null) {
+                        triggerCompatibilityFallback(applicationContext, newPlayer, "Video format unsupported by device hardware")
+                    }
+                }
             }
 
             override fun onPlayerError(error: PlaybackException) {
@@ -812,6 +850,8 @@ object VideoPlaybackManager {
     }
 
     fun releasePlayer(clearSleepTimer: Boolean = true) {
+        videoHaptics?.release()
+        videoHaptics = null
         if (clearSleepTimer) setSleepTimer(0)
         activeStreamingHash = null
         recoveryJob?.cancel()

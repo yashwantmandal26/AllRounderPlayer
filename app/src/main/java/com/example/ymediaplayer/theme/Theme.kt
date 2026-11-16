@@ -29,7 +29,7 @@ private val LightColorScheme = lightColorScheme(primary = Purple40, secondary = 
 @Composable
 fun YMediaPlayerTheme(
   themeMode: ThemeMode = ThemeMode.OLED_BLACK,
-  colorTheme: com.example.ymediaplayer.ui.PlayerTheme = com.example.ymediaplayer.ui.PlayerTheme.BLUE,
+  colorTheme: com.example.ymediaplayer.ui.PlayerTheme = com.example.ymediaplayer.ui.PlayerTheme.ORANGE,
   content: @Composable () -> Unit,
 ) {
   val baseAppColors = when (themeMode) {

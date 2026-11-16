@@ -832,6 +832,7 @@ fun VideoPlayerScreen(
     val vlcFallback = remember { com.example.ymediaplayer.player.VlcVideoFallbackController() }
     val isVlcFallbackActive by vlcFallback.isActive
     var vlcLayoutView by remember { mutableStateOf<org.videolan.libvlc.util.VLCVideoLayout?>(null) }
+    var resizeMode by remember(currentUrl) { mutableIntStateOf(AspectRatioFrameLayout.RESIZE_MODE_FIT) }
 
     DisposableEffect(vlcFallback) {
         VideoPlaybackManager.onFallbackPause = {
@@ -893,6 +894,9 @@ fun VideoPlayerScreen(
 
     LaunchedEffect(compatibilityFallback?.requestId) {
         val request = compatibilityFallback ?: return@LaunchedEffect
+        // Ensure ExoPlayer is stopped and cleared so LibVLC has exclusive hardware decoders and AudioTrack
+        exoPlayer.stop()
+        exoPlayer.clearMediaItems()
         // Stay inside VideoPlayerScreen with all gestures/controls by switching to in-screen LibVLC fallback.
         vlcFallback.start(
             context = context,
@@ -900,7 +904,8 @@ fun VideoPlayerScreen(
             startPositionMs = request.positionMs,
             speed = exoPlayer.playbackParameters.speed,
             isMuted = exoPlayer.volume <= 0.01f,
-            resizeMode = AspectRatioFrameLayout.RESIZE_MODE_FIT
+            resizeMode = resizeMode,
+            forceSoftware = true
         )
         VideoPlaybackManager.consumeCompatibilityFallback(request.requestId)
     }
@@ -978,10 +983,29 @@ fun VideoPlayerScreen(
         com.example.ymediaplayer.service.VideoPlaybackService.notifyPlayerUpdated()
     }
 
+    // Auto-detect exotic codecs (e.g. HEVC 4:4:4, VC1, RV40) and seamlessly route to software decoder
+    LaunchedEffect(currentUrl) {
+        if (currentUrl.isNotBlank()) {
+            val lower = (currentUrl + " " + videoTitle).lowercase()
+            val isExoticCodec = lower.contains("444") || lower.contains("hevc_444") || lower.contains("hevc-444") || lower.contains("vc1") || lower.contains("rv40")
+            if (isExoticCodec && !isVlcFallbackActive) {
+                VideoPlaybackManager.triggerCompatibilityFallback(
+                    context,
+                    exoPlayer,
+                    "Automatic software decoder (Content: HEVC 4:4:4 / Exotic Format)"
+                )
+            }
+        }
+    }
+
     // ─── Player State ─────────────────────────────────────────────────────────
+    var isFavorite by remember(currentUrl) {
+        mutableStateOf(if (currentUrl.isNotBlank()) appPreferences.isFavorite(currentUrl) else false)
+    }
+    var showFavoriteAnimation by remember { mutableStateOf(false) }
+    var favoriteAnimationTrigger by remember { mutableLongStateOf(0L) }
     var isPlaying by remember(exoPlayer) { mutableStateOf(exoPlayer.isPlaying) }
     var currentPosition by remember { mutableLongStateOf(0L) }
-    var bufferedPosition by remember { mutableLongStateOf(0L) }
     var downloadedRanges by remember(currentUrl) { mutableStateOf<List<ClosedFloatingPointRange<Float>>>(emptyList()) }
     var duration by remember(exoPlayer) {
         val d = exoPlayer.duration
@@ -1048,7 +1072,6 @@ fun VideoPlayerScreen(
     var isLocked by remember { mutableStateOf(false) }
     var isNightMode by remember { mutableStateOf(appPreferences.isNightMode()) }
     var isBackgroundAudio by remember { mutableStateOf(appPreferences.isBackgroundPlayEnabled()) }
-    var resizeMode by remember(currentUrl) { mutableIntStateOf(AspectRatioFrameLayout.RESIZE_MODE_FIT) }
     LaunchedEffect(resizeMode, isVlcFallbackActive) {
         if (isVlcFallbackActive) {
             vlcFallback.applyResizeMode(resizeMode)
@@ -1627,6 +1650,51 @@ fun VideoPlayerScreen(
         }
     }
 
+    var isVideoHaptics by remember { mutableStateOf(appPreferences.isVideoHapticsEnabled()) }
+    var showHapticTuning by remember { mutableStateOf(false) }
+    val hapticRoute = rememberHapticRoute(audioManager)
+    LaunchedEffect(hapticRoute, exoPlayer) {
+        VideoPlaybackManager.setHapticTuning(appPreferences.getVideoHapticStrength(hapticRoute),
+            appPreferences.getVideoHapticSyncMs(hapticRoute))
+    }
+    if (showHapticTuning) {
+        val tuningRoute = remember(hapticRoute) { com.example.ymediaplayer.player.currentHapticRoute(audioManager) }
+        HapticTuningDialog(
+            route = tuningRoute,
+            initialStrength = appPreferences.getVideoHapticStrength(tuningRoute),
+            initialOffsetMs = appPreferences.getVideoHapticSyncMs(tuningRoute),
+            onApply = { strength, offset ->
+                appPreferences.setVideoHapticTuning(tuningRoute, strength, offset)
+                VideoPlaybackManager.setHapticTuning(strength, offset)
+            },
+            onDismiss = { showHapticTuning = false }
+        )
+    }
+    val toggleVideoHaptics: () -> Unit = {
+        view.performHaptic(HapticType.MEDIUM)
+        if (!VideoPlaybackManager.hasHapticSupport(context)) {
+            showQuickHUD("Haptics unavailable", "Device vibrator is not available", Icons.Rounded.Vibration)
+        } else {
+            val newState = !isVideoHaptics
+            isVideoHaptics = newState
+            appPreferences.setVideoHapticsEnabled(newState)
+            VideoPlaybackManager.setHapticsEnabled(newState)
+            if (newState) {
+                showQuickHUD(
+                    "Haptics: ON",
+                    "Audio-reactive tactile feedback enabled",
+                    Icons.Rounded.Vibration
+                )
+            } else {
+                showQuickHUD(
+                    "Haptics: OFF",
+                    "Audio-reactive haptics disabled",
+                    Icons.Rounded.Vibration
+                )
+            }
+        }
+    }
+
     val selectVideoColorProfile: (VideoColorProfile) -> Unit = { nextProfile ->
         videoColorProfile = nextProfile
         appPreferences.setVideoColorProfile(nextProfile.id)
@@ -2063,7 +2131,7 @@ fun VideoPlayerScreen(
     val initialCachedDim = remember(currentUrl) {
         VideoPlaybackManager.videoWidth.value.takeIf { it > 0 }?.let { w ->
             Pair(w, VideoPlaybackManager.videoHeight.value)
-        } ?: VideoRepository.getVideoDimensions(currentUrl)
+        } ?: VideoRepository.getCachedVideoDimensions(currentUrl)
     }
     var videoWidth by remember(currentUrl) { mutableIntStateOf(initialCachedDim?.first ?: 0) }
     var videoHeight by remember(currentUrl) { mutableIntStateOf(initialCachedDim?.second ?: 0) }
@@ -2125,7 +2193,7 @@ fun VideoPlayerScreen(
                         }
                     }
                 } else if (currentUrl.startsWith("file://") || currentUrl.startsWith("/")) {
-                    val file = java.io.File(currentUrl.removePrefix("file://"))
+                    val file = java.io.File(if (currentUrl.startsWith("file://")) android.net.Uri.parse(currentUrl).path.orEmpty() else currentUrl)
                     if (file.exists()) {
                         val sz = file.length()
                         if (sz > 0L) resolvedFileSize = sz
@@ -2142,37 +2210,45 @@ fun VideoPlayerScreen(
                 if (!isLocalOrLoopback) return@withContext
 
                 val r = android.media.MediaMetadataRetriever()
-                if (currentUrl.startsWith("content://")) {
-                    r.setDataSource(context, android.net.Uri.parse(currentUrl))
-                } else {
-                    r.setDataSource(currentUrl)
-                }
-                val wStr = r.extractMetadata(android.media.MediaMetadataRetriever.METADATA_KEY_VIDEO_WIDTH)
-                val hStr = r.extractMetadata(android.media.MediaMetadataRetriever.METADATA_KEY_VIDEO_HEIGHT)
-                val rotStr = r.extractMetadata(android.media.MediaMetadataRetriever.METADATA_KEY_VIDEO_ROTATION)
-                val captureFps = r.extractMetadata(android.media.MediaMetadataRetriever.METADATA_KEY_CAPTURE_FRAMERATE)?.toFloatOrNull()
-                val calculatedFps = if ((captureFps == null || captureFps <= 0f) && Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
-                    val frames = r.extractMetadata(android.media.MediaMetadataRetriever.METADATA_KEY_VIDEO_FRAME_COUNT)?.toDoubleOrNull()
-                    val durMs = r.extractMetadata(android.media.MediaMetadataRetriever.METADATA_KEY_DURATION)?.toDoubleOrNull()
-                    if (frames != null && durMs != null && frames > 0.0 && durMs > 0.0) {
-                        (frames * 1000.0 / durMs).toFloat()
-                    } else 0f
-                } else {
-                    captureFps ?: 0f
-                }
-                val rawW = wStr?.toIntOrNull() ?: 0
-                val rawH = hStr?.toIntOrNull() ?: 0
-                val rot = rotStr?.toIntOrNull() ?: 0
-                r.release()
-                val effectiveW = if (rot == 90 || rot == 270) rawH else rawW
-                val effectiveH = if (rot == 90 || rot == 270) rawW else rawH
-                if (effectiveW > 0 && effectiveH > 0) {
-                    videoWidth = effectiveW
-                    videoHeight = effectiveH
-                }
-                if (calculatedFps > 0f && calculatedFps <= 240f) {
-                    retrievedFps = calculatedFps
-                }
+                try {
+                    if (currentUrl.startsWith("content://")) {
+                        r.setDataSource(context, android.net.Uri.parse(currentUrl))
+                    } else if (currentUrl.startsWith("file://")) {
+                        r.setDataSource(android.net.Uri.parse(currentUrl).path)
+                    } else {
+                        r.setDataSource(currentUrl)
+                    }
+                    val wStr = r.extractMetadata(android.media.MediaMetadataRetriever.METADATA_KEY_VIDEO_WIDTH)
+                    val hStr = r.extractMetadata(android.media.MediaMetadataRetriever.METADATA_KEY_VIDEO_HEIGHT)
+                    val rotStr = r.extractMetadata(android.media.MediaMetadataRetriever.METADATA_KEY_VIDEO_ROTATION)
+                    val captureFps = r.extractMetadata(android.media.MediaMetadataRetriever.METADATA_KEY_CAPTURE_FRAMERATE)?.toFloatOrNull()
+                    val calculatedFps = if ((captureFps == null || captureFps <= 0f) && Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+                        val frames = r.extractMetadata(android.media.MediaMetadataRetriever.METADATA_KEY_VIDEO_FRAME_COUNT)?.toDoubleOrNull()
+                        val durMs = r.extractMetadata(android.media.MediaMetadataRetriever.METADATA_KEY_DURATION)?.toDoubleOrNull()
+                        if (frames != null && durMs != null && frames > 0.0 && durMs > 0.0) {
+                            (frames * 1000.0 / durMs).toFloat()
+                        } else 0f
+                    } else {
+                        captureFps ?: 0f
+                    }
+                    val rawW = wStr?.toIntOrNull() ?: 0
+                    val rawH = hStr?.toIntOrNull() ?: 0
+                    val rot = rotStr?.toIntOrNull() ?: 0
+                    val effectiveW = if (rot == 90 || rot == 270) rawH else rawW
+                    val effectiveH = if (rot == 90 || rot == 270) rawW else rawH
+                    if (effectiveW > 0 && effectiveH > 0) {
+                        VideoRepository.cacheVideoDimensions(currentUrl, effectiveW, effectiveH)
+                        videoWidth = effectiveW
+                        videoHeight = effectiveH
+                    }
+                    var finalFps = calculatedFps
+                    if (finalFps <= 0f) {
+                        finalFps = extractAccurateFrameRate(context, currentUrl)
+                    }
+                    if (finalFps > 0f && finalFps <= 240f) {
+                        retrievedFps = finalFps
+                    }
+                } finally { runCatching { r.release() } }
             } catch (_: Exception) {}
         }
     }
@@ -2619,6 +2695,25 @@ fun VideoPlayerScreen(
         }
     }
 
+    // Piece maps cross the native boundary for every piece. Keep this work off the frame loop.
+    LaunchedEffect(activeTorrentHash, currentUrl) {
+        val hash = activeTorrentHash
+        if (hash == null) {
+            downloadedRanges = emptyList()
+            return@LaunchedEffect
+        }
+        while (isActive) {
+            downloadedRanges = withContext(Dispatchers.IO) {
+                val state = TorrentEngine.downloads.value[hash]
+                val downloading = state != null && state.progress < 0.999f &&
+                    (state.status == TorrentDownloadState.Status.DOWNLOADING ||
+                     state.status == TorrentDownloadState.Status.STREAMING)
+                if (downloading) TorrentEngine.getDownloadedRanges(hash) else emptyList()
+            }
+            delay(500)
+        }
+    }
+
     // ─── Progress Loop & A-B Looping Check ─────────────────────────────────────
     LaunchedEffect(exoPlayer, isVlcFallbackActive, loopStartMs, loopEndMs, showControls) {
         var lastHandledVlcEnd = false
@@ -2629,7 +2724,6 @@ fun VideoPlayerScreen(
                 currentPosition = torrentSeekBufferingTarget ?: activePositionMs()
                 duration = activeDurationMs()
             }
-            bufferedPosition = if (isVlcFallbackActive) currentPosition else exoPlayer.bufferedPosition.coerceAtLeast(0L)
             if (isVlcFallbackActive) {
                 val ended = vlcFallback.hasEnded.value
                 if (ended && !lastHandledVlcEnd) {
@@ -2656,22 +2750,6 @@ fun VideoPlayerScreen(
             val lEnd = loopEndMs
             if (lStart != null && lEnd != null && lEnd > lStart && currentPosition >= lEnd) {
                 safeSeek(lStart)
-            }
-            val hash = activeTorrentHash
-            if (hash != null) {
-                val state = cinemaDownloads[hash]
-                val isActivelyStreaming = state != null &&
-                    (state.status == com.example.ymediaplayer.mycinema.service.TorrentDownloadState.Status.DOWNLOADING ||
-                     state.status == com.example.ymediaplayer.mycinema.service.TorrentDownloadState.Status.STREAMING) &&
-                    state.progress < 0.999f
-                downloadedRanges = if (isActivelyStreaming) {
-                    val ranges = com.example.ymediaplayer.mycinema.service.TorrentEngine.getDownloadedRanges(hash)
-                    if (ranges.isNotEmpty()) ranges else emptyList()
-                } else {
-                    emptyList()
-                }
-            } else {
-                downloadedRanges = emptyList()
             }
             val isShortVideo = duration in 1L..60_000L
             // When controls are visible or for short videos, 16ms delivers super buttery smooth 60fps/120fps progress bar animation.
@@ -2730,7 +2808,7 @@ fun VideoPlayerScreen(
     }
 
     // ─── Auto-hide Controls (Stay visible while touching, dragging, dialogs open, or paused) ──
-    val isAnySheetOrMenuOpen = showSubtitleTools || showAmbientSettings || modePicker != null || showPlaylistSheet ||
+    val isAnySheetOrMenuOpen = showHapticTuning || showSubtitleTools || showAmbientSettings || modePicker != null || showPlaylistSheet ||
             showSettingsOverlay ||
             isMoreExpanded ||
             showDeleteConfirmDialog ||
@@ -3159,7 +3237,9 @@ fun VideoPlayerScreen(
         },
         onFailure = { errorMsg ->
             Toast.makeText(context, errorMsg, Toast.LENGTH_SHORT).show()
-        }
+            if (wasPlayingBeforeDeleteDialog.value) VideoPlaybackManager.manualPlay()
+        },
+        onCancelled = { if (wasPlayingBeforeDeleteDialog.value) VideoPlaybackManager.manualPlay() }
     )
 
     val executeShareCurrentVideo: () -> Unit = {
@@ -3313,6 +3393,7 @@ fun VideoPlayerScreen(
             showPlaylistSheet -> showPlaylistSheet = false
             isMoreExpanded -> isMoreExpanded = false
             showSpeedSheet -> showSpeedSheet = false
+            showHapticTuning -> showHapticTuning = false
             showSleepTimerSheet -> showSleepTimerSheet = false
             showAudioTrackSheet -> showAudioTrackSheet = false
             showSubtitleSheet -> showSubtitleSheet = false
@@ -4467,6 +4548,29 @@ fun VideoPlayerScreen(
                                                     )
                                                 }
                                             }
+                                            // 1-tap Favorite Heart button
+                                            IconButton(
+                                                onClick = {
+                                                    val newFav = !isFavorite
+                                                    appPreferences.toggleFavorite(currentUrl)
+                                                    isFavorite = newFav
+                                                    view.performHaptic(HapticType.MEDIUM)
+                                                    if (newFav) {
+                                                        favoriteAnimationTrigger = System.currentTimeMillis()
+                                                        showFavoriteAnimation = true
+                                                    } else {
+                                                        showQuickHUD("Removed from Favorites", "Removed from your favorite videos", Icons.Rounded.FavoriteBorder)
+                                                    }
+                                                },
+                                                modifier = Modifier.size(26.dp)
+                                            ) {
+                                                Icon(
+                                                    imageVector = if (isFavorite) Icons.Rounded.Favorite else Icons.Rounded.FavoriteBorder,
+                                                    contentDescription = if (isFavorite) "Remove from favorites" else "Add to favorites",
+                                                    tint = if (isFavorite) Color(0xFFFF2A6D) else Color.White.copy(alpha = 0.70f),
+                                                    modifier = Modifier.size(17.dp)
+                                                )
+                                            }
                                         }
                                         if (resolutionBadge != null) {
                                             Text(
@@ -4790,6 +4894,22 @@ fun VideoPlayerScreen(
                                     }
                                 )
 
+                                TopBarOptionButton(
+                                    icon = Icons.Rounded.Timer,
+                                    label = if (sleepTimerMinutes > 0) "${sleepTimerMinutes}m" else "Sleep Timer",
+                                    isActive = sleepTimerMinutes > 0,
+                                    accentColor = primaryAccent,
+                                    isWhiteTheme = isWhiteTheme,
+                                    darkTextPrimary = darkTextPrimary,
+                                    buttonSize = topBtnSize,
+                                    iconSize = topIconSize,
+                                    onClick = {
+                                        view.performHaptic(HapticType.LIGHT)
+                                        isMoreExpanded = false
+                                        showSleepTimerSheet = true
+                                    }
+                                )
+
                                 // 4. Ambient Background
                                 TopBarOptionButton(
                                     icon = if (isAmbientMode) Icons.Rounded.BlurOn else Icons.Rounded.BlurOff,
@@ -4853,6 +4973,47 @@ fun VideoPlayerScreen(
                                     }
                                 )
 
+                                // Open in Folder (with file highlighting/selection in File Manager)
+                                TopBarOptionButton(
+                                    icon = Icons.Rounded.FolderOpen,
+                                    label = "In Folder",
+                                    isActive = false,
+                                    accentColor = primaryAccent,
+                                    isWhiteTheme = isWhiteTheme,
+                                    darkTextPrimary = darkTextPrimary,
+                                    buttonSize = topBtnSize,
+                                    iconSize = topIconSize,
+                                    onClick = {
+                                        view.performHaptic(HapticType.LIGHT)
+                                        isMoreExpanded = false
+                                        openContainingFolder(context, currentUrl)
+                                    }
+                                )
+
+                                // Favorite Toggle with Futuristic iOS 27 Animation
+                                TopBarOptionButton(
+                                    icon = if (isFavorite) Icons.Rounded.Favorite else Icons.Rounded.FavoriteBorder,
+                                    label = if (isFavorite) "Favorited" else "Favorite",
+                                    isActive = isFavorite,
+                                    accentColor = Color(0xFFFF2A6D),
+                                    isWhiteTheme = isWhiteTheme,
+                                    darkTextPrimary = darkTextPrimary,
+                                    buttonSize = topBtnSize,
+                                    iconSize = topIconSize,
+                                    onClick = {
+                                        val newFav = !isFavorite
+                                        appPreferences.toggleFavorite(currentUrl)
+                                        isFavorite = newFav
+                                        view.performHaptic(HapticType.MEDIUM)
+                                        if (newFav) {
+                                            favoriteAnimationTrigger = System.currentTimeMillis()
+                                            showFavoriteAnimation = true
+                                        } else {
+                                            showQuickHUD("Removed from Favorites", "Removed from your favorite videos", Icons.Rounded.FavoriteBorder)
+                                        }
+                                    }
+                                )
+
                                 // 6. Video Media Info
                                 TopBarOptionButton(
                                     icon = Icons.Rounded.Info,
@@ -4906,7 +5067,8 @@ fun VideoPlayerScreen(
                                         if (currentlyPlayingBeforeDel) {
                                             VideoPlaybackManager.manualPause()
                                         }
-                                        showDeleteConfirmDialog = true
+                                        if (appPreferences.isConfirmDeleteEnabled()) showDeleteConfirmDialog = true
+                                        else executeDeleteCurrentVideo()
                                     }
                                 )
 
@@ -5019,35 +5181,74 @@ fun VideoPlayerScreen(
                             horizontalArrangement = Arrangement.SpaceBetween,
                             verticalAlignment = Alignment.Bottom
                         ) {
-                            val activePosMs = if (isDraggingSeek) scrubPosition.toLong() else currentPosition
-                            val effDurationMs = maxOf(duration, activeDurationMs())
-                            val durT = formatTime(effDurationMs)
-                            val (isRemaining, shownPosMs) = VideoZoomMath.computeDisplayPositionMs(
-                                positionMs = activePosMs,
-                                durationMs = effDurationMs,
-                                showRemaining = showRemainingTime
-                            )
-                            val shownPosT = "${if (isRemaining) "-" else ""}${formatTime(shownPosMs)}"
-                            Text(
-                                text = "$shownPosT / $durT",
-                                color = Color.White,
-                                fontSize = 13.sp,
-                                fontFamily = FontFamily.Monospace,
-                                fontWeight = FontWeight.SemiBold,
-                                modifier = Modifier
-                                    .offset(y = 2.dp)
-                                    .clip(RoundedCornerShape(6.dp))
-                                    .clickable {
-                                        view.performHaptic(HapticType.LIGHT)
-                                        showRemainingTime = !showRemainingTime
-                                    }
-                                    .padding(horizontal = 4.dp, vertical = 2.dp)
+                            PlaybackTimeLabel(
+                                positionMs = { if (isDraggingSeek) scrubPosition.toLong() else currentPosition },
+                                durationMs = maxOf(duration, activeDurationMs()),
+                                showRemaining = showRemainingTime,
+                                onClick = {
+                                    view.performHaptic(HapticType.LIGHT)
+                                    showRemainingTime = !showRemainingTime
+                                }
                             )
 
                             Row(
                                 verticalAlignment = Alignment.CenterVertically,
                                 horizontalArrangement = Arrangement.spacedBy(8.dp)
                             ) {
+                                // Haptics toggle button (immediately left of Enhanced mode)
+                                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                    PlayerIconButton(
+                                        name = "Haptics",
+                                        description = if (isVideoHaptics) "Adaptive haptics enabled" else "Adaptive haptics disabled",
+                                        onClick = toggleVideoHaptics,
+                                        onLongClick = { showHapticTuning = true },
+                                        icon = Icons.Rounded.Vibration,
+                                        modifier = Modifier
+                                            .size(36.dp)
+                                            .shadow(
+                                                elevation = if (isVideoHaptics) 8.dp else 4.dp,
+                                                shape = CircleShape,
+                                                ambientColor = if (isVideoHaptics) primaryAccent.copy(alpha = 0.65f) else Color.Black.copy(0.4f),
+                                                spotColor = if (isVideoHaptics) primaryAccent.copy(alpha = 0.65f) else Color.Black.copy(0.4f)
+                                            )
+                                            .clip(CircleShape)
+                                            .background(
+                                                if (isVideoHaptics) {
+                                                    Brush.linearGradient(
+                                                        listOf(
+                                                            primaryAccent,
+                                                            primaryAccent.copy(alpha = 0.82f)
+                                                        )
+                                                    )
+                                                } else {
+                                                    Brush.verticalGradient(listOf(Color.Black.copy(alpha = 0.50f), Color.Black.copy(alpha = 0.35f)))
+                                                }
+                                            )
+                                            .border(
+                                                width = if (isVideoHaptics) 1.6.dp else 1.2.dp,
+                                                brush = if (isVideoHaptics) {
+                                                    Brush.linearGradient(listOf(Color.White, primaryAccent))
+                                                } else {
+                                                    Brush.verticalGradient(listOf(Color.White.copy(alpha = 0.40f), primaryAccent.copy(alpha = 0.35f)))
+                                                },
+                                                shape = CircleShape
+                                            )
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Rounded.Vibration,
+                                            contentDescription = "Haptics",
+                                            tint = if (isVideoHaptics) Color.White else Color.White.copy(alpha = 0.85f),
+                                            modifier = Modifier.size(19.dp)
+                                        )
+                                    }
+                                    PlayerControlLabel(
+                                        visible = isMoreExpanded,
+                                        label = "Haptics",
+                                        color = if (isVideoHaptics) primaryAccent else Color.White.copy(alpha = 0.85f),
+                                        isBold = isVideoHaptics
+                                    )
+                                }
+
                                 // Enhanced mode toggle with original-picture comparison.
                                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
                                     PlayerIconButton(
@@ -5264,53 +5465,7 @@ fun VideoPlayerScreen(
                                 PlayerControlLabel(visible = isMoreExpanded, label = "Lock", color = Color.White.copy(alpha = 0.85f))
                             }
 
-                            // 5. Aspect Ratio / Fit Screen
-                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                                PlayerIconButton(
-                                    name = "Aspect ratio",
-                                    description = "Cycle fit screen, zoom, stretch, and 16:9 / 4:3 ratios",
-                                    onClick = cycleResizeMode,
-                                    icon = Icons.Rounded.FitScreen,
-                                    modifier = Modifier
-                                        .size(42.dp)
-                                        .clip(CircleShape)
-                                        .background(bottomCircleBg)
-                                        .border(1.2.dp, bottomCircleBorder, CircleShape)
-                                ) {
-                                    Icon(
-                                        Icons.Rounded.FitScreen,
-                                        contentDescription = "Aspect ratio",
-                                        tint = bottomIconTint,
-                                        modifier = Modifier.size(22.dp)
-                                    )
-                                }
-                                PlayerControlLabel(visible = isMoreExpanded, label = "Aspect", color = Color.White.copy(alpha = 0.85f))
-                            }
-
-                            // 6. Picture-in-Picture
-                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                                PlayerIconButton(
-                                    name = "Picture-in-Picture",
-                                    description = "Continue watching video in floating window over other apps",
-                                    onClick = enterPiP,
-                                    icon = Icons.Rounded.PictureInPicture,
-                                    modifier = Modifier
-                                        .size(42.dp)
-                                        .clip(CircleShape)
-                                        .background(bottomCircleBg)
-                                        .border(1.2.dp, bottomCircleBorder, CircleShape)
-                                ) {
-                                    Icon(
-                                        Icons.Rounded.PictureInPicture,
-                                        contentDescription = "PiP",
-                                        tint = bottomIconTint,
-                                        modifier = Modifier.size(22.dp)
-                                    )
-                                }
-                                PlayerControlLabel(visible = isMoreExpanded, label = "PiP", color = Color.White.copy(alpha = 0.85f))
-                            }
-
-                            // 7. Rotate Screen
+                            // 2. Rotate Screen (Swapped with Aspect Ratio)
                             Column(horizontalAlignment = Alignment.CenterHorizontally) {
                                 PlayerIconButton(
                                     name = "Rotate screen",
@@ -5338,6 +5493,52 @@ fun VideoPlayerScreen(
                                     )
                                 }
                                 PlayerControlLabel(visible = isMoreExpanded, label = "Rotate", color = Color.White.copy(alpha = 0.85f))
+                            }
+
+                            // 3. Picture-in-Picture
+                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                PlayerIconButton(
+                                    name = "Picture-in-Picture",
+                                    description = "Continue watching video in floating window over other apps",
+                                    onClick = enterPiP,
+                                    icon = Icons.Rounded.PictureInPicture,
+                                    modifier = Modifier
+                                        .size(42.dp)
+                                        .clip(CircleShape)
+                                        .background(bottomCircleBg)
+                                        .border(1.2.dp, bottomCircleBorder, CircleShape)
+                                ) {
+                                    Icon(
+                                        Icons.Rounded.PictureInPicture,
+                                        contentDescription = "PiP",
+                                        tint = bottomIconTint,
+                                        modifier = Modifier.size(22.dp)
+                                    )
+                                }
+                                PlayerControlLabel(visible = isMoreExpanded, label = "PiP", color = Color.White.copy(alpha = 0.85f))
+                            }
+
+                            // 4. Aspect Ratio / Fit Screen (Swapped with Rotate Screen)
+                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                PlayerIconButton(
+                                    name = "Aspect ratio",
+                                    description = "Cycle fit screen, zoom, stretch, and 16:9 / 4:3 ratios",
+                                    onClick = cycleResizeMode,
+                                    icon = Icons.Rounded.FitScreen,
+                                    modifier = Modifier
+                                        .size(42.dp)
+                                        .clip(CircleShape)
+                                        .background(bottomCircleBg)
+                                        .border(1.2.dp, bottomCircleBorder, CircleShape)
+                                ) {
+                                    Icon(
+                                        Icons.Rounded.FitScreen,
+                                        contentDescription = "Aspect ratio",
+                                        tint = bottomIconTint,
+                                        modifier = Modifier.size(22.dp)
+                                    )
+                                }
+                                PlayerControlLabel(visible = isMoreExpanded, label = "Aspect", color = Color.White.copy(alpha = 0.85f))
                             }
                         }
                     }
@@ -5426,6 +5627,7 @@ fun VideoPlayerScreen(
             currentWarmth = appPreferences.getVideoCustomWarmth()
             currentSharpness = appPreferences.getVideoCustomSharpness()
             isSuperAiEnhance = appPreferences.isSuperAiEnhanceEnabled()
+            isVideoHaptics = appPreferences.isVideoHapticsEnabled()
             videoSoundMode = VideoSoundMode.fromId(appPreferences.getVideoRouteSoundMode(audioRoute))
             audioStrength = appPreferences.getVideoRouteSoundStrength(audioRoute)
             volumeLeveling = appPreferences.isVideoVolumeLevelingEnabled(audioRoute)
@@ -6289,6 +6491,11 @@ fun VideoPlayerScreen(
                 currentUrl = currentUrl,
                 durationMs = duration,
                 accentColor = primaryAccent,
+                fallbackFps = effectiveFps,
+                isVlcActive = isVlcFallbackActive,
+                vlcWidth = vlcW,
+                vlcHeight = vlcH,
+                vlcFps = vlcFallback.videoFps.floatValue,
                 onDismiss = { showVideoInfoSheet = false }
             )
         }
@@ -6367,6 +6574,274 @@ fun VideoPlayerScreen(
             )
         }
 
+        // ─── Futuristic iOS 27 Full-Screen Favorite Animation ─────────────────
+        if (showFavoriteAnimation) {
+            FuturisticIos27FavoriteAnimation(
+                trigger = favoriteAnimationTrigger,
+                onFinished = { showFavoriteAnimation = false }
+            )
+        }
+
+    }
+}
+
+// ─── FUTURISTIC IOS 27 FAVORITE ANIMATION OVERLAY ────────────────────────────
+@Composable
+private fun FuturisticIos27FavoriteAnimation(
+    trigger: Long,
+    onFinished: () -> Unit
+) {
+    if (trigger <= 0L) return
+
+    val animProgress = remember(trigger) { Animatable(0f) }
+
+    LaunchedEffect(trigger) {
+        animProgress.snapTo(0f)
+        animProgress.animateTo(
+            targetValue = 1f,
+            animationSpec = tween(durationMillis = 1400, easing = LinearEasing)
+        )
+        onFinished()
+    }
+
+    val progress = animProgress.value
+
+    val backdropAlpha = when {
+        progress < 0.15f -> progress / 0.15f
+        progress < 0.70f -> 1f
+        else -> ((1f - progress) / 0.30f).coerceIn(0f, 1f)
+    }.coerceIn(0f, 1f)
+
+    val heartScale = when {
+        progress < 0.25f -> {
+            val t = progress / 0.25f
+            1.35f * FastOutSlowInEasing.transform(t)
+        }
+        progress < 0.45f -> {
+            val t = (progress - 0.25f) / 0.20f
+            1.35f - (0.35f * t)
+        }
+        progress < 0.70f -> 1.0f + 0.04f * kotlin.math.sin((progress - 0.45f) * 20f)
+        else -> {
+            val t = (progress - 0.70f) / 0.30f
+            1.0f + 0.25f * t
+        }
+    }
+
+    val heartAlpha = when {
+        progress < 0.08f -> progress / 0.08f
+        progress < 0.72f -> 1f
+        else -> ((1f - progress) / 0.28f).coerceIn(0f, 1f)
+    }.coerceIn(0f, 1f)
+
+    val ring1Progress = (progress / 0.65f).coerceIn(0f, 1f)
+    val ring2Progress = ((progress - 0.08f) / 0.65f).coerceIn(0f, 1f)
+    val ring3Progress = ((progress - 0.16f) / 0.65f).coerceIn(0f, 1f)
+
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .zIndex(100f),
+        contentAlignment = Alignment.Center
+    ) {
+        // Holographic Backdrop with Cyber Neon Glow
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(
+                    Brush.radialGradient(
+                        colors = listOf(
+                            Color(0xFFFF2A6D).copy(alpha = 0.26f * backdropAlpha),
+                            Color(0xFF9B5DE5).copy(alpha = 0.15f * backdropAlpha),
+                            Color.Black.copy(alpha = 0.52f * backdropAlpha)
+                        )
+                    )
+                )
+        )
+
+        // Custom Canvas for Shockwave Rings & Cyber Particle Burst
+        Canvas(modifier = Modifier.fillMaxSize()) {
+            val center = this.center
+
+            // Ring 1 (Electric Neon Pink)
+            if (ring1Progress > 0f) {
+                val r1 = size.minDimension * 0.42f * ring1Progress
+                val alpha1 = (1f - ring1Progress) * heartAlpha
+                drawCircle(
+                    brush = Brush.radialGradient(
+                        colors = listOf(
+                            Color(0xFFFF2A6D).copy(alpha = alpha1 * 0.9f),
+                            Color(0xFF00F5D4).copy(alpha = alpha1 * 0.4f),
+                            Color.Transparent
+                        ),
+                        center = center,
+                        radius = r1 + 8f
+                    ),
+                    center = center,
+                    radius = r1,
+                    style = androidx.compose.ui.graphics.drawscope.Stroke(width = 3.dp.toPx() * (1f - ring1Progress * 0.5f))
+                )
+            }
+
+            // Ring 2 (Cyber Cyan & Electric Purple)
+            if (ring2Progress > 0f) {
+                val r2 = size.minDimension * 0.54f * ring2Progress
+                val alpha2 = (1f - ring2Progress) * heartAlpha
+                drawCircle(
+                    brush = Brush.radialGradient(
+                        colors = listOf(
+                            Color(0xFF00F5D4).copy(alpha = alpha2 * 0.85f),
+                            Color(0xFF9B5DE5).copy(alpha = alpha2 * 0.35f),
+                            Color.Transparent
+                        ),
+                        center = center,
+                        radius = r2 + 6f
+                    ),
+                    center = center,
+                    radius = r2,
+                    style = androidx.compose.ui.graphics.drawscope.Stroke(width = 2.dp.toPx() * (1f - ring2Progress * 0.5f))
+                )
+            }
+
+            // Ring 3 (Outer Sonic Halo)
+            if (ring3Progress > 0f) {
+                val r3 = size.minDimension * 0.65f * ring3Progress
+                val alpha3 = (1f - ring3Progress) * heartAlpha
+                drawCircle(
+                    color = Color.White.copy(alpha = alpha3 * 0.65f),
+                    center = center,
+                    radius = r3,
+                    style = androidx.compose.ui.graphics.drawscope.Stroke(width = 1.2.dp.toPx())
+                )
+            }
+
+            // 24 Cyber Holographic Particles Bursting in 360 Degrees
+            val numParticles = 24
+            for (i in 0 until numParticles) {
+                val angle = (i.toFloat() / numParticles) * 2f * Math.PI.toFloat()
+                val speed = 0.75f + ((i % 5) * 0.12f)
+                val pProgress = (progress * speed).coerceIn(0f, 1f)
+                val dist = size.minDimension * 0.38f * FastOutSlowInEasing.transform(pProgress)
+                val px = center.x + kotlin.math.cos(angle) * dist
+                val py = center.y + kotlin.math.sin(angle) * dist
+                val pAlpha = (1f - pProgress) * heartAlpha
+                if (pAlpha > 0f) {
+                    val pColor = when (i % 4) {
+                        0 -> Color(0xFFFF2A6D)
+                        1 -> Color(0xFF00F5D4)
+                        2 -> Color(0xFFFFB703)
+                        else -> Color(0xFFFFFFFF)
+                    }
+                    val pSize = (4.dp.toPx() + (i % 3) * 1.5.dp.toPx()) * (1f - pProgress * 0.4f)
+                    drawCircle(
+                        color = pColor.copy(alpha = pAlpha),
+                        center = Offset(px, py),
+                        radius = pSize
+                    )
+                    drawCircle(
+                        color = pColor.copy(alpha = pAlpha * 0.35f),
+                        center = Offset(px, py),
+                        radius = pSize * 2.2f
+                    )
+                }
+            }
+        }
+
+        // Center Animated Content: Hologram Heart & Cyber Pill
+        Column(
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.Center,
+            modifier = Modifier
+                .graphicsLayer {
+                    scaleX = heartScale
+                    scaleY = heartScale
+                    alpha = heartAlpha
+                }
+        ) {
+            Box(
+                contentAlignment = Alignment.Center,
+                modifier = Modifier.size(130.dp)
+            ) {
+                // Layer 1: Ambient Neon Glow Aura
+                Box(
+                    modifier = Modifier
+                        .size(120.dp)
+                        .clip(CircleShape)
+                        .background(
+                            Brush.radialGradient(
+                                colors = listOf(
+                                    Color(0xFFFF2A6D).copy(alpha = 0.55f),
+                                    Color(0xFF9B5DE5).copy(alpha = 0.25f),
+                                    Color.Transparent
+                                )
+                            )
+                        )
+                )
+
+                // Layer 2: Main Radiant Heart
+                Icon(
+                    imageVector = Icons.Rounded.Favorite,
+                    contentDescription = null,
+                    tint = Color(0xFFFF2A6D),
+                    modifier = Modifier
+                        .size(92.dp)
+                        .shadow(
+                            elevation = 28.dp,
+                            shape = CircleShape,
+                            ambientColor = Color(0xFFFF2A6D),
+                            spotColor = Color(0xFFFF007F)
+                        )
+                )
+
+                // Layer 3: Inner Specular White Sheen
+                Icon(
+                    imageVector = Icons.Rounded.Favorite,
+                    contentDescription = null,
+                    tint = Color.White.copy(alpha = 0.40f),
+                    modifier = Modifier.size(76.dp)
+                )
+            }
+
+            Spacer(Modifier.height(16.dp))
+
+            // iOS 27 Cyber Glassmorphic Pill
+            Surface(
+                shape = RoundedCornerShape(24.dp),
+                color = Color(0xFF141522).copy(alpha = 0.88f),
+                border = BorderStroke(
+                    1.5.dp,
+                    Brush.horizontalGradient(
+                        listOf(
+                            Color(0xFFFF2A6D),
+                            Color(0xFF00F5D4),
+                            Color(0xFF9B5DE5)
+                        )
+                    )
+                ),
+                shadowElevation = 18.dp
+            ) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    modifier = Modifier.padding(horizontal = 20.dp, vertical = 10.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Rounded.Favorite,
+                        contentDescription = null,
+                        tint = Color(0xFFFF2A6D),
+                        modifier = Modifier.size(17.dp)
+                    )
+                    Text(
+                        text = "FAVORITED",
+                        color = Color.White,
+                        fontSize = 13.5.sp,
+                        fontWeight = FontWeight.ExtraBold,
+                        letterSpacing = 2.sp,
+                        fontFamily = FontFamily.Monospace
+                    )
+                }
+            }
+        }
     }
 }
 
@@ -7194,6 +7669,7 @@ private fun PlayerIconButton(
     description: String? = null,
     icon: ImageVector? = null,
     enabled: Boolean = true,
+    onLongClick: (() -> Unit)? = null,
     content: @Composable () -> Unit
 ) {
     val view = LocalView.current
@@ -7206,7 +7682,7 @@ private fun PlayerIconButton(
                 onClick = onClick,
                 onLongClick = {
                     view.performHaptic(HapticType.MEDIUM)
-                    tooltipHandler?.invoke(name, description, icon)
+                    if (onLongClick != null) onLongClick() else tooltipHandler?.invoke(name, description, icon)
                 }),
         contentAlignment = Alignment.Center
     ) {
@@ -9359,6 +9835,11 @@ private fun MiniVideoDetailsDialog(
     currentUrl: String,
     durationMs: Long,
     accentColor: Color,
+    fallbackFps: Float = 0f,
+    isVlcActive: Boolean = false,
+    vlcWidth: Int = 0,
+    vlcHeight: Int = 0,
+    vlcFps: Float = 0f,
     onDismiss: () -> Unit
 ) {
     val context = LocalContext.current
@@ -9368,6 +9849,7 @@ private fun MiniVideoDetailsDialog(
 
     var fileSize by remember(currentUrl) { mutableLongStateOf(0L) }
     var filePath by remember(currentUrl) { mutableStateOf(currentUrl) }
+    var retrievedDialogFps by remember(currentUrl) { mutableFloatStateOf(fallbackFps) }
 
     LaunchedEffect(currentUrl) {
         withContext(Dispatchers.IO) {
@@ -9396,9 +9878,26 @@ private fun MiniVideoDetailsDialog(
                         filePath = file.absolutePath
                     }
                 }
+
+                // If frame rate is missing or unknown from container header, retrieve accurately via MediaExtractor / MediaMetadataRetriever
+                if (retrievedDialogFps <= 0f) {
+                    val fps = extractAccurateFrameRate(context, currentUrl)
+                    if (fps > 0f) {
+                        retrievedDialogFps = fps
+                    }
+                }
             } catch (_: Exception) {}
         }
     }
+
+    val resolvedFps = (if (isVlcActive && vlcFps > 0f) vlcFps else null)
+        ?: videoFormat?.frameRate?.takeIf { it > 0f }
+        ?: retrievedDialogFps.takeIf { it > 0f }
+        ?: fallbackFps.takeIf { it > 0f }
+
+    val fpsText = if (resolvedFps != null && resolvedFps > 0f) {
+        formatFrameRate(resolvedFps)
+    } else "24 fps"
 
     RightSidePanelDialog(
         onDismiss = onDismiss,
@@ -9409,51 +9908,28 @@ private fun MiniVideoDetailsDialog(
         headerAction = {
             IconButton(
                 onClick = {
-                    val resText = videoFormat?.let { "${it.width} × ${it.height}" } ?: "Hardware Adapted"
-                    val fpsText = videoFormat?.frameRate?.takeIf { it > 0 }?.let { "${it.roundToInt()} fps" } ?: "Auto"
-                    val vCodec = videoFormat?.sampleMimeType?.substringAfterLast("/")?.uppercase() ?: "Hardware Decoded"
-                    val colorInfo = videoFormat?.colorInfo
-                    val isHdr = colorInfo != null && (ColorInfo.isTransferHdr(colorInfo) || colorInfo.colorTransfer == C.COLOR_TRANSFER_ST2084 || colorInfo.colorTransfer == C.COLOR_TRANSFER_HLG) || videoFormat?.sampleMimeType?.contains("dolby", ignoreCase = true) == true
-                    val hdrText = when {
-                        videoFormat?.sampleMimeType?.contains("dolby", ignoreCase = true) == true -> "Dolby Vision"
-                        colorInfo?.colorTransfer == C.COLOR_TRANSFER_HLG -> "HLG (BT.2020)"
-                        colorInfo?.colorTransfer == C.COLOR_TRANSFER_ST2084 -> "HDR10 (ST2084 / BT.2020)"
-                        isHdr -> "HDR (Wide Color Gamut)"
-                        else -> "SDR (Standard Dynamic Range)"
-                    }
-                    val aCodec = audioFormat?.sampleMimeType?.substringAfterLast("/")?.uppercase() ?: "AAC / Auto"
-                    val channels = audioFormat?.channelCount?.let { if (it == 2) "Stereo (2ch)" else "$it Channels" } ?: "Stereo"
-                    val sampleRate = audioFormat?.sampleRate?.takeIf { it > 0 }?.let { "${it} Hz" } ?: "48,000 Hz"
-                    val allDetails = buildString {
-                        appendLine("Title: $title")
-                        appendLine("Duration: ${formatTime(durationMs)}")
-                        if (fileSize > 0) appendLine("File Size: ${formatSize(fileSize)}")
-                        appendLine("Resolution: $resText")
-                        appendLine("Frame Rate: $fpsText")
-                        appendLine("Video Codec: $vCodec")
-                        appendLine("Dynamic Range: $hdrText")
-                        appendLine("Audio Codec: $aCodec")
-                        appendLine("Audio Channels: $channels")
-                        appendLine("Sample Rate: $sampleRate")
-                        if (fileSize > 0 && durationMs > 0) {
-                            val bitrateKbps = (fileSize * 8) / durationMs
-                            appendLine("Overall Bitrate: ${bitrateKbps} kbps")
-                        }
-                        appendLine("Storage Path: $filePath")
-                    }
-                    val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-                    clipboard.setPrimaryClip(ClipData.newPlainText("Video Details", allDetails))
-                    Toast.makeText(context, "Video details copied", Toast.LENGTH_SHORT).show()
+                    openContainingFolder(context, filePath)
                 },
                 modifier = Modifier.size(32.dp)
             ) {
-                Icon(Icons.Rounded.ContentCopy, contentDescription = "Copy all details", tint = accentColor, modifier = Modifier.size(20.dp))
+                Icon(
+                    Icons.Rounded.FolderOpen,
+                    contentDescription = "Open directory in File Manager",
+                    tint = accentColor,
+                    modifier = Modifier.size(20.dp)
+                )
             }
         }
     ) {
-        val resText = videoFormat?.let { "${it.width} × ${it.height}" } ?: "Hardware Adapted"
-        val fpsText = videoFormat?.frameRate?.takeIf { it > 0 }?.let { "${it.roundToInt()} fps" } ?: "Auto"
-        val vCodec = videoFormat?.sampleMimeType?.substringAfterLast("/")?.uppercase() ?: "Hardware Decoded"
+        val resW = if (isVlcActive && vlcWidth > 0) vlcWidth else videoFormat?.width?.takeIf { it > 0 } ?: VideoPlaybackManager.videoWidth.value
+        val resH = if (isVlcActive && vlcHeight > 0) vlcHeight else videoFormat?.height?.takeIf { it > 0 } ?: VideoPlaybackManager.videoHeight.value
+        val resText = if (resW > 0 && resH > 0) "$resW × $resH" else "Auto"
+        val vCodec = if (isVlcActive) {
+            val mime = videoFormat?.sampleMimeType?.substringAfterLast("/")?.uppercase() ?: "HEVC"
+            "$mime (SW / VLC)"
+        } else {
+            videoFormat?.sampleMimeType?.substringAfterLast("/")?.uppercase() ?: "Hardware Decoded (HW)"
+        }
         val colorInfo = videoFormat?.colorInfo
         val isHdr = colorInfo != null && (ColorInfo.isTransferHdr(colorInfo) || colorInfo.colorTransfer == C.COLOR_TRANSFER_ST2084 || colorInfo.colorTransfer == C.COLOR_TRANSFER_HLG) || videoFormat?.sampleMimeType?.contains("dolby", ignoreCase = true) == true
         val hdrText = when {
@@ -9513,6 +9989,253 @@ private fun MiniVideoDetailsDialog(
                 }
             )
         }
+    }
+}
+
+internal fun extractAccurateFrameRate(context: Context, url: String): Float {
+    if (url.isBlank()) return 0f
+    // 1. Try MediaMetadataRetriever
+    try {
+        val r = android.media.MediaMetadataRetriever()
+        try {
+            if (url.startsWith("content://")) {
+                r.setDataSource(context, android.net.Uri.parse(url))
+            } else {
+                r.setDataSource(url.removePrefix("file://"))
+            }
+            val capFps = r.extractMetadata(android.media.MediaMetadataRetriever.METADATA_KEY_CAPTURE_FRAMERATE)?.toFloatOrNull()
+            if (capFps != null && capFps > 0f && capFps <= 240f) {
+                return capFps
+            }
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+                val fCount = r.extractMetadata(android.media.MediaMetadataRetriever.METADATA_KEY_VIDEO_FRAME_COUNT)?.toDoubleOrNull()
+                val dMs = r.extractMetadata(android.media.MediaMetadataRetriever.METADATA_KEY_DURATION)?.toDoubleOrNull()
+                if (fCount != null && dMs != null && fCount > 0.0 && dMs > 0.0) {
+                    val calc = (fCount * 1000.0 / dMs).toFloat()
+                    if (calc > 0f && calc <= 240f) return calc
+                }
+            }
+        } finally {
+            r.release()
+        }
+    } catch (_: Exception) {}
+
+    // 2. Try MediaExtractor (works for MKV, MP4, WEBM without requiring hardware video decoders)
+    try {
+        val extractor = android.media.MediaExtractor()
+        try {
+            if (url.startsWith("content://")) {
+                extractor.setDataSource(context, android.net.Uri.parse(url), null)
+            } else {
+                extractor.setDataSource(url.removePrefix("file://"))
+            }
+            for (i in 0 until extractor.trackCount) {
+                val format = extractor.getTrackFormat(i)
+                val mime = format.getString(android.media.MediaFormat.KEY_MIME) ?: ""
+                if (mime.startsWith("video/")) {
+                    if (format.containsKey(android.media.MediaFormat.KEY_FRAME_RATE)) {
+                        val f = try {
+                            format.getInteger(android.media.MediaFormat.KEY_FRAME_RATE).toFloat()
+                        } catch (_: Exception) {
+                            try { format.getFloat(android.media.MediaFormat.KEY_FRAME_RATE) } catch (_: Exception) { 0f }
+                        }
+                        if (f > 0f && f <= 240f) return f
+                    }
+                    // Sample timestamps for container files (like MKVs with DefaultDuration)
+                    extractor.selectTrack(i)
+                    val ptsList = mutableListOf<Long>()
+                    var count = 0
+                    while (count < 10 && extractor.sampleTime >= 0) {
+                        val t = extractor.sampleTime
+                        if (ptsList.isEmpty() || t > ptsList.last()) {
+                            ptsList.add(t)
+                        }
+                        if (!extractor.advance()) break
+                        count++
+                    }
+                    if (ptsList.size >= 2) {
+                        val diffs = mutableListOf<Long>()
+                        for (idx in 0 until ptsList.size - 1) {
+                            val d = ptsList[idx + 1] - ptsList[idx]
+                            if (d in 4000L..100000L) { // 10 fps to 250 fps
+                                diffs.add(d)
+                            }
+                        }
+                        if (diffs.isNotEmpty()) {
+                            val avgUs = diffs.average()
+                            if (avgUs > 0) {
+                                val fps = (1_000_000.0 / avgUs).toFloat()
+                                if (fps > 0f && fps <= 240f) return fps
+                            }
+                        }
+                    }
+                    break
+                }
+            }
+        } finally {
+            extractor.release()
+        }
+    } catch (_: Exception) {}
+
+    return 0f
+}
+
+internal fun formatFrameRate(fps: Float): String {
+    if (fps <= 0f) return "24 fps"
+    val standard = when {
+        fps in 23.80f..24.20f -> "24 fps"
+        fps in 24.80f..25.20f -> "25 fps"
+        fps in 29.80f..30.20f -> "30 fps"
+        fps in 47.80f..48.20f -> "48 fps"
+        fps in 49.80f..50.20f -> "50 fps"
+        fps in 59.80f..60.20f -> "60 fps"
+        fps in 119.80f..120.20f -> "120 fps"
+        else -> null
+    }
+    return standard ?: String.format(java.util.Locale.US, "%.2f fps", fps)
+}
+
+private fun openContainingFolder(context: Context, filePath: String) {
+    if (filePath.isBlank()) return
+    var opened = false
+
+    val rawPath = filePath.removePrefix("file://")
+    val file = java.io.File(rawPath)
+    val parent = if (file.isDirectory) file else (file.parentFile ?: file)
+    val absPath = parent.absolutePath
+    val isDownloadFolder = absPath.contains("/Download", ignoreCase = true)
+
+    // Strategy 1: Explicitly target known system file managers with DocumentsUI Uri + highlight extra
+    val relPath = when {
+        absPath.startsWith("/storage/emulated/0/") -> absPath.removePrefix("/storage/emulated/0/")
+        absPath.startsWith("/sdcard/") -> absPath.removePrefix("/sdcard/")
+        absPath == "/storage/emulated/0" || absPath == "/sdcard" -> ""
+        else -> null
+    }
+
+    val fileRelPath = when {
+        file.absolutePath.startsWith("/storage/emulated/0/") -> file.absolutePath.removePrefix("/storage/emulated/0/")
+        file.absolutePath.startsWith("/sdcard/") -> file.absolutePath.removePrefix("/sdcard/")
+        else -> null
+    }
+
+    if (relPath != null) {
+        val docId = if (relPath.isBlank()) "primary:" else "primary:${relPath.trim('/')}"
+        val docUri = android.provider.DocumentsContract.buildDocumentUri("com.android.externalstorage.documents", docId)
+
+        val fileDocUri = if (fileRelPath != null) {
+            val fDocId = "primary:${fileRelPath.trim('/')}"
+            android.provider.DocumentsContract.buildDocumentUri("com.android.externalstorage.documents", fDocId)
+        } else null
+
+        val candidatePackages = listOf(
+            "com.google.android.documentsui",
+            "com.android.documentsui",
+            "com.google.android.apps.nbu.files",
+            "com.vivo.filemanager",
+            "com.android.filemanager"
+        )
+
+        for (pkg in candidatePackages) {
+            try {
+                val intent = Intent(Intent.ACTION_VIEW).apply {
+                    setDataAndType(docUri, "vnd.android.document/directory")
+                    setPackage(pkg)
+                    if (fileDocUri != null) {
+                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                            putExtra(android.provider.DocumentsContract.EXTRA_INITIAL_URI, fileDocUri)
+                        }
+                        putExtra("android.provider.extra.INITIAL_URI", fileDocUri)
+                        putExtra("highlight_file", fileDocUri)
+                        putExtra("com.android.documentsui.EXTRA_INITIAL_URI", fileDocUri)
+                    }
+                    putExtra("currentpath", parent.absolutePath)
+                    putExtra("folder_path", parent.absolutePath)
+                    putExtra("select_path", file.absolutePath)
+                    putExtra("highlight_path", file.absolutePath)
+                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                }
+                if (intent.resolveActivity(context.packageManager) != null) {
+                    context.startActivity(intent)
+                    opened = true
+                    break
+                }
+            } catch (_: Exception) {}
+        }
+    }
+
+    // Strategy 2: If file/folder is in Downloads, try DownloadManager.ACTION_VIEW_DOWNLOADS
+    if (!opened && isDownloadFolder) {
+        try {
+            val dlIntent = Intent(android.app.DownloadManager.ACTION_VIEW_DOWNLOADS).apply {
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            }
+            if (dlIntent.resolveActivity(context.packageManager) != null) {
+                context.startActivity(dlIntent)
+                opened = true
+            }
+        } catch (_: Exception) {}
+    }
+
+    // Strategy 3: Try standard DocumentsUI Root with verified resolver
+    if (!opened) {
+        try {
+            val rootUri = android.provider.DocumentsContract.buildRootUri("com.android.externalstorage.documents", "primary")
+            val intent = Intent(Intent.ACTION_VIEW).apply {
+                setDataAndType(rootUri, "vnd.android.document/directory")
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            }
+            if (intent.resolveActivity(context.packageManager) != null) {
+                context.startActivity(intent)
+                opened = true
+            }
+        } catch (_: Exception) {}
+    }
+
+    // Strategy 4: Launch installed File Manager app directly (Google Files, Vivo Files, etc.)
+    if (!opened) {
+        val fileManagerPackages = listOf(
+            "com.google.android.apps.nbu.files",
+            "com.vivo.filemanager",
+            "com.android.filemanager",
+            "com.sec.android.app.myfiles",
+            "com.mi.android.globalFileexplorer"
+        )
+        for (pkg in fileManagerPackages) {
+            try {
+                val launchIntent = context.packageManager.getLaunchIntentForPackage(pkg)
+                if (launchIntent != null) {
+                    launchIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                    context.startActivity(launchIntent)
+                    opened = true
+                    break
+                }
+            } catch (_: Exception) {}
+        }
+    }
+
+    // Strategy 5: FileProvider directory viewer with verified resolver
+    if (!opened && parent.exists()) {
+        try {
+            val authority = "${context.packageName}.provider"
+            val uri = androidx.core.content.FileProvider.getUriForFile(context, authority, parent)
+            val intent = Intent(Intent.ACTION_VIEW).apply {
+                setDataAndType(uri, "vnd.android.document/directory")
+                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_ACTIVITY_NEW_TASK)
+            }
+            if (intent.resolveActivity(context.packageManager) != null) {
+                context.startActivity(intent)
+                opened = true
+            }
+        } catch (_: Exception) {}
+    }
+
+    if (opened) {
+        Toast.makeText(context, "Opening folder in File Manager...", Toast.LENGTH_SHORT).show()
+    } else {
+        val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as? ClipboardManager
+        clipboard?.setPrimaryClip(ClipData.newPlainText("File Path", parent.absolutePath))
+        Toast.makeText(context, "Location copied: ${parent.absolutePath}", Toast.LENGTH_LONG).show()
     }
 }
 

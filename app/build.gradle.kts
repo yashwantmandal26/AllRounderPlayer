@@ -40,7 +40,10 @@ android {
         }
     }
     buildTypes {
-        debug { applicationIdSuffix = ".debug" }
+        debug {
+            applicationIdSuffix = null
+            signingConfig = signingConfigs.getByName("release")
+        }
         // Device QA can update the regular app without installing a second player.
         create("qa") {
             initWith(getByName("debug"))

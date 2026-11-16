@@ -4,6 +4,8 @@ import android.content.Intent
 import android.widget.Toast
 import com.example.ymediaplayer.MainActivity
 import androidx.compose.animation.*
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -44,12 +46,17 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.FileProvider
 import coil3.compose.AsyncImage
+import coil3.request.ImageRequest
+import coil3.request.crossfade
+import androidx.compose.ui.platform.LocalContext
 import com.example.ymediaplayer.data.AppPreferences
 import com.example.ymediaplayer.mycinema.data.MyCinemaRepository
 import com.example.ymediaplayer.mycinema.data.TmdbItem
 import com.example.ymediaplayer.mycinema.data.TorrentSource
 import com.example.ymediaplayer.mycinema.data.currentCinemaDateIso
 import com.example.ymediaplayer.theme.LocalAppColors
+import com.example.ymediaplayer.ui.homeSearchSurface
+import com.example.ymediaplayer.ui.bounceClick
 import com.example.ymediaplayer.ui.buildVideoThumbnailRequest
 import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
@@ -343,33 +350,7 @@ fun MyCinemaScreen(
             ) {
                 Row(
                     modifier = Modifier
-                        .fillMaxWidth()
-                        .height(48.dp)
-                        .shadow(
-                            elevation = 8.dp,
-                            shape = RoundedCornerShape(24.dp),
-                            ambientColor = if (c.isDark) Color.Black.copy(alpha = 0.55f) else c.cardShadowColor,
-                            spotColor = if (c.isDark) Color.Black.copy(alpha = 0.45f) else c.cardShadowColor
-                        )
-                        .clip(RoundedCornerShape(24.dp))
-                        .background(
-                            Brush.verticalGradient(
-                                listOf(
-                                    if (c.isDark) c.cardBgElevated else Color.White,
-                                    c.cardBg
-                                )
-                            )
-                        )
-                        .border(
-                            1.3.dp,
-                            if (searchQuery.isNotBlank()) {
-                                Brush.verticalGradient(listOf(c.accentBlue, c.cardBorderHighlight, c.accentBlue.copy(alpha = 0.4f)))
-                            } else {
-                                Brush.verticalGradient(listOf(c.cardBorderHighlight, c.glassBorder, c.cardBorderShadow))
-                            },
-                            RoundedCornerShape(24.dp)
-                        )
-                        .padding(horizontal = 14.dp),
+                        .homeSearchSurface(searchQuery.isNotBlank()),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Icon(
@@ -445,7 +426,7 @@ fun MyCinemaScreen(
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
                 modifier = Modifier.fillMaxWidth()
             ) {
-                items(cinemaGenres) { genreName ->
+                items(cinemaGenres, key = { it }) { genreName ->
                     val isAll = genreName.equals("All", ignoreCase = true)
                     val isSelected = if (isAll) {
                         selectedGenreFilter.isNullOrBlank()
@@ -981,14 +962,17 @@ fun MyCinemaScreen(
                             val target = movie
                             movieToDelete = null
                             coroutineScope.launch(kotlinx.coroutines.Dispatchers.IO) {
+                                var deleted = false
                                 try {
                                     val hash = com.example.ymediaplayer.mycinema.service.TorrentEngine.getActiveTorrent(target.file.absolutePath)
                                     if (hash != null) {
                                         com.example.ymediaplayer.mycinema.service.TorrentEngine.cancel(hash)
                                     }
                                     if (target.file.exists()) {
-                                        target.file.delete()
+                                        check(target.file.delete()) { "Could not delete file" }
                                     }
+                                    deleted = true
+                                    com.example.ymediaplayer.data.VideoRepository.invalidateCache()
                                     try {
                                         appPreferences.removeCinemaDownloadCompleted(target.file.absolutePath)
                                     } catch (_: Exception) {}
@@ -1000,7 +984,7 @@ fun MyCinemaScreen(
                                 } catch (_: Exception) {}
                                 kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
                                     localOfflineRefreshTrigger++
-                                    Toast.makeText(context, "Deleted: ${target.title}", Toast.LENGTH_SHORT).show()
+                                    Toast.makeText(context, if (deleted) "Deleted: ${target.title}" else "Could not delete: ${target.title}", Toast.LENGTH_SHORT).show()
                                 }
                             }
                         }
@@ -1073,11 +1057,15 @@ private fun MyCinemaCard(
     modifier: Modifier = Modifier
 ) {
     val c = LocalAppColors.current
+    val context = LocalContext.current
+    val poster = remember(context, item.fullPosterUrl) {
+        ImageRequest.Builder(context).data(item.fullPosterUrl).crossfade(180).build()
+    }
 
     Column(
         modifier = modifier
+            .bounceClick(onClick = onClick)
             .clip(RoundedCornerShape(12.dp))
-            .clickable(onClick = onClick)
     ) {
         Box(
             modifier = Modifier
@@ -1087,8 +1075,14 @@ private fun MyCinemaCard(
                 .background(c.cardBgElevated)
                 .border(1.dp, c.glassBorder, RoundedCornerShape(12.dp))
         ) {
+            Icon(
+                Icons.Rounded.Theaters,
+                contentDescription = null,
+                tint = c.textSecondary.copy(alpha = 0.25f),
+                modifier = Modifier.align(Alignment.Center).size(32.dp)
+            )
             AsyncImage(
-                model = item.fullPosterUrl,
+                model = poster,
                 contentDescription = item.displayName,
                 contentScale = ContentScale.Crop,
                 modifier = Modifier.fillMaxSize()
@@ -1303,23 +1297,34 @@ private fun CinemaPillChip(
     onClick: () -> Unit
 ) {
     val c = LocalAppColors.current
+    val background by animateColorAsState(
+        if (isSelected) c.accentBlue.copy(alpha = if (c.isDark) 0.25f else 0.16f)
+        else c.cardBgElevated,
+        tween(220, easing = FastOutSlowInEasing), label = "cinemaGenreBackground"
+    )
+    val foreground by animateColorAsState(
+        if (isSelected) c.accentBlue else c.textSecondary,
+        tween(220), label = "cinemaGenreForeground"
+    )
     Surface(
         onClick = onClick,
         shape = RoundedCornerShape(20.dp),
-        color = if (isSelected) c.accentBlue.copy(alpha = if (c.isDark) 0.25f else 0.16f) else if (c.isDark) c.cardBgElevated else Color.White.copy(alpha = 0.9f),
+        modifier = Modifier.heightIn(min = 44.dp),
+        color = background,
         border = if (isSelected) {
             androidx.compose.foundation.BorderStroke(1.3.dp, c.accentBlue)
         } else {
             androidx.compose.foundation.BorderStroke(1.dp, c.glassBorder)
         },
-        shadowElevation = if (isSelected) 3.dp else 1.dp
+        shadowElevation = 0.dp
     ) {
         Text(
             text = label,
-            color = if (isSelected) c.accentBlue else c.textSecondary,
+            color = foreground,
             fontSize = 12.5.sp,
             fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
             modifier = Modifier.padding(horizontal = 14.dp, vertical = 6.dp)
+                .wrapContentHeight(Alignment.CenterVertically)
         )
     }
 }
@@ -1331,10 +1336,16 @@ private fun CinemaFilterOptionChip(
     onClick: () -> Unit
 ) {
     val c = LocalAppColors.current
+    val background by animateColorAsState(
+        if (isSelected) c.accentBlue.copy(alpha = if (c.isDark) 0.28f else 0.18f)
+        else c.cardBgElevated,
+        tween(220, easing = FastOutSlowInEasing), label = "cinemaFilterBackground"
+    )
     Surface(
         onClick = onClick,
         shape = RoundedCornerShape(16.dp),
-        color = if (isSelected) c.accentBlue.copy(alpha = if (c.isDark) 0.28f else 0.18f) else if (c.isDark) c.cardBgElevated.copy(alpha = 0.65f) else Color.White.copy(alpha = 0.75f),
+        modifier = Modifier.heightIn(min = 40.dp),
+        color = background,
         border = if (isSelected) {
             androidx.compose.foundation.BorderStroke(1.2.dp, c.accentBlue)
         } else {
@@ -1347,6 +1358,7 @@ private fun CinemaFilterOptionChip(
             fontSize = 11.5.sp,
             fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
             modifier = Modifier.padding(horizontal = 11.dp, vertical = 5.dp)
+                .wrapContentHeight(Alignment.CenterVertically)
         )
     }
 }

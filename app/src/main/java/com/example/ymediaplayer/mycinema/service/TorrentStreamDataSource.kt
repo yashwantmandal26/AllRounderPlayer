@@ -14,6 +14,12 @@ import java.io.File
 import java.io.IOException
 import java.io.RandomAccessFile
 
+internal fun isTorrentMediaRequest(scheme: String?, path: String?, mediaPath: String?): Boolean {
+    if (scheme != null && scheme != "file") return false
+    if (path.isNullOrBlank() || mediaPath.isNullOrBlank()) return false
+    return runCatching { File(path).canonicalFile == File(mediaPath).canonicalFile }.getOrDefault(false)
+}
+
 /**
  * Custom DataSource for progressive torrent playback.
  * Checks piece availability from TorrentEngine, prioritizes needed pieces in real-time,
@@ -38,6 +44,7 @@ class TorrentStreamDataSource(
         uri = dataSpec.uri
         transferInitializing(dataSpec)
         isInitialReadAfterOpen = true
+        lastRequestedPiece = -1
 
         val f = File(filePath)
         if (!f.exists()) {
@@ -69,7 +76,7 @@ class TorrentStreamDataSource(
         raf.seek(currentPosition)
 
         bytesRemaining = if (dataSpec.length != C.LENGTH_UNSET.toLong()) {
-            dataSpec.length
+            minOf(dataSpec.length, (totalLength - currentPosition).coerceAtLeast(0L))
         } else {
             (totalLength - currentPosition).coerceAtLeast(0L)
         }
@@ -98,16 +105,17 @@ class TorrentStreamDataSource(
             TorrentEngine.prioritizeStreamPiece(hash, currentPiece, isSeek = isSeek)
 
             // Progressive buffer loop: wait until libtorrent has downloaded and verified this piece
-            val waitStart = System.currentTimeMillis()
+            val waitStart = android.os.SystemClock.elapsedRealtime()
             while (!TorrentEngine.isPieceDownloaded(hash, currentPiece)) {
                 if (!opened) return C.RESULT_END_OF_INPUT
-                if (System.currentTimeMillis() - waitStart > maxWaitMs) {
+                if (android.os.SystemClock.elapsedRealtime() - waitStart > maxWaitMs) {
                     throw IOException("Torrent streaming timeout waiting for piece $currentPiece")
                 }
                 try {
                     Thread.sleep(40)
                 } catch (_: InterruptedException) {
-                    return C.RESULT_END_OF_INPUT
+                    Thread.currentThread().interrupt()
+                    throw java.io.InterruptedIOException("Torrent read interrupted")
                 }
             }
         }
@@ -117,13 +125,14 @@ class TorrentStreamDataSource(
         // Determine how many safe contiguous bytes are currently available on disk
         var safeBytesAvailable = TorrentEngine.getAvailableDownloadedBytesFrom(hash, currentPosition)
         if (safeBytesAvailable <= 0L && currentPiece != null) {
-            val waitStart = System.currentTimeMillis()
-            while (safeBytesAvailable <= 0L && System.currentTimeMillis() - waitStart < maxWaitMs) {
+            val waitStart = android.os.SystemClock.elapsedRealtime()
+            while (safeBytesAvailable <= 0L && android.os.SystemClock.elapsedRealtime() - waitStart < maxWaitMs) {
                 if (!opened) return C.RESULT_END_OF_INPUT
                 try {
                     Thread.sleep(30)
                 } catch (_: InterruptedException) {
-                    return C.RESULT_END_OF_INPUT
+                    Thread.currentThread().interrupt()
+                    throw java.io.InterruptedIOException("Torrent read interrupted")
                 }
                 safeBytesAvailable = TorrentEngine.getAvailableDownloadedBytesFrom(hash, currentPosition)
             }
@@ -137,6 +146,7 @@ class TorrentStreamDataSource(
         val maxSafeToRead = minOf(length.toLong(), bytesRemaining, safeBytesAvailable).toInt().coerceAtLeast(1)
 
         val bytesRead = raf.read(buffer, offset, maxSafeToRead)
+        if (bytesRead == -1) throw java.io.EOFException("Torrent data is not yet readable at byte $currentPosition")
         if (bytesRead > 0) {
             currentPosition += bytesRead
             if (bytesRemaining != C.LENGTH_UNSET.toLong()) {
@@ -174,30 +184,37 @@ class TorrentAwareDataSource(
 
     private var torrentDataSource: TorrentStreamDataSource? = null
     private var isTorrentStream: Boolean = false
+    private val transferListeners = mutableListOf<TransferListener>()
 
     override fun addTransferListener(transferListener: TransferListener) {
+        if (transferListener !in transferListeners) transferListeners += transferListener
         upstream.addTransferListener(transferListener)
+        torrentDataSource?.addTransferListener(transferListener)
     }
 
     override fun open(dataSpec: DataSpec): Long {
-        val rawPath = dataSpec.uri.path
-        val cleanPath = if (rawPath != null && rawPath.startsWith("file://")) {
-            rawPath.removePrefix("file://")
-        } else rawPath
-
-        val activeHash = VideoPlaybackManager.activeStreamingHash
-            ?: (if (cleanPath != null) TorrentEngine.getActiveTorrent(cleanPath) else null)
-
-        val isStream = (activeHash != null && TorrentEngine.isStreamTorrent(activeHash)) ||
-                (cleanPath != null && cleanPath.contains("stream_cache"))
-
-        if (isStream && cleanPath != null) {
-            val hashToUse = activeHash ?: (if (cleanPath.contains("stream_cache")) TorrentEngine.getActiveTorrent(cleanPath) else null)
-            if (hashToUse != null) {
-                isTorrentStream = true
-                val tds = TorrentStreamDataSource(hashToUse, cleanPath)
-                torrentDataSource = tds
+        val cleanPath = dataSpec.uri.path
+        // The same factory loads external subtitles. Only the selected local
+        // video may use torrent piece offsets or preallocation.
+        val localRequest = dataSpec.uri.scheme == null || dataSpec.uri.scheme == "file"
+        val activeHash = if (localRequest && cleanPath != null) {
+            VideoPlaybackManager.activeStreamingHash ?: TorrentEngine.getActiveTorrent(cleanPath)
+        } else null
+        val state = activeHash?.let { TorrentEngine.downloads.value[it] }
+        if (activeHash != null && state != null &&
+            state.status != TorrentDownloadState.Status.FINISHED && state.status != TorrentDownloadState.Status.ERROR &&
+            isTorrentMediaRequest(dataSpec.uri.scheme, cleanPath, TorrentEngine.getFilePath(context, activeHash))) {
+            isTorrentStream = true
+            val tds = TorrentStreamDataSource(activeHash, requireNotNull(cleanPath))
+            transferListeners.forEach(tds::addTransferListener)
+            torrentDataSource = tds
+            try {
                 return tds.open(dataSpec)
+            } catch (e: Exception) {
+                tds.close()
+                torrentDataSource = null
+                isTorrentStream = false
+                throw e
             }
         }
 

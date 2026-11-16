@@ -18,6 +18,10 @@ enum class HapticType {
 fun View.performHaptic(type: HapticType) {
     try {
         if (!AppPreferences(context).isHapticsEnabled()) return
+        if (kotlin.math.abs(AppPreferences(context).getTouchHapticStrength() - 1f) > 0.01f) {
+            context.performHaptic(type)
+            return
+        }
         val flag = HapticFeedbackConstants.FLAG_IGNORE_VIEW_SETTING
         val constant = when (type) {
             HapticType.TICK -> {
@@ -61,7 +65,14 @@ fun Context.performHaptic(type: HapticType) {
                     HapticType.MEDIUM -> 26L to 180
                     HapticType.HEAVY -> 50L to 255
                 }
-                vibrator.vibrate(VibrationEffect.createOneShot(duration, amplitude))
+                val scaledAmplitude = if (vibrator.hasAmplitudeControl())
+                    (amplitude * AppPreferences(this).getTouchHapticStrength()).toInt().coerceIn(1, 255)
+                    else VibrationEffect.DEFAULT_AMPLITUDE
+                val effect = VibrationEffect.createOneShot(duration, scaledAmplitude)
+                if (Build.VERSION.SDK_INT >= 33) vibrator.vibrate(effect,
+                    VibrationAttributes.Builder().setUsage(VibrationAttributes.USAGE_TOUCH).build())
+                else vibrator.vibrate(effect, android.media.AudioAttributes.Builder()
+                    .setUsage(android.media.AudioAttributes.USAGE_ASSISTANCE_SONIFICATION).build())
             } else {
                 @Suppress("DEPRECATION")
                 val duration = when (type) {
@@ -97,7 +108,7 @@ fun Context.performLevelHaptic(level: Float) {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             val amplitude = if (vibrator.hasAmplitudeControl()) {
                 // Dynamically scale amplitude from 25 (delicate tactile tick) to 255 (maximum kick)
-                (25 + (clampedLevel * 230f)).toInt().coerceIn(1, 255)
+                ((25 + (clampedLevel * 230f)) * AppPreferences(this).getTouchHapticStrength()).toInt().coerceIn(1, 255)
             } else {
                 VibrationEffect.DEFAULT_AMPLITUDE
             }

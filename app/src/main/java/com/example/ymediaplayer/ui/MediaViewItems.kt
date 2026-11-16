@@ -630,7 +630,6 @@ fun VideoGridItem3(
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis
             )
-            Text(formatSize(video.size), fontSize = 9.5.sp, color = c.textSecondary)
         }
     }
 }

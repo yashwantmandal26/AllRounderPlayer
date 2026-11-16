@@ -40,6 +40,10 @@ class VideoInteractionRegressionTest {
     @Before fun setup() {
         check(context.packageName.endsWith(".debug") ||
             InstrumentationRegistry.getArguments().getString("allowReleaseQa") == "true")
+        for (command in listOf("input keyevent KEYCODE_WAKEUP", "wm dismiss-keyguard")) {
+            android.os.ParcelFileDescriptor.AutoCloseInputStream(ins.uiAutomation.executeShellCommand(command))
+                .use { it.readBytes() }
+        }
         savedPreferences = context.getSharedPreferences("ymedia_prefs", Context.MODE_PRIVATE).all.toMap()
         file = File(context.filesDir, "QA_Hidden_Video.mp4")
         ins.context.assets.open("QA_Hidden_30s.mp4").use { input -> file.outputStream().use { input.copyTo(it) } }
@@ -49,6 +53,7 @@ class VideoInteractionRegressionTest {
             oldQueue = VideoPlaybackManager.activePlaylistQueue
             VideoPlaybackManager.activePlaylistQueue = listOf(VideoItem(999001, uri, file.name, 30000, file.length(), "qa", "qa"))
             AppPreferences(context).saveVideoProgress(uri.toString(), 0, 30000)
+            AppPreferences(context).setVideoHapticsEnabled(false)
         }
         scenario = ActivityScenario.launch(Intent(context, VideoPlayerActivity::class.java)
             .putExtra(VideoPlayerActivity.EXTRA_VIDEO_URL, uri.toString()))
@@ -77,6 +82,32 @@ class VideoInteractionRegressionTest {
             AppPreferences.clearCache()
         }
     }
+    @Test fun hapticsTogglePersistsAndPlaybackSurvivesSeekAndPause() {
+        rule.onNodeWithContentDescription("Haptics").assertExists()
+        val hapticBounds = rule.onNodeWithContentDescription("Haptics").fetchSemanticsNode().boundsInRoot
+        val enhanceBounds = rule.onNodeWithContentDescription("Enhanced mode").fetchSemanticsNode().boundsInRoot
+        assertTrue("Haptics should precede Enhanced mode", hapticBounds.right <= enhanceBounds.left)
+        main {
+            AppPreferences(context).setVideoHapticsEnabled(false)
+            VideoPlaybackManager.setHapticsEnabled(false)
+        }
+        if (VideoPlaybackManager.hasHapticSupport()) {
+            rule.onNodeWithContentDescription("Haptics").performClick()
+            rule.waitForIdle()
+            main { assertTrue(AppPreferences(context).isVideoHapticsEnabled()) }
+            main {
+                VideoPlaybackManager.player!!.seekTo(5000)
+                VideoPlaybackManager.player!!.pause()
+            }
+            rule.onNodeWithContentDescription("Haptics").performClick()
+            rule.waitForIdle()
+            main {
+                assertFalse(AppPreferences(context).isVideoHapticsEnabled())
+                assertFalse(VideoPlaybackManager.player!!.playWhenReady)
+            }
+        }
+    }
+
     @Test fun pausedSeekMustRemainPaused() {
         main { VideoPlaybackManager.player!!.pause() }
         rule.waitForIdle()
@@ -92,13 +123,50 @@ class VideoInteractionRegressionTest {
             assertFalse("Scrubbing paused video must preserve pause", p.playWhenReady)
         }
     }
+
+    @Test fun hapticTuningLongPressSavesStrengthAndRouteTiming() {
+        main { VideoPlaybackManager.player!!.pause() }
+        rule.onNodeWithContentDescription("Haptics").performTouchInput { longClick() }
+        rule.onNodeWithText("Haptic tuning").assertIsDisplayed()
+        rule.onNode(SemanticsMatcher("Haptic strength slider") {
+            it.config.contains(SemanticsProperties.ProgressBarRangeInfo) &&
+                it.config[SemanticsProperties.ProgressBarRangeInfo].range == 0.25f..1.5f
+        }).performSemanticsAction(SemanticsActions.SetProgress) { it(1.2f) }
+        rule.onNode(SemanticsMatcher("Haptic sync slider") {
+            it.config.contains(SemanticsProperties.ProgressBarRangeInfo) &&
+                it.config[SemanticsProperties.ProgressBarRangeInfo].range == -250f..250f
+        }).performSemanticsAction(SemanticsActions.SetProgress) { it(75f) }
+        rule.onNodeWithText("Done").performClick()
+        main {
+            val manager = context.getSystemService(android.media.AudioManager::class.java)
+            val route = com.example.ymediaplayer.player.currentHapticRoute(manager)
+            assertEquals(1.2f, AppPreferences(context).getVideoHapticStrength(route), 0.01f)
+            assertEquals(75L, AppPreferences(context).getVideoHapticSyncMs(route))
+        }
+        rule.onNodeWithContentDescription("Haptics").performTouchInput { longClick() }
+        rule.onNodeWithText("Strength: 120%").assertExists()
+        rule.onNodeWithText("Sync: +75 ms").assertExists()
+        ins.uiAutomation.takeScreenshot()?.let { bitmap ->
+            File(context.getExternalFilesDir(null), "haptics-tuning.png").outputStream().use {
+                bitmap.compress(android.graphics.Bitmap.CompressFormat.PNG, 100, it)
+            }
+            bitmap.recycle()
+        }
+        rule.onNodeWithText("Reset").performClick()
+        rule.onNodeWithText("Done").performClick()
+        main {
+            val route = com.example.ymediaplayer.player.currentHapticRoute(context.getSystemService(android.media.AudioManager::class.java))
+            assertEquals(1f, AppPreferences(context).getVideoHapticStrength(route), 0f)
+            assertEquals(0L, AppPreferences(context).getVideoHapticSyncMs(route))
+        }
+    }
     @Test fun videoSleepTimerMustSurviveActivityRecreation() {
         main { VideoPlaybackManager.player!!.pause() }
         rule.waitForIdle()
         rule.onNodeWithContentDescription("More").performSemanticsAction(SemanticsActions.OnClick) { it() }
         Thread.sleep(500)
         rule.waitForIdle()
-        rule.onNodeWithText("Sleep Timer").performSemanticsAction(SemanticsActions.OnClick) { it() }
+        rule.onNodeWithContentDescription("Sleep Timer").performSemanticsAction(SemanticsActions.OnClick) { it() }
         rule.onNodeWithText("15 Minutes").performSemanticsAction(SemanticsActions.OnClick) { it() }
         rule.onNodeWithContentDescription("More").performSemanticsAction(SemanticsActions.OnClick) { it() }
         rule.onNodeWithText("15m").assertExists()

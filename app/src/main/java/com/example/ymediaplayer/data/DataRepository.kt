@@ -464,7 +464,7 @@ class AppPreferences(private val prefs: SharedPreferences) {
 
     // Player Theme & Visual Customizations
     fun getPlayerTheme(): String {
-        return prefs.getString("player_theme", "YELLOW") ?: "YELLOW"
+        return prefs.getString("player_theme", "ORANGE") ?: "ORANGE"
     }
 
     fun savePlayerTheme(themeName: String) {
@@ -622,6 +622,26 @@ class AppPreferences(private val prefs: SharedPreferences) {
         lastProgressUpdate.longValue++
     }
 
+    fun getHiddenHomeVideos(section: VideoHomeSection): Set<String> =
+        prefs.getStringSet("hidden_home_videos_${section.folderId}", emptySet()).orEmpty().toSet()
+
+    fun hideHomeVideo(section: VideoHomeSection, uri: String) {
+        if (uri.isBlank()) return
+        val hidden = getHiddenHomeVideos(section).toMutableSet()
+        if (hidden.add(uri)) {
+            prefs.edit().putStringSet("hidden_home_videos_${section.folderId}", hidden).apply()
+            lastProgressUpdate.longValue++
+        }
+    }
+
+    fun restoreHomeVideo(section: VideoHomeSection, uri: String) {
+        val hidden = getHiddenHomeVideos(section).toMutableSet()
+        if (hidden.remove(uri)) {
+            prefs.edit().putStringSet("hidden_home_videos_${section.folderId}", hidden).apply()
+            lastProgressUpdate.longValue++
+        }
+    }
+
     // ─── Pinned Folders ────────────────────────────────────────────────────
     fun getPinnedFolders(): Set<String> {
         return prefs.getStringSet("pinned_folders", emptySet()) ?: emptySet()
@@ -685,7 +705,11 @@ class AppPreferences(private val prefs: SharedPreferences) {
 
     fun isEqEnabled(): Boolean = prefs.getBoolean("eq_enabled", true)
 
-    fun getMusicSoundMode(): String = prefs.getString("music_sound_mode", "BALANCED") ?: "BALANCED"
+    fun getMusicSoundMode(): String = when (val mode = prefs.getString("music_sound_mode", "ORIGINAL")) {
+        "BALANCED" -> "ORIGINAL"
+        "SPATIAL_3D" -> "LIVE_STAGE"
+        else -> mode ?: "ORIGINAL"
+    }
     fun setMusicSoundMode(mode: String) { prefs.edit().putString("music_sound_mode", mode).apply() }
 
     fun getVideoSoundMode(): String = prefs.getString("video_sound_mode", "NORMAL") ?: "NORMAL"
@@ -741,6 +765,56 @@ class AppPreferences(private val prefs: SharedPreferences) {
     fun setVideoCustomSharpness(value: Float) { prefs.edit().putFloat("video_custom_sharpness", value).apply() }
 
     fun isSuperAiEnhanceEnabled(): Boolean = prefs.getBoolean("super_ai_enhance_enabled", false)
+    fun isVideoHapticsEnabled(): Boolean = prefs.getBoolean("video_haptics_enabled", false)
+    fun setVideoHapticsEnabled(enabled: Boolean) { prefs.edit().putBoolean("video_haptics_enabled", enabled).apply() }
+    fun isMusicHapticsEnabled(): Boolean = prefs.getBoolean("music_haptics_enabled", false)
+    fun setMusicHapticsEnabled(enabled: Boolean) { prefs.edit().putBoolean("music_haptics_enabled", enabled).apply() }
+    internal fun getMusicHapticTuning(route: String) = com.example.ymediaplayer.player.HapticTuning(
+        strength = prefs.getFloat("music_haptic_strength_$route", 1f),
+        syncMs = prefs.getLong("music_haptic_sync_$route", -20L),
+        textures = false
+    ).bounded()
+    internal fun setMusicHapticTuning(route: String, value: com.example.ymediaplayer.player.HapticTuning) {
+        val tuning = value.bounded()
+        prefs.edit().putFloat("music_haptic_strength_$route", tuning.strength)
+            .putLong("music_haptic_sync_$route", tuning.syncMs).apply()
+    }
+    fun getVideoHapticStrength(route: String): Float = prefs.getFloat("video_haptic_strength_$route", 1f)
+        .takeIf { it.isFinite() }?.coerceIn(0.25f, 1.5f) ?: 1f
+    fun getVideoHapticSyncMs(route: String): Long = prefs.getLong("video_haptic_sync_$route", 0L).coerceIn(-250L, 250L)
+    fun setVideoHapticTuning(route: String, strength: Float, offsetMs: Long) {
+        prefs.edit().putFloat("video_haptic_strength_$route", (if (strength.isFinite()) strength else 1f).coerceIn(0.25f, 1.5f))
+            .putLong("video_haptic_sync_$route", offsetMs.coerceIn(-250L, 250L)).apply()
+    }
+    internal fun getVideoHapticTuning(route: String) = com.example.ymediaplayer.player.HapticTuning(
+        strength = getVideoHapticStrength(route),
+        impactStrength = prefs.getFloat("video_haptic_impact_$route", 1f),
+        textureStrength = prefs.getFloat("video_haptic_texture_$route", 1f),
+        detail = prefs.getFloat("video_haptic_detail_$route", 1f),
+        dynamics = prefs.getFloat("video_haptic_dynamics_$route", 1f / 3f),
+        sensitivity = prefs.getFloat("video_haptic_sensitivity_$route", 1f),
+        syncMs = getVideoHapticSyncMs(route),
+        impacts = prefs.getBoolean("video_haptic_impacts_$route", true),
+        textures = prefs.getBoolean("video_haptic_textures_$route", true)
+    ).bounded()
+
+    internal fun setVideoHapticTuning(route: String, value: com.example.ymediaplayer.player.HapticTuning) {
+        val tuning = value.bounded()
+        prefs.edit().putFloat("video_haptic_strength_$route", tuning.strength)
+            .putFloat("video_haptic_impact_$route", tuning.impactStrength)
+            .putFloat("video_haptic_texture_$route", tuning.textureStrength)
+            .putFloat("video_haptic_detail_$route", tuning.detail)
+            .putFloat("video_haptic_dynamics_$route", tuning.dynamics)
+            .putFloat("video_haptic_sensitivity_$route", tuning.sensitivity)
+            .putLong("video_haptic_sync_$route", tuning.syncMs)
+            .putBoolean("video_haptic_impacts_$route", tuning.impacts)
+            .putBoolean("video_haptic_textures_$route", tuning.textures).apply()
+    }
+    fun getTouchHapticStrength(): Float = prefs.getFloat("touch_haptic_strength", 1f)
+        .takeIf { it.isFinite() }?.coerceIn(0.25f, 1.5f) ?: 1f
+    fun setTouchHapticStrength(value: Float) {
+        prefs.edit().putFloat("touch_haptic_strength", (if (value.isFinite()) value else 1f).coerceIn(0.25f, 1.5f)).apply()
+    }
     fun setSuperAiEnhanceEnabled(enabled: Boolean) { prefs.edit().putBoolean("super_ai_enhance_enabled", enabled).apply() }
 
     // ─── Custom Playlists Persistence ──────────────────────────────────────
@@ -1113,11 +1187,13 @@ class AppPreferences(private val prefs: SharedPreferences) {
         val enhancementKeys = prefs.all.keys.filter {
             it.startsWith("video_strength_") || it.startsWith("video_sound_") ||
             it.startsWith("video_leveling_") || it.startsWith("video_ambient_") ||
-            it.startsWith("video_custom_") || it.startsWith("subtitle_delay_")
+            it.startsWith("video_custom_") || it.startsWith("subtitle_delay_") || it.startsWith("video_haptic_") ||
+            it.startsWith("music_haptic_")
         }
         val enhancementEditor = prefs.edit()
         enhancementKeys.forEach { enhancementEditor.remove(it) }
         enhancementEditor.remove("video_color_profile").remove("video_sharpness_level")
+            .remove("video_haptics_enabled").remove("music_haptics_enabled").remove("touch_haptic_strength")
             .remove("super_ai_enhance_enabled").remove("subtitle_bottom_padding")
             .remove("ambient_glow_strength").remove("ambient_glow_spread").remove("ambient_glow_saturation")
             .remove("video_ambient_spread").remove("video_ambient_saturation").apply()

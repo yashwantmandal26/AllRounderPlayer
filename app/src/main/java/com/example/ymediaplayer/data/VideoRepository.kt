@@ -70,12 +70,15 @@ class VideoRepository(private val context: Context) {
 
         val videoDimensionsCache = java.util.concurrent.ConcurrentHashMap<String, Pair<Int, Int>>()
 
+        fun getCachedVideoDimensions(uriString: String): Pair<Int, Int>? = videoDimensionsCache[uriString]
+
+        @androidx.annotation.WorkerThread
         fun getVideoDimensions(uriString: String): Pair<Int, Int>? {
             videoDimensionsCache[uriString]?.let { return it }
             try {
                 val mmr = android.media.MediaMetadataRetriever()
                 try {
-                    val path = if (uriString.startsWith("file://")) uriString.removePrefix("file://") else uriString
+                    val path = if (uriString.startsWith("file://")) Uri.parse(uriString).path.orEmpty() else uriString
                     if (path.startsWith("/")) {
                         mmr.setDataSource(path)
                     } else {
@@ -150,7 +153,7 @@ class VideoRepository(private val context: Context) {
                 }
                 if (mapped.isNotEmpty()) {
                     memoryCachedFolders = mapped
-                    lastCacheTime = System.currentTimeMillis()
+                    lastCacheTime = 0L
                     return mapped
                 }
             }
@@ -163,7 +166,9 @@ class VideoRepository(private val context: Context) {
     }
 
     suspend fun getFoldersWithVideos(forceRefresh: Boolean = false): List<VideoFolder> = withContext(Dispatchers.IO) {
-        val cached = memoryCachedFolders ?: getCachedFoldersSync()
+        // Disk snapshots are only for the initial UI. Rehydrating one here would
+        // reset its age after invalidateCache() and hide deletes/renames for 15s.
+        val cached = memoryCachedFolders
         val now = System.currentTimeMillis()
         // Serve from memory if fresh within 15 seconds, unless explicitly invalidated
         if (!forceRefresh && cached != null && (now - lastCacheTime < 15_000L)) {

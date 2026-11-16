@@ -12,12 +12,14 @@ import kotlinx.coroutines.launch
 @Composable
 internal fun rememberFileOperationHandler(
     onSuccess: () -> Unit,
-    onFailure: (String) -> Unit
+    onFailure: (String) -> Unit,
+    onCancelled: () -> Unit = {}
 ): (FileOperationResult) -> Unit {
     val scope = rememberCoroutineScope()
     var pending by remember { mutableStateOf<FileOperationResult.NeedsConfirmation?>(null) }
     val success by rememberUpdatedState(onSuccess)
     val failure by rememberUpdatedState(onFailure)
+    val cancelled by rememberUpdatedState(onCancelled)
     fun handle(result: FileOperationResult) {
         when (result) {
             is FileOperationResult.NeedsConfirmation -> pending = result
@@ -30,6 +32,8 @@ internal fun rememberFileOperationHandler(
         pending = null
         if (result.resultCode == Activity.RESULT_OK && operation != null) {
             scope.launch { handle(operation.retry?.invoke() ?: FileOperationResult.Success) }
+        } else {
+            cancelled()
         }
     }
     LaunchedEffect(pending) {

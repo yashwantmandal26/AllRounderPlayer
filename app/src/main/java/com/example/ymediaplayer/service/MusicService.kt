@@ -51,6 +51,10 @@ import com.example.ymediaplayer.MainActivity
 import com.example.ymediaplayer.R
 import com.example.ymediaplayer.data.AppPreferences
 import com.example.ymediaplayer.data.MusicItem
+import com.example.ymediaplayer.player.HapticAudioSink
+import com.example.ymediaplayer.player.VideoHaptics
+import com.example.ymediaplayer.player.MusicSoundProcessor
+import com.example.ymediaplayer.player.MusicProcessingMode
 import com.google.common.util.concurrent.Futures
 import com.google.common.util.concurrent.ListenableFuture
 import kotlinx.coroutines.CoroutineScope
@@ -58,6 +62,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.ByteArrayOutputStream
@@ -71,7 +76,20 @@ class MusicService : MediaSessionService() {
     private val mainHandler by lazy { Handler(android.os.Looper.getMainLooper()) }
     private var audioRecoveryAttempt = 0
     private var audioRecoveryJob: Job? = null
+    private var artworkJob: Job? = null
     private var lastReadyAtMs = 0L
+    private var musicHaptics: VideoHaptics? = null
+    private val musicSoundProcessor = MusicSoundProcessor()
+    private val hapticPreferences by lazy { getSharedPreferences("ymedia_prefs", Context.MODE_PRIVATE) }
+    private val hapticPreferenceListener = android.content.SharedPreferences.OnSharedPreferenceChangeListener { _, key ->
+        if (key == null || key == "music_haptics_enabled" || key.startsWith("music_haptic_")) {
+            mainHandler.post {
+                isMusicHapticsEnabled.value = AppPreferences(this).isMusicHapticsEnabled()
+                musicHaptics?.setEnabled(isMusicHapticsEnabled.value)
+                musicHaptics?.reloadSavedTuning()
+            }
+        }
+    }
 
     private var vlcLib: LibVLC? = null
     private var vlcAudioPlayer: VlcMediaPlayer? = null
@@ -92,15 +110,25 @@ class MusicService : MediaSessionService() {
         const val ACTION_PREV = "com.example.ymediaplayer.ACTION_PREV"
         const val ACTION_NEXT = "com.example.ymediaplayer.ACTION_NEXT"
         const val ACTION_STOP = "com.example.ymediaplayer.ACTION_STOP"
+        private const val ACTION_PLAY_PENDING = "com.example.ymediaplayer.ACTION_PLAY_PENDING"
+        private var pendingSong: MusicItem? = null
 
         var currentAudioSessionId: androidx.compose.runtime.MutableState<Int> =
             androidx.compose.runtime.mutableIntStateOf(0)
 
         var currentSoundMode: androidx.compose.runtime.MutableState<MusicSoundMode> =
-            androidx.compose.runtime.mutableStateOf(MusicSoundMode.BALANCED)
+            androidx.compose.runtime.mutableStateOf(MusicSoundMode.ORIGINAL)
 
         var isEqEnabled: androidx.compose.runtime.MutableState<Boolean> =
             androidx.compose.runtime.mutableStateOf(true)
+
+        val isMusicHapticsEnabled = androidx.compose.runtime.mutableStateOf(false)
+
+        fun setMusicHapticsEnabled(context: Context, enabled: Boolean) {
+            AppPreferences(context).setMusicHapticsEnabled(enabled)
+            isMusicHapticsEnabled.value = enabled
+            serviceInstance?.musicHaptics?.setEnabled(enabled)
+        }
 
         var currentEqBands: androidx.compose.runtime.MutableState<List<Float>> =
             androidx.compose.runtime.mutableStateOf(listOf(0f, 0f, 0f, 0f, 0f))
@@ -122,6 +150,15 @@ class MusicService : MediaSessionService() {
             currentBassBoost.floatValue = prefs.getEqBassBoost()
             currentVirtualizer.floatValue = prefs.getEqVirtualizer()
             currentPresetName.value = prefs.getEqPreset()
+            val namedPresets = MusicSoundMode.entries.map { it.displayName } + listOf("Flat", "Balanced Pure", "3D Spatial")
+            if (currentPresetName.value in namedPresets) {
+                val mode = currentSoundMode.value
+                currentEqBands.value = mode.bands
+                currentBassBoost.floatValue = mode.bassBoost
+                currentVirtualizer.floatValue = mode.virtualizer
+                currentPresetName.value = mode.displayName
+                if (mode == MusicSoundMode.ORIGINAL) isEqEnabled.value = false
+            }
             serviceInstance?.applyCurrentEffects()
         }
 
@@ -129,7 +166,7 @@ class MusicService : MediaSessionService() {
             val prefs = AppPreferences(context)
             currentSoundMode.value = mode
             prefs.setMusicSoundMode(mode.id)
-            isEqEnabled.value = true
+            isEqEnabled.value = mode != MusicSoundMode.ORIGINAL
             currentEqBands.value = mode.bands
             currentBassBoost.floatValue = mode.bassBoost
             currentVirtualizer.floatValue = mode.virtualizer
@@ -139,7 +176,7 @@ class MusicService : MediaSessionService() {
                 bands = mode.bands,
                 bassBoost = mode.bassBoost,
                 virt = mode.virtualizer,
-                enabled = true
+                enabled = isEqEnabled.value
             )
             serviceInstance?.applyCurrentEffects()
         }
@@ -303,6 +340,28 @@ class MusicService : MediaSessionService() {
                 }
             }
         }
+
+        fun removeDeletedSong(uri: android.net.Uri) {
+            val index = currentPlaylist.indexOfFirst { it.uri == uri }
+            if (index < 0) return
+            val wasCurrent = currentMusicItem.value?.uri == uri
+            val wasPlaying = isMusicPlaying.value
+            val remaining = currentPlaylist.filterNot { it.uri == uri }
+            currentPlaylist = remaining
+            if (remaining.isEmpty()) {
+                stopMusic()
+                return
+            }
+            if (isUsingFallbackEngine.value && wasCurrent) {
+                playSong(remaining[index.coerceAtMost(remaining.lastIndex)])
+                if (!wasPlaying) togglePlayPause()
+            } else {
+                playerInstance?.let { player ->
+                    if (index < player.mediaItemCount) player.removeMediaItem(index)
+                    currentSongIndex = player.currentMediaItemIndex.coerceAtLeast(0)
+                }
+            }
+        }
         val repeatMode = androidx.compose.runtime.mutableIntStateOf(Player.REPEAT_MODE_OFF)
         val shuffleEnabled = androidx.compose.runtime.mutableStateOf(false)
         val sleepTimerSecondsRemaining = androidx.compose.runtime.mutableIntStateOf(0)
@@ -373,6 +432,7 @@ class MusicService : MediaSessionService() {
             sleepTimerJob?.cancel()
             sleepTimerJob = null
             restoreSleepFadeVolume()
+            serviceInstance?.setVlcFallbackVolumeFactor(1f)
             sleepDeadlineMs = if (durationMs > 0) android.os.SystemClock.elapsedRealtime() + durationMs else 0L
             sleepTimerSecondsRemaining.intValue = ((durationMs.coerceAtLeast(0L) + 999) / 1000).toInt()
             if (durationMs <= 0) return
@@ -478,6 +538,8 @@ class MusicService : MediaSessionService() {
         }
 
         fun stopAndDismiss() {
+            pendingSong = null
+            setSleepTimer(0)
             isMiniPlayerDismissed.value = true
             fadeJob?.cancel()
             serviceInstance?.stopVlcFallback()
@@ -504,6 +566,23 @@ class MusicService : MediaSessionService() {
         }
 
         fun playSong(item: MusicItem) {
+            // startService is asynchronous. Keep the latest request until onCreate
+            // has built the player, including after a dismissed service is restarted.
+            if (playerInstance == null) {
+                pendingSong = item
+                val context = com.example.ymediaplayer.YMediaApplication.instance
+                val request = Intent(context, MusicService::class.java).setAction(ACTION_PLAY_PENDING)
+                try {
+                    ContextCompat.startForegroundService(context, request)
+                } catch (e: Exception) {
+                    pendingSong = null
+                    playbackStatusMessage.value = "Could not start playback: ${e.message.orEmpty()}"
+                    isMusicPlaying.value = false
+                }
+                return
+            }
+            pendingSong = null
+            serviceInstance?.artworkJob?.cancel()
             isMiniPlayerDismissed.value = false
             serviceInstance?.stopVlcFallback()
             serviceInstance?.resetRecoveryState()
@@ -559,21 +638,22 @@ class MusicService : MediaSessionService() {
             serviceInstance?.updateSessionCustomLayout()
 
             // Resolve artwork bytes asynchronously on IO thread to prevent UI thread freeze
-            CoroutineScope(Dispatchers.IO).launch {
-                val artBytes = resolveArtworkBytes(context, item.uri, item.albumArtUri)
-                if (artBytes != null && currentMusicItem.value?.id == item.id) {
-                    val enrichedMeta = initialMetadata.buildUpon()
-                        .setArtworkData(artBytes, MediaMetadata.PICTURE_TYPE_FRONT_COVER)
-                        .build()
-                    withContext(Dispatchers.Main) {
-                        if (currentMusicItem.value?.id == item.id) {
-                            val updatedItem = mediaItem.buildUpon().setMediaMetadata(enrichedMeta).build()
-                            val curIdx = player.currentMediaItemIndex
-                            if (curIdx >= 0 && curIdx < player.mediaItemCount) {
-                                player.replaceMediaItem(curIdx, updatedItem)
-                            }
-                            serviceInstance?.updateSessionCustomLayout()
+            serviceInstance?.let { owner ->
+                owner.artworkJob = owner.serviceScope.launch {
+                    val artBytes = withContext(Dispatchers.IO) {
+                        runCatching { resolveArtworkBytes(context, item.uri, item.albumArtUri) }.getOrNull()
+                    } ?: return@launch
+                    if (currentMusicItem.value?.uri == item.uri && playerInstance === player &&
+                        player.currentMediaItem?.localConfiguration?.uri == item.uri) {
+                        val enrichedMeta = initialMetadata.buildUpon()
+                            .setArtworkData(artBytes, MediaMetadata.PICTURE_TYPE_FRONT_COVER)
+                            .build()
+                        val updatedItem = mediaItem.buildUpon().setMediaMetadata(enrichedMeta).build()
+                        val curIdx = player.currentMediaItemIndex
+                        if (curIdx >= 0 && curIdx < player.mediaItemCount) {
+                            player.replaceMediaItem(curIdx, updatedItem)
                         }
+                        owner.updateSessionCustomLayout()
                     }
                 }
             }
@@ -615,8 +695,9 @@ class MusicService : MediaSessionService() {
         fun playNext() {
             isMiniPlayerDismissed.value = false
             if (isUsingFallbackEngine.value) {
-                serviceInstance?.stopVlcFallback()
-                serviceInstance?.resetRecoveryState()
+                val next = playerInstance?.nextMediaItemIndex?.takeIf { it in currentPlaylist.indices } ?: 0
+                currentPlaylist.getOrNull(next)?.let { playSong(it) }
+                return
             }
             val player = playerInstance ?: return
             if (player.hasNextMediaItem()) player.seekToNextMediaItem()
@@ -628,8 +709,10 @@ class MusicService : MediaSessionService() {
             isMiniPlayerDismissed.value = false
             val pos = getPlaybackPositionMs()
             if (isUsingFallbackEngine.value && pos <= 3000L) {
-                serviceInstance?.stopVlcFallback()
-                serviceInstance?.resetRecoveryState()
+                val previous = playerInstance?.previousMediaItemIndex?.takeIf { it in currentPlaylist.indices }
+                    ?: currentPlaylist.lastIndex
+                currentPlaylist.getOrNull(previous)?.let { playSong(it) }
+                return
             } else if (isUsingFallbackEngine.value && pos > 3000L) {
                 seekToPosition(0L)
                 return
@@ -646,6 +729,11 @@ class MusicService : MediaSessionService() {
     override fun onCreate() {
         super.onCreate()
         serviceInstance = this
+        isMusicHapticsEnabled.value = AppPreferences(this).isMusicHapticsEnabled()
+        musicHaptics = VideoHaptics(this, musicMode = true).also {
+            it.setEnabled(isMusicHapticsEnabled.value)
+        }
+        hapticPreferences.registerOnSharedPreferenceChangeListener(hapticPreferenceListener)
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             val channel = NotificationChannel(
@@ -670,11 +758,13 @@ class MusicService : MediaSessionService() {
                 enableFloatOutput: Boolean,
                 enableAudioTrackPlaybackParams: Boolean
             ): androidx.media3.exoplayer.audio.AudioSink {
-                return androidx.media3.exoplayer.audio.DefaultAudioSink.Builder(context)
-                    .setEnableFloatOutput(enableFloatOutput)
+                val sink = androidx.media3.exoplayer.audio.DefaultAudioSink.Builder(context)
+                    // Media3's float-output path skips custom processors; keep modes in the PCM16 path.
+                    .setEnableFloatOutput(false)
                     .setEnableAudioTrackPlaybackParams(enableAudioTrackPlaybackParams)
-                    .setAudioProcessors(arrayOf(audioVisualizerProcessor))
+                    .setAudioProcessors(arrayOf(musicSoundProcessor, audioVisualizerProcessor))
                     .build()
+                return HapticAudioSink(sink, requireNotNull(musicHaptics), musicMode = true)
             }
 
             override fun buildAudioRenderers(
@@ -777,12 +867,14 @@ class MusicService : MediaSessionService() {
             override fun onRepeatModeChanged(mode: Int) { repeatMode.intValue = mode; syncAutoAdvance() }
             override fun onShuffleModeEnabledChanged(enabled: Boolean) { shuffleEnabled.value = enabled; syncAutoAdvance() }
             override fun onAudioSessionIdChanged(audioSessionId: Int) {
+                musicHaptics?.invalidate()
                 currentAudioSessionId.value = audioSessionId
                 if (audioSessionId > 0) {
                     attachAudioEffects(audioSessionId)
                 }
             }
             override fun onIsPlayingChanged(isPlaying: Boolean) {
+                musicHaptics?.setPlaying(isPlaying && !isUsingFallbackEngine.value && player.volume > 0f)
                 if (!isUsingFallbackEngine.value) {
                     isMusicPlaying.value = isPlaying
                 }
@@ -810,9 +902,17 @@ class MusicService : MediaSessionService() {
                 newPosition: Player.PositionInfo,
                 reason: Int
             ) {
+                musicHaptics?.invalidate()
                 AudioReactor.reset()
             }
+            override fun onPlaybackParametersChanged(playbackParameters: PlaybackParameters) {
+                musicHaptics?.invalidate()
+            }
+            override fun onVolumeChanged(volume: Float) {
+                musicHaptics?.setPlaying(player.isPlaying && !isUsingFallbackEngine.value && volume > 0f)
+            }
             override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
+                musicHaptics?.invalidate()
                 stopVlcFallback()
                 resetRecoveryState()
                 AudioReactor.reset()
@@ -1199,6 +1299,7 @@ class MusicService : MediaSessionService() {
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         super.onStartCommand(intent, flags, startId)
         when (intent?.action) {
+            ACTION_PLAY_PENDING -> pendingSong?.let { playSong(it) }
             ACTION_PLAY_PAUSE -> togglePlayPause()
             ACTION_PREV -> playPrevious()
             ACTION_NEXT -> playNext()
@@ -1259,13 +1360,19 @@ class MusicService : MediaSessionService() {
 
     fun applyCurrentEffects() {
         val eqEnabled = isEqEnabled.value
+        val customEq = currentPresetName.value !in MusicSoundMode.entries.map { it.displayName }
+        musicSoundProcessor.mode = if (eqEnabled && !customEq) {
+            MusicProcessingMode.valueOf(currentSoundMode.value.id)
+        } else MusicProcessingMode.ORIGINAL
+        // Named modes are rendered once in PCM. Retain OEM effects for the manual EQ only.
+        val hardwareEqEnabled = eqEnabled && customEq
         val bands = currentEqBands.value
         val bassStrength = currentBassBoost.floatValue
         val virtStrength = currentVirtualizer.floatValue
 
         equalizer?.let { eq ->
             try {
-                eq.enabled = eqEnabled
+                eq.enabled = hardwareEqEnabled
                 val minRange = eq.bandLevelRange[0]
                 val maxRange = eq.bandLevelRange[1]
                 bands.forEachIndexed { idx, db ->
@@ -1279,14 +1386,14 @@ class MusicService : MediaSessionService() {
 
         bassBoost?.let { b ->
             try {
-                b.enabled = eqEnabled
+                b.enabled = hardwareEqEnabled
                 b.setStrength((bassStrength * 1000).toInt().coerceIn(0, 1000).toShort())
             } catch (_: Exception) {}
         }
 
         virtualizer?.let { v ->
             try {
-                v.enabled = eqEnabled
+                v.enabled = hardwareEqEnabled
                 v.setStrength((virtStrength * 1000).toInt().coerceIn(0, 1000).toShort())
             } catch (_: Exception) {}
         }
@@ -1297,12 +1404,19 @@ class MusicService : MediaSessionService() {
     }
 
     override fun onDestroy() {
+        serviceScope.cancel()
+        pendingSong = null
+        hapticPreferences.unregisterOnSharedPreferenceChangeListener(hapticPreferenceListener)
+        musicHaptics?.release()
+        musicHaptics = null
         setSleepTimer(0)
         audioRecoveryJob?.cancel()
         audioRecoveryJob = null
         stopVlcFallback()
         serviceInstance = null
         playerInstance = null
+        isMusicPlaying.value = false
+        AudioReactor.reset()
         releaseAudioEffects()
         currentAudioSessionId.value = 0
         try {
@@ -1418,6 +1532,7 @@ class MusicService : MediaSessionService() {
             vlcMedia = media
             mp.media = media
             isUsingFallbackEngine.value = true
+            musicHaptics?.setPlaying(false)
             fallbackDurationMs.longValue = currentMusicItem.value?.duration?.coerceAtLeast(0L) ?: 0L
             fallbackPositionMs.longValue = startPosMs.coerceAtLeast(0L)
             playbackStatusMessage.value = "Playing in compatibility engine"
@@ -1458,7 +1573,8 @@ class MusicService : MediaSessionService() {
                                     startVlcAudioFallback(exoPlayer, uri, 0L)
                                 }
                                 currentPlaylist.size > 1 &&
-                                    (repeatMode.intValue == Player.REPEAT_MODE_ALL || isAutoPlayEnabled.value || shuffleEnabled.value) -> {
+                                    (repeatMode.intValue == Player.REPEAT_MODE_ALL || shuffleEnabled.value ||
+                                        (isAutoPlayEnabled.value && exoPlayer.hasNextMediaItem())) -> {
                                     playNext()
                                 }
                             }

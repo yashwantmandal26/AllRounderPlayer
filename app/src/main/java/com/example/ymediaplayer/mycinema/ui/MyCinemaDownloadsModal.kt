@@ -206,7 +206,7 @@ fun MyCinemaDownloadsModal(
                             ActiveDownloadCard(
                                 download = dl,
                                 onPause = { TorrentEngine.pause(dl.id) },
-                                onResume = { TorrentEngine.resume(dl.id) },
+                                onResume = { com.example.ymediaplayer.mycinema.service.TorrentDownloadService.resume(context, dl.id, dl.title) },
                                 onCancel = {
                                     TorrentEngine.cancel(dl.id)
                                 },
@@ -277,7 +277,7 @@ fun MyCinemaDownloadsModal(
                 TextButton(
                     onClick = {
                         try {
-                            target.file.delete()
+                            check(!target.file.exists() || target.file.delete()) { "Could not delete file" }
                             VideoRepository.invalidateCache()
                             refreshTrigger++
                             Toast.makeText(context, "Movie deleted", Toast.LENGTH_SHORT).show()

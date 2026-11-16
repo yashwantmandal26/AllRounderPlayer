@@ -46,7 +46,8 @@ class UpdateUiTest {
                 }
             }
         }
-        rule.onNodeWithTag("update-installed-version").assertTextEquals("v1.7.1")
+        rule.onNodeWithTag("update-installed-version").assertTextEquals(updateVersionLabel(
+            com.example.ymediaplayer.update.UpdateManager.getCurrentVersionName(InstrumentationRegistry.getInstrumentation().targetContext)))
         rule.onNodeWithTag("update-release-version").assertTextEquals("v1.7.2")
         rule.onNodeWithTag("update-download").assertIsDisplayed()
         val surface = rule.onNodeWithTag("update-dialog").fetchSemanticsNode().boundsInRoot
@@ -168,7 +169,7 @@ class UpdateUiTest {
 
     @Test fun historyCanCollapseExpandAndOpenAnUpdateInLightTheme() {
         val manager = com.example.ymediaplayer.update.UpdateManager
-        val next = release.copy(tagName = "v1.7.2", versionName = "1.7.2")
+        val next = release.copy(tagName = "v99.0.0", versionName = "99.0.0")
         var selected: ReleaseInfo? = null
         var closed = false
         manager.releaseHistory.value = listOf(next, release.copy(tagName = "v1.6.0", versionName = "1.6.0"))
@@ -180,9 +181,9 @@ class UpdateUiTest {
                     }
                 }
             }
-            rule.onNodeWithContentDescription("Hide 1.7.2 details").performClick()
+            rule.onNodeWithContentDescription("Hide 99.0.0 details").performClick()
             rule.onNodeWithText("View update").assertDoesNotExist()
-            rule.onNodeWithContentDescription("Show 1.7.2 details").performClick()
+            rule.onNodeWithContentDescription("Show 99.0.0 details").performClick()
             rule.onNodeWithText("View update").performScrollTo().performClick()
             rule.runOnIdle { assertTrue(closed); assertEquals(next, selected) }
         } finally {
@@ -215,7 +216,8 @@ class UpdateUiTest {
         val actions = rule.onNodeWithTag("library_header_actions").fetchSemanticsNode().boundsInRoot
         val update = rule.onNodeWithTag("library_update_notice").fetchSemanticsNode().boundsInRoot
         assertTrue(title.width > 100f)
-        assertTrue(actions.top >= title.bottom)
+        assertTrue("Actions must sit beside or below the title without overlapping it",
+            actions.left >= title.right || actions.top >= title.bottom)
         assertTrue(update.top >= actions.bottom)
         saveScreenshot("update-header-large-text.png")
         rule.onNodeWithTag("library_update_notice").performClick()

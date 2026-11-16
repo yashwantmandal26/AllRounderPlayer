@@ -19,6 +19,79 @@ import java.io.File
 
 /** Real service regression tests with app-private generated audio fixtures. */
 class MusicQueueAndTimerRegressionTest {
+    private fun switchToCompatibilityEngine() {
+        main {
+            val service = requireNotNull(MusicService.serviceInstance)
+            val method = MusicService::class.java.getDeclaredMethod("startVlcAudioFallback",
+                androidx.media3.exoplayer.ExoPlayer::class.java, Uri::class.java, java.lang.Long.TYPE)
+            method.isAccessible = true
+            method.invoke(service, MusicService.playerInstance as androidx.media3.exoplayer.ExoPlayer,
+                MusicService.currentMusicItem.value!!.uri, 0L)
+        }
+        waitFor { MusicService.isUsingFallbackEngine.value && MusicService.getPlaybackPositionMs() > 0L }
+    }
+
+    @Test fun nextFromCompatibilityEnginePreparesAndPlaysTheNextTrack() {
+        switchToCompatibilityEngine()
+        main { MusicService.playNext() }
+        waitFor { !MusicService.isUsingFallbackEngine.value && MusicService.playerInstance?.isPlaying == true }
+        main { assertEquals(songs[1].uri, MusicService.currentMusicItem.value?.uri) }
+    }
+
+    @Test fun previousFromCompatibilityEnginePreparesAndPlaysThePreviousTrack() {
+        main { MusicService.playSong(songs[1]) }
+        waitFor { MusicService.playerInstance?.isPlaying == true }
+        switchToCompatibilityEngine()
+        main { MusicService.playPrevious() }
+        waitFor { !MusicService.isUsingFallbackEngine.value && MusicService.playerInstance?.isPlaying == true }
+        main { assertEquals(songs[0].uri, MusicService.currentMusicItem.value?.uri) }
+    }
+
+    @Test fun oneTapStartsMusicAfterTheServiceHasBeenDismissed() {
+        main { MusicService.stopAndDismiss() }
+        waitFor { MusicService.playerInstance == null }
+        main {
+            MusicService.currentPlaylist = songs
+            MusicService.playSong(songs[1])
+        }
+        waitFor { MusicService.playerInstance?.isPlaying == true }
+        main {
+            assertEquals(songs[1].uri, MusicService.currentMusicItem.value?.uri)
+            assertEquals(songs[1].uri, MusicService.playerInstance?.currentMediaItem?.localConfiguration?.uri)
+            assertEquals(songs.size, MusicService.playerInstance?.mediaItemCount)
+        }
+    }
+
+    @Test fun cancellingTimerImmediatelyClearsRemainingTime() {
+        main {
+            MusicService.startSleepTimer(15_000L)
+            MusicService.setSleepTimer(0)
+            assertEquals(0, MusicService.sleepTimerSecondsRemaining.intValue)
+        }
+    }
+
+    @Test fun deletingQueuedSongRemovesItFromPlayerAndVisibleQueue() {
+        main { MusicService.removeDeletedSong(songs[1].uri) }
+        main {
+            assertEquals(listOf(songs[0], songs[2]), MusicService.currentPlaylist)
+            assertEquals(2, MusicService.playerInstance!!.mediaItemCount)
+            assertEquals(songs[0].uri, MusicService.currentMusicItem.value!!.uri)
+            MusicService.playNext()
+        }
+        waitFor { MusicService.currentMusicItem.value?.uri == songs[2].uri }
+    }
+
+    @Test fun deletingPausedCurrentSongPreservesPauseAndAdvancesQueue() {
+        main {
+            MusicService.playerInstance!!.pause()
+            MusicService.removeDeletedSong(songs[0].uri)
+        }
+        waitFor { MusicService.currentMusicItem.value?.uri == songs[1].uri }
+        main {
+            assertFalse(MusicService.playerInstance!!.playWhenReady)
+            assertEquals(listOf(songs[1], songs[2]), MusicService.currentPlaylist)
+        }
+    }
     @get:Rule val rule = createComposeRule()
     private val ins = InstrumentationRegistry.getInstrumentation()
     private val context = ins.targetContext

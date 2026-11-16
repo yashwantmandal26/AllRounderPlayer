@@ -22,6 +22,8 @@ graphify-out/
 
 # Signed APKs
 # /app-release.apk
+/app-stable-*.apk
+/app-ui-*.apk
 /*_preview.png
 /*_hex.png
 /*_dark.png

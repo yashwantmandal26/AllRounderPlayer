@@ -9,6 +9,13 @@ import java.util.Locale
 
 class FileManagerTest {
 
+    @Test fun renameRejectsBlankAndPathNames() {
+        listOf("", " ", ".", "..", "../movie.mp4", "folder/movie.mp4", "folder\\movie.mp4", "bad\u0000.mp4").forEach {
+            org.junit.Assert.assertFalse(it, FileManager.isValidFileName(it))
+        }
+        assertTrue(FileManager.isValidFileName("Movie trailer (2026).mp4"))
+    }
+
     @Test
     fun fileOperationResult_types() {
         val success: FileOperationResult = FileOperationResult.Success

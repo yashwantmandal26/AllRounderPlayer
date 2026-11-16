@@ -56,6 +56,7 @@ enum class SettingsCategory(val displayName: String, val icon: ImageVector) {
     ALL("All", Icons.Rounded.Apps),
     PLAYBACK("Playback", Icons.Rounded.PlayCircleOutline),
     GESTURES("Gestures", Icons.Rounded.TouchApp),
+    HAPTICS("Haptics", Icons.Rounded.Vibration),
     SUBTITLES("Subtitles", Icons.Rounded.Subtitles),
     APPEARANCE("Appearance", Icons.Rounded.ColorLens),
     LIBRARY("Library", Icons.Rounded.FolderOpen),
@@ -110,6 +111,8 @@ fun SettingsScreen(
     var doubleTapCenterPlayPause by remember { mutableStateOf(appPreferences.isDoubleTapCenterPlayPauseEnabled()) }
     var pressHoldSpeed by remember { mutableFloatStateOf(appPreferences.getPressHoldSpeed()) }
     var hapticsEnabled by remember { mutableStateOf(appPreferences.isHapticsEnabled()) }
+    var movieHapticsEnabled by remember { mutableStateOf(appPreferences.isVideoHapticsEnabled()) }
+    var hapticsResetVersion by remember { mutableIntStateOf(0) }
     var hdrEnabled by remember { mutableStateOf(appPreferences.isHdrEnabled()) }
 
     // ─── Video Picture & Sharpness Enhancement States ──────────────────────
@@ -136,6 +139,7 @@ fun SettingsScreen(
             "music" -> SettingsCategory.MUSIC
             "playback" -> SettingsCategory.PLAYBACK
             "gestures" -> SettingsCategory.GESTURES
+            "haptics" -> SettingsCategory.HAPTICS
             "subtitles" -> SettingsCategory.SUBTITLES
             "appearance" -> SettingsCategory.APPEARANCE
             "library" -> SettingsCategory.LIBRARY
@@ -527,7 +531,9 @@ fun SettingsScreen(
                         itemMatches("Reset All Settings to Defaults", "restore factory defaults")
                     ))
 
-            val anySectionVisible = showPlayback || showGestures || showSubtitles || showAppearance || showLibrary || showMusic || showStorage
+            val showHaptics = (q.isBlank() && (currentCat == SettingsCategory.ALL || currentCat == SettingsCategory.HAPTICS)) ||
+                (q.isNotBlank() && itemMatches("Vibration & Haptics", "intensity live preview rumble texture sensitivity synchronization strength touch feedback"))
+            val anySectionVisible = showHaptics || showPlayback || showGestures || showSubtitles || showAppearance || showLibrary || showMusic || showStorage
 
             LazyColumn(
                 modifier = modifier,
@@ -906,6 +912,23 @@ fun SettingsScreen(
                             hapticsEnabled = it
                             appPreferences.setHapticsEnabled(it)
                         }
+                    )
+                }
+            }
+        }
+
+        if (showHaptics) {
+            item {
+                SettingsCategorySection(title = "Vibration & Haptics", icon = Icons.Rounded.Vibration, accentColor = primaryAccent) {
+                    HapticsSettingsPanel(
+                        videoEnabled = movieHapticsEnabled,
+                        onVideoEnabled = {
+                            movieHapticsEnabled = it; appPreferences.setVideoHapticsEnabled(it)
+                            com.example.ymediaplayer.player.VideoPlaybackManager.setHapticsEnabled(it)
+                        },
+                        touchEnabled = hapticsEnabled,
+                        onTouchEnabled = { hapticsEnabled = it; appPreferences.setHapticsEnabled(it) },
+                        resetVersion = hapticsResetVersion
                     )
                 }
             }
@@ -2330,7 +2353,7 @@ fun SettingsScreen(
                         videoAmbientSaturation = appPreferences.getVideoAmbientSaturation()
                         videoAmbientBatterySaver = appPreferences.isVideoAmbientBatterySaver()
                         themeController.updateMode(ThemeMode.OLED_BLACK)
-                        themeController.updateColorTheme(PlayerTheme.BLUE)
+                        themeController.updateColorTheme(PlayerTheme.ORANGE)
                         resumeMode = appPreferences.getResumeMode()
                         rememberPlaybackSpeed = appPreferences.isRememberPlaybackSpeed()
                         seekSeconds = appPreferences.getDoubleTapSeekSeconds()
@@ -2351,6 +2374,9 @@ fun SettingsScreen(
                         doubleTapCenterPlayPause = appPreferences.isDoubleTapCenterPlayPauseEnabled()
                         pressHoldSpeed = appPreferences.getPressHoldSpeed()
                         hapticsEnabled = appPreferences.isHapticsEnabled()
+                        movieHapticsEnabled = appPreferences.isVideoHapticsEnabled()
+                        hapticsResetVersion++
+                        com.example.ymediaplayer.player.VideoPlaybackManager.setHapticsEnabled(movieHapticsEnabled)
                         hdrEnabled = appPreferences.isHdrEnabled()
                         subFontSize = appPreferences.getSubtitleFontSize()
                         subColor = appPreferences.getSubtitleColor()

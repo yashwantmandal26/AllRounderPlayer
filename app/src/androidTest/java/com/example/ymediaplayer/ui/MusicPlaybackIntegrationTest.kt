@@ -164,7 +164,8 @@ class MusicPlaybackIntegrationTest {
     }
 
     @After fun restoreQaPreferenceChanges() {
-        rule.runOnIdle {
+        // Cleanup must run even if a test times out while playback is animating.
+        InstrumentationRegistry.getInstrumentation().runOnMainSync {
             MainActivity.openMusicTrigger.value = false
             MusicService.setSleepTimer(0)
             MusicService.setAutoPlayEnabled(AppPreferences(context).isAutoPlayNextEnabled())
@@ -248,6 +249,17 @@ class MusicPlaybackIntegrationTest {
             Player.REPEAT_MODE_ONE, actual)
     }
 
+    @Test fun pausingCompatibilityPlaybackDoesNotReenterTheUiCallback() {
+        playFixtureThroughSearchUi()
+        InstrumentationRegistry.getInstrumentation().runOnMainSync {
+            MusicService.isUsingFallbackEngine.value = true
+            try {
+                MusicService.pauseMusic()
+                org.junit.Assert.assertFalse(MusicService.isMusicPlaying.value)
+            } finally { MusicService.isUsingFallbackEngine.value = false }
+        }
+    }
+
     @Test fun playNextOnCurrentSongThenOpeningQueueDoesNotCrash() {
         playFixtureThroughSearchUi()
         val queueBefore = rule.runOnIdle { MusicService.currentPlaylist.map { it.uri } }
@@ -298,7 +310,14 @@ class MusicPlaybackIntegrationTest {
             assertEquals(queue.map { it.uri }, MusicService.currentPlaylist.map { it.uri })
             MusicService.playNext()
         }
-        rule.waitUntil(10_000) { rule.runOnIdle { MusicService.currentMusicItem.value?.uri == secondFixture.uri } }
+        rule.waitUntil(10_000) {
+            var advanced = false
+            InstrumentationRegistry.getInstrumentation().runOnMainSync {
+                advanced = MusicService.currentMusicItem.value?.uri == secondFixture.uri
+                if (advanced) MusicService.playerInstance?.pause()
+            }
+            advanced
+        }
         rule.runOnIdle { assertEquals(queue.map { it.uri }, MusicService.currentPlaylist.map { it.uri }) }
     }
 
@@ -343,14 +362,18 @@ class MusicPlaybackIntegrationTest {
         // This is the real search-results action, which invokes playSongForce().
         rule.onNodeWithText("Play").performClick()
         rule.waitUntil(timeoutMillis = 10_000) {
-            rule.runOnIdle {
+            // Playback and its visualizer intentionally remain animated. Read
+            // the player on its application thread without waiting for UI idle.
+            var playing = false
+            InstrumentationRegistry.getInstrumentation().runOnMainSync {
                 val player = MusicService.playerInstance
-                player != null && player.currentMediaItem?.mediaId == fixture.id.toString() && player.isPlaying
+                playing = player != null && player.currentMediaItem?.mediaId == fixture.id.toString() && player.isPlaying
             }
+            playing
         }
         // Keep the generated 30-second fixture away from an auto-next transition
         // while inspecting navigation and controls.
-        rule.runOnIdle { MusicService.playerInstance?.pause() }
+        InstrumentationRegistry.getInstrumentation().runOnMainSync { MusicService.playerInstance?.pause() }
     }
 
     private fun openFullPlayer() {

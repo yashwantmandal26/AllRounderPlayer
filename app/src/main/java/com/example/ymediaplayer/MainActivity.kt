@@ -298,7 +298,7 @@ fun MainApp(
             com.example.ymediaplayer.service.MusicService.pauseMusic()
             com.example.ymediaplayer.ui.VideoPlayerActivity.finishPipIfActive()
             com.example.ymediaplayer.player.VideoPlaybackManager.releasePlayer()
-            com.example.ymediaplayer.data.VideoRepository.getVideoDimensions(target)?.let { (w, h) ->
+            com.example.ymediaplayer.data.VideoRepository.getCachedVideoDimensions(target)?.let { (w, h) ->
                 VideoPlaybackManager.setInitialDimensions(w, h)
             }
             val intent = Intent(context, com.example.ymediaplayer.ui.VideoPlayerActivity::class.java).apply {
@@ -379,7 +379,7 @@ fun MainApp(
                                 com.example.ymediaplayer.service.MusicService.pauseMusic()
                                 com.example.ymediaplayer.ui.VideoPlayerActivity.finishPipIfActive()
                                 com.example.ymediaplayer.player.VideoPlaybackManager.releasePlayer()
-                                com.example.ymediaplayer.data.VideoRepository.getVideoDimensions(uri)?.let { (w, h) ->
+                                com.example.ymediaplayer.data.VideoRepository.getCachedVideoDimensions(uri)?.let { (w, h) ->
                                     VideoPlaybackManager.setInitialDimensions(w, h)
                                 }
                                 val intent = Intent(context, com.example.ymediaplayer.ui.VideoPlayerActivity::class.java).apply {
@@ -422,7 +422,7 @@ fun MainApp(
                             com.example.ymediaplayer.service.MusicService.pauseMusic()
                             com.example.ymediaplayer.ui.VideoPlayerActivity.finishPipIfActive()
                             com.example.ymediaplayer.player.VideoPlaybackManager.releasePlayer()
-                            com.example.ymediaplayer.data.VideoRepository.getVideoDimensions(uri)?.let { (w, h) ->
+                            com.example.ymediaplayer.data.VideoRepository.getCachedVideoDimensions(uri)?.let { (w, h) ->
                                 VideoPlaybackManager.setInitialDimensions(w, h)
                             }
                             val intent = Intent(context, com.example.ymediaplayer.ui.VideoPlayerActivity::class.java).apply {

@@ -53,7 +53,7 @@ class PreferencesRegressionTest {
         assertEquals("Flat", prefs.getEqPreset())
         assertEquals(listOf(0f, 0f, 0f, 0f, 0f), prefs.getEqBands())
         assertTrue(prefs.isEqEnabled())
-        assertEquals("BALANCED", prefs.getMusicSoundMode())
+        assertEquals("ORIGINAL", prefs.getMusicSoundMode())
         assertEquals("EXTRA", prefs.getUiCornerStyle())
         assertTrue(prefs.isAutoCheckUpdatesEnabled())
         assertNull(prefs.getSkippedUpdateTag())

@@ -74,7 +74,7 @@ fun MusicMiniPlayerPill(
                 )
             )
             .clip(pillShape)
-            .background(if (c.isMatte) c.cardBg else Color(0xFF141724))
+            .premiumGlass()
             .border(
                 1.3.dp,
                 if (c.isMatte) SolidColor(c.glassBorder)
@@ -187,7 +187,7 @@ fun MusicMiniPlayerPill(
             ) {
                 Text(
                     text = title.ifBlank { "Now Playing" },
-                    color = Color.White,
+                    color = c.textPrimary,
                     fontSize = 13.sp,
                     fontWeight = FontWeight.Bold,
                     maxLines = 1,
@@ -260,7 +260,7 @@ fun MusicMiniPlayerPill(
                 Icon(
                     Icons.Rounded.SkipPrevious,
                     contentDescription = "Previous Track",
-                    tint = Color.White,
+                    tint = c.textPrimary,
                     modifier = Modifier.size(20.dp)
                 )
             }
@@ -302,7 +302,7 @@ fun MusicMiniPlayerPill(
                 Icon(
                     Icons.Rounded.SkipNext,
                     contentDescription = "Next Track",
-                    tint = Color.White,
+                    tint = c.textPrimary,
                     modifier = Modifier.size(20.dp)
                 )
             }
@@ -318,7 +318,7 @@ fun MusicMiniPlayerPill(
                 Icon(
                     imageVector = Icons.Rounded.Close,
                     contentDescription = "Close Player",
-                    tint = Color.White,
+                    tint = c.textPrimary,
                     modifier = Modifier.size(18.dp)
                 )
             }

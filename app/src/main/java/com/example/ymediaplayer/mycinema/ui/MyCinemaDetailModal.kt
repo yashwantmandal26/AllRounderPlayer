@@ -2182,7 +2182,7 @@ private fun ZoomableGalleryPage(
         }
     }
 
-    BoxWithConstraints(
+    Box(
         modifier = Modifier
             .fillMaxSize()
             .pointerInput(Unit) {

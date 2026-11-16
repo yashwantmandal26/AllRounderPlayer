@@ -43,6 +43,16 @@ class ThemeController(context: Context) {
     private val prefs = context.applicationContext
         .getSharedPreferences("ymedia_prefs", Context.MODE_PRIVATE)
 
+    init {
+        if (!prefs.contains("default_theme_v2_applied")) {
+            prefs.edit()
+                .putString(KEY, ThemeMode.OLED_BLACK.name)
+                .putString("player_theme", "ORANGE")
+                .putBoolean("default_theme_v2_applied", true)
+                .apply()
+        }
+    }
+
     var mode by mutableStateOf(
         ThemeMode.fromString(prefs.getString(KEY, ThemeMode.OLED_BLACK.name))
     )
@@ -50,7 +60,7 @@ class ThemeController(context: Context) {
 
     var colorTheme by mutableStateOf(
         com.example.ymediaplayer.ui.PlayerTheme.fromId(
-            prefs.getString("player_theme", "WHITE") ?: "WHITE"
+            prefs.getString("player_theme", "ORANGE") ?: "ORANGE"
         )
     )
         private set

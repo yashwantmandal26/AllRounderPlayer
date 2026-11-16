@@ -141,17 +141,18 @@ internal fun getCachedFrameThumbnail(context: Context, uriString: String): java.
 }
 
 fun Modifier.bounceClick(
-    scaleDown: Float = 0.91f,
+    scaleDown: Float = 0.97f,
     onLongClick: (() -> Unit)? = null,
     onClick: () -> Unit
 ): Modifier = composed {
-    var isPressed by remember { mutableStateOf(false) }
+    val interactionSource = remember { MutableInteractionSource() }
+    val isPressed by interactionSource.collectIsPressedAsState()
     
     val scale by animateFloatAsState(
         targetValue = if (isPressed) scaleDown else 1f,
         animationSpec = spring(
-            dampingRatio = 0.62f, // Snappy tactile bounce
-            stiffness = Spring.StiffnessMedium
+            dampingRatio = 0.86f,
+            stiffness = Spring.StiffnessMediumLow
         ),
         label = "bounceScale"
     )
@@ -161,17 +162,12 @@ fun Modifier.bounceClick(
             scaleX = scale
             scaleY = scale
         }
-        .pointerInput(onClick, onLongClick) {
-            detectTapGestures(
-                onPress = {
-                    isPressed = true
-                    tryAwaitRelease()
-                    isPressed = false
-                },
-                onTap = { onClick() },
-                onLongPress = { onLongClick?.invoke() }
-            )
-        }
+        .combinedClickable(
+            interactionSource = interactionSource,
+            indication = null,
+            onClick = onClick,
+            onLongClick = onLongClick
+        )
 }
 
 /**
@@ -423,7 +419,7 @@ enum class PlayerTheme(
                 "YELLOW", "SUNSET_GOLD" -> YELLOW
                 "ORANGE", "SUNSET" -> ORANGE
                 "RED", "SAKURA" -> RED
-                else -> entries.find { it.id.equals(id, ignoreCase = true) } ?: YELLOW
+                else -> entries.find { it.id.equals(id, ignoreCase = true) } ?: ORANGE
             }
         }
     }

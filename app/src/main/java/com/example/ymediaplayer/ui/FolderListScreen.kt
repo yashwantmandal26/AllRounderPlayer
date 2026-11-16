@@ -65,10 +65,13 @@ import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.zIndex
-import androidx.compose.ui.graphics.asComposeRenderEffect
-import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.rememberGraphicsLayer
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.positionOnScreen
+import androidx.compose.ui.layout.positionInRoot
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -186,6 +189,11 @@ fun FolderListScreen(
 
     // Context menu / action state
     var videoActionTarget by remember { mutableStateOf<VideoItem?>(null) }
+    var videoActionSection by remember { mutableStateOf<VideoHomeSection?>(null) }
+    fun openVideoActions(video: VideoItem, section: VideoHomeSection? = null) {
+        videoActionSection = section
+        videoActionTarget = video
+    }
     var folderActionTarget by remember { mutableStateOf<VideoFolder?>(null) }
     var renameVideoTarget by remember { mutableStateOf<VideoItem?>(null) }
     var deleteVideosConfirm by remember { mutableStateOf<List<VideoItem>>(emptyList()) }
@@ -232,26 +240,32 @@ fun FolderListScreen(
         }
     }
 
-    // Background animation
-    val infiniteTransition = rememberInfiniteTransition(label = "bg")
-    val gradientOffset = infiniteTransition.animateFloat(
-        initialValue = 0f, targetValue = 1000f,
-        animationSpec = infiniteRepeatable(tween(20000, easing = LinearEasing), RepeatMode.Reverse),
-        label = "bg_offset"
-    )
-
     // Delete launcher (Android 11+ requires user confirmation)
+    var pendingDeletedUris by remember { mutableStateOf<List<android.net.Uri>>(emptyList()) }
     val hasRecycleBin = FileManager.supportsRecycleBin()
     val handleFileOperation = rememberFileOperationHandler(
         onSuccess = {
+            pendingDeletedUris.forEach { appPreferences.clearVideoProgress(it.toString()) }
+            pendingDeletedUris = emptyList()
+            VideoRepository.invalidateCache()
             selectedVideoIds = emptySet()
             deleteVideosConfirm = emptyList()
             renameVideoTarget = null
             deleteFolderConfirm = null
             refreshTrigger++
         },
-        onFailure = { android.widget.Toast.makeText(context, it, android.widget.Toast.LENGTH_LONG).show() }
+        onFailure = { pendingDeletedUris = emptyList(); android.widget.Toast.makeText(context, it, android.widget.Toast.LENGTH_LONG).show() },
+        onCancelled = { pendingDeletedUris = emptyList() }
     )
+    val requestVideoDeletion: (List<VideoItem>) -> Unit = { videos ->
+        if (appPreferences.isConfirmDeleteEnabled()) {
+            deleteVideosConfirm = videos
+        } else {
+            val uris = videos.map { it.uri }
+            pendingDeletedUris = uris
+            coroutineScope.launch { handleFileOperation(fileManager.deleteVideos(uris)) }
+        }
+    }
 
     // Live auto-refresh: watch MediaStore for file changes
     DisposableEffect(Unit) {
@@ -276,7 +290,9 @@ fun FolderListScreen(
     DisposableEffect(lifecycleOwner) {
         val observer = LifecycleEventObserver { _, event ->
             if (event == Lifecycle.Event.ON_RESUME) {
+                VideoRepository.invalidateCache()
                 refreshTrigger++
+                favorites = appPreferences.getFavorites()
             }
         }
         lifecycleOwner.lifecycle.addObserver(observer)
@@ -326,6 +342,14 @@ fun FolderListScreen(
         appPreferences.toggleFavorite(uri)
         favorites = appPreferences.getFavorites()
     }
+    val removeFromHomeSection: (VideoItem, VideoHomeSection) -> Unit = { video, section ->
+        val uri = video.uri.toString()
+        appPreferences.hideHomeVideo(section, uri)
+        coroutineScope.launch {
+            if (libraryFeedback.showSnackbar("Removed from ${section.title}", "Undo", duration = SnackbarDuration.Short)
+                == SnackbarResult.ActionPerformed) appPreferences.restoreHomeVideo(section, uri)
+        }
+    }
 
     // Computed display folders (processed in Dispatchers.Default to prevent main-thread jank)
     var displayFolders by remember {
@@ -333,13 +357,15 @@ fun FolderListScreen(
             if (cachedInitialFolders.isNotEmpty()) {
                 val allVideosList = cachedInitialFolders.flatMap { it.videos }.distinctBy { it.id }.sortVideosWithOrder(sortOrder)
                 val allVideosFolder = if (allVideosList.isNotEmpty()) listOf(VideoFolder(id = "all_videos", name = "All Videos", videos = allVideosList)) else emptyList()
+                val favList = cachedInitialFolders.flatMap { it.videos }.distinctBy { it.id }.filter { favorites.contains(it.uri.toString()) }.sortVideosWithOrder(sortOrder)
+                val favFolder = if (favList.isNotEmpty()) listOf(VideoFolder(id = "favorites", name = "Favorites", videos = favList)) else emptyList()
                 val pinnedIds = appPreferences.getPinnedFolders()
-                val base = allVideosFolder + cachedInitialFolders.sortFoldersWithOrder(sortOrder)
+                val base = allVideosFolder + favFolder + cachedInitialFolders.sortFoldersWithOrder(sortOrder)
                 if (pinnedIds.isNotEmpty()) {
-                    val allF = base.filter { it.id == "all_videos" }
-                    val pinned = base.filter { it.id != "all_videos" && pinnedIds.contains(it.id) }
-                    val unpinned = base.filter { it.id != "all_videos" && !pinnedIds.contains(it.id) }
-                    allF + pinned + unpinned
+                    val topF = base.filter { it.id == "all_videos" || it.id == "favorites" }
+                    val pinned = base.filter { it.id != "all_videos" && it.id != "favorites" && pinnedIds.contains(it.id) }
+                    val unpinned = base.filter { it.id != "all_videos" && it.id != "favorites" && !pinnedIds.contains(it.id) }
+                    topF + pinned + unpinned
                 } else base
             } else emptyList()
         )
@@ -368,19 +394,24 @@ fun FolderListScreen(
 
             if (searchQuery.isEmpty() && activeChip == null) {
                 val allVideosList = allFolders.flatMap { it.videos }.distinctBy { it.id }.sortVideosWithOrder(sortOrder)
+                val favList = allFolders.flatMap { it.videos }.distinctBy { it.id }.filter { favorites.contains(it.uri.toString()) }.sortVideosWithOrder(sortOrder)
+                val topFolders = mutableListOf<VideoFolder>()
                 if (allVideosList.isNotEmpty()) {
-                    val allVideosFolder = VideoFolder(id = "all_videos", name = "All Videos", videos = allVideosList)
-                    processed = listOf(allVideosFolder) + processed
+                    topFolders.add(VideoFolder(id = "all_videos", name = "All Videos", videos = allVideosList))
                 }
+                if (favList.isNotEmpty()) {
+                    topFolders.add(VideoFolder(id = "favorites", name = "Favorites", videos = favList))
+                }
+                processed = topFolders + processed
             }
-            // Pinned folders float to top right under All Videos
+            // Pinned folders float right under All Videos & Favorites
             val pinnedIds = appPreferences.getPinnedFolders()
             if (pinnedIds.isNotEmpty()) {
-                val allVideosF = processed.filter { it.id == "all_videos" }
-                val otherF = processed.filter { it.id != "all_videos" }
+                val topF = processed.filter { it.id == "all_videos" || it.id == "favorites" }
+                val otherF = processed.filter { it.id != "all_videos" && it.id != "favorites" }
                 val pinned = otherF.filter { pinnedIds.contains(it.id) }
                 val unpinned = otherF.filter { !pinnedIds.contains(it.id) }
-                processed = allVideosF + pinned + unpinned
+                processed = topF + pinned + unpinned
             }
             withContext(Dispatchers.Main) {
                 displayFolders = processed
@@ -416,8 +447,9 @@ fun FolderListScreen(
     val recentlyAddedVideos = remember(allUniqueVideos, progressVersion, refreshTrigger) {
         if (!appPreferences.isShowRecentlyAdded()) return@remember emptyList()
         val excludeSec = appPreferences.getExcludeShortClipsSeconds()
+        val hidden = appPreferences.getHiddenHomeVideos(VideoHomeSection.RECENTLY_ADDED)
         allUniqueVideos.filter { video ->
-            excludeSec == 0 || video.duration >= excludeSec * 1000L
+            video.uri.toString() !in hidden && (excludeSec == 0 || video.duration >= excludeSec * 1000L)
         }.sortedWith(
             compareByDescending<VideoItem> { it.dateAdded }.thenByDescending { it.id }
         ).take(15)
@@ -455,18 +487,22 @@ fun FolderListScreen(
             }
         }
 
+        val hidden = appPreferences.getHiddenHomeVideos(VideoHomeSection.CONTINUE_WATCHING)
         allKnownVideos.filter { video ->
             val uriStr = video.uri.toString()
+            if (uriStr in hidden) return@filter false
             if (appPreferences.isCompleted(uriStr)) return@filter false
             val progress = appPreferences.getVideoProgress(uriStr)
             val duration = if (video.duration > 0L) video.duration else appPreferences.getVideoDuration(uriStr)
             if (progress <= 3000L) return@filter false
-            if (duration > 0L) {
+            val isStarted = progress >= 5000L || (duration > 0L && (progress.toFloat() / duration) >= 0.01f)
+            val isUnfinished = if (duration > 0L) {
                 val ratio = progress.toFloat() / duration
-                ratio in 0.02f..0.96f && progress < (duration - 3000L)
+                ratio < 0.95f && progress < (duration - 5000L)
             } else {
-                true
+                progress > 0L
             }
+            isStarted && isUnfinished
         }.sortedWith(
             compareByDescending<VideoItem> { appPreferences.getVideoLastPlayedTime(it.uri.toString()) }
                 .thenBy { playedOrder[it.uri.toString()] ?: Int.MAX_VALUE }
@@ -503,21 +539,30 @@ fun FolderListScreen(
         allFolders.filter { it.name.contains("Download", ignoreCase = true) }.sumOf { it.videos.size }
     }
 
+    val footerBackdropLayer = rememberGraphicsLayer()
+    val homeBackdropLayer = rememberGraphicsLayer()
+    val premiumBackdrop = remember(homeBackdropLayer) { PremiumBackdrop(homeBackdropLayer) }
+    var homeBackdropPosition by remember { mutableStateOf(Offset.Zero) }
+    var homeFooterHeightPx by remember { mutableIntStateOf(0) }
+    val homeBottomPadding = with(LocalDensity.current) { homeFooterHeightPx.toDp() } + 8.dp
+
+    CompositionLocalProvider(LocalPremiumBackdrop provides premiumBackdrop) {
     // ─── Main Layout ────────────────────────────────────────────────────────
     Box(modifier = Modifier.fillMaxSize()) {
-        CanvasBg(offsetProvider = { gradientOffset.value })
+        Box(Modifier.fillMaxSize()
+            .onGloballyPositioned { homeBackdropPosition = it.positionInRoot() }
+            .homeBackdropSource(footerBackdropLayer)
+            ) {
+        CanvasBg()
 
         Scaffold(
             containerColor = Color.Transparent,
             snackbarHost = {
-                SnackbarHost(libraryFeedback) { data ->
-                    Row(Modifier.fillMaxWidth().padding(16.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.SpaceBetween) {
-                        Text(data.visuals.message, color = c.textPrimary,
-                            modifier = Modifier.weight(1f), fontSize = 13.sp)
-                        TextButton(onClick = { data.performAction() }) { Text("Undo", color = c.accentBlue) }
-                    }
+                SnackbarHost(libraryFeedback,
+                    modifier = Modifier.padding(bottom = if (!musicPlayerExpanded && !isCinemaDetailOpen) homeBottomPadding else 0.dp)
+                ) { data ->
+                    Snackbar(data, containerColor = c.cardBgElevated, contentColor = c.textPrimary,
+                        actionColor = c.accentBlue)
                 }
             },
             topBar = {
@@ -528,7 +573,7 @@ fun FolderListScreen(
                             onClearSelection = { selectedVideoIds = emptySet() },
                             onDeleteSelected = {
                                 val items = displayFolders.flatMap { it.videos }.filter { selectedVideoIds.contains(it.id) }
-                                deleteVideosConfirm = items
+                                requestVideoDeletion(items)
                             },
                             onShareSelected = {
                                 val uris = displayFolders.flatMap { it.videos }.filter { selectedVideoIds.contains(it.id) }.map { it.uri }
@@ -547,13 +592,13 @@ fun FolderListScreen(
                                 Box(
                                     modifier = Modifier
                                         .matchParentSize()
-                                        .background(c.glassBg.copy(alpha = 0.6f))
+                                        .background(Color.Transparent)
                                         .blur(20.dp)
                                 )
                             }
                             Column(
                                 modifier = Modifier.fillMaxWidth()
-                                    .background(if (c.isMatte) c.baseBackground else c.topBarScrim.copy(alpha = 0.75f))
+                                    .premiumGlass()
                             ) {
                             Row(
                                 modifier = Modifier.fillMaxWidth().statusBarsPadding().padding(horizontal = 16.dp, vertical = 6.dp),
@@ -857,21 +902,24 @@ fun FolderListScreen(
             },
             modifier = modifier
         ) { paddingValues ->
-            // 1. Sync settled swipe gestures with currentTab (ONLY when page has fully settled)
+            // Publish a swipe only after it settles; changing tabs mid-gesture restarts the pager.
             LaunchedEffect(pagerState.settledPage) {
-                val settledTab = mainTabs.getOrNull(pagerState.settledPage) ?: return@LaunchedEffect
-                if (currentTab != settledTab) {
-                    currentTab = settledTab
-                    if (settledTab != "Video") selectedVideoIds = emptySet()
+                val pageTab = mainTabs.getOrNull(pagerState.settledPage) ?: return@LaunchedEffect
+                if (currentTab != pageTab) {
+                    currentTab = pageTab
+                    if (pageTab != "Video") selectedVideoIds = emptySet()
                 }
             }
 
-            // 2. Sync programmatic tab changes (e.g. from bottom pill taps, back press) with pagerState
+            // 2. Sync programmatic tab changes (e.g. from bottom pill taps, back press) with pagerState fast
             LaunchedEffect(currentTab) {
                 val targetPage = mainTabs.indexOf(currentTab)
                 if (targetPage in mainTabs.indices) {
                     if (pagerState.currentPage != targetPage || pagerState.targetPage != targetPage) {
-                        pagerState.animateScrollToPage(targetPage)
+                        pagerState.animateScrollToPage(
+                            targetPage,
+                            animationSpec = tween(durationMillis = 280, easing = FastOutSlowInEasing)
+                        )
                     }
                 }
             }
@@ -882,35 +930,21 @@ fun FolderListScreen(
                 }
             }
 
-            // 3. Rock-solid auto-snap safeguard: if user stops sliding or gesture is interrupted, snap immediately!
-            LaunchedEffect(pagerState.isScrollInProgress) {
-                if (!pagerState.isScrollInProgress) {
-                    val offset = pagerState.currentPageOffsetFraction
-                    if (kotlin.math.abs(offset) > 0.005f) {
-                        val target = if (offset > 0.5f) {
-                            (pagerState.currentPage + 1).coerceAtMost(mainTabs.size - 1)
-                        } else if (offset < -0.5f) {
-                            (pagerState.currentPage - 1).coerceAtLeast(0)
-                        } else {
-                            pagerState.currentPage
-                        }
-                        pagerState.animateScrollToPage(target)
-                    }
-                }
-            }
-
             val canSwipePages = !isCinemaDetailOpen && !musicPlayerExpanded && selectedVideoIds.isEmpty() && searchQuery.isEmpty()
+
+            val fastFlingBehavior = PagerDefaults.flingBehavior(
+                state = pagerState,
+                snapAnimationSpec = tween(durationMillis = 280, easing = FastOutSlowInEasing),
+                snapPositionalThreshold = 0.35f
+            )
 
             HorizontalPager(
                 state = pagerState,
-                modifier = Modifier.fillMaxSize(),
+                modifier = Modifier.fillMaxSize().onGloballyPositioned { premiumBackdrop.position = it.positionOnScreen() }.homeBackdropSource(homeBackdropLayer),
                 userScrollEnabled = canSwipePages,
                 beyondViewportPageCount = 2,
                 key = { page -> mainTabs[page] },
-                flingBehavior = PagerDefaults.flingBehavior(
-                    state = pagerState,
-                    snapPositionalThreshold = 0.25f
-                )
+                flingBehavior = fastFlingBehavior
             ) { page ->
                 when (mainTabs[page]) {
                     "MYCinema" -> {
@@ -946,7 +980,7 @@ fun FolderListScreen(
                                         )
                                     }
                                     com.example.ymediaplayer.player.VideoPlaybackManager.activePlaylistQueue = playlist
-                                    val dims = com.example.ymediaplayer.data.VideoRepository.getVideoDimensions(movie.file.absolutePath)
+                                    val dims = com.example.ymediaplayer.data.VideoRepository.getCachedVideoDimensions(movie.file.absolutePath)
                                     if (dims != null) {
                                         com.example.ymediaplayer.player.VideoPlaybackManager.setInitialDimensions(dims.first, dims.second)
                                     }
@@ -1069,33 +1103,7 @@ fun FolderListScreen(
                     ) {
                         Row(
                             modifier = Modifier
-                                .fillMaxWidth()
-                                .height(48.dp)
-                                .shadow(
-                                    elevation = 8.dp,
-                                    shape = RoundedCornerShape(24.dp),
-                                    ambientColor = if (c.isDark) Color.Black.copy(alpha = 0.55f) else c.cardShadowColor,
-                                    spotColor = if (c.isDark) Color.Black.copy(alpha = 0.45f) else c.cardShadowColor
-                                )
-                                .clip(RoundedCornerShape(24.dp))
-                                .background(
-                                    Brush.verticalGradient(
-                                        listOf(
-                                            if (c.isDark) c.cardBgElevated else Color.White,
-                                            c.cardBg
-                                        )
-                                    )
-                                )
-                                .border(
-                                    1.3.dp,
-                                    if (searchQuery.isNotBlank()) {
-                                        Brush.verticalGradient(listOf(c.accentBlue, c.cardBorderHighlight, c.accentBlue.copy(alpha = 0.4f)))
-                                    } else {
-                                        Brush.verticalGradient(listOf(c.cardBorderHighlight, c.glassBorder, c.cardBorderShadow))
-                                    },
-                                    RoundedCornerShape(24.dp)
-                                )
-                                .padding(horizontal = 14.dp),
+                                .homeSearchSurface(searchQuery.isNotBlank()),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             Icon(
@@ -1145,7 +1153,7 @@ fun FolderListScreen(
 
                     LazyColumn(
                         modifier = Modifier.fillMaxSize(),
-                        contentPadding = PaddingValues(bottom = 190.dp)
+                        contentPadding = PaddingValues(bottom = homeBottomPadding)
                     ) {
                         if (searchQuery.isNotBlank() || isSearching) {
                         if (searchQuery.isBlank()) {
@@ -1258,7 +1266,7 @@ fun FolderListScreen(
                                             },
                                             onLongPress = {
                                                 haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                                                if (!inSelectionMode) videoActionTarget = video
+                                                if (!inSelectionMode) openVideoActions(video)
                                                 else selectedVideoIds = selectedVideoIds + video.id
                                             },
                                             onFavoriteToggle = { toggleFavorite(video.uri.toString()) }
@@ -1313,11 +1321,11 @@ fun FolderListScreen(
                                             },
                                             onLongPress = {
                                                 haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                                                if (!inSelectionMode) videoActionTarget = video
+                                                if (!inSelectionMode) openVideoActions(video)
                                                 else selectedVideoIds = selectedVideoIds + video.id
                                             },
                                             onFavoriteToggle = { toggleFavorite(video.uri.toString()) },
-                                            onDelete = { deleteVideosConfirm = listOf(video) },
+                                            onDelete = { requestVideoDeletion(listOf(video)) },
                                             onShare = {
                                                 val intent = fileManager.buildShareIntent(video.uri)
                                                 context.startActivity(android.content.Intent.createChooser(intent, "Share video"))
@@ -1349,7 +1357,7 @@ fun FolderListScreen(
                                             },
                                             onLongPress = {
                                                 haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                                                if (!inSelectionMode) videoActionTarget = video
+                                                if (!inSelectionMode) openVideoActions(video)
                                                 else selectedVideoIds = selectedVideoIds + video.id
                                             },
                                             onFavoriteToggle = { toggleFavorite(video.uri.toString()) }
@@ -1376,7 +1384,7 @@ fun FolderListScreen(
                                             },
                                             onLongPress = {
                                                 haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                                                if (!inSelectionMode) videoActionTarget = video
+                                                if (!inSelectionMode) openVideoActions(video)
                                                 else selectedVideoIds = selectedVideoIds + video.id
                                             },
                                             onFavoriteToggle = { toggleFavorite(video.uri.toString()) }
@@ -1408,7 +1416,7 @@ fun FolderListScreen(
                                                     },
                                                     onLongPress = {
                                                         haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                                                        if (!inSelectionMode) videoActionTarget = video
+                                                        if (!inSelectionMode) openVideoActions(video)
                                                         else selectedVideoIds = selectedVideoIds + video.id
                                                     },
                                                     onFavoriteToggle = { toggleFavorite(video.uri.toString()) }
@@ -1445,7 +1453,7 @@ fun FolderListScreen(
                                                     },
                                                     onLongPress = {
                                                         haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                                                        if (!inSelectionMode) videoActionTarget = video
+                                                        if (!inSelectionMode) openVideoActions(video)
                                                         else selectedVideoIds = selectedVideoIds + video.id
                                                     }
                                                 )
@@ -1468,12 +1476,23 @@ fun FolderListScreen(
                                     horizontalArrangement = Arrangement.SpaceBetween
                                 ) {
                                     Row(verticalAlignment = Alignment.CenterVertically) {
-                                        Icon(Icons.Rounded.Schedule, contentDescription = null, tint = if (!c.isDark) Color(0xFF64748B) else c.accentBlue, modifier = Modifier.size(15.dp))
+                                        Icon(Icons.Rounded.Schedule, contentDescription = null, tint = c.accentBlue, modifier = Modifier.size(15.dp))
                                         Spacer(Modifier.width(6.dp))
                                         Text("RECENTLY ADDED", color = c.textSecondary, fontSize = 11.5.sp, fontWeight = FontWeight.Bold, letterSpacing = 0.5.sp)
                                     }
-                                    Text("See all", color = if (!c.isDark) Color(0xFF007AFF) else c.accentBlue, fontSize = 12.sp, fontWeight = FontWeight.SemiBold,
-                                        modifier = Modifier.clickable { activeChip = "All Videos" }.padding(4.dp))
+                                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                        Text("${recentlyAddedVideos.size}", fontSize = 11.5.sp, color = c.textSecondary, fontWeight = FontWeight.Medium)
+                                        Text(
+                                            "See all",
+                                            color = c.accentBlue,
+                                            fontSize = 12.sp,
+                                            fontWeight = FontWeight.SemiBold,
+                                            modifier = Modifier
+                                                .clip(RoundedCornerShape(6.dp))
+                                                .clickable { onFolderClick("recently_added", "Recently Added") }
+                                                .padding(horizontal = 4.dp, vertical = 2.dp)
+                                        )
+                                    }
                                 }
                             }
                             item {
@@ -1488,8 +1507,9 @@ fun FolderListScreen(
                                             appPreferences = appPreferences,
                                             onClick = {
                                                 val excludeSec = appPreferences.getExcludeShortClipsSeconds()
+                                                val hidden = appPreferences.getHiddenHomeVideos(VideoHomeSection.RECENTLY_ADDED)
                                                 val recentSortedQueue = allUniqueVideos.filter { v ->
-                                                    excludeSec == 0 || v.duration >= excludeSec * 1000L
+                                                    v.uri.toString() !in hidden && (excludeSec == 0 || v.duration >= excludeSec * 1000L)
                                                 }.sortedWith(
                                                     compareByDescending<VideoItem> { it.dateAdded }.thenByDescending { it.id }
                                                 )
@@ -1498,7 +1518,7 @@ fun FolderListScreen(
                                             },
                                             onLongPress = {
                                                 view.performHaptic(HapticType.HEAVY)
-                                                if (!inSelectionMode) videoActionTarget = video
+                                                if (!inSelectionMode) openVideoActions(video, VideoHomeSection.RECENTLY_ADDED)
                                             }
                                         )
                                     }
@@ -1516,11 +1536,23 @@ fun FolderListScreen(
                                         horizontalArrangement = Arrangement.SpaceBetween
                                     ) {
                                         Row(verticalAlignment = Alignment.CenterVertically) {
-                                            Icon(Icons.Rounded.PlayCircle, contentDescription = null, tint = if (!c.isDark) Color(0xFF64748B) else c.accentBlue, modifier = Modifier.size(15.dp))
+                                            Icon(Icons.Rounded.PlayCircle, contentDescription = null, tint = c.accentBlue, modifier = Modifier.size(15.dp))
                                             Spacer(Modifier.width(6.dp))
                                             Text("CONTINUE WATCHING", color = c.textSecondary, fontSize = 11.5.sp, fontWeight = FontWeight.Bold, letterSpacing = 0.5.sp)
                                         }
-                                        Text("${continueWatchingVideos.size}", fontSize = 12.sp, color = c.textSecondary)
+                                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                            Text("${continueWatchingVideos.size}", fontSize = 11.5.sp, color = c.textSecondary, fontWeight = FontWeight.Medium)
+                                            Text(
+                                                "See all",
+                                                color = c.accentBlue,
+                                                fontSize = 12.sp,
+                                                fontWeight = FontWeight.SemiBold,
+                                                modifier = Modifier
+                                                    .clip(RoundedCornerShape(6.dp))
+                                                    .clickable { onFolderClick("continue_watching", "Continue Watching") }
+                                                    .padding(horizontal = 4.dp, vertical = 2.dp)
+                                            )
+                                        }
                                     }
                                     LazyRow(
                                         contentPadding = PaddingValues(horizontal = 16.dp),
@@ -1537,19 +1569,10 @@ fun FolderListScreen(
                                             },
                                                 onLongPress = {
                                                     view.performHaptic(HapticType.HEAVY)
-                                                    if (!inSelectionMode) videoActionTarget = video
+                                                    if (!inSelectionMode) openVideoActions(video, VideoHomeSection.CONTINUE_WATCHING)
                                                 },
                                                 onRemove = {
-                                                    val uri = video.uri.toString()
-                                                    val position = appPreferences.getVideoProgress(uri)
-                                                    val duration = appPreferences.getVideoDuration(uri)
-                                                    appPreferences.clearVideoProgress(uri)
-                                                    coroutineScope.launch {
-                                                        if (libraryFeedback.showSnackbar("Removed from Continue Watching", "Undo", duration = SnackbarDuration.Short) == SnackbarResult.ActionPerformed
-                                                            && appPreferences.getVideoProgress(uri) == 0L) {
-                                                            appPreferences.saveVideoProgress(uri, position, duration)
-                                                        }
-                                                    }
+                                                    removeFromHomeSection(video, VideoHomeSection.CONTINUE_WATCHING)
                                                 }
                                             )
                                         }
@@ -1735,6 +1758,8 @@ fun FolderListScreen(
             }
         }
 
+        } // End backdrop source: floating controls must never be captured.
+
         // Floating Nav Pill + Animated Music Playing Indicator in Video Mode
         if (!musicPlayerExpanded && !isCinemaDetailOpen) {
             val isMusicPlaying by remember { MusicService.isMusicPlaying }
@@ -1746,32 +1771,13 @@ fun FolderListScreen(
                 modifier = Modifier
                     .fillMaxWidth()
                     .align(Alignment.BottomCenter)
+                    .onSizeChanged { homeFooterHeightPx = it.height }
             ) {
-                // Progressive blur & frosted dark gradient: low blur/translucent at top, increasing density downwards
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .matchParentSize()
-                        .then(
-                            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.S) {
-                                Modifier.graphicsLayer {
-                                    renderEffect = android.graphics.RenderEffect.createBlurEffect(
-                                        48f, 48f, android.graphics.Shader.TileMode.CLAMP
-                                    ).asComposeRenderEffect()
-                                }
-                            } else {
-                                Modifier
-                            }
-                        )
-                        .background(
-                            Brush.verticalGradient(
-                                0.0f to Color.Transparent,
-                                0.20f to c.baseBackground.copy(alpha = 0.35f),
-                                0.50f to c.baseBackground.copy(alpha = 0.70f),
-                                0.80f to c.baseBackground.copy(alpha = 0.92f),
-                                1.0f to c.baseBackground.copy(alpha = 0.98f)
-                            )
-                        )
+                HomeNavigationBackdrop(
+                    source = footerBackdropLayer,
+                    sourcePosition = homeBackdropPosition,
+                    tint = c.baseBackground,
+                    modifier = Modifier.matchParentSize()
                 )
 
                 Column(
@@ -1869,9 +1875,6 @@ fun FolderListScreen(
                                         if (targetTab != currentTab) {
                                             view.performHaptic(HapticType.LIGHT)
                                             currentTab = targetTab
-                                            coroutineScope.launch {
-                                                pagerState.animateScrollToPage(targetIndex)
-                                            }
                                             if (targetTab != "Video") selectedVideoIds = emptySet()
                                         }
                                     }
@@ -1880,22 +1883,27 @@ fun FolderListScreen(
                         }
                 ) {
                     Row(
-                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 5.dp),
+                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 6.dp),
                         horizontalArrangement = Arrangement.spacedBy(4.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         val view = androidx.compose.ui.platform.LocalView.current
+                        val effectiveActiveTab = if (pagerState.isScrollInProgress) {
+                            mainTabs.getOrNull(pagerState.targetPage) ?: currentTab
+                        } else {
+                            currentTab
+                        }
                         listOf(
                             "MYCinema" to Icons.Rounded.Theaters,
                             "Video" to Icons.Rounded.Movie,
                             "Music" to Icons.Rounded.MusicNote
                         ).forEach { (label, icon) ->
-                            val selected = currentTab == label
+                            val selected = effectiveActiveTab == label
                             val pillBgColor by animateColorAsState(
                                 targetValue = if (selected) c.accentBlue else Color.Transparent,
                                 animationSpec = spring(
                                     dampingRatio = Spring.DampingRatioNoBouncy,
-                                    stiffness = Spring.StiffnessMediumLow
+                                    stiffness = Spring.StiffnessHigh
                                 ),
                                 label = "pillBgColor"
                             )
@@ -1903,12 +1911,12 @@ fun FolderListScreen(
                                 targetValue = if (selected) {
                                     if (isBrightAccent) Color(0xFF0F172A) else Color.White
                                 } else c.textSecondary.copy(alpha = 0.85f),
-                                animationSpec = tween(200),
+                                animationSpec = tween(120),
                                 label = "pillTextColor"
                             )
                             val pillElevation by animateDpAsState(
                                 targetValue = if (selected && !c.isMatte) (if (!c.isDark) 4.dp else 8.dp) else 0.dp,
-                                animationSpec = tween(220),
+                                animationSpec = tween(140),
                                 label = "pillElevation"
                             )
                             Row(
@@ -1940,18 +1948,12 @@ fun FolderListScreen(
                                     )
                                     .bounceClick { 
                                         if (currentTab != label) view.performHaptic(HapticType.LIGHT)
-                                        val target = mainTabs.indexOf(label)
-                                        if (target in mainTabs.indices && pagerState.currentPage != target) {
-                                            coroutineScope.launch {
-                                                pagerState.animateScrollToPage(target)
-                                            }
-                                        }
                                         currentTab = label
                                         if (label != "Video") selectedVideoIds = emptySet() 
                                     }
                                     .padding(
-                                        horizontal = if (selected) 14.5.dp else 10.dp,
-                                        vertical = 8.dp
+                                        horizontal = if (selected) 15.dp else 10.dp,
+                                        vertical = 8.5.dp
                                     )
                             ) {
                                 Icon(
@@ -1962,8 +1964,8 @@ fun FolderListScreen(
                                 )
                                 AnimatedVisibility(
                                     visible = selected,
-                                    enter = fadeIn(tween(180)) + expandHorizontally(spring(stiffness = Spring.StiffnessMediumLow)),
-                                    exit = fadeOut(tween(140)) + shrinkHorizontally(spring(stiffness = Spring.StiffnessMediumLow))
+                                    enter = fadeIn(tween(100)) + expandHorizontally(spring(stiffness = Spring.StiffnessHigh)),
+                                    exit = fadeOut(tween(80)) + shrinkHorizontally(spring(stiffness = Spring.StiffnessHigh))
                                 ) {
                                     Row(verticalAlignment = Alignment.CenterVertically) {
                                         Spacer(Modifier.width(5.dp))
@@ -1990,10 +1992,10 @@ fun FolderListScreen(
             ModalBottomSheet(
                 onDismissRequest = { videoActionTarget = null },
                 sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
-                containerColor = c.dropdownBg,
+                containerColor = c.cardBgElevated,
                 shape = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp)
             ) {
-                Column(modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp).padding(bottom = 32.dp)) {
+                Column(modifier = Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).padding(horizontal = 20.dp).padding(bottom = 32.dp)) {
                     // Header
                     Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                         Box(modifier = Modifier.size(52.dp).clip(RoundedCornerShape(10.dp)).background(c.glassBg)) {
@@ -2025,6 +2027,12 @@ fun FolderListScreen(
                         videoActionTarget = null
                     }
                     VideoActionItem(Icons.Rounded.Info, "Video Info", c.textPrimary) { videoInfoTarget = video; videoActionTarget = null }
+                    videoActionSection?.let { section ->
+                        VideoActionItem(Icons.Rounded.PlaylistRemove, "Remove from this list", c.textPrimary) {
+                            removeFromHomeSection(video, section)
+                            videoActionTarget = null
+                        }
+                    }
                     if (appPreferences.getVideoProgress(video.uri.toString()) > 0) {
                         VideoActionItem(Icons.Rounded.History, "Clear Watch Progress", c.textSecondary) {
                             appPreferences.clearVideoProgress(video.uri.toString())
@@ -2034,7 +2042,7 @@ fun FolderListScreen(
                     VideoActionItem(Icons.Rounded.CheckBox, "Select", c.textPrimary) {
                         selectedVideoIds = selectedVideoIds + video.id; videoActionTarget = null
                     }
-                    VideoActionItem(Icons.Rounded.Delete, "Move to Bin", Color(0xFFE53935)) { deleteVideosConfirm = listOf(video); videoActionTarget = null }
+                    VideoActionItem(Icons.Rounded.Delete, if (hasRecycleBin) "Move to Bin" else "Delete video", Color(0xFFE53935)) { requestVideoDeletion(listOf(video)); videoActionTarget = null }
                 }
             }
         }
@@ -2045,10 +2053,10 @@ fun FolderListScreen(
             ModalBottomSheet(
                 onDismissRequest = { folderActionTarget = null },
                 sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
-                containerColor = c.dropdownBg,
+                containerColor = c.cardBgElevated,
                 shape = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp)
             ) {
-                Column(modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp).padding(bottom = 32.dp)) {
+                Column(modifier = Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).padding(horizontal = 20.dp).padding(bottom = 32.dp)) {
                     Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(bottom = 8.dp)) {
                         Icon(Icons.Rounded.Folder, contentDescription = null, tint = c.accentBlue, modifier = Modifier.size(28.dp))
                         Spacer(Modifier.width(12.dp))
@@ -2071,7 +2079,7 @@ fun FolderListScreen(
                         folderActionTarget = null
                     }
                     if (folder.id != "last_played" && folder.id != "all_videos") {
-                        VideoActionItem(Icons.Rounded.Delete, if (hasRecycleBin) "Move All to Bin" else "Delete all videos", Color(0xFFE53935)) { deleteFolderConfirm = folder; folderActionTarget = null }
+                        VideoActionItem(Icons.Rounded.Delete, if (hasRecycleBin) "Move All to Bin" else "Delete all videos", Color(0xFFE53935)) { if (appPreferences.isConfirmDeleteEnabled()) deleteFolderConfirm = folder else requestVideoDeletion(folder.videos); folderActionTarget = null }
                     }
                 }
             }
@@ -2079,11 +2087,13 @@ fun FolderListScreen(
 
         // Rename Dialog
         renameVideoTarget?.let { video ->
-            var newName by remember { mutableStateOf(video.title.substringBeforeLast(".")) }
-            val ext = video.title.substringAfterLast(".", "")
+            val fileName = if (video.uri.scheme == "file") java.io.File(requireNotNull(video.uri.path)).name else video.title
+            var newName by remember { mutableStateOf(fileName.substringBeforeLast(".", fileName)) }
+            val ext = fileName.substringAfterLast(".", "")
             AlertDialog(
                 onDismissRequest = { renameVideoTarget = null },
-                containerColor = c.dropdownBg,
+                modifier = Modifier.premiumGlass(),
+                containerColor = Color.Transparent,
                 title = { Text("Rename", color = c.textPrimary, fontWeight = FontWeight.Bold) },
                 text = {
                     OutlinedTextField(
@@ -2101,7 +2111,7 @@ fun FolderListScreen(
                     TextButton(onClick = {
                         val finalName = if (ext.isNotEmpty()) "$newName.$ext" else newName
                         coroutineScope.launch {
-                            val result = fileManager.renameVideo(video.id, finalName)
+                            val result = fileManager.renameVideo(video.uri, finalName)
                             handleFileOperation(result)
                         }
                     }) { Text("Rename", color = c.accentBlue) }
@@ -2113,15 +2123,19 @@ fun FolderListScreen(
         // Delete Videos Confirm Dialog
         if (deleteVideosConfirm.isNotEmpty()) {
             val count = deleteVideosConfirm.size
+            val hasRecycleBin = FileManager.supportsRecycleBin(deleteVideosConfirm.map { it.uri })
             AlertDialog(
                 onDismissRequest = { deleteVideosConfirm = emptyList() },
-                containerColor = c.dropdownBg,
+                modifier = Modifier.premiumGlass(),
+                containerColor = Color.Transparent,
                 title = { Text(if (!hasRecycleBin) "Permanently delete $count video(s)?" else if (count == 1) "Move to Recycle Bin?" else "Move $count Videos to Bin?", color = c.textPrimary, fontWeight = FontWeight.Bold) },
-                text = { Text(if (hasRecycleBin) "Videos will be moved to your device's Recycle Bin where they can be restored for a limited time." else "Your Android version does not support the system Recycle Bin. These videos will be permanently deleted and cannot be restored.", color = c.textSecondary) },
+                text = { Text(if (hasRecycleBin) "Videos will be moved to your device's Recycle Bin where they can be restored for a limited time." else "These videos will be permanently deleted and cannot be restored. Some files or Android versions do not support the system Recycle Bin.", color = c.textSecondary) },
                 confirmButton = {
                     TextButton(onClick = {
+                        val uris = deleteVideosConfirm.map { it.uri }
+                        deleteVideosConfirm = emptyList()
                         coroutineScope.launch {
-                            val uris = deleteVideosConfirm.map { it.uri }
+                            pendingDeletedUris = uris
                             val result = fileManager.deleteVideos(uris)
                             handleFileOperation(result)
                         }
@@ -2133,15 +2147,19 @@ fun FolderListScreen(
 
         // Delete Folder Confirm Dialog
         deleteFolderConfirm?.let { folder ->
+            val hasRecycleBin = FileManager.supportsRecycleBin(folder.videos.map { it.uri })
             AlertDialog(
                 onDismissRequest = { deleteFolderConfirm = null },
-                containerColor = c.dropdownBg,
+                modifier = Modifier.premiumGlass(),
+                containerColor = Color.Transparent,
                 title = { Text(if (hasRecycleBin) "Move \"${folder.name}\" to Recycle Bin?" else "Permanently delete folder videos?", color = c.textPrimary, fontWeight = FontWeight.Bold) },
                 text = { Text(if (hasRecycleBin) "All ${folder.videos.size} videos in this folder will be moved to your device's Recycle Bin." else "All ${folder.videos.size} videos will be permanently deleted. Your Android version does not support the system Recycle Bin. This cannot be undone.", color = c.textSecondary) },
                 confirmButton = {
                     TextButton(onClick = {
+                        val uris = folder.videos.map { it.uri }
+                        deleteFolderConfirm = null
                         coroutineScope.launch {
-                            val uris = folder.videos.map { it.uri }
+                            pendingDeletedUris = uris
                             val result = fileManager.deleteVideos(uris)
                             handleFileOperation(result)
                         }
@@ -2154,13 +2172,14 @@ fun FolderListScreen(
         // Video Info Sheet
         videoInfoTarget?.let { video ->
             LaunchedEffect(video.id) {
-                videoInfoData = fileManager.getVideoInfo(video.id)
+                videoInfoData = fileManager.getVideoInfo(video.uri)
             }
             videoInfoData?.let { info ->
                 ModalBottomSheet(
                     onDismissRequest = { videoInfoTarget = null; videoInfoData = null },
                     sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
-                    containerColor = c.dropdownBg,
+                    modifier = Modifier.premiumGlass(),
+                containerColor = Color.Transparent,
                     shape = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp)
                 ) {
                     Column(modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp).padding(bottom = 32.dp)) {
@@ -2310,13 +2329,14 @@ fun FolderListScreen(
             }
         }
     }
+    }
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // BACKGROUND
 // ═══════════════════════════════════════════════════════════════════════════════
 @Composable
-internal fun CanvasBg(offsetProvider: () -> Float = { 0f }) {
+internal fun CanvasBg() {
     val c = LocalAppColors.current
     val context = LocalContext.current
     val appPreferences = remember(context) { AppPreferences(context) }
@@ -2560,8 +2580,14 @@ private fun ContinueWatchingCard(
             .clip(RoundedCornerShape(cornerRadius))
             .background(if (c.isMatte) SolidColor(c.cardBg) else Brush.verticalGradient(listOf(c.cardBgElevated, c.cardBg)))
             .border(
-                width = 1.4.dp,
-                brush = if (c.isMatte) SolidColor(c.glassBorder) else Brush.verticalGradient(listOf(c.cardBorderHighlight, c.glassBorder, c.cardBorderShadow)),
+                width = 1.6.dp,
+                brush = Brush.verticalGradient(
+                    listOf(
+                        Color.White.copy(alpha = 0.65f),
+                        c.accentBlue,
+                        c.accentBlue.copy(alpha = 0.45f)
+                    )
+                ),
                 shape = RoundedCornerShape(cornerRadius)
             )
             .bounceClick(onClick = onClick, onLongClick = onLongPress)
@@ -2587,7 +2613,7 @@ private fun ContinueWatchingCard(
             modifier = Modifier
                 .align(Alignment.TopStart)
                 .fillMaxWidth()
-                .padding(start = 7.dp, end = 7.dp, top = 6.dp),
+                .padding(start = 7.dp, end = 5.dp, top = 5.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
             if (video.bucketName.equals("MYCinema", ignoreCase = true) || video.relativePath.contains("MYCinema", ignoreCase = true) || video.uri.toString().startsWith("http")) {
@@ -2610,7 +2636,42 @@ private fun ContinueWatchingCard(
                 fontSize = 10.sp,
                 fontWeight = FontWeight.SemiBold,
                 maxLines = 1,
-                overflow = TextOverflow.Ellipsis
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.weight(1f)
+            )
+            if (onRemove != null) {
+                Box(
+                    modifier = Modifier
+                        .size(20.dp)
+                        .clip(CircleShape)
+                        .background(Color.Black.copy(alpha = 0.55f))
+                        .clickable { onRemove() },
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        imageVector = Icons.Rounded.Close,
+                        contentDescription = "Remove",
+                        tint = Color.White.copy(alpha = 0.90f),
+                        modifier = Modifier.size(12.dp)
+                    )
+                }
+            }
+        }
+        // Center subtle frosted play pill to make resume intent obvious
+        Box(
+            modifier = Modifier
+                .align(Alignment.Center)
+                .size(32.dp)
+                .clip(CircleShape)
+                .background(Color.Black.copy(alpha = 0.45f))
+                .border(0.8.dp, Color.White.copy(alpha = 0.25f), CircleShape),
+            contentAlignment = Alignment.Center
+        ) {
+            Icon(
+                imageVector = Icons.Rounded.PlayArrow,
+                contentDescription = null,
+                tint = Color.White,
+                modifier = Modifier.size(18.dp)
             )
         }
         // Bottom right duration + percentage badge with frosted blur background (swapped with top)
@@ -2813,7 +2874,8 @@ fun FolderItem(
     val themeCtrl = LocalThemeController.current
     val haptic = LocalHapticFeedback.current
     val isAllVideos = folder.id == "all_videos"
-    val isHistory = isAllVideos || folder.id == "last_played" || folder.id == "recently_added"
+    val isFavorites = folder.id == "favorites"
+    val isHistory = isAllVideos || isFavorites || folder.id == "last_played" || folder.id == "recently_added" || folder.id == "continue_watching"
     val context = LocalContext.current
     val firstVideo = folder.videos.firstOrNull()
 
@@ -2862,18 +2924,7 @@ fun FolderItem(
                 spotColor = c.cardShadowColor
             ))
             .clip(RoundedCornerShape(cornerRadius))
-            .background(
-                if (!c.isDark) SolidColor(Color.White)
-                else if (c.isMatte) SolidColor(c.cardBg)
-                else Brush.verticalGradient(listOf(c.cardBgElevated, c.cardBg))
-            )
-            .border(
-                width = 0.8.dp,
-                brush = if (!c.isDark) SolidColor(Color(0xFFE2E8F0))
-                else if (c.isMatte) SolidColor(c.glassBorder)
-                else Brush.verticalGradient(listOf(c.cardBorderHighlight, c.glassBorder)),
-                shape = RoundedCornerShape(cornerRadius)
-            )
+            .liquidFolderGlass(cornerRadius)
             .bounceClick(
                 scaleDown = 0.965f,
                 onLongClick = onLongPress,
@@ -2904,6 +2955,13 @@ fun FolderItem(
                         Icons.Rounded.VideoLibrary,
                         contentDescription = null,
                         tint = if (!c.isDark) Color(0xFF007AFF) else c.accentBlue,
+                        modifier = Modifier.size(24.dp)
+                    )
+                } else if (isFavorites) {
+                    Icon(
+                        Icons.Rounded.Favorite,
+                        contentDescription = null,
+                        tint = Color(0xFFFF2A6D),
                         modifier = Modifier.size(24.dp)
                     )
                 } else if (firstVideo != null && !isHistory) {
@@ -2975,7 +3033,8 @@ fun FolderGridItem(
 ) {
     val c = LocalAppColors.current
     val isAllVideos = folder.id == "all_videos"
-    val isHistory = isAllVideos || folder.id == "last_played" || folder.id == "recently_added"
+    val isFavorites = folder.id == "favorites"
+    val isHistory = isAllVideos || isFavorites || folder.id == "last_played" || folder.id == "recently_added" || folder.id == "continue_watching"
     val context = LocalContext.current
     val previewVideos = folder.videos.take(4)
 
@@ -2995,16 +3054,7 @@ fun FolderGridItem(
                 spotColor = c.cardShadowColor
             ))
             .clip(RoundedCornerShape(gridCornerRadius))
-            .background(
-                if (c.isMatte) SolidColor(c.cardBg)
-                else Brush.verticalGradient(listOf(c.cardBgElevated, c.cardBg))
-            )
-            .border(
-                width = 1.dp,
-                brush = if (c.isMatte) SolidColor(c.glassBorder)
-                else Brush.verticalGradient(listOf(c.cardBorderHighlight, c.glassBorder)),
-                shape = RoundedCornerShape(gridCornerRadius)
-            )
+            .liquidFolderGlass(gridCornerRadius)
             .bounceClick(scaleDown = 0.95f, onLongClick = onLongPress, onClick = onClick)
     ) {
         Column(modifier = Modifier.fillMaxWidth()) {
@@ -3049,7 +3099,15 @@ fun FolderGridItem(
                 }
             } else {
                 Box(modifier = Modifier.fillMaxWidth().height(80.dp).background(c.accentBlue.copy(0.12f)), contentAlignment = Alignment.Center) {
-                    Icon(if (isAllVideos) Icons.Rounded.VideoLibrary else if (isHistory) Icons.Rounded.History else Icons.Rounded.Folder, contentDescription = null, tint = if (isAllVideos || isHistory) c.accentBlue else c.textSecondary, modifier = Modifier.size(36.dp))
+                    Icon(
+                        if (isAllVideos) Icons.Rounded.VideoLibrary
+                        else if (isFavorites) Icons.Rounded.Favorite
+                        else if (isHistory) Icons.Rounded.History
+                        else Icons.Rounded.Folder,
+                        contentDescription = null,
+                        tint = if (isFavorites) Color(0xFFFF2A6D) else if (isAllVideos || isHistory) c.accentBlue else c.textSecondary,
+                        modifier = Modifier.size(36.dp)
+                    )
                 }
             }
             // Info row
